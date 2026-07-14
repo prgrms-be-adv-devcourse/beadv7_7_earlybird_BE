@@ -5,12 +5,12 @@ import com.growmighty.lectures.firstday.cart.domain.Cart;
 import java.util.List;
 
 public record CartView(Long cartId, Long userId, List<Line> items) {
-    public record Line(Long productId, int quantity) {
+    public record Line(Long projectId, int quantity) {
     }
 
     public static CartView from(Cart cart) {
         List<Line> lines = cart.getItems().stream()
-                .map(item -> new Line(item.getProductId(), item.getQuantity()))
+                .map(item -> new Line(item.getProjectId(), item.getQuantity()))
                 .toList();
         return new CartView(cart.getId(), cart.getUserId(), lines);
     }

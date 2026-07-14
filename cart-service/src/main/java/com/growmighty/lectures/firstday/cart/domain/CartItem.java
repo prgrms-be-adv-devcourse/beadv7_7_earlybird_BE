@@ -21,19 +21,19 @@ public class CartItem {
     private Cart cart;
 
     @Column(nullable = false)
-    private Long productId;
+    private Long projectId;
 
     @Column(nullable = false)
     private Integer quantity;
 
-    private CartItem(Long productId, int quantity) {
+    private CartItem(Long projectId, int quantity) {
         validateQuantity(quantity);
-        this.productId = productId;
+        this.projectId = projectId;
         this.quantity = quantity;
     }
 
-    public static CartItem create(Long productId, int quantity) {
-        return new CartItem(productId, quantity);
+    public static CartItem create(Long projectId, int quantity) {
+        return new CartItem(projectId, quantity);
     }
 
     void addQuantity(int amount) {
@@ -46,8 +46,8 @@ public class CartItem {
         this.quantity = newQuantity;
     }
 
-    boolean hasProduct(Long productId) {
-        return this.productId.equals(productId);
+    boolean hasProject(Long projectId) {
+        return this.projectId.equals(projectId);
     }
 
     void assignCart(Cart cart) {
@@ -59,7 +59,7 @@ public class CartItem {
             throw new IllegalArgumentException("수량은 1개 이상이어야 합니다. 입력값: " + quantity);
         }
         if (quantity > MAX_QUANTITY) {
-            throw new IllegalArgumentException("한 상품은 최대 " + MAX_QUANTITY + "개까지 담을 수 있습니다.");
+            throw new IllegalArgumentException("한 프로젝트은 최대 " + MAX_QUANTITY + "개까지 담을 수 있습니다.");
         }
     }
 }

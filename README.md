@@ -15,7 +15,7 @@
 | --- | --- |
 | 유저 (User) | `User` |
 | 셀러 (Seller) | `Seller` |
-| 상품 (Product) | `Product` |
+| 프로젝트 (Project) | `Project` |
 | 장바구니 (Cart) | `Cart`, `CartItem` |
 | 주문 (Order) | `Order`, `OrderItem` |
 | 결제 (Payment) | `Payment` |
@@ -26,7 +26,7 @@
 src/main/java/com/growmighty/lectures/firstday/tangledmonolith/
 ├── user/User.java
 ├── seller/Seller.java
-├── product/Product.java
+├── project/Project.java
 ├── cart/Cart.java
 ├── cart/CartItem.java
 ├── order/Order.java
@@ -90,7 +90,7 @@ Entity 간의 연관관계를 **[draw.io](https://app.diagrams.net/)** 로 다�
 
 1. **연관관계의 방향과 결합도**
    - 한 Entity가 다른 도메인의 Entity를 **객체로 직접 참조**하고 있나요?
-   - 예를 들어 `OrderItem`이 `Product`를 직접 들고 있을 때, 어떤 문제가 생길 수 있을까요?
+   - 예를 들어 `OrderItem`이 `Project`를 직접 들고 있을 때, 어떤 문제가 생길 수 있을까요?
    - 한 도메인을 수정하면 다른 도메인까지 영향을 받게 되지는 않나요?
 
 2. **도메인 경계**
@@ -98,7 +98,7 @@ Entity 간의 연관관계를 **[draw.io](https://app.diagrams.net/)** 로 다�
    - "이 객체는 어느 도메인의 것인가?"를 명확히 말할 수 있나요?
 
 3. **데이터 정합성 / 변경에 대한 취약성**
-   - `OrderItem`이 `Product`를 참조하는데, **주문 이후 상품 가격이 바뀌면** 어떻게 될까요?
+   - `OrderItem`이 `Project`를 참조하는데, **주문 이후 프로젝트 가격이 바뀌면** 어떻게 될까요?
    - 주문 당시의 정보는 어떻게 보존되어야 할까요?
 
 4. **객체로 직접 참조 vs ID로 간접 참조**

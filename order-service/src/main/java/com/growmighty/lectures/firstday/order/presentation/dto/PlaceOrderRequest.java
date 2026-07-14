@@ -10,12 +10,12 @@ public record PlaceOrderRequest(
         @NonNull Long userId,
         @NonNull List<OrderItemRequest> requests
 ) {
-    public record OrderItemRequest(@NonNull Long productId, @NonNull Integer quantity) {
+    public record OrderItemRequest(@NonNull Long projectId, @NonNull Integer quantity) {
     }
 
     public PlaceOrderCommand toCommand() {
         List<OrderLine> lines = requests.stream()
-                .map(r -> new OrderLine(r.productId(), r.quantity()))
+                .map(r -> new OrderLine(r.projectId(), r.quantity()))
                 .toList();
         return new PlaceOrderCommand(userId, lines);
     }

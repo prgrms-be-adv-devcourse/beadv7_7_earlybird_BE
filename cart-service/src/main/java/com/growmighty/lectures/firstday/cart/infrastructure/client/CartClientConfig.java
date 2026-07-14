@@ -29,9 +29,9 @@ public class CartClientConfig {
     }
 
     @Bean
-    RestClient productRestClient(
+    RestClient projectRestClient(
             @LoadBalanced RestClient.Builder builder,   // 한정자로 LB 빌더를 콕 집어 주입 (빼먹으면 @Primary 가 온다!)
-            @Value("${cart.client.product-base-url:http://product-service}") String baseUrl) {
+            @Value("${cart.client.project-base-url:http://project-service}") String baseUrl) {
         // builder 는 공유 빈이라 상태가 있다. clone 으로 스냅샷을 떠서 각자 조립한다.
         return builder.clone().baseUrl(baseUrl).build();
     }

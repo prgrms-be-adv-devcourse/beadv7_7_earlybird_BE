@@ -1,3 +1,6 @@
+server:
+  port: 8000
+
 # 로컬에는 "금고 열쇠"만 남긴다 — 라우트/포트/관리 엔드포인트는 config-server 가 배달한다.
 spring:
   application:

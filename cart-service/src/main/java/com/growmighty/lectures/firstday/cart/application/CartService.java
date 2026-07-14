@@ -4,8 +4,8 @@ import com.growmighty.lectures.firstday.cart.application.dto.AddCartItemCommand;
 import com.growmighty.lectures.firstday.cart.application.dto.CartView;
 import com.growmighty.lectures.firstday.cart.domain.Cart;
 import com.growmighty.lectures.firstday.cart.domain.CartRepository;
-import com.growmighty.lectures.firstday.cart.application.port.ProductPort;
-import com.growmighty.lectures.firstday.cart.application.port.dto.ProductSnapshot;
+import com.growmighty.lectures.firstday.cart.application.port.ProjectPort;
+import com.growmighty.lectures.firstday.cart.application.port.dto.ProjectSnapshot;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,31 +15,31 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CartService {
     private final CartRepository cartRepository;
-    private final ProductPort productPort;
+    private final ProjectPort projectPort;
 
     @Transactional
     public CartView addItem(AddCartItemCommand command) {
-        ProductSnapshot product = productPort.getProduct(command.productId());
-        if (!product.orderable()) {
-            throw new IllegalStateException("현재 구매할 수 없는 상품입니다. productId=" + command.productId());
+        ProjectSnapshot project = projectPort.getProject(command.projectId());
+        if (!project.orderable()) {
+            throw new IllegalStateException("현재 구매할 수 없는 프로젝트입니다. projectId=" + command.projectId());
         }
         Cart cart = cartRepository.findByUserId(command.userId())
                 .orElseGet(() -> Cart.create(command.userId()));
-        cart.addItem(command.productId(), command.quantity());
+        cart.addItem(command.projectId(), command.quantity());
         return CartView.from(cartRepository.save(cart));
     }
 
     @Transactional
-    public CartView changeQuantity(Long userId, Long productId, int quantity) {
+    public CartView changeQuantity(Long userId, Long projectId, int quantity) {
         Cart cart = getCartEntity(userId);
-        cart.changeQuantity(productId, quantity);
+        cart.changeQuantity(projectId, quantity);
         return CartView.from(cart);
     }
 
     @Transactional
-    public CartView removeItem(Long userId, Long productId) {
+    public CartView removeItem(Long userId, Long projectId) {
         Cart cart = getCartEntity(userId);
-        cart.removeItem(productId);
+        cart.removeItem(projectId);
         return CartView.from(cart);
     }
 

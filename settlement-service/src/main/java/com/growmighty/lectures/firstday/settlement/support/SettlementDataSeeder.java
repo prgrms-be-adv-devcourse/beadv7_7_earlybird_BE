@@ -76,7 +76,7 @@ public class SettlementDataSeeder implements CommandLineRunner {
                         }
                     });
 
-            // 2) 주문 데이터 (payment_id = id 로 1:1 매핑, 배송비 0, 전액 상품금액)
+            // 2) 주문 데이터 (payment_id = id 로 1:1 매핑, 배송비 0, 전액 프로젝트금액)
             jdbcTemplate.batchUpdate(
                     "INSERT INTO orders (id, user_id, payment_id, items_amount, shipping_fee, total_amount, status) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?)",

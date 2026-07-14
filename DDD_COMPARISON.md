@@ -99,7 +99,7 @@ public class Order extends AbstractAggregateRoot<Order> {
     private CustomerId customerId;  // ✅ 값 객체로 타입 안전성
     
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<OrderItem> orderItems = new ArrayList<>();
+    private final List<OrderItem> orderItems = new ArrayList<>();
     
     @Enumerated(EnumType.STRING)
     private OrderStatus status;  // ✅ Enum으로 상태 관리
@@ -252,7 +252,7 @@ public class Quantity {
 public class OrderService {
     
     private final OrderRepository orderRepository;
-    private final ProductRepository productRepository;
+    private final ProjectRepository projectRepository;
     private final CustomerRepository customerRepository;
     private final CouponRepository couponRepository;
     private final InventoryService inventoryService;
@@ -285,8 +285,8 @@ public class OrderService {
         BigDecimal totalAmount = BigDecimal.ZERO;
         
         for (OrderItemRequest itemRequest : itemRequests) {
-            Product product = productRepository.findById(itemRequest.getProductId())
-                .orElseThrow(() -> new IllegalArgumentException("상품을 찾을 수 없습니다"));
+            Project project = projectRepository.findById(itemRequest.getProjectId())
+                .orElseThrow(() -> new IllegalArgumentException("프로젝트을 찾을 수 없습니다"));
             
             // 검증, 계산 등 100줄 이상의 로직...
             totalAmount = totalAmount.add(/* 계산 */);
@@ -320,7 +320,7 @@ public class OrderApplicationService {
     private final OrderRepository orderRepository;
     
     // ✅ 외부 도메인은 Port(인터페이스)로 통신
-    private final ProductPort productPort;
+    private final ProjectPort projectPort;
     private final CustomerPort customerPort;
     private final CouponPort couponPort;
     
@@ -331,7 +331,7 @@ public class OrderApplicationService {
         validateCustomer(customerId);
         
         List<OrderItem> orderItems = command.items().stream()
-            .map(this::createOrderItemFromExternalProduct)
+            .map(this::createOrderItemFromExternalProject)
             .collect(Collectors.toList());
         
         ShippingAddress shippingAddress = ShippingAddress.of(command.shippingAddress());
@@ -378,12 +378,12 @@ public class OrderApplicationService {
 public class OrderService {
     
     // ❌ 다른 도메인의 Repository를 직접 사용
-    private final ProductRepository productRepository;
+    private final ProjectRepository projectRepository;
     private final CustomerRepository customerRepository;
     
     public void createOrder() {
-        // ❌ 주문 도메인에서 상품 도메인 직접 접근
-        Product product = productRepository.findById(productId)
+        // ❌ 주문 도메인에서 프로젝트 도메인 직접 접근
+        Project project = projectRepository.findById(projectId)
             .orElseThrow();
         
         // ❌ 고객 도메인 직접 접근
@@ -403,36 +403,36 @@ public class OrderService {
 
 ```java
 // 애플리케이션 계층: 아웃바운드 포트(인터페이스)
-public interface ProductPort {
-    Optional<ProductInfo> getProduct(ProductId productId);
-    boolean decreaseStock(ProductId productId, int quantity);
+public interface ProjectPort {
+    Optional<ProjectInfo> getProject(ProjectId projectId);
+    boolean decreaseStock(ProjectId projectId, int quantity);
 }
 
-// 인프라 계층: RestClient로 상품 서비스를 호출하는 어댑터
+// 인프라 계층: RestClient로 프로젝트 서비스를 호출하는 어댑터
 @Component
-public class ProductRestClient implements ProductPort {
+public class ProjectRestClient implements ProjectPort {
 
     private final RestClient restClient;
 
-    public ProductRestClient(RestClient.Builder builder,
-                             @Value("${external.product.base-url}") String baseUrl) {
+    public ProjectRestClient(RestClient.Builder builder,
+                             @Value("${external.project.base-url}") String baseUrl) {
         this.restClient = builder.baseUrl(baseUrl).build();
     }
 
     @Override
-    public Optional<ProductInfo> getProduct(ProductId productId) {
-        ProductResponse response = restClient.get()
-                .uri("/products/{id}", productId.getId())
+    public Optional<ProjectInfo> getProject(ProjectId projectId) {
+        ProjectResponse response = restClient.get()
+                .uri("/projects/{id}", projectId.getId())
                 .retrieve()
-                .body(ProductResponse.class);
+                .body(ProjectResponse.class);
 
-        return Optional.ofNullable(response).map(this::toProductInfo);
+        return Optional.ofNullable(response).map(this::toProjectInfo);
     }
 
     @Override
-    public boolean decreaseStock(ProductId productId, int quantity) {
+    public boolean decreaseStock(ProjectId projectId, int quantity) {
         restClient.post()
-                .uri("/products/{id}/stock/decrease", productId.getId())
+                .uri("/projects/{id}/stock/decrease", projectId.getId())
                 .body(Map.of("quantity", quantity))
                 .retrieve()
                 .toBodilessEntity();
@@ -444,17 +444,17 @@ public class ProductRestClient implements ProductPort {
 @Service
 public class OrderApplicationService {
 
-    private final ProductPort productPort;
+    private final ProjectPort projectPort;
 
-    private OrderItem createOrderItemFromExternalProduct(OrderItemRequest request) {
-        ProductPort.ProductInfo product = productPort.getProduct(ProductId.of(request.productId()))
-            .orElseThrow(() -> new IllegalArgumentException("상품을 찾을 수 없습니다"));
+    private OrderItem createOrderItemFromExternalProject(OrderItemRequest request) {
+        ProjectPort.ProjectInfo project = projectPort.getProject(ProjectId.of(request.projectId()))
+            .orElseThrow(() -> new IllegalArgumentException("프로젝트을 찾을 수 없습니다"));
 
         // 외부 모델을 주문 도메인 객체로 변환
         return new OrderItem(
-            product.productId(),
-            product.productName(),
-            Money.of(product.price()),
+            project.projectId(),
+            project.projectName(),
+            Money.of(project.price()),
             Quantity.of(request.quantity())
         );
     }
@@ -479,7 +479,7 @@ public class OrderApplicationService {
 │  └────────────────────────────────┘     │
 │                                          │
 │  외부 통신 (Port → HTTP Adapter):         │
-│  ├─ ProductPort   → ProductRestClient   │
+│  ├─ ProjectPort   → ProjectRestClient   │
 │  ├─ CustomerPort  → CustomerRestClient  │
 │  └─ CouponPort    → CouponRestClient    │
 └─────────────────────────────────────────┘
@@ -487,8 +487,8 @@ public class OrderApplicationService {
          ├────────────────────────────────┐
          ▼                                ▼
 ┌──────────────────────┐    ┌──────────────────────┐
-│ 상품 Bounded Context │    │ 쿠폰 Bounded Context │
-│ - Product           │    │ - Coupon            │
+│ 프로젝트 Bounded Context │    │ 쿠폰 Bounded Context │
+│ - Project           │    │ - Coupon            │
 └──────────────────────┘    └──────────────────────┘
 ```
 
@@ -508,7 +508,7 @@ class OrderServiceTest {
     private OrderService orderService;
     
     @MockBean
-    private ProductRepository productRepository;
+    private ProjectRepository projectRepository;
     
     @MockBean
     private CustomerRepository customerRepository;
@@ -526,7 +526,7 @@ class OrderServiceTest {
     void 주문_생성_테스트() {
         // ❌ 많은 Mock 객체 필요
         when(customerRepository.findById(any())).thenReturn(Optional.of(customer));
-        when(productRepository.findById(any())).thenReturn(Optional.of(product));
+        when(projectRepository.findById(any())).thenReturn(Optional.of(project));
         when(couponRepository.findByCode(any())).thenReturn(Optional.of(coupon));
         when(inventoryService.hasStock(any(), any())).thenReturn(true);
         
@@ -557,14 +557,14 @@ class OrderTest {
     void calculateTotalAmount() {
         // Given
         OrderItem item1 = new OrderItem(
-            ProductId.of(1L),
+            ProjectId.of(1L),
             "노트북",
             Money.of(1000000),
             Quantity.of(2)
         );
         
         OrderItem item2 = new OrderItem(
-            ProductId.of(2L),
+            ProjectId.of(2L),
             "마우스",
             Money.of(50000),
             Quantity.of(1)

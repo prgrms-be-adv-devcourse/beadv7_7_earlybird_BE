@@ -28,19 +28,19 @@ public class OrderItem {
     private Money price;
 
     @Column(nullable = false)
-    private Long productId;
+    private Long projectId;
 
     @Column(nullable = false)
     private Integer quantity;
 
-    public static OrderItem create(String name, BigDecimal price, Long productId, int quantity) {
+    public static OrderItem create(String name, BigDecimal price, Long projectId, int quantity) {
         if (quantity <= 0) {
             throw new IllegalArgumentException("주문 수량은 1개 이상이어야 합니다.");
         }
         OrderItem orderItem = new OrderItem();
         orderItem.name = name;
         orderItem.price = Money.from(price);
-        orderItem.productId = productId;
+        orderItem.projectId = projectId;
         orderItem.quantity = quantity;
 
         return orderItem;

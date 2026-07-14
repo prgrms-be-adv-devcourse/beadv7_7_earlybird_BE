@@ -1,7 +1,7 @@
 ### 전체 주문 목록 조회
 GET http://localhost:8080/orders
 
-### 주문 생성 (직접 상품 지정)
+### 주문 생성 (직접 프로젝트 지정)
 POST http://localhost:8080/orders
 Content-Type: application/json
 
@@ -9,7 +9,7 @@ Content-Type: application/json
   "userId": 1,
   "requests": [
     {
-      "productId": 1,
+      "projectId": 1,
       "quantity": 1
     }
   ]
@@ -78,39 +78,39 @@ Content-Type: application/json
   "businessName": "새 상점"
 }
 
-### 상품 등록 (판매 가능 셀러만)
-POST http://localhost:8080/products
+### 프로젝트 등록 (판매 가능 셀러만)
+POST http://localhost:8080/projects
 Content-Type: application/json
 
 {
   "sellerId": 1,
-  "name": "신규 상품",
+  "name": "신규 프로젝트",
   "price": 49000,
   "stockQuantity": 100,
   "description": "설명"
 }
 
-### 상품 조회
-GET http://localhost:8080/products/1
+### 프로젝트 조회
+GET http://localhost:8080/projects/1
 
-### 상품 가격 변경
-PATCH http://localhost:8080/products/1/price
+### 프로젝트 가격 변경
+PATCH http://localhost:8080/projects/1/price
 Content-Type: application/json
 
 {
   "price": 39000
 }
 
-### 상품 재고 차감
-POST http://localhost:8080/products/1/decrease-stock
+### 프로젝트 재고 차감
+POST http://localhost:8080/projects/1/decrease-stock
 Content-Type: application/json
 
 {
   "quantity": 1
 }
 
-### 상품 재고 복원
-POST http://localhost:8080/products/1/restore-stock
+### 프로젝트 재고 복원
+POST http://localhost:8080/projects/1/restore-stock
 Content-Type: application/json
 
 {
@@ -134,12 +134,12 @@ POST http://localhost:8080/payments/1/cancel
 ### 장바구니 조회
 GET http://localhost:8080/users/1/cart
 
-### 장바구니 담기 (같은 상품이면 수량 합산)
+### 장바구니 담기 (같은 프로젝트이면 수량 합산)
 POST http://localhost:8080/users/1/cart/items
 Content-Type: application/json
 
 {
-  "productId": 1,
+  "projectId": 1,
   "quantity": 2
 }
 

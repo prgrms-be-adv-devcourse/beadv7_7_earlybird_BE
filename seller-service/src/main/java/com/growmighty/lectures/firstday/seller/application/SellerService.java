@@ -17,7 +17,7 @@ public class SellerService {
     @Transactional
     public SellerInfo apply(ApplySellerCommand command) {
         // userId는 이제 다른 서비스(user-service)의 식별자일 뿐이므로 여기서 존재 검증을 하지 않는다.
-        // (검증이 꼭 필요하면 cart→product 처럼 seller 소유의 UserPort + HTTP 클라이언트로 확장할 것)
+        // (검증이 꼭 필요하면 cart→project 처럼 seller 소유의 UserPort + HTTP 클라이언트로 확장할 것)
         if (sellerRepository.existsByUserId(command.userId())) {
             throw new IllegalStateException("이미 입점한 유저입니다. userId=" + command.userId());
         }

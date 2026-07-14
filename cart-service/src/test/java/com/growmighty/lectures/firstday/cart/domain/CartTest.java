@@ -9,8 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CartTest {
 
     @Test
-    @DisplayName("같은 상품을 다시 담으면 항목이 늘지 않고 수량이 합산된다")
-    void addItem_mergesSameProduct() {
+    @DisplayName("같은 프로젝트을 다시 담으면 항목이 늘지 않고 수량이 합산된다")
+    void addItem_mergesSameProject() {
         Cart cart = Cart.create(1L);
 
         cart.addItem(10L, 2);
@@ -21,8 +21,8 @@ class CartTest {
     }
 
     @Test
-    @DisplayName("다른 상품은 별도 항목으로 담긴다")
-    void addItem_distinctProducts() {
+    @DisplayName("다른 프로젝트은 별도 항목으로 담긴다")
+    void addItem_distinctProjects() {
         Cart cart = Cart.create(1L);
 
         cart.addItem(10L, 1);
@@ -53,7 +53,7 @@ class CartTest {
     }
 
     @Test
-    @DisplayName("장바구니에 없는 상품을 변경/제거하면 예외가 발생한다")
+    @DisplayName("장바구니에 없는 프로젝트을 변경/제거하면 예외가 발생한다")
     void operateMissingItem_throws() {
         Cart cart = Cart.create(1L);
         assertThatThrownBy(() -> cart.changeQuantity(10L, 1))
@@ -63,11 +63,11 @@ class CartTest {
     }
 
     @Test
-    @DisplayName("담을 수 있는 상품 종류 최대치를 초과하면 예외가 발생한다")
+    @DisplayName("담을 수 있는 프로젝트 종류 최대치를 초과하면 예외가 발생한다")
     void addItem_exceedsMaxDistinct_throws() {
         Cart cart = Cart.create(1L);
-        for (long productId = 1; productId <= Cart.MAX_DISTINCT_ITEMS; productId++) {
-            cart.addItem(productId, 1);
+        for (long projectId = 1; projectId <= Cart.MAX_DISTINCT_ITEMS; projectId++) {
+            cart.addItem(projectId, 1);
         }
         assertThatThrownBy(() -> cart.addItem(999L, 1))
                 .isInstanceOf(IllegalStateException.class);

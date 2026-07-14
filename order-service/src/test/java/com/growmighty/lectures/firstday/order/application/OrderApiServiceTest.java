@@ -5,9 +5,9 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
-import com.growmighty.lectures.firstday.order.application.port.ProductPort;
+import com.growmighty.lectures.firstday.order.application.port.ProjectPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
-import com.growmighty.lectures.firstday.order.application.port.dto.ProductSnapshot;
+import com.growmighty.lectures.firstday.order.application.port.dto.ProjectSnapshot;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * 주문 서비스는 이제 다른 도메인의 서비스 빈이 아니라 자기 소유의 Port(계약)에만 의존한다.
- * 그래서 테스트도 ProductService/PaymentService 대신 ProductPort/PaymentPort 를 목킹한다.
+ * 그래서 테스트도 ProjectService/PaymentService 대신 ProjectPort/PaymentPort 를 목킹한다.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderApiServiceTest {
@@ -42,7 +42,7 @@ class OrderApiServiceTest {
     @Mock
     private OrderRepository orderRepository;
     @Mock
-    private ProductPort productPort;
+    private ProjectPort projectPort;
     @Mock
     private PaymentPort paymentPort;
 
@@ -53,8 +53,8 @@ class OrderApiServiceTest {
     @DisplayName("주문 생성: 재고 차감·결제 승인을 호출하고 결제 ID를 주문에 연결한다")
     void placeOrder_orchestratesStockAndPayment() {
         PlaceOrderCommand command = new PlaceOrderCommand(1L, List.of(new OrderLine(10L, 2)));
-        when(productPort.getProduct(10L))
-                .thenReturn(new ProductSnapshot(10L, "원목 식탁", BigDecimal.valueOf(10_000), 5, true));
+        when(projectPort.getProject(10L))
+                .thenReturn(new ProjectSnapshot(10L, "원목 식탁", BigDecimal.valueOf(10_000), 5, true));
         when(paymentPort.pay(any()))
                 .thenReturn(new PaymentResult(99L, BigDecimal.valueOf(23_000), "PAID"));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -63,7 +63,7 @@ class OrderApiServiceTest {
 
         assertThat(result.status()).isEqualTo(OrderStatus.PAID);
         assertThat(result.totalAmount()).isEqualByComparingTo("23000");
-        verify(productPort).decreaseStock(10L, 2);
+        verify(projectPort).decreaseStock(10L, 2);
 
         ArgumentCaptor<BigDecimal> paidAmount = ArgumentCaptor.forClass(BigDecimal.class);
         verify(paymentPort).pay(paidAmount.capture());
@@ -83,7 +83,7 @@ class OrderApiServiceTest {
         assertThatThrownBy(() -> orderApiService.placeOrder(command))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        verify(productPort, never()).decreaseStock(any(), ArgumentMatchers.anyInt());
+        verify(projectPort, never()).decreaseStock(any(), ArgumentMatchers.anyInt());
         verify(paymentPort, never()).pay(any());
     }
 
@@ -98,7 +98,7 @@ class OrderApiServiceTest {
 
         assertThat(result.status()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
-        verify(productPort).restoreStock(10L, 2);
+        verify(projectPort).restoreStock(10L, 2);
         verify(paymentPort).cancel(99L);
     }
 

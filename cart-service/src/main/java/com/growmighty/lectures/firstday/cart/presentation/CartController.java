@@ -24,14 +24,14 @@ public class CartController {
         return ApiResponse.ok(CartResponse.from(cartService.addItem(request.toCommand(userId))));
     }
 
-    @PatchMapping("/items/{productId}")
-    public ApiResponse<CartResponse> changeQuantity(@PathVariable Long userId, @PathVariable Long productId, @RequestBody ChangeCartItemQuantityRequest request) {
-        return ApiResponse.ok(CartResponse.from(cartService.changeQuantity(userId, productId, request.quantity())));
+    @PatchMapping("/items/{projectId}")
+    public ApiResponse<CartResponse> changeQuantity(@PathVariable Long userId, @PathVariable Long projectId, @RequestBody ChangeCartItemQuantityRequest request) {
+        return ApiResponse.ok(CartResponse.from(cartService.changeQuantity(userId, projectId, request.quantity())));
     }
 
-    @DeleteMapping("/items/{productId}")
-    public ApiResponse<CartResponse> removeItem(@PathVariable Long userId, @PathVariable Long productId) {
-        return ApiResponse.ok(CartResponse.from(cartService.removeItem(userId, productId)));
+    @DeleteMapping("/items/{projectId}")
+    public ApiResponse<CartResponse> removeItem(@PathVariable Long userId, @PathVariable Long projectId) {
+        return ApiResponse.ok(CartResponse.from(cartService.removeItem(userId, projectId)));
     }
 
     @DeleteMapping

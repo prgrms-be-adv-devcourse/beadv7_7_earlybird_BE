@@ -19,7 +19,7 @@
 │  └────────────────────────────────────────────┘         │
 │                                                          │
 │  외부 도메인과의 통신 (Outbound Port):                    │
-│  - ProductPort (상품 도메인)                            │
+│  - ProjectPort (프로젝트 도메인)                            │
 │  - CustomerPort (고객 도메인)                           │
 │  - CouponPort (쿠폰 도메인)                             │
 └─────────────────────────────────────────────────────────┘
@@ -37,11 +37,11 @@
 ```java
 // ❌ Repository로 다른 도메인 접근 (잘못된 예)
 @Autowired
-private ProductRepository productRepository; // 다른 도메인의 Repository
+private ProjectRepository projectRepository; // 다른 도메인의 Repository
 
 // ✅ Port(인터페이스)로 다른 도메인 접근 (올바른 예)
 @Autowired
-private ProductPort productPort; // Anti-Corruption Layer (인프라의 RestClient 어댑터가 구현)
+private ProjectPort projectPort; // Anti-Corruption Layer (인프라의 RestClient 어댑터가 구현)
 ```
 
 ## 📁 프로젝트 구조
@@ -57,7 +57,7 @@ src/main/java/com/growmighty/examples/ddd/after/
 │   │   ├── CancelOrderCommand.java
 │   │   └── OrderItemRequest.java
 │   ├── port/                              # 아웃바운드 포트 (외부 도메인 통신 인터페이스)
-│   │   ├── ProductPort.java              # 상품 도메인 포트
+│   │   ├── ProjectPort.java              # 프로젝트 도메인 포트
 │   │   ├── CustomerPort.java             # 고객 도메인 포트
 │   │   └── CouponPort.java               # 쿠폰 도메인 포트
 │   └── dto/                               # Response 객체 (출력)
@@ -73,7 +73,7 @@ src/main/java/com/growmighty/examples/ddd/after/
 │   │   ├── Quantity.java                  # 수량
 │   │   ├── OrderStatus.java               # 주문 상태
 │   │   ├── CustomerId.java                # 고객 ID
-│   │   ├── ProductId.java                 # 상품 ID
+│   │   ├── ProjectId.java                 # 프로젝트 ID
 │   │   ├── CouponCode.java                # 쿠폰 코드
 │   │   └── ShippingAddress.java           # 배송 주소
 │   ├── event/                             # 도메인 이벤트
@@ -86,11 +86,11 @@ src/main/java/com/growmighty/examples/ddd/after/
 │
 └── infrastructure/                        # 인프라 레이어
     └── external/                          # 외부 도메인 통신 (포트 어댑터)
-        ├── ProductRestClient.java         # ProductPort RestClient 어댑터
+        ├── ProjectRestClient.java         # ProjectPort RestClient 어댑터
         ├── CustomerRestClient.java        # CustomerPort RestClient 어댑터
         ├── CouponRestClient.java          # CouponPort RestClient 어댑터
         └── dto/                           # 외부 서비스 요청/응답 DTO
-            ├── ProductResponse.java
+            ├── ProjectResponse.java
             ├── StockChangeRequest.java
             ├── CustomerResponse.java
             ├── CouponDiscountRequest.java
@@ -114,8 +114,8 @@ public class Order extends AbstractAggregateRoot<Order> {
             throw new IllegalStateException("결제할 수 없는 상태입니다");
         }
         this.status = OrderStatus.PAID;
-        registerEvent(new OrderPaidEvent(...));
-    }
+        registerEvent(new OrderPaidEvent(...))
+	}
 }
 ```
 
@@ -163,29 +163,29 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
 ```java
 // 애플리케이션 계층: 포트(인터페이스)만 정의
-public interface ProductPort {
-    Optional<ProductInfo> getProduct(ProductId productId);
+public interface ProjectPort {
+    Optional<ProjectInfo> getProject(ProjectId projectId);
 }
 
-// 인프라 계층: RestClient로 상품 서비스를 호출하는 어댑터
+// 인프라 계층: RestClient로 프로젝트 서비스를 호출하는 어댑터
 @Component
-public class ProductRestClient implements ProductPort {
+public class ProjectRestClient implements ProjectPort {
 
     private final RestClient restClient;
 
-    public ProductRestClient(RestClient.Builder builder,
-                             @Value("${external.product.base-url}") String baseUrl) {
+    public ProjectRestClient(RestClient.Builder builder,
+                             @Value("${external.project.base-url}") String baseUrl) {
         this.restClient = builder.baseUrl(baseUrl).build();
     }
 
     @Override
-    public Optional<ProductInfo> getProduct(ProductId productId) {
-        ProductResponse response = restClient.get()
-                .uri("/products/{id}", productId.getId())
+    public Optional<ProjectInfo> getProject(ProjectId projectId) {
+        ProjectResponse response = restClient.get()
+                .uri("/projects/{id}", projectId.getId())
                 .retrieve()
-                .body(ProductResponse.class);
+                .body(ProjectResponse.class);
 
-        return Optional.ofNullable(response).map(this::toProductInfo);
+        return Optional.ofNullable(response).map(this::toProjectInfo);
     }
 }
 ```
@@ -200,11 +200,11 @@ Client
   ├─> OrderApplicationService.createOrder()
   │     │
   │     ├─> CustomerPort.canOrder()                [외부 도메인 호출]
-  │     ├─> ProductPort.getProducts()              [외부 도메인 호출]
+  │     ├─> ProjectPort.getProjects()              [외부 도메인 호출]
   │     ├─> Order.create()                         [도메인 로직]
   │     ├─> CouponPort.calculateDiscount()         [외부 도메인 호출]
   │     ├─> Order.applyCoupon()                    [도메인 로직]
-  │     ├─> ProductPort.decreaseStocks()           [외부 도메인 호출]
+  │     ├─> ProjectPort.decreaseStocks()           [외부 도메인 호출]
   │     └─> OrderRepository.save()                 [영속화]
   │
   └─> Order Created (orderId 반환)
@@ -219,7 +219,7 @@ Client
   │     │
   │     ├─> OrderRepository.findById()             [조회]
   │     ├─> Order.cancel()                         [도메인 로직 + 검증]
-  │     ├─> ProductPort.restoreStocks()            [외부 도메인 호출]
+  │     ├─> ProjectPort.restoreStocks()            [외부 도메인 호출]
   │     └─> CouponPort.restoreCoupon()             [외부 도메인 호출]
   │
   └─> Order Cancelled
@@ -267,8 +267,8 @@ public class Order {
         }
         this.status = OrderStatus.PAID;
         this.paidAt = LocalDateTime.now();
-        registerEvent(new OrderPaidEvent(...));
-    }
+        registerEvent(new OrderPaidEvent(...))
+	}
 }
 
 // 서비스는 도메인 객체를 조율만 함
@@ -291,7 +291,7 @@ public class OrderApplicationService {
 ### 2. DTO vs Entity
 
 - **Entity**: 주문 도메인 내부 (Order, OrderItem)
-- **DTO**: 외부 도메인 정보 (ProductDTO, CustomerDTO, CouponDTO)
+- **DTO**: 외부 도메인 정보 (ProjectDTO, CustomerDTO, CouponDTO)
 
 ### 3. 도메인 이벤트
 

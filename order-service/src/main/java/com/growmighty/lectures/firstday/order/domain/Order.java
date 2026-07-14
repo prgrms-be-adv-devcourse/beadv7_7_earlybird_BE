@@ -61,7 +61,7 @@ public class Order {
 
     private void validateItems(List<OrderItem> items) {
         if (items == null || items.isEmpty()) {
-            throw new IllegalStateException("주문할 상품이 없습니다.");
+            throw new IllegalStateException("주문할 프로젝트이 없습니다.");
         }
     }
 

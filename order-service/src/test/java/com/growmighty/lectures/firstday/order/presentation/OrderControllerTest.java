@@ -39,7 +39,7 @@ class OrderControllerTest {
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requests":[{"productId":1,"quantity":1}]}
+                                {"userId":1,"requests":[{"projectId":1,"quantity":1}]}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))

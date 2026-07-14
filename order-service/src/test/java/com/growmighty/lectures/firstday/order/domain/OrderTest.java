@@ -11,8 +11,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OrderTest {
 
-    private OrderItem item(long productId, String price, int quantity) {
-        return OrderItem.create("상품-" + productId, new BigDecimal(price), productId, quantity);
+    private OrderItem item(long projectId, String price, int quantity) {
+        return OrderItem.create("프로젝트-" + projectId, new BigDecimal(price), projectId, quantity);
     }
 
     @Test
@@ -26,7 +26,7 @@ class OrderTest {
     }
 
     @Test
-    @DisplayName("상품 합계가 무료배송 기준(50000) 미만이면 배송비 3000원이 붙는다")
+    @DisplayName("프로젝트 합계가 무료배송 기준(50000) 미만이면 배송비 3000원이 붙는다")
     void shippingFee_charged_belowThreshold() {
         Order order = Order.create(1L, List.of(item(1L, "10000", 1)));
 
@@ -35,7 +35,7 @@ class OrderTest {
     }
 
     @Test
-    @DisplayName("상품 합계가 무료배송 기준 이상이면 배송비가 0원이다")
+    @DisplayName("프로젝트 합계가 무료배송 기준 이상이면 배송비가 0원이다")
     void shippingFee_free_atOrAboveThreshold() {
         Order order = Order.create(1L, List.of(item(1L, "50000", 1)));
 
