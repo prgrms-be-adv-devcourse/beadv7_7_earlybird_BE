@@ -3,13 +3,14 @@ rootProject.name = 'msa-example-project'
 include 'common'
 
 // 실행 가능한 서비스 모듈들 (각자 다른 포트, 각자 다른 DB)
+include 'order-service'     // :8080
 include 'product-service'   // :8081
 include 'payment-service'   // :8082
 include 'user-service'      // :8083
 include 'seller-service'    // :8084
 include 'cart-service'      // :8085
 include 'settlement-service' // :8086
-include 'order-service'     // :8080
+include 'file-service'     // :8087
 
 include 'discovery-server'   // :8761 (Eureka 관례 포트)
 include 'gateway-server'

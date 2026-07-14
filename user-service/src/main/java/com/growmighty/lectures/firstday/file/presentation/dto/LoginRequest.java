@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.user.presentation.dto;
+package com.growmighty.lectures.firstday.file.presentation.dto;
 
-import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
+import com.growmighty.lectures.firstday.file.application.dto.LoginCommand;
 import lombok.NonNull;
 
 public record LoginRequest(@NonNull String email, @NonNull String password) {

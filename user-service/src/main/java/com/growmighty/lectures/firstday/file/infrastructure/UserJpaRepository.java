@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.user.infrastructure;
+package com.growmighty.lectures.firstday.file.infrastructure;
 
-import com.growmighty.lectures.firstday.user.domain.User;
+import com.growmighty.lectures.firstday.file.domain.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

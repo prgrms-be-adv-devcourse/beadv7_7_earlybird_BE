@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: file-service
+  config:
+    # 부팅할 때 config-server 에서 설정을 "수입"해 온다.
+    # optional: 은 config-server 가 꺼져 있어도 일단 뜨게 하는 보험.
+    import: optional:configserver:http://localhost:8888

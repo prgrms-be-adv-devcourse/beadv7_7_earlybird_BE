@@ -1,10 +1,10 @@
-package com.growmighty.lectures.firstday.user.presentation;
+package com.growmighty.lectures.firstday.file.presentation;
 
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
-import com.growmighty.lectures.firstday.user.application.UserService;
-import com.growmighty.lectures.firstday.user.presentation.dto.LoginRequest;
-import com.growmighty.lectures.firstday.user.presentation.dto.RegisterUserRequest;
-import com.growmighty.lectures.firstday.user.presentation.dto.UserResponse;
+import com.growmighty.lectures.firstday.file.application.UserService;
+import com.growmighty.lectures.firstday.file.presentation.dto.LoginRequest;
+import com.growmighty.lectures.firstday.file.presentation.dto.RegisterUserRequest;
+import com.growmighty.lectures.firstday.file.presentation.dto.UserResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

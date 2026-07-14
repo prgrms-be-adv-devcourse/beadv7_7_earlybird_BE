@@ -1,7 +1,7 @@
-package com.growmighty.lectures.firstday.user.infrastructure;
+package com.growmighty.lectures.firstday.file.infrastructure;
 
-import com.growmighty.lectures.firstday.user.domain.User;
-import com.growmighty.lectures.firstday.user.domain.UserRepository;
+import com.growmighty.lectures.firstday.file.domain.User;
+import com.growmighty.lectures.firstday.file.domain.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 

@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.user.application.dto;
+package com.growmighty.lectures.firstday.file.application.dto;
 
-import com.growmighty.lectures.firstday.user.domain.User;
+import com.growmighty.lectures.firstday.file.domain.User;
 
 public record UserInfo(
         Long id,

@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.user.application.dto;
+package com.growmighty.lectures.firstday.file.application.dto;
 
 public record RegisterUserCommand(
         String email,

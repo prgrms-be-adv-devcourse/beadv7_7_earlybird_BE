@@ -1,8 +1,8 @@
-package com.growmighty.lectures.firstday.user;
+package com.growmighty.lectures.firstday.file;
 
-import com.growmighty.lectures.firstday.user.application.UserService;
-import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
-import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
+import com.growmighty.lectures.firstday.file.application.UserService;
+import com.growmighty.lectures.firstday.file.application.dto.RegisterUserCommand;
+import com.growmighty.lectures.firstday.file.application.dto.UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;

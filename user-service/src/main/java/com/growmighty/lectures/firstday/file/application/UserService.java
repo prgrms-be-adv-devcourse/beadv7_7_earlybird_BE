@@ -1,11 +1,11 @@
-package com.growmighty.lectures.firstday.user.application;
+package com.growmighty.lectures.firstday.file.application;
 
-import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
-import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
-import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
+import com.growmighty.lectures.firstday.file.application.dto.LoginCommand;
+import com.growmighty.lectures.firstday.file.application.dto.RegisterUserCommand;
+import com.growmighty.lectures.firstday.file.application.dto.UserInfo;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
-import com.growmighty.lectures.firstday.user.domain.User;
-import com.growmighty.lectures.firstday.user.domain.UserRepository;
+import com.growmighty.lectures.firstday.file.domain.User;
+import com.growmighty.lectures.firstday.file.domain.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

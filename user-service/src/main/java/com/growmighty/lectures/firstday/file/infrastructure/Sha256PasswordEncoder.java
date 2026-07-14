@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.user.infrastructure;
+package com.growmighty.lectures.firstday.file.infrastructure;
 
-import com.growmighty.lectures.firstday.user.application.PasswordEncoder;
+import com.growmighty.lectures.firstday.file.application.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;

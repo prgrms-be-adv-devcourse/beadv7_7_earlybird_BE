@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.user.domain;
+package com.growmighty.lectures.firstday.file.domain;
 
 import java.util.Optional;
 
