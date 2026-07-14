@@ -1,56 +1,35 @@
-### 전체 주문 목록 조회
-GET http://localhost:8080/orders
+### 모든 요청은 게이트웨이(:8000)를 통해 들어간다.
+### 시드 데이터: 프로젝트 1~4 (OPEN), 리워드 1~9 (프로젝트 1 → 리워드 1~3, ProjectDataInitializer 참고)
 
-### 주문 생성 (직접 프로젝트 지정)
-POST http://localhost:8080/orders
+### 전체 주문(후원) 목록 조회
+GET http://localhost:8000/orders
+
+### 후원 생성 (리워드 지정 — 재고 차감 + PG 결제 승인)
+POST http://localhost:8000/orders
 Content-Type: application/json
 
 {
   "userId": 1,
   "requests": [
     {
-      "projectId": 1,
+      "rewardId": 1,
       "quantity": 1
     }
   ]
 }
 
-### 장바구니 기반 주문 (시드 장바구니 → 주문 전환, 주문 후 장바구니 비워짐)
-POST http://localhost:8080/orders/from-cart
-Content-Type: application/json
-
-{
-  "userId": 1
-}
-
-### 주문 취소 (재고 복원 + 결제 환불 + 상태 전이)
-POST http://localhost:8080/orders/1/cancel
+### 후원 취소 (리워드 재고 복원 + 결제 환불 + 상태 전이)
+POST http://localhost:8000/orders/1/cancel
 
 ### 주문 합계 정합성 점검 (저장된 총액 vs 항목 재계산 총액)
-GET http://localhost:8080/orders/1/inspect
-
-### 주문 항목 금액 변경 (변경 시 총액/배송비 자동 재계산)
-PATCH http://localhost:8080/orders/1/orderItems/1/price
-Content-Type: application/json
-
-{
-  "price": 3000
-}
-
-### 주문 항목 수량 변경
-PATCH http://localhost:8080/orders/1/orderItems/1/quantity
-Content-Type: application/json
-
-{
-  "quantity": 100
-}
+GET http://localhost:8000/orders/1/inspect
 
 ###############################################
 # 참고: 다른 도메인 엔드포인트
 ###############################################
 
 ### 회원가입 (비밀번호는 PasswordEncoder 포트로 인코딩되어 저장)
-POST http://localhost:8080/users
+POST http://localhost:8000/users
 Content-Type: application/json
 
 {
@@ -61,7 +40,7 @@ Content-Type: application/json
 }
 
 ### 로그인 (인코딩된 비밀번호 대조)
-POST http://localhost:8080/users/login
+POST http://localhost:8000/users/login
 Content-Type: application/json
 
 {
@@ -69,48 +48,55 @@ Content-Type: application/json
   "password": "rawPassword1!"
 }
 
-### 입점 신청 (1유저 1셀러)
-POST http://localhost:8080/sellers
+### 프로젝트 등록 (DRAFT 상태로 생성)
+POST http://localhost:8000/projects
 Content-Type: application/json
 
 {
-  "userId": 1,
-  "businessName": "새 상점"
-}
-
-### 프로젝트 등록 (판매 가능 셀러만)
-POST http://localhost:8080/projects
-Content-Type: application/json
-
-{
-  "sellerId": 1,
-  "name": "신규 프로젝트",
-  "price": 49000,
-  "stockQuantity": 100,
-  "description": "설명"
+  "creatorId": 1,
+  "title": "신규 펀딩 프로젝트",
+  "description": "설명",
+  "goalAmount": 5000000,
+  "startAt": "2026-08-01T00:00:00",
+  "endAt": "2026-08-31T23:59:59"
 }
 
 ### 프로젝트 조회
-GET http://localhost:8080/projects/1
+GET http://localhost:8000/projects/1
 
-### 프로젝트 가격 변경
-PATCH http://localhost:8080/projects/1/price
+### 심사 요청 (DRAFT → IN_REVIEW)
+POST http://localhost:8000/projects/5/submit
+
+### 심사 승인 (IN_REVIEW → OPEN) — TODO(팀): 관리자 전용
+POST http://localhost:8000/projects/5/approve
+
+### 리워드 등록
+POST http://localhost:8000/projects/1/rewards
 Content-Type: application/json
 
 {
-  "price": 39000
+  "name": "[얼리버드] 신규 리워드",
+  "description": "한정 수량",
+  "price": 29000,
+  "totalQuantity": 100
 }
 
-### 프로젝트 재고 차감
-POST http://localhost:8080/projects/1/decrease-stock
+### 프로젝트의 리워드 목록
+GET http://localhost:8000/projects/1/rewards
+
+### 리워드 단건 조회
+GET http://localhost:8000/rewards/1
+
+### 리워드 재고 차감 (order-service 가 호출하는 내부 API)
+POST http://localhost:8000/rewards/1/decrease-stock
 Content-Type: application/json
 
 {
   "quantity": 1
 }
 
-### 프로젝트 재고 복원
-POST http://localhost:8080/projects/1/restore-stock
+### 리워드 재고 복원
+POST http://localhost:8000/rewards/1/restore-stock
 Content-Type: application/json
 
 {
@@ -118,7 +104,7 @@ Content-Type: application/json
 }
 
 ### 결제 승인
-POST http://localhost:8080/payments
+POST http://localhost:8000/payments
 Content-Type: application/json
 
 {
@@ -126,16 +112,16 @@ Content-Type: application/json
 }
 
 ### 결제 조회
-GET http://localhost:8080/payments/1
+GET http://localhost:8000/payments/1
 
 ### 결제 취소
-POST http://localhost:8080/payments/1/cancel
+POST http://localhost:8000/payments/1/cancel
 
 ### 장바구니 조회
-GET http://localhost:8080/users/1/cart
+GET http://localhost:8000/users/1/cart
 
-### 장바구니 담기 (같은 프로젝트이면 수량 합산)
-POST http://localhost:8080/users/1/cart/items
+### 장바구니 담기 (같은 프로젝트이면 수량 합산) — TODO(팀): rewardId 기반 재설계 예정
+POST http://localhost:8000/users/1/cart/items
 Content-Type: application/json
 
 {
@@ -144,9 +130,56 @@ Content-Type: application/json
 }
 
 ### 장바구니 수량 변경
-PATCH http://localhost:8080/users/1/cart/items/1
+PATCH http://localhost:8000/users/1/cart/items/1
 Content-Type: application/json
 
 {
   "quantity": 3
 }
+
+###############################################
+# 커뮤니티(board-service) / 알림(notification-service) — 스켈레톤
+###############################################
+
+### 창작자 공지(새 소식) 등록
+POST http://localhost:8000/projects/1/notices
+Content-Type: application/json
+
+{
+  "title": "제작 진행 상황 안내",
+  "content": "샘플 검수가 끝났습니다!"
+}
+
+### 공지 목록
+GET http://localhost:8000/projects/1/notices
+
+### 의견·문의 등록
+POST http://localhost:8000/projects/1/comments
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "content": "배송은 언제쯤 시작되나요?"
+}
+
+### 의견·문의 목록
+GET http://localhost:8000/projects/1/comments
+
+### 리뷰 등록 (TODO(팀): 리워드 수령자만 가능하도록 검증 예정)
+POST http://localhost:8000/projects/1/reviews
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "rating": 5,
+  "content": "퀄리티가 기대 이상입니다."
+}
+
+### 리뷰 목록
+GET http://localhost:8000/projects/1/reviews
+
+### 내 알림 목록
+GET http://localhost:8000/notifications?userId=1
+
+### 알림 읽음 처리
+PATCH http://localhost:8000/notifications/1/read
