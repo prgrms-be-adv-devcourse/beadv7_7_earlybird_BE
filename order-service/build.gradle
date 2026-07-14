@@ -1,20 +1,30 @@
 plugins {
-    id 'java'
-}
-
-group = 'com.growmighty.examples'
-version = '0.0.1-SNAPSHOT'
-
-repositories {
-    mavenCentral()
+    id 'org.springframework.boot'   // 실행 가능한 서비스이므로 Boot 플러그인 적용 (버전은 루트에 등록됨)
 }
 
 dependencies {
-    testImplementation platform('org.junit:junit-bom:5.10.0')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
+    implementation project(':common')
 
-test {
-    useJUnitPlatform()
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-h2console'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    // 선언적 HTTP 클라이언트 — 인터페이스를 선언하면 구현체(프록시)가 생긴다.
+    // 이 스타터가 로드밸런서(spring-cloud-starter-loadbalancer)도 함께 끌고 온다.
+    // 버전이 없어도 되는 이유: 늘 그랬듯 Spring Cloud BOM 이 채워준다.
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+
+    runtimeOnly 'com.h2database:h2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-config'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // 서킷 브레이커 — Spring Cloud 추상화 + Resilience4j 구현체 세트.
+    // 버전이 없어도 되는 이유: Step 2 세션에서 깔아둔 Spring Cloud BOM 이 채워준다.
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
 }

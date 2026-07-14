@@ -1,0 +1,7 @@
+# 로컬에는 "금고 열쇠"만 남긴다 — 라우트/포트/관리 엔드포인트는 config-server 가 배달한다.
+spring:
+  application:
+    name: gateway-server   # config-server 에서 내 설정 파일(gateway-server.yml)을 찾는 열쇠
+  config:
+    # 부팅할 때 config-server 에서 설정을 "수입"해 온다.
+    import: optional:configserver:http://localhost:8888

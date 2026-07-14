@@ -1,39 +1,47 @@
 plugins {
-	id 'java'
-	id 'org.springframework.boot' version '3.5.6'
-	id 'io.spring.dependency-management' version '1.1.7'
+    // 루트에서는 버전만 등록하고(apply false), 실제 적용은 각 모듈에서 한다.
+    id 'org.springframework.boot' version '4.1.0' apply false
+    id 'io.spring.dependency-management' version '1.1.7' apply false
 }
 
-group = 'com.growmighty.examples'
-version = '0.0.1-SNAPSHOT'
-description = 'Examples for ddd'
+allprojects {
+    group = 'com.growmighty.lectures.firstday'
+    version = '0.0.1-SNAPSHOT'
 
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(17)
-	}
+    repositories {
+        mavenCentral()
+    }
 }
 
-configurations {
-	compileOnly {
-		extendsFrom annotationProcessor
-	}
-}
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'io.spring.dependency-management'
 
-repositories {
-	mavenCentral()
-}
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
 
-dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	compileOnly 'org.projectlombok:lombok'
-	annotationProcessor 'org.projectlombok:lombok'
-	testImplementation 'org.springframework.boot:spring-boot-starter-test'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
+    // Boot 플러그인을 적용하지 않은 모듈(common)도
+    // Spring Boot BOM으로 의존성 버전을 통일해서 관리한다.
+    dependencyManagement {
+        imports {
+            mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
+            mavenBom "org.springframework.cloud:spring-cloud-dependencies:2025.1.2"
+        }
+    }
 
-tasks.named('test') {
-	useJUnitPlatform()
+    dependencies {
+        // 모든 모듈이 공통으로 쓰는 것만 여기에 (Lombok)
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+        testCompileOnly 'org.projectlombok:lombok'
+        testAnnotationProcessor 'org.projectlombok:lombok'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    tasks.named('test') {
+        useJUnitPlatform()
+    }
 }

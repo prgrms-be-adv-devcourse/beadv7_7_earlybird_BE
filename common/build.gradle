@@ -1,0 +1,9 @@
+plugins {
+    id 'java-library'   // Boot 플러그인 없음. 이 모듈은 '부품'이지 '앱'이 아니다.
+}
+
+dependencies {
+    // GlobalExceptionHandler(@RestControllerAdvice)와 ApiResponse(Jackson)가 웹 스택을 쓴다.
+    // api: common을 쓰는 모듈에게도 이 의존성이 그대로 전파된다.
+    api 'org.springframework.boot:spring-boot-starter-webmvc'
+}

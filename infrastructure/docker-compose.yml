@@ -1,0 +1,20 @@
+services:
+  elasticsearch:
+    build: ./elasticsearch          # 위 Dockerfile로 빌드 (nori 포함)
+    container_name: lecture-es
+    environment:
+      - discovery.type=single-node  # 로컬 수업용 단일 노드
+      - xpack.security.enabled=false # 수업 편의상 보안 끔 (운영에선 절대 금지!)
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.0.3
+    container_name: lecture-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch

@@ -1,0 +1,152 @@
+### 전체 주문 목록 조회
+GET http://localhost:8080/orders
+
+### 주문 생성 (직접 상품 지정)
+POST http://localhost:8080/orders
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "requests": [
+    {
+      "productId": 1,
+      "quantity": 1
+    }
+  ]
+}
+
+### 장바구니 기반 주문 (시드 장바구니 → 주문 전환, 주문 후 장바구니 비워짐)
+POST http://localhost:8080/orders/from-cart
+Content-Type: application/json
+
+{
+  "userId": 1
+}
+
+### 주문 취소 (재고 복원 + 결제 환불 + 상태 전이)
+POST http://localhost:8080/orders/1/cancel
+
+### 주문 합계 정합성 점검 (저장된 총액 vs 항목 재계산 총액)
+GET http://localhost:8080/orders/1/inspect
+
+### 주문 항목 금액 변경 (변경 시 총액/배송비 자동 재계산)
+PATCH http://localhost:8080/orders/1/orderItems/1/price
+Content-Type: application/json
+
+{
+  "price": 3000
+}
+
+### 주문 항목 수량 변경
+PATCH http://localhost:8080/orders/1/orderItems/1/quantity
+Content-Type: application/json
+
+{
+  "quantity": 100
+}
+
+###############################################
+# 참고: 다른 도메인 엔드포인트
+###############################################
+
+### 회원가입 (비밀번호는 PasswordEncoder 포트로 인코딩되어 저장)
+POST http://localhost:8080/users
+Content-Type: application/json
+
+{
+  "email": "new@growmighty.co.kr",
+  "password": "rawPassword!",
+  "name": "신규유저",
+  "phoneNumber": "010-3333-3333"
+}
+
+### 로그인 (인코딩된 비밀번호 대조)
+POST http://localhost:8080/users/login
+Content-Type: application/json
+
+{
+  "email": "buyer@growmighty.co.kr",
+  "password": "rawPassword1!"
+}
+
+### 입점 신청 (1유저 1셀러)
+POST http://localhost:8080/sellers
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "businessName": "새 상점"
+}
+
+### 상품 등록 (판매 가능 셀러만)
+POST http://localhost:8080/products
+Content-Type: application/json
+
+{
+  "sellerId": 1,
+  "name": "신규 상품",
+  "price": 49000,
+  "stockQuantity": 100,
+  "description": "설명"
+}
+
+### 상품 조회
+GET http://localhost:8080/products/1
+
+### 상품 가격 변경
+PATCH http://localhost:8080/products/1/price
+Content-Type: application/json
+
+{
+  "price": 39000
+}
+
+### 상품 재고 차감
+POST http://localhost:8080/products/1/decrease-stock
+Content-Type: application/json
+
+{
+  "quantity": 1
+}
+
+### 상품 재고 복원
+POST http://localhost:8080/products/1/restore-stock
+Content-Type: application/json
+
+{
+  "quantity": 1
+}
+
+### 결제 승인
+POST http://localhost:8080/payments
+Content-Type: application/json
+
+{
+  "amount": 179000
+}
+
+### 결제 조회
+GET http://localhost:8080/payments/1
+
+### 결제 취소
+POST http://localhost:8080/payments/1/cancel
+
+### 장바구니 조회
+GET http://localhost:8080/users/1/cart
+
+### 장바구니 담기 (같은 상품이면 수량 합산)
+POST http://localhost:8080/users/1/cart/items
+Content-Type: application/json
+
+{
+  "productId": 1,
+  "quantity": 2
+}
+
+### 장바구니 수량 변경
+PATCH http://localhost:8080/users/1/cart/items/1
+Content-Type: application/json
+
+{
+  "quantity": 3
+}

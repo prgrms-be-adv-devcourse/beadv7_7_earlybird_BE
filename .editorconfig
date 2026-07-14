@@ -1,0 +1,19 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# .properties 는 IDE 기본값이 ISO-8859-1 이라 한글 주석이 깨져 보일 수 있다.
+# 명시적으로 UTF-8 로 읽고/쓰도록 강제한다.
+[*.properties]
+charset = utf-8
+
+[*.{yml,yaml}]
+charset = utf-8
+
+[*.{java,gradle}]
+indent_style = space
+indent_size = 4

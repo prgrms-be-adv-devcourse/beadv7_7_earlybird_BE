@@ -1,0 +1,9 @@
+plugins {
+    id 'org.springframework.boot'   // 실행 가능한 앱 (버전은 루트에 등록됨)
+}
+
+dependencies {
+    // 버전이 없어도 되는 이유: 루트의 Spring Cloud BOM(2025.1.2)이 채워준다.
+    // "설정을 HTTP 로 서빙하는" 웹 서버 기능까지 이 스타터 하나에 전부 들어 있다.
+    implementation 'org.springframework.cloud:spring-cloud-config-server'
+}

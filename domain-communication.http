@@ -1,0 +1,70 @@
+###############################################
+# 도메인 간 소통 비교 — Facade vs API 호출
+# (자세한 설명: DOMAIN_COMMUNICATION.md)
+#
+# 세 요청의 입력/결과는 동일하다. 다른 것은 "주문이 어떻게 소통했는가" 뿐.
+###############################################
+
+### 0) 비교 전 상품 재고 확인
+GET http://localhost:8080/products/1
+
+### 베이스라인 — OrderService: 다른 도메인 Service 빈을 직접 호출
+POST http://localhost:8080/orders
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "requests": [ { "productId": 1, "quantity": 1 } ]
+}
+
+### 방식 1) Facade — in-process 직접 호출 + 단일 트랜잭션(강한 일관성)
+POST http://localhost:8080/orders/facade
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "requests": [ { "productId": 1, "quantity": 1 } ]
+}
+
+### 방식 2) API 호출 — RestClient 로 상품/결제를 HTTP 호출(경계·트랜잭션 분리)
+POST http://localhost:8080/orders/api
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "requests": [ { "productId": 1, "quantity": 1 } ]
+}
+
+### 비교 후 재고 확인 (세 번 주문했으니 3 감소)
+GET http://localhost:8080/products/1
+
+### 주문 목록
+GET http://localhost:8080/orders
+
+###############################################
+# 방식 2 가 내부에서 호출하는 "공개된 도메인 API" (직접 찔러보기)
+###############################################
+
+### 상품 재고 차감 API (주문 → 상품)
+POST http://localhost:8080/products/1/decrease-stock
+Content-Type: application/json
+
+{
+  "quantity": 1
+}
+
+### 상품 재고 복원 API (보상 트랜잭션 예시)
+POST http://localhost:8080/products/1/restore-stock
+Content-Type: application/json
+
+{
+  "quantity": 1
+}
+
+### 결제 승인 API (주문 → 결제)
+POST http://localhost:8080/payments
+Content-Type: application/json
+
+{
+  "amount": 179000
+}

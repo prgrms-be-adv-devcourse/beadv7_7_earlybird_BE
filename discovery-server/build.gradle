@@ -1,0 +1,8 @@
+plugins {
+    id 'org.springframework.boot'   // 실행 가능한 앱 (버전은 루트에 등록됨)
+}
+
+dependencies {
+    // 버전이 없어도 되는 이유: Step 1에서 깔아둔 Spring Cloud BOM이 채워준다
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-server'
+}

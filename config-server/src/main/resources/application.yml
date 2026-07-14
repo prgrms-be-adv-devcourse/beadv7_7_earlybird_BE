@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        git:
+          # 설정의 단일 출처 — GitHub 원격 저장소 (public 이라 별도 인증 불필요).
+          # 로컬 파일로 되돌리려면 file://${user.home}/config-repo 로 바꾸면 된다.
+          uri: https://github.com/DongwooSeo/msa-config-repo.git
+          default-label: main
+
+server:
+  port: 8888

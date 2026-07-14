@@ -1,0 +1,18 @@
+plugins {
+    id 'org.springframework.boot'   // 실행 가능한 앱 (버전은 루트에 등록됨)
+}
+
+dependencies {
+    // WebFlux(Netty) 기반 게이트웨이. 2025.x 부터 이름 끝에 -server-webflux 가 붙었다.
+    // 버전이 없어도 되는 이유: Step 2 세션에서 깔아둔 Spring Cloud BOM 이 채워준다.
+    implementation 'org.springframework.cloud:spring-cloud-starter-gateway-server-webflux'
+
+    // 게이트웨이의 라우팅 테이블을 눈으로 확인하는 창구 (/actuator/gateway/routes)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // 명부에 등록하고, 명부 사본을 받아오는 능력 (lb:// 해석에 필요)
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    // 부팅 시 config-server 에서 설정을 받아온다 (actuator 는 위에 이미 있음 — /actuator/refresh 겸용)
+    implementation 'org.springframework.cloud:spring-cloud-starter-config'
+}

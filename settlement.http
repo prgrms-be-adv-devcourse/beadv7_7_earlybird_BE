@@ -1,0 +1,156 @@
+###############################################
+# 정산 배치 세션 - 실습용 요청 모음
+#
+# 사전 준비: 대용량 시드와 함께 실행
+#   ./gradlew bootRun --args='--settlement.seed.enabled=true --settlement.seed.count=1000000 --spring.jpa.show-sql=false --logging.level.org.hibernate.orm.jdbc.bind=off'
+#
+# OOM 데모는 힙을 좁혀야 잘 터진다. main() 을 Run/Profile 로 띄우고 VM options 에:
+#   -Xmx1g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=./oom.hprof -Xlog:gc*:file=gc.log:tags,uptime
+###############################################
+
+### [상태 확인] 주문/정산 건수 + 현재 힙 사용량 (used/max MB)
+GET http://localhost:8080/settlements/status
+
+### [데모2] "절벽으로 걸어가기" — limit 만큼만 메모리에 쌓으며 정산
+# limit 을 100000 → 300000 → 500000 으로 올려가며 elapsedMs / peakHeapMb 가
+# 어떻게 증가하는지 추세를 보여준다. 콘솔의 [mem:naive-climb] 막대도 같이 본다.
+POST http://localhost:8080/settlements/naive?limit=100000
+
+### [데모2-반복] 정산 비우고 limit 키우기 (먼저 DELETE 후 재실행)
+POST http://localhost:8080/settlements/naive?limit=300000
+
+### [데모1] "한 줄의 함정" — findAll 전량 적재 → 대용량(100만)에서 즉시 OOM
+# 콘솔 [mem:naive-findAll] 막대가 max 에 붙는 순간 OutOfMemoryError + oom.hprof 생성
+POST http://localhost:8080/settlements/naive
+
+### 정산 결과 비우기 (데모 반복용)
+DELETE http://localhost:8080/settlements
+
+###############################################
+# [Step2] Spring Batch Chunk 지향 처리
+###############################################
+
+### [Step2] 정산 배치 Job 실행 (Reader 페이지 → Processor 변환 → Writer 적재)
+# naive 와 달리 대용량(100만)이어도 chunk 크기만큼만 메모리를 쓰며 완주한다.
+# 응답의 peakHeapMb 를 naive 결과와 비교. (먼저 DELETE 로 비운 깨끗한 상태에서 실행)
+POST http://localhost:8080/settlements/batch
+
+### chunk 크기 바꿔 관찰: 기동 시 --settlement.batch.chunk-size=5000 처럼 조절
+# (작게=트랜잭션 자주/메모리 적게, 크게=빠르지만 메모리 많이)
+
+###############################################
+# [Step3] 멱등성(Idempotency) & 실패 재시작(Restartability)
+#
+# 데모가 잘 보이려면 chunk 가 여러 개로 쪼개지게 chunk-size 를 낮춰서 기동:
+#   ./gradlew bootRun --args='--settlement.seed.enabled=true --settlement.seed.count=2000 --settlement.batch.chunk-size=100 --spring.jpa.show-sql=false'
+# (2000건 / chunk 100 = 20 chunk → 50% = 정확히 10 chunk 커밋 후 실패)
+###############################################
+
+# ───────── [Step3-1 + 멱등성] 새 인스턴스로 재실행해 복구 ─────────
+
+### (1) 깨끗한 출발: 정산 비우기
+DELETE http://localhost:8080/settlements
+
+### (2) [Step3-1] 50% 지점에서 강제 실패 — 응답 status=FAILED, settledCount≈50%
+# 콘솔에 [FAULT] 장전 로그 → SettlementFaultException → Step FAILED.
+# 직전까지 커밋된 chunk(약 50%)는 DB 에 그대로 남는다.
+POST http://localhost:8080/settlements/batch?failAt=0.5
+
+### (3) 상태 확인 — settlementCount 가 전체의 약 50% 인지 본다
+GET http://localhost:8080/settlements/status
+
+### (4) [멱등성] 그냥 다시 실행 → 이미 정산된 50%는 skippedCount 로 건너뛰고 나머지만 정산
+# 응답: status=COMPLETED, skippedCount≈50%, settledCount≈50%. 총합은 전체와 일치, 중복 0.
+POST http://localhost:8080/settlements/batch
+
+### (5) 한 번 더 실행해도 멱등 — settledCount=0, skippedCount=전체 (새로 만드는 정산 없음)
+POST http://localhost:8080/settlements/batch
+
+# ───────── [Step3-2] Spring Batch 네이티브 재시작(같은 runId 로 이어서) ─────────
+
+### (1) 깨끗한 출발
+DELETE http://localhost:8080/settlements
+
+### (2) runId=1 로 50%에서 실패 → status=FAILED
+POST http://localhost:8080/settlements/batch/restart?runId=1&failAt=0.5
+
+### (3) [재시작] 같은 runId=1, 장애 없이 다시 → 실패한 인스턴스를 "이어서" 재개해 COMPLETED
+# 새 인스턴스가 아니라 같은 JobInstance 를 재시작한다. Reader 체크포인트가 앞 50%를 건너뛴다.
+POST http://localhost:8080/settlements/batch/restart?runId=1
+
+### (참고) 완료된 runId 를 또 실행하면? → "이미 완료" 안내 (같은 파라미터는 1회만 완료 가능)
+POST http://localhost:8080/settlements/batch/restart?runId=1
+
+###############################################
+# [Step4] 병렬 처리의 한계와 함정 (스레드 → 깔때기 → 재시작 상실 → 파티셔닝)
+#
+# 처리량 비교가 보이려면 데이터를 좀 많이(2만), chunk 도 키워서 기동:
+#   ./gradlew bootRun --args='--settlement.seed.enabled=true --settlement.seed.count=20000 \
+#     --settlement.batch.chunk-size=200 --spring.jpa.show-sql=false --logging.level.org.hibernate.orm.jdbc.bind=off'
+#
+# ⚠️ Batch 6 메모: 표준 paging Reader 의 read() 는 내부 Lock 으로 thread-safe 하다(데이터는 안 꼬임).
+#   그 안전함의 비결이 곧 "읽기를 한 줄로 세우는 것" = 4-2 의 깔때기. (SETTLEMENT_SESSION.md 참고)
+###############################################
+
+# ───────── [Step4-1] 스레드만 늘리면 터진다 — 커넥션 풀 ─────────
+
+### (사전) 풀을 작게 걸고 기동해야 터진다:
+#   ./gradlew bootRun --args='... --spring.datasource.hikari.maximum-pool-size=2'
+
+### [Step4-1] 풀(2) < 동시 스레드(10) → 커넥션 고갈
+# status=FAILED, 로그: "Connection is not available, request timed out after 3000ms"
+# 처방: maximum-pool-size 를 스레드 수에 맞게 키워 재기동 → 같은 호출이 COMPLETED.
+POST http://localhost:8080/settlements/batch/multi-threaded?threads=10
+
+# ───────── [Step4-2] 분명 고쳤는데 왜 안 빨라지죠? — 읽기 깔때기(처리량 천장) ─────────
+
+### threads 를 1 → 2 → 4 → 8 로 올려가며 응답의 elapsedMs 를 표로 적는다.
+# 2배 늘려도 시간이 절반으로 안 준다(예: 1240 → 660 → 500 → 455ms, 8배가 아니라 ~2.7배).
+# 데이터는 안 꼬인다(read=settled=전체). 위험이 사라진 대신 '속도의 천장'으로 모습만 바꾼 것 = 깔때기.
+POST http://localhost:8080/settlements/batch/multi-threaded?threads=1
+###
+POST http://localhost:8080/settlements/batch/multi-threaded?threads=2
+###
+POST http://localhost:8080/settlements/batch/multi-threaded?threads=4
+###
+POST http://localhost:8080/settlements/batch/multi-threaded?threads=8
+
+# ───────── [Step4-3] 게다가 정산에선 — 재시작까지 잃는다 (saveState=false) ─────────
+
+### (1) 깨끗한 출발
+DELETE http://localhost:8080/settlements
+
+### (2) 같은 runId 로 50%에서 실패 → FAILED
+POST http://localhost:8080/settlements/batch/multi-threaded/restart?runId=5&failAt=0.5
+
+### (3) 같은 runId 로 재개 → COMPLETED 이지만 readCount 가 전체에 가깝다(처음부터 다시 읽음)
+# saveState=false 라 체크포인트가 없어 '이어서'가 아니라 '처음부터'. 멱등성이 데이터는 지켜주지만
+# 1부의 '이어서 재개' 이점은 사라졌다. (멱등성이 없었다면 재시작이 곧 이중정산 사고)
+POST http://localhost:8080/settlements/batch/multi-threaded/restart?runId=5
+
+# ───────── [Step4-4] 정답 — Partitioning (입구를 여러 개로: 속도 + 재시작 둘 다) ─────────
+
+### (1) 깨끗한 출발
+DELETE http://localhost:8080/settlements
+
+### (2) gridSize 를 1 → 2 → 4 → 8 로 올리며 elapsedMs 를 멀티스레드(4-2)와 비교한다.
+# 깔때기가 사라져 잘 확장된다(예: 1070 → 524 → 260 → 201ms, ~5.3배 — 멀티스레드 2.7배와 대비).
+# 항상 정확히 전체 건수, 중복 0.
+POST http://localhost:8080/settlements/batch/partitioned?gridSize=1
+###
+POST http://localhost:8080/settlements/batch/partitioned?gridSize=2
+###
+POST http://localhost:8080/settlements/batch/partitioned?gridSize=4
+###
+POST http://localhost:8080/settlements/batch/partitioned?gridSize=8
+
+### (3) 멱등 재실행 — 다시 돌려도 settled=0, skipped=전체 (안전). 단, gridSize > 커넥션 풀이면 4-1 처럼 터진다.
+POST http://localhost:8080/settlements/batch/partitioned?gridSize=8
+
+### (4) 검증 — 정확히 전체 건수, 중복 0
+GET http://localhost:8080/settlements/status
+# H2 콘솔: SELECT COUNT(*), COUNT(DISTINCT order_id) FROM settlements;  (둘 다 전체와 일치해야 함)
+
+### H2 콘솔 (시드/정산 결과를 직접 SQL 로 확인) — JDBC URL: jdbc:h2:mem:tangled
+# 중복 검증: SELECT COUNT(*), COUNT(DISTINCT order_id) FROM settlements;  (두 값이 같아야 함)
+GET http://localhost:8080/h2-console

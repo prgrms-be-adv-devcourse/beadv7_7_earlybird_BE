@@ -1,0 +1,35 @@
+# 테스트 전용 설정 — @SpringBootTest 통합 테스트는 config-server 없이 독립 실행돼야 한다.
+# (test/resources 의 application.yml 이 main 의 것을 덮어쓰므로 여기서 자립적으로 채운다.)
+spring:
+  application:
+    name: settlement-service
+  cloud:
+    config:
+      # 테스트에선 config-server 에 접속하지 않는다.
+      enabled: false
+      import-check:
+        enabled: false
+  datasource:
+    url: jdbc:h2:mem:settlementdb;DB_CLOSE_DELAY=-1
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        format_sql: true
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: always
+
+# 테스트에선 Eureka 등록/조회를 시도하지 않는다 (명부 서버가 떠 있지 않음).
+eureka:
+  client:
+    enabled: false
+
+settlement:
+  batch:
+    chunk-size: 1000
+    thread-count: 8
+    grid-size: 8

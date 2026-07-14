@@ -1,0 +1,8 @@
+# 로컬에는 "금고 열쇠"만 남긴다 — 나머지 설정은 config-server 가 배달한다.
+spring:
+  application:
+    name: user-service          # config-server 에서 내 설정 파일(user-service.yml)을 찾는 열쇠
+  config:
+    # 부팅할 때 config-server 에서 설정을 "수입"해 온다.
+    # optional: 은 config-server 가 꺼져 있어도 일단 뜨게 하는 보험.
+    import: optional:configserver:http://localhost:8888
