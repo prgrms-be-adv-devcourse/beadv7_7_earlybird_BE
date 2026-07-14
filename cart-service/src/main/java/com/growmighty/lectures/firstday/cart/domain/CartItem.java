@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 @Table(name = "cart_items")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+// TODO(팀): rewardId 기반 재설계 필요 — 후원은 리워드(후원 옵션) 단위로 이루어진다 (CartService 참고)
 public class CartItem {
     public static final int MAX_QUANTITY = 99;
 

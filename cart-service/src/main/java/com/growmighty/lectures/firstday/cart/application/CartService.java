@@ -17,11 +17,13 @@ public class CartService {
     private final CartRepository cartRepository;
     private final ProjectPort projectPort;
 
+    // TODO(팀): 장바구니(후원 바구니) 항목을 rewardId 기반으로 재설계 — 후원은 리워드 단위다.
+    //           도메인 다이어그램에 Cart 가 아직 없지만 명세서(장바구니) 필수 요구사항이므로 팀 확정 필요.
     @Transactional
     public CartView addItem(AddCartItemCommand command) {
         ProjectSnapshot project = projectPort.getProject(command.projectId());
         if (!project.orderable()) {
-            throw new IllegalStateException("현재 구매할 수 없는 프로젝트입니다. projectId=" + command.projectId());
+            throw new IllegalStateException("현재 후원할 수 없는 프로젝트입니다. projectId=" + command.projectId());
         }
         Cart cart = cartRepository.findByUserId(command.userId())
                 .orElseGet(() -> Cart.create(command.userId()));

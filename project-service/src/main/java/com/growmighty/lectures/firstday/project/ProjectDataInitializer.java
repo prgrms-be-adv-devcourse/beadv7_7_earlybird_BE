@@ -1,39 +1,70 @@
 package com.growmighty.lectures.firstday.project;
 
 import com.growmighty.lectures.firstday.project.application.ProjectService;
+import com.growmighty.lectures.firstday.project.application.RewardService;
+import com.growmighty.lectures.firstday.project.application.dto.ProjectInfo;
 import com.growmighty.lectures.firstday.project.application.dto.RegisterProjectCommand;
+import com.growmighty.lectures.firstday.project.application.dto.RegisterRewardCommand;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
+/**
+ * 개발용 시드 데이터.
+ * 리워드 ID는 등록 순서대로 전역 시퀀스가 매겨진다 — orders.http 가 rewardId=1 을 가정하므로
+ * 등록 순서를 바꾸지 말 것 (프로젝트 1 → 리워드 1~3, 프로젝트 2 → 리워드 4~5, ...).
+ */
 @Component
 @Profile("!test")
 @RequiredArgsConstructor
 public class ProjectDataInitializer implements CommandLineRunner {
     private final ProjectService projectService;
+    private final RewardService rewardService;
 
     @Override
     public void run(String... args) {
-        register("삼성 노트북 갤럭시북4 프로", 2_150_000, 50, "가벼운 삼성 노트북입니다.");
-        register("LG 그램 노트북 17인치", 1_890_000, 30, "초경량 대화면 노트북.");
-        register("애플 맥북 에어 M3", 1_590_000, 40, "애플 실리콘 랩탑.");
-        register("애플 맥북 프로 14 M3", 2_690_000, 20, "전문가용 laptop.");
-        register("무선 기계식 키보드 청축", 120_000, 100, "타건감 좋은 무선 keyboard.");
-        register("유선 기계식 키보드 적축", 90_000, 80, "사무실용 조용한 키보드.");
-        register("로지텍 무선 마우스 MX Master 3S", 129_000, 200, "인체공학 wireless mouse.");
-        register("게이밍 유선 마우스", 45_000, 150, "가성비 게이밍 마우스.");
-        register("아이폰 15 프로 스마트폰", 1_550_000, 60, "티타늄 휴대폰.");
-        register("갤럭시 S24 울트라 스마트폰", 1_690_000, 70, "AI 핸드폰.");
-        register("무선 이어폰 버즈3 프로", 249_000, 300, "노이즈캔슬링 이어폰.");
-        register("노트북 파우치 15인치", 25_000, 500, "노트북 보호 파우치.");
-        // 취향껏 몇 개 더 추가해도 좋습니다 (예: 모니터, 충전기, 케이스...)
+        // 프로젝트 1 (rewardId 1~3)
+        Long p1 = openProject("수제 가죽 노트커버", 3_000_000,
+            "장인이 한 땀 한 땀 만드는 A5 가죽 노트커버 펀딩입니다.");
+        reward(p1, "[얼리버드] 노트커버 1개", 29_000, 100, "브라운 단일 색상, 8월 말 발송 예정");
+        reward(p1, "노트커버 1개", 35_000, 300, "색상 선택 가능");
+        reward(p1, "노트커버 2개 세트", 65_000, 150, "선물용 패키지 포함");
+
+        // 프로젝트 2 (rewardId 4~5)
+        Long p2 = openProject("휴대용 미니 빔프로젝터", 20_000_000,
+            "캠핑에서도 쓰는 손바닥 크기 빔프로젝터.");
+        reward(p2, "[얼리버드] 빔프로젝터", 189_000, 50, "선착순 한정 특가");
+        reward(p2, "빔프로젝터 + 삼각대", 229_000, 200, "전용 미니 삼각대 포함");
+
+        // 프로젝트 3 (rewardId 6~7)
+        Long p3 = openProject("독립출판 시집 <새벽의 온도>", 1_500_000,
+            "신인 시인의 첫 시집 인쇄 펀딩.");
+        reward(p3, "시집 1권", 15_000, 500, "초판 한정 넘버링");
+        reward(p3, "시집 + 필사 노트", 25_000, 200, "굿즈 세트");
+
+        // 프로젝트 4 (rewardId 8~9)
+        Long p4 = openProject("고양이 자동 급식기", 10_000_000,
+            "집사 없이도 정시 배식. 앱 연동 자동 급식기.");
+        reward(p4, "[얼리버드] 급식기 1대", 79_000, 80, "화이트 단일 색상");
+        reward(p4, "급식기 1대 + 전용 사료통", 99_000, 300, "색상 선택 가능");
     }
 
-    private void register(String name, long price, int stock, String desc) {
-        projectService.register(
-            new RegisterProjectCommand(1L, name, BigDecimal.valueOf(price), stock, desc));
+    /** 등록 → 심사 요청 → 승인(공개)까지 진행해 후원 가능한 상태로 만든다 */
+    private Long openProject(String title, long goalAmount, String description) {
+        LocalDateTime now = LocalDateTime.now();
+        ProjectInfo info = projectService.register(new RegisterProjectCommand(
+            1L, title, description, BigDecimal.valueOf(goalAmount), now, now.plusDays(30)));
+        projectService.submitForReview(info.id());
+        projectService.approve(info.id());
+        return info.id();
+    }
+
+    private void reward(Long projectId, String name, long price, int quantity, String desc) {
+        rewardService.register(new RegisterRewardCommand(
+            projectId, name, desc, BigDecimal.valueOf(price), quantity));
     }
 }

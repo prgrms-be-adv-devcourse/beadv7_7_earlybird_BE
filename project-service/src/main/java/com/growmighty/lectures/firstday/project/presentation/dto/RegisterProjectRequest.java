@@ -4,15 +4,17 @@ import com.growmighty.lectures.firstday.project.application.dto.RegisterProjectC
 import lombok.NonNull;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 public record RegisterProjectRequest(
-        @NonNull Long sellerId,
-        @NonNull String name,
-        @NonNull BigDecimal price,
-        @NonNull Integer stockQuantity,
-        String description
+        @NonNull Long creatorId,
+        @NonNull String title,
+        String description,
+        @NonNull BigDecimal goalAmount,
+        @NonNull LocalDateTime startAt,
+        @NonNull LocalDateTime endAt
 ) {
     public RegisterProjectCommand toCommand() {
-        return new RegisterProjectCommand(sellerId, name, price, stockQuantity, description);
+        return new RegisterProjectCommand(creatorId, title, description, goalAmount, startAt, endAt);
     }
 }

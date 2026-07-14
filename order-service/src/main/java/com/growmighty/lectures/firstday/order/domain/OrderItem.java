@@ -30,10 +30,14 @@ public class OrderItem {
     @Column(nullable = false)
     private Long projectId;
 
+    /** 후원은 리워드(후원 옵션) 단위 — 재고 차감/복원의 기준. TODO(팀): 순수 후원(리워드 없음) 허용 시 nullable 로 변경 */
+    @Column(nullable = false)
+    private Long rewardId;
+
     @Column(nullable = false)
     private Integer quantity;
 
-    public static OrderItem create(String name, BigDecimal price, Long projectId, int quantity) {
+    public static OrderItem create(String name, BigDecimal price, Long projectId, Long rewardId, int quantity) {
         if (quantity <= 0) {
             throw new IllegalArgumentException("주문 수량은 1개 이상이어야 합니다.");
         }
@@ -41,6 +45,7 @@ public class OrderItem {
         orderItem.name = name;
         orderItem.price = Money.from(price);
         orderItem.projectId = projectId;
+        orderItem.rewardId = rewardId;
         orderItem.quantity = quantity;
 
         return orderItem;

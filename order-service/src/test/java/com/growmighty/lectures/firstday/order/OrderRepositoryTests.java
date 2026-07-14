@@ -32,9 +32,10 @@ class OrderRepositoryTests {
         // 서비스 분리 후 userId / projectId 는 다른 서비스의 식별자(Long)일 뿐이다.
         Long userId = 1L;
         Long projectId = 100L;
+        Long rewardId = 10L;
 
         List<OrderItem> items = new ArrayList<>();
-        items.add(OrderItem.create("원목 4인용 식탁", BigDecimal.valueOf(179000), projectId, 1));
+        items.add(OrderItem.create("원목 4인용 식탁", BigDecimal.valueOf(179000), projectId, rewardId, 1));
         Order order = Order.create(userId, items);
 
         Order saved = orderRepository.save(order);
@@ -47,6 +48,7 @@ class OrderRepositoryTests {
         OrderItem foundItem = found.getItems().get(0);
         assertThat(foundItem.getQuantity()).isEqualTo(1);
         assertThat(foundItem.getProjectId()).isEqualTo(projectId);
+        assertThat(foundItem.getRewardId()).isEqualTo(rewardId);
         assertThat(foundItem.getName()).isEqualTo("원목 4인용 식탁");
         assertThat(foundItem.getPrice().getValue()).isEqualByComparingTo(BigDecimal.valueOf(179000));
     }

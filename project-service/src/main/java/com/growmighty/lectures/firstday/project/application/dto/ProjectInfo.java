@@ -4,26 +4,31 @@ import com.growmighty.lectures.firstday.project.domain.Project;
 import com.growmighty.lectures.firstday.project.domain.ProjectStatus;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 public record ProjectInfo(
         Long id,
-        Long sellerId,
-        String name,
-        BigDecimal price,
-        int stockQuantity,
+        Long creatorId,
+        String title,
+        String description,
+        BigDecimal goalAmount,
+        LocalDateTime startAt,
+        LocalDateTime endAt,
         ProjectStatus status
 ) {
     public static ProjectInfo from(Project project) {
         return new ProjectInfo(
                 project.getId(),
-                project.getSellerId(),
-                project.getName(),
-                project.getPrice(),
-                project.getStockQuantity(),
+                project.getCreatorId(),
+                project.getTitle(),
+                project.getDescription(),
+                project.getGoalAmount(),
+                project.getStartAt(),
+                project.getEndAt(),
                 project.getStatus());
     }
 
     public boolean isOrderable() {
-        return this.status == ProjectStatus.ON_SALE;
+        return this.status == ProjectStatus.OPEN;
     }
 }

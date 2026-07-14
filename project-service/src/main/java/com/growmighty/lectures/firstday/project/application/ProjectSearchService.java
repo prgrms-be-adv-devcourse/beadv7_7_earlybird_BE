@@ -1,7 +1,5 @@
 package com.growmighty.lectures.firstday.project.application;
 
-import co.elastic.clients.elasticsearch._types.query_dsl.FieldValueFactorModifier;
-import co.elastic.clients.elasticsearch._types.query_dsl.FunctionBoostMode;
 import com.growmighty.lectures.firstday.project.infrastructure.search.ProjectDocument;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -18,34 +16,28 @@ public class ProjectSearchService {
 
     private final ElasticsearchOperations operations;
 
-    public List<ProjectDocument> search(String keyword, Double minPrice, Double maxPrice, int page, int size) {
+    // TODO(팀): 랭킹 시그널 재설계 — 이커머스의 salesCount(functionScore) 자리에
+    //           후원자 수·달성률·마감 임박 등 펀딩 시그널을 넣을지 결정
+    public List<ProjectDocument> search(String keyword, Double minGoalAmount, Double maxGoalAmount, int page, int size) {
         NativeQuery query = NativeQuery.builder()
-            .withQuery(q -> q.functionScore(fs -> fs
-                .query(inner -> inner.bool(b -> {
-                    // ① 관련도(점수 계산 O): 프로젝트명 가중치 3배 + 오타 허용
-                    b.must(m -> m.multiMatch(mm -> mm
-                        .query(keyword)
-                        .fields("name^3", "description")
-                        .fuzziness("AUTO")));
-                    // ② 필터(점수 계산 X, 캐시 O): 판매중 + 가격 범위
-                    b.filter(f -> f.term(t -> t.field("status").value("ON_SALE")));
-                    if (minPrice != null || maxPrice != null) {
-                        b.filter(f -> f.range(r -> r.number(n -> {
-                            n.field("price");
-                            if (minPrice != null) n.gte(minPrice);
-                            if (maxPrice != null) n.lte(maxPrice);
-                            return n;
-                        })));
-                    }
-                    return b;
-                }))
-                // ③ 비즈니스 랭킹: 텍스트 점수 + log(1+판매량)×2
-                .functions(fn -> fn.fieldValueFactor(fv -> fv
-                    .field("salesCount")
-                    .modifier(FieldValueFactorModifier.Log1p)
-                    .factor(2.0)
-                    .missing(0.0)))
-                .boostMode(FunctionBoostMode.Sum)))
+            .withQuery(q -> q.bool(b -> {
+                // ① 관련도(점수 계산 O): 프로젝트 제목 가중치 3배 + 오타 허용
+                b.must(m -> m.multiMatch(mm -> mm
+                    .query(keyword)
+                    .fields("title^3", "description")
+                    .fuzziness("AUTO")));
+                // ② 필터(점수 계산 X, 캐시 O): 펀딩 진행중 + 목표 금액 범위
+                b.filter(f -> f.term(t -> t.field("status").value("OPEN")));
+                if (minGoalAmount != null || maxGoalAmount != null) {
+                    b.filter(f -> f.range(r -> r.number(n -> {
+                        n.field("goalAmount");
+                        if (minGoalAmount != null) n.gte(minGoalAmount);
+                        if (maxGoalAmount != null) n.lte(maxGoalAmount);
+                        return n;
+                    })));
+                }
+                return b;
+            }))
             .withPageable(PageRequest.of(page, size))
             .build();
 
@@ -55,12 +47,12 @@ public class ProjectSearchService {
 
     public List<String> autocomplete(String prefix) {
         NativeQuery query = NativeQuery.builder()
-            .withQuery(q -> q.match(m -> m.field("name.auto").query(prefix)))
+            .withQuery(q -> q.match(m -> m.field("title.auto").query(prefix)))
             .withPageable(PageRequest.of(0, 10))
             .build();
         return operations.search(query, ProjectDocument.class)
             .getSearchHits().stream()
-            .map(h -> h.getContent().getName())
+            .map(h -> h.getContent().getTitle())
             .distinct()
             .toList();
     }

@@ -20,11 +20,11 @@ public class ProjectSearchController {
     @GetMapping
     public ApiResponse<List<ProjectDocument>> search(
         @RequestParam String keyword,
-        @RequestParam(required = false) Double minPrice,
-        @RequestParam(required = false) Double maxPrice,
+        @RequestParam(required = false) Double minGoalAmount,
+        @RequestParam(required = false) Double maxGoalAmount,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "10") int size) {
-        return ApiResponse.ok(searchService.search(keyword, minPrice, maxPrice, page, size));
+        return ApiResponse.ok(searchService.search(keyword, minGoalAmount, maxGoalAmount, page, size));
     }
 
     @GetMapping("/autocomplete")

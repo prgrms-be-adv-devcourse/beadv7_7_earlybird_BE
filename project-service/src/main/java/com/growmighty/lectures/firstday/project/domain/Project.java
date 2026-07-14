@@ -6,7 +6,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
+/**
+ * 프로젝트 = 펀딩 단위 (All-or-Nothing).
+ * 가격·재고는 프로젝트가 아니라 {@link Reward}(후원 옵션)가 가진다.
+ */
 @Entity
 @Table(name = "projects")
 @Getter
@@ -16,91 +21,108 @@ public class Project {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** 창작자 = User 도메인의 userId (유저 단일 도메인 + role 구분) */
     @Column(nullable = false)
-    private Long sellerId;
+    private Long creatorId;
 
     @Column(nullable = false)
-    private String name;
+    private String title;
+
+    @Lob
+    private String description;
+
+    /** 목표 금액 — 마감 시 달성/실패 판정 기준 */
+    @Column(nullable = false)
+    private BigDecimal goalAmount;
 
     @Column(nullable = false)
-    private BigDecimal price;
+    private LocalDateTime startAt;
 
     @Column(nullable = false)
-    private Integer stockQuantity;
+    private LocalDateTime endAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProjectStatus status;
 
-    @Lob
-    private String description;
-
-    @Column(nullable = false)
-    private Long salesCount;
-
-    private Project(Long sellerId, String name, BigDecimal price, Integer stockQuantity, String description) {
-        validatePrice(price);
-        if (stockQuantity == null || stockQuantity < 0) {
-            throw new IllegalArgumentException("재고는 0개 이상이어야 합니다. 입력값: " + stockQuantity);
-        }
-        this.sellerId = sellerId;
-        this.name = name;
-        this.price = price;
-        this.stockQuantity = stockQuantity;
+    private Project(Long creatorId, String title, String description,
+                    BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+        validateGoalAmount(goalAmount);
+        validatePeriod(startAt, endAt);
+        this.creatorId = creatorId;
+        this.title = title;
         this.description = description;
-        this.status = stockQuantity == 0 ? ProjectStatus.OUT_OF_STOCK : ProjectStatus.ON_SALE;
-        this.salesCount = 0L;
+        this.goalAmount = goalAmount;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.status = ProjectStatus.DRAFT;
     }
 
-    public static Project register(Long sellerId, String name, BigDecimal price, Integer stockQuantity, String description) {
-        return new Project(sellerId, name, price, stockQuantity, description);
+    public static Project register(Long creatorId, String title, String description,
+                                   BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+        return new Project(creatorId, title, description, goalAmount, startAt, endAt);
     }
 
-    public void decreaseStock(int quantity) {
-        if (quantity <= 0) {
-            throw new IllegalArgumentException("차감 수량은 1개 이상이어야 합니다.");
-        }
-        if (this.status == ProjectStatus.DISCONTINUED) {
-            throw new IllegalStateException("판매 종료된 프로젝트입니다. project=" + this.name);
-        }
-        if (this.stockQuantity < quantity) {
-            throw new IllegalStateException(
-                "재고가 부족합니다. project=" + this.name + ", 재고=" + this.stockQuantity + ", 요청=" + quantity);
-        }
-        this.stockQuantity -= quantity;
-        this.salesCount += quantity;
-        if (this.stockQuantity == 0) {
-            this.status = ProjectStatus.OUT_OF_STOCK;
-        }
+    // ── 상태 전이 ──────────────────────────────────────────────
+    // TODO(팀): 전이 가드(어느 상태에서 어느 상태로만 갈 수 있는지) 규칙 확정 후 보강.
+    //           현재는 흐름을 보여주는 최소 구현만 있다.
+
+    /** 창작자: 작성 완료 → 심사 요청 */
+    public void submitForReview() {
+        requireStatus(ProjectStatus.DRAFT, "심사 요청은 작성중 상태에서만 가능합니다.");
+        this.status = ProjectStatus.IN_REVIEW;
     }
 
-    public void restoreStock(int quantity) {
-        if (quantity <= 0) {
-            throw new IllegalArgumentException("복원 수량은 1개 이상이어야 합니다.");
-        }
-        this.stockQuantity += quantity;
-        this.salesCount = Math.max(0, this.salesCount - quantity);
-        if (this.status == ProjectStatus.OUT_OF_STOCK) {
-            this.status = ProjectStatus.ON_SALE;
-        }
+    /** 관리자: 심사 승인 → 공개. TODO(팀): startAt 도래 전 승인 시 '공개 대기' 상태가 필요한지 논의 */
+    public void approve() {
+        requireStatus(ProjectStatus.IN_REVIEW, "승인은 심사중 상태에서만 가능합니다.");
+        this.status = ProjectStatus.OPEN;
     }
 
-    public void changePrice(BigDecimal newPrice) {
-        validatePrice(newPrice);
-        this.price = newPrice;
+    /** 관리자: 심사 반려. TODO(팀): 반려 사유 보관 위치(엔티티 필드 vs 별도 심사 이력) 결정 */
+    public void reject() {
+        requireStatus(ProjectStatus.IN_REVIEW, "반려는 심사중 상태에서만 가능합니다.");
+        this.status = ProjectStatus.REJECTED;
     }
 
-    public void discontinue() {
-        this.status = ProjectStatus.DISCONTINUED;
+    /** 배치: 마감 처리. TODO(팀): 마감 배치(Spring Batch)에서 호출 — endAt 경과 검증 추가 */
+    public void close() {
+        requireStatus(ProjectStatus.OPEN, "마감은 공개 상태에서만 가능합니다.");
+        this.status = ProjectStatus.CLOSED;
     }
 
+    /** 배치: 목표 금액 달성 판정. TODO(팀): 총 후원액 집계 방식(Order 조회) 확정 */
+    public void markGoalReached() {
+        requireStatus(ProjectStatus.CLOSED, "달성 판정은 마감 상태에서만 가능합니다.");
+        this.status = ProjectStatus.GOAL_REACHED;
+    }
+
+    /** 배치: 목표 금액 실패 판정 → 일괄 환불 대상 */
+    public void markGoalFailed() {
+        requireStatus(ProjectStatus.CLOSED, "실패 판정은 마감 상태에서만 가능합니다.");
+        this.status = ProjectStatus.GOAL_FAILED;
+    }
+
+    /** 후원 가능 여부. TODO(팀): startAt/endAt 기간 검증 추가 (현재는 상태만 본다) */
     public boolean isOrderable() {
-        return this.status == ProjectStatus.ON_SALE;
+        return this.status == ProjectStatus.OPEN;
     }
 
-    private void validatePrice(BigDecimal price) {
-        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("가격은 0원보다 커야 합니다. 입력값: " + price);
+    private void requireStatus(ProjectStatus expected, String message) {
+        if (this.status != expected) {
+            throw new IllegalStateException(message + " 현재 상태=" + this.status);
+        }
+    }
+
+    private void validateGoalAmount(BigDecimal goalAmount) {
+        if (goalAmount == null || goalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("목표 금액은 0원보다 커야 합니다. 입력값: " + goalAmount);
+        }
+    }
+
+    private void validatePeriod(LocalDateTime startAt, LocalDateTime endAt) {
+        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+            throw new IllegalArgumentException("마감일은 시작일 이후여야 합니다. startAt=" + startAt + ", endAt=" + endAt);
         }
     }
 }

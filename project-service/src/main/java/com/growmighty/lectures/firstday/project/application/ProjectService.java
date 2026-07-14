@@ -11,41 +11,47 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-
 @Service
 @RequiredArgsConstructor
 public class ProjectService {
     private final ProjectRepository projectRepository;
-    private final ApplicationEventPublisher eventPublisher;   // ★ 추가
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ProjectInfo register(RegisterProjectCommand command) {
         Project project = Project.register(
-            command.sellerId(), command.name(), command.price(), command.stockQuantity(), command.description());
+            command.creatorId(), command.title(), command.description(),
+            command.goalAmount(), command.startAt(), command.endAt());
         ProjectInfo info = ProjectInfo.from(projectRepository.save(project));
-        eventPublisher.publishEvent(new ProjectChangedEvent(info.id()));   // ★
+        eventPublisher.publishEvent(new ProjectChangedEvent(info.id()));
         return info;
     }
 
+    /** 창작자: 심사 요청 (DRAFT → IN_REVIEW) */
     @Transactional
-    public ProjectInfo changePrice(Long projectId, BigDecimal newPrice) {
+    public ProjectInfo submitForReview(Long projectId) {
         Project project = getProjectEntity(projectId);
-        project.changePrice(newPrice);
-        eventPublisher.publishEvent(new ProjectChangedEvent(projectId));   // ★
+        project.submitForReview();
+        eventPublisher.publishEvent(new ProjectChangedEvent(projectId));
         return ProjectInfo.from(project);
     }
 
+    /** 관리자: 심사 승인 (IN_REVIEW → OPEN). TODO(팀): 관리자 권한 검증은 Admin 컨텍스트 확정 후 */
     @Transactional
-    public void decreaseStock(Long projectId, int quantity) {
-        getProjectEntity(projectId).decreaseStock(quantity);
-        eventPublisher.publishEvent(new ProjectChangedEvent(projectId));   // ★
+    public ProjectInfo approve(Long projectId) {
+        Project project = getProjectEntity(projectId);
+        project.approve();
+        eventPublisher.publishEvent(new ProjectChangedEvent(projectId));
+        return ProjectInfo.from(project);
     }
 
+    /** 관리자: 심사 반려 (IN_REVIEW → REJECTED) */
     @Transactional
-    public void restoreStock(Long projectId, int quantity) {
-        getProjectEntity(projectId).restoreStock(quantity);
-        eventPublisher.publishEvent(new ProjectChangedEvent(projectId));   // ★
+    public ProjectInfo reject(Long projectId) {
+        Project project = getProjectEntity(projectId);
+        project.reject();
+        eventPublisher.publishEvent(new ProjectChangedEvent(projectId));
+        return ProjectInfo.from(project);
     }
 
     @Transactional(readOnly = true)

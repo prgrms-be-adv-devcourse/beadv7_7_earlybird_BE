@@ -6,9 +6,9 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
-import com.growmighty.lectures.firstday.order.application.port.ProjectPort;
+import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
-import com.growmighty.lectures.firstday.order.application.port.dto.ProjectSnapshot;
+import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
 import com.growmighty.lectures.firstday.order.domain.Money;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
@@ -24,8 +24,8 @@ import java.util.List;
 /**
  * 주문 애플리케이션 서비스.
  *
- * <p>다른 도메인(project/payment)의 클래스를 직접 알지 않는다. 오직 주문이 스스로 정의한
- * {@link ProjectPort} / {@link PaymentPort} 계약으로만 대화하고, 실제 통신은
+ * <p>다른 도메인(reward/payment)의 클래스를 직접 알지 않는다. 오직 주문이 스스로 정의한
+ * {@link RewardPort} / {@link PaymentPort} 계약으로만 대화하고, 실제 통신은
  * infrastructure 의 HTTP 클라이언트가 담당한다. 이 경계 덕분에 order 는 컴파일 의존이
  * common 뿐이고, project/payment 와는 HTTP(JSON 계약)로만 연결된다.
  */
@@ -34,24 +34,26 @@ import java.util.List;
 public class OrderApiService {
 
     private final OrderRepository orderRepository;
-    private final ProjectPort projectPort;
+    private final RewardPort rewardPort;
     private final PaymentPort paymentPort;
 
     @Transactional
     public OrderResult placeOrder(PlaceOrderCommand command) {
         List<OrderLine> lines = command.lines();
         if (lines == null || lines.isEmpty()) {
-            throw new IllegalArgumentException("주문할 프로젝트이 없습니다.");
+            throw new IllegalArgumentException("후원할 리워드가 없습니다.");
         }
 
+        // TODO(팀): 순수 후원(리워드 없이 금액만) 흐름 추가 — rewardId 없이 금액을 받는 경로 필요
         List<OrderItem> orderItems = new ArrayList<>();
         for (OrderLine line : lines) {
-            ProjectSnapshot project = projectPort.getProject(line.projectId());
-            if (!project.orderable()) {
-                throw new IllegalStateException("현재 구매할 수 없는 프로젝트입니다. projectId=" + project.projectId());
+            RewardSnapshot reward = rewardPort.getReward(line.rewardId());
+            if (!reward.orderable()) {
+                throw new IllegalStateException("현재 후원할 수 없는 리워드입니다. rewardId=" + reward.rewardId());
             }
-            orderItems.add(OrderItem.create(project.name(), project.price(), project.projectId(), line.quantity()));
-            projectPort.decreaseStock(line.projectId(), line.quantity());
+            orderItems.add(OrderItem.create(
+                reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
+            rewardPort.decreaseStock(line.rewardId(), line.quantity());
         }
 
         Order order = Order.create(command.userId(), orderItems);
@@ -68,7 +70,7 @@ public class OrderApiService {
         order.cancel();
 
         for (OrderItem item : order.getItems()) {
-            projectPort.restoreStock(item.getProjectId(), item.getQuantity());
+            rewardPort.restoreStock(item.getRewardId(), item.getQuantity());
         }
         if (order.getPaymentId() != null) {
             paymentPort.cancel(order.getPaymentId());

@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class OrderTest {
 
     private OrderItem item(long projectId, String price, int quantity) {
-        return OrderItem.create("프로젝트-" + projectId, new BigDecimal(price), projectId, quantity);
+        return OrderItem.create("리워드-" + projectId, new BigDecimal(price), projectId, projectId, quantity);
     }
 
     @Test
