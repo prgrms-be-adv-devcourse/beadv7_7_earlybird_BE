@@ -40,9 +40,10 @@ class GlobalExceptionHandlerTest {
     void BusinessException은_ErrorCode의_상태와_코드로_응답한다() throws Exception {
         mockMvc.perform(get("/test/business"))
                 .andExpect(status().isNotFound())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.code").value("C003"))
-                .andExpect(jsonPath("$.detail").value(ErrorCode.ENTITY_NOT_FOUND.getMessage()));
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.code").value("C003"))
+                .andExpect(jsonPath("$.error.message").value(ErrorCode.ENTITY_NOT_FOUND.getMessage()));
     }
 
     @Test
@@ -51,17 +52,19 @@ class GlobalExceptionHandlerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quantity\": -1}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("C001"))
-                .andExpect(jsonPath("$.errors[?(@.field == 'userId')]").exists())
-                .andExpect(jsonPath("$.errors[?(@.field == 'quantity')]").exists());
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"))
+                .andExpect(jsonPath("$.error.errors[?(@.field == 'userId')]").exists())
+                .andExpect(jsonPath("$.error.errors[?(@.field == 'quantity')]").exists());
     }
 
     @Test
     void 예상_못_한_예외는_500과_고정_메시지로_응답하고_내부_사정을_노출하지_않는다() throws Exception {
         mockMvc.perform(get("/test/boom"))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value("C500"))
-                .andExpect(jsonPath("$.detail").value(ErrorCode.INTERNAL_ERROR.getMessage()))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C500"))
+                .andExpect(jsonPath("$.error.message").value(ErrorCode.INTERNAL_ERROR.getMessage()))
                 .andExpect(content().string(not(containsString("secret detail"))));
     }
 
@@ -75,8 +78,9 @@ class GlobalExceptionHandlerTest {
     void IllegalStateException은_409로_응답한다() throws Exception {
         mockMvc.perform(get("/test/state"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("C002"))
-                .andExpect(jsonPath("$.detail").value("이미 처리된 요청입니다."));
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C002"))
+                .andExpect(jsonPath("$.error.message").value("이미 처리된 요청입니다."));
     }
 
     @RestController

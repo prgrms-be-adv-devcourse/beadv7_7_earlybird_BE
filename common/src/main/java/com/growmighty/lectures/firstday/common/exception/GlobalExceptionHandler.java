@@ -1,13 +1,12 @@
 package com.growmighty.lectures.firstday.common.exception;
 
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -17,19 +16,31 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import java.util.List;
 
 /**
- * 프레임워크가 던지는 예외(요청 형식 오류, 404, 405, 클라이언트 연결 끊김 등)는
- * 부모인 ResponseEntityExceptionHandler가 RFC 9457 ProblemDetail로 알아서 처리한다.
- * 여기서는 스프링이 알 수 없는 것들만 직접 다룬다.
+ * 모든 예외를 {@link ApiResponse#fail}의 {success: false, data: null, error} 봉투로 응답한다.
+ * 우리가 직접 던진 예외(BusinessException 등)는 아래 @ExceptionHandler들이 바로 처리하고,
+ * 프레임워크가 우리 핸들러에 닿기도 전에 자체 처리하는 예외(요청 형식 오류, 404, 405 등)는
+ * 부모인 ResponseEntityExceptionHandler가 기본 ProblemDetail을 만든 뒤 {@link #handleExceptionInternal}로
+ * 넘기므로, 그 지점에서 한 번만 같은 봉투로 변환한다.
  *
- * <p>실패 응답 예시 ({@link BusinessException}으로 존재하지 않는 주문을 조회한 경우):
+ * <p>커스텀 예외 응답 예시 ({@link BusinessException}으로 존재하지 않는 주문을 조회한 경우):
  * <pre>{@code
  * {
- *   "type": "about:blank",
- *   "title": "Not Found",
- *   "status": 404,
- *   "detail": "존재하지 않는 주문입니다. orderId=999",
- *   "instance": "/orders/999",
- *   "code": "C003"
+ *   "success": false,
+ *   "data": null,
+ *   "error": { "code": "C003", "message": "존재하지 않는 주문입니다. orderId=999", "errors": null }
+ * }
+ * }</pre>
+ *
+ * <p>@Valid 검증 실패 응답 예시:
+ * <pre>{@code
+ * {
+ *   "success": false,
+ *   "data": null,
+ *   "error": {
+ *     "code": "C001",
+ *     "message": "Invalid request content.",
+ *     "errors": [ { "field": "userId", "message": "must not be null" } ]
+ *   }
  * }
  * }</pre>
  *
@@ -41,58 +52,60 @@ import java.util.List;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public ProblemDetail handleBusiness(BusinessException e) {
+    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
         ErrorCode errorCode = e.getErrorCode();
         if (e.getCause() != null) {
             log.warn("[{}] {}", errorCode.getCode(), e.getMessage(), e);
         } else {
             log.warn("[{}] {}", errorCode.getCode(), e.getMessage());
         }
-        return problemOf(errorCode.getStatus(), errorCode, e.getMessage());
+        return fail(errorCode.getStatus(), errorCode.getCode(), e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ProblemDetail handleIllegalArgument(IllegalArgumentException e) {
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException e) {
         log.warn("[{}] {}", ErrorCode.INVALID_INPUT.getCode(), e.getMessage());
-        return problemOf(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_INPUT, e.getMessage());
+        return fail(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_INPUT.getCode(), e.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)
-    public ProblemDetail handleIllegalState(IllegalStateException e) {
+    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException e) {
         log.warn("[{}] {}", ErrorCode.INVALID_STATE.getCode(), e.getMessage());
-        return problemOf(HttpStatus.CONFLICT, ErrorCode.INVALID_STATE, e.getMessage());
+        return fail(HttpStatus.CONFLICT, ErrorCode.INVALID_STATE.getCode(), e.getMessage());
     }
 
     // 예상 못 한 예외. 내부 사정(e.getMessage())을 클라이언트에 노출하지 않는다.
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleException(Exception e) {
+    public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("[{}] unhandled exception", ErrorCode.INTERNAL_ERROR.getCode(), e);
-        return problemOf(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.getMessage());
+        return fail(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_ERROR.getCode(), ErrorCode.INTERNAL_ERROR.getMessage());
     }
 
-    // @Valid 실패: 기본 응답(detail: "Invalid request content.")에 필드별 오류 목록을 얹어 준다.
+    // @Valid 실패: 기본 메시지("Invalid request content.")에 필드별 오류 목록을 담아 준다.
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
                                                                   HttpHeaders headers,
                                                                   HttpStatusCode status,
                                                                   WebRequest request) {
-        ProblemDetail body = ex.updateAndGetBody(getMessageSource(), LocaleContextHolder.getLocale());
-        body.setProperty("code", ErrorCode.INVALID_INPUT.getCode());
-        body.setProperty("errors", ex.getBindingResult().getFieldErrors().stream()
-                .map(FieldErrorDetail::from)
-                .toList());
+        List<ApiResponse.ApiError.FieldErrorDetail> errors = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> new ApiResponse.ApiError.FieldErrorDetail(fe.getField(), fe.getDefaultMessage()))
+                .toList();
+        ApiResponse<Void> body = ApiResponse.fail(new ApiResponse.ApiError(ErrorCode.INVALID_INPUT.getCode(), "Invalid request content.", errors));
         return handleExceptionInternal(ex, body, headers, status, request);
     }
 
-    private ProblemDetail problemOf(HttpStatus status, ErrorCode errorCode, String detail) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setProperty("code", errorCode.getCode());
-        return problem;
+    // 우리 핸들러에 닿지 않는 프레임워크 기본 처리(요청 형식 오류, 404, 405 등)는 ProblemDetail을 만들어
+    // 여기로 넘어온다 — 표준 필드(detail)만으로 같은 봉투로 변환한다.
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
+                                                              HttpStatusCode statusCode, WebRequest request) {
+        if (body instanceof ProblemDetail problem) {
+            body = ApiResponse.fail(new ApiResponse.ApiError(String.valueOf(statusCode.value()), problem.getDetail(), null));
+        }
+        return super.handleExceptionInternal(ex, body, headers, statusCode, request);
     }
 
-    private record FieldErrorDetail(String field, String message) {
-        private static FieldErrorDetail from(FieldError fieldError) {
-            return new FieldErrorDetail(fieldError.getField(), fieldError.getDefaultMessage());
-        }
+    private ResponseEntity<ApiResponse<Void>> fail(HttpStatus status, String code, String message) {
+        return ResponseEntity.status(status).body(ApiResponse.fail(new ApiResponse.ApiError(code, message, null)));
     }
 }

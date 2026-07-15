@@ -10,10 +10,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
 /**
- * 컨트롤러가 반환한 DTO를 {success, data, error} 봉투로 감싼다.
- * 에러는 GlobalExceptionHandler가 ProblemDetail로 별도 처리하므로 여기서는 그대로 흘려보낸다.
- * ProblemDetail 은 ResponseEntity<Object> 로 감싸져 넘어올 수 있어 선언된 returnType 만으로는
- * 걸러낼 수 없다 — beforeBodyWrite 시점의 실제 body 타입으로 판단해야 한다.
+ * 컨트롤러가 반환한 DTO를 {@link ApiResponse#ok}로 {success: true, data, error: null} 봉투에 담는다.
+ * 실패 응답은 {@link com.growmighty.lectures.firstday.common.exception.GlobalExceptionHandler}가
+ * {@link ApiResponse#fail}로 직접 만들어 반환하므로 여기서는 별도 변환이 필요 없다 — 이미 {@link ApiResponse}인
+ * 경우 그대로 흘려보낼 뿐이다.
+ * ProblemDetail 을 추가로 흘려보내는 건, GlobalExceptionHandler의 손이 닿지 않는 곳(다른 모듈의
+ * @ControllerAdvice 등)에서 ProblemDetail 이 새어 나오더라도 success: true 로 잘못 감싸지 않기 위한
+ * 방어 코드일 뿐이다.
  *
  * <p>성공 응답 예시 (컨트롤러는 {@code UserResponse}만 반환하면 된다):
  * <pre>{@code
@@ -24,8 +27,14 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  * }
  * }</pre>
  *
- * <p>실패 응답은 이 클래스가 아니라 {@link com.growmighty.lectures.firstday.common.exception.GlobalExceptionHandler}가
- * RFC 9457 {@link ProblemDetail}로 만든다.
+ * <p>실패 응답 예시:
+ * <pre>{@code
+ * {
+ *   "success": false,
+ *   "data": null,
+ *   "error": { "code": "C003", "message": "존재하지 않는 주문입니다. orderId=999", "errors": null }
+ * }
+ * }</pre>
  */
 @RestControllerAdvice
 public class ApiResponseWrappingAdvice implements ResponseBodyAdvice<Object> {
