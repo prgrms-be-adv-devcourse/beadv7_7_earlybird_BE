@@ -1,4 +1,4 @@
-rootProject.name = 'msa-example-project'
+rootProject.name = 'beadv7_7_earlybird_BE'
 
 include 'common'
 

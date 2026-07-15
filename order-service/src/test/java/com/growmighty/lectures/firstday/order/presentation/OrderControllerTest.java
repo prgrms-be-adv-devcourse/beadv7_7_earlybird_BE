@@ -56,8 +56,8 @@ class OrderControllerTest {
 
         mockMvc.perform(get("/orders/999/inspect"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C003"))
+                .andExpect(jsonPath("$.code").value("C003"))
+                .andExpect(jsonPath("$.detail").value("존재하지 않는 주문입니다. orderId=999"))
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
 
@@ -69,17 +69,30 @@ class OrderControllerTest {
 
         mockMvc.perform(post("/orders/1/cancel"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C002"));
+                .andExpect(jsonPath("$.code").value("C002"));
     }
 
     @Test
-    @DisplayName("잘못된 JSON 본문은 400과 INVALID_INPUT 코드를 반환한다")
+    @DisplayName("잘못된 JSON 본문은 프레임워크 기본 처리로 400 ProblemDetail을 반환한다")
     void placeOrder_malformedBody_400() throws Exception {
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("C001"));
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("검증 실패(@Valid)는 400과 필드별 오류 목록을 반환한다")
+    void placeOrder_validationFailure_400() throws Exception {
+        mockMvc.perform(post("/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"requests":[{"rewardId":1,"quantity":-1}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("C001"))
+                .andExpect(jsonPath("$.errors[?(@.field == 'userId')]").exists())
+                .andExpect(jsonPath("$.errors[?(@.field == 'requests[0].quantity')]").exists());
     }
 }

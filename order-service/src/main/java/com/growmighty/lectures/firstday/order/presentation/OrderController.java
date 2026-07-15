@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.order.presentation.dto.ChangeOrderItemQu
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderConsistencyResponse;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderResponse;
 import com.growmighty.lectures.firstday.order.presentation.dto.PlaceOrderRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,7 +29,7 @@ public class OrderController {
     }
 
     @PostMapping
-    public ApiResponse<OrderResponse> placeOrder(@RequestBody PlaceOrderRequest request) {
+    public ApiResponse<OrderResponse> placeOrder(@Valid @RequestBody PlaceOrderRequest request) {
         return ApiResponse.ok(OrderResponse.from(orderApiService.placeOrder(request.toCommand())));
     }
 

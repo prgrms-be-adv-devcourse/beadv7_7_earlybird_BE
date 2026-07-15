@@ -2,15 +2,18 @@ package com.growmighty.lectures.firstday.order.presentation.dto;
 
 import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
-import lombok.NonNull;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.util.List;
 
 public record PlaceOrderRequest(
-        @NonNull Long userId,
-        @NonNull List<OrderItemRequest> requests
+        @NotNull Long userId,
+        @NotEmpty @Valid List<OrderItemRequest> requests
 ) {
-    public record OrderItemRequest(@NonNull Long rewardId, @NonNull Integer quantity) {
+    public record OrderItemRequest(@NotNull Long rewardId, @NotNull @Positive Integer quantity) {
     }
 
     public PlaceOrderCommand toCommand() {
