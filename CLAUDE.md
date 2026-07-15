@@ -1,0 +1,57 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Workspace Overview
+
+This directory is **not a single repository** — it is the workspace for a backend advanced devcourse (백엔드 심화 데브코스 7기). It holds several independent git repos plus team documents. The user is **김하나한**, a member of Team 5, building "얼리버드" (Earlybird), a reward-based crowdfunding platform (All-or-Nothing funding: goal reached → settle to creator, failed → batch refund backers). Team 5 members: 조우진 (PO), 강대혁, 김지원 (AWS), 김하나한 (the user), 류민송, 정창민.
+
+| Directory | What it is |
+| --- | --- |
+| `beadv7_7_earlybird_BE/` | **Team 5's project repo** (github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE) — the 얼리버드 semi-project, on a codebase evolved from the lecture MSA example |
+| `beadv7_7_earlybird_config/` | **Team 5's Spring Cloud Config repo** (github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_config, private) — per-service `.yml` files with real ports/DB URLs; local clone that config-server can also point `file://` at |
+
+Always `cd` into the relevant repo before running git or Gradle commands — the workspace root itself is not a git repo.
+
+## Main Project: beadv7_7_earlybird_BE
+
+Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle multi-module microservices. Root `build.gradle` registers plugin versions only (`apply false`); each module applies them itself. Lombok is provided to all modules; `common` shares exceptions (`BusinessException`, `EntityNotFoundException`, `ServiceUnavailableException`, `ErrorCode`, `GlobalExceptionHandler`), `BaseEntity` (JPA auditing — created/updated timestamps), and `ApiResponse` + `ApiResponseWrappingAdvice` (a `@ControllerAdvice` that auto-wraps controller return values, so controllers just return plain DTOs, not `ApiResponse` themselves).
+
+### Modules and ports
+
+Service modules (each with its own port and DB): `order-service` :8080, `project-service` :8081, `payment-service` :8082, `user-service` :8083, `cart-service` :8085, `settlement-service` :8086 (Spring Batch), `file-service` :8087 (unimplemented skeleton), `board-service` :8088 (창작자 공지/의견·문의/리뷰), `notification-service` :8089. Infrastructure modules: `discovery-server` (Eureka, :8761), `gateway-server` (:8000, single entry point for all external requests), `config-server` (:8888).
+
+`/internal/**` endpoints have no gateway route by design — they're reachable only via direct Eureka-to-Eureka service calls, never from outside.
+
+### Commands
+
+```bash
+docker compose -f infrastructure/docker-compose.yml up -d mysql   # MySQL (1 container, 9 per-service schemas)
+docker compose -f infrastructure/docker-compose.yml up -d         # + Elasticsearch (nori) + Kibana, for project-service search
+
+./gradlew build                                # build everything
+./gradlew :order-service:test                  # tests for one module
+./gradlew :order-service:test --tests "OrderServiceTest.메서드명"  # single test
+./gradlew :order-service:bootRun               # run one service
+```
+
+MySQL must be running before `./gradlew build` — DB-dependent tests (order, settlement) spin up a real MySQL via **Testcontainers**, which needs Docker. This also applies in CI (`.github/workflows/ci.yml` runs `./gradlew build` on every push/PR to `main`, on a Docker-enabled runner). See `docs/1_LOCAL_DB_SETUP.md` for connection details and troubleshooting.
+
+Startup order matters: `config-server` → `discovery-server` → `gateway-server` → business services. Each service's local `application.yml` contains only `spring.application.name` and a config-server import — **actual configuration (ports, DB URLs, etc.) lives in the `beadv7_7_earlybird_config` repo**, fetched by config-server at startup. To change a service's config, edit that repo (or point config-server at a local `file://` path), not the service module. The config repo is **private**, so config-server needs `GIT_USERNAME` / `GIT_PERSONAL_ACCESS_TOKEN` env vars (a personal GitHub PAT, `repo` scope, ≤366-day expiration per org policy) to clone it — see `docs/2_CONFIG_SERVER_SETUP.md` for setup and auth troubleshooting.
+
+`.http` files in the repo root (`orders.http`, `domain-communication.http`, `settlement.http`) are ready-made request collections for manual testing.
+
+### Architecture
+
+Each service follows the same layered layout under `com.growmighty.lectures.firstday.<domain>/`:
+
+- `presentation/` — controllers + request/response DTOs
+- `application/` — services; `application/port/` holds **interfaces for calls to other domains** (with their own DTOs)
+- `domain/` — entities and domain logic
+- `infrastructure/` — port implementations; `infrastructure/client/` contains the HTTP adapters that call other services: a declarative `@FeignClient` interface for the actual call, wrapped by a `*HttpClient` adapter (implements the port interface) that runs the call through a Resilience4j `CircuitBreakerFactory` with a fallback method
+
+Cross-domain references are by **ID, not object** — services never share entities or JPA relationships across domain boundaries; they call each other over HTTP through the port/adapter pair. This port-interface + HTTP-adapter separation is the core pattern the course builds up (monolith → module split → MSA), so preserve it when adding features. Design-background docs live under `docs/` (`1_LOCAL_DB_SETUP.md`, `2_CONFIG_SERVER_SETUP.md`, `ERD.md`).
+
+## Working Context
+
+This is a learning environment. The user is here to learn backend development — when working in the lecture/practice repos, prefer explaining, hinting, and reviewing over writing complete solutions unless explicitly asked to implement.
