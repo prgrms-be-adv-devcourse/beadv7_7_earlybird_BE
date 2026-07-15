@@ -17,7 +17,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -79,20 +78,15 @@ public class OrderApiService {
     }
 
     @Transactional(readOnly = true)
-    public List<OrderResult> getOrders() {
-        return orderRepository.findAll().stream()
+    public List<OrderResult> getOrdersByUser(Long userId) {
+        return orderRepository.findByUserId(userId).stream()
                 .map(OrderResult::from)
                 .toList();
     }
 
-    @Transactional
-    public void changeItemPrice(Long orderId, Long orderItemId, BigDecimal newPrice) {
-        getOrder(orderId).changeItemPrice(orderItemId, newPrice);
-    }
-
-    @Transactional
-    public void changeItemQuantity(Long orderId, Long orderItemId, int newQuantity) {
-        getOrder(orderId).changeItemQuantity(orderItemId, newQuantity);
+    @Transactional(readOnly = true)
+    public OrderResult getOrderInfo(Long orderId) {
+        return OrderResult.from(getOrder(orderId));
     }
 
     @Transactional(readOnly = true)

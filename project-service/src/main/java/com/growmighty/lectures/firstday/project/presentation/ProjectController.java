@@ -37,18 +37,6 @@ public class ProjectController {
         return ApiResponse.ok(ProjectResponse.from(projectService.submitForReview(projectId)));
     }
 
-    /** 관리자: 심사 승인. TODO(팀): Admin 컨텍스트 확정 후 관리자 권한 검증/경로 이동(/admin/**) 논의 */
-    @PostMapping("/{projectId}/approve")
-    public ApiResponse<ProjectResponse> approve(@PathVariable Long projectId) {
-        return ApiResponse.ok(ProjectResponse.from(projectService.approve(projectId)));
-    }
-
-    /** 관리자: 심사 반려 */
-    @PostMapping("/{projectId}/reject")
-    public ApiResponse<ProjectResponse> reject(@PathVariable Long projectId) {
-        return ApiResponse.ok(ProjectResponse.from(projectService.reject(projectId)));
-    }
-
     @GetMapping("/banner")
     public Map<String, String> banner() {
         return Map.of("message", bannerMessage);

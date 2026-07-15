@@ -38,13 +38,13 @@ public class RewardController {
         return ApiResponse.ok(RewardResponse.from(rewardService.getReward(rewardId)));
     }
 
-    @PostMapping("/rewards/{rewardId}/decrease-stock")
+    @PostMapping("/internal/rewards/{rewardId}/decrease-stock")
     public ApiResponse<Void> decreaseStock(@PathVariable Long rewardId, @RequestBody ChangeStockRequest request) {
         rewardService.decreaseStock(rewardId, request.quantity());
         return ApiResponse.ok();
     }
 
-    @PostMapping("/rewards/{rewardId}/restore-stock")
+    @PostMapping("/internal/rewards/{rewardId}/restore-stock")
     public ApiResponse<Void> restoreStock(@PathVariable Long rewardId, @RequestBody ChangeStockRequest request) {
         rewardService.restoreStock(rewardId, request.quantity());
         return ApiResponse.ok();

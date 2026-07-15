@@ -26,6 +26,11 @@ public class NotificationService {
     }
 
     @Transactional
+    public void markAllAsRead(Long userId) {
+        notificationRepository.findByUserId(userId).forEach(Notification::markAsRead);
+    }
+
+    @Transactional
     public void markAsRead(Long notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 알림입니다. notificationId=" + notificationId));

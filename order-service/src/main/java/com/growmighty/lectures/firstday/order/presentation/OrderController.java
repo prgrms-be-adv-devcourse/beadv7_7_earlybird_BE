@@ -2,8 +2,6 @@ package com.growmighty.lectures.firstday.order.presentation;
 
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.order.application.OrderApiService;
-import com.growmighty.lectures.firstday.order.presentation.dto.ChangeOrderItemPriceRequest;
-import com.growmighty.lectures.firstday.order.presentation.dto.ChangeOrderItemQuantityRequest;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderConsistencyResponse;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderResponse;
 import com.growmighty.lectures.firstday.order.presentation.dto.PlaceOrderRequest;
@@ -20,9 +18,10 @@ public class OrderController {
 
     private final OrderApiService orderApiService;
 
-    @GetMapping
-    public ApiResponse<List<OrderResponse>> getOrders() {
-        List<OrderResponse> responses = orderApiService.getOrders().stream()
+    /** 내 후원 내역. TODO(팀): JWT 도입 후 userId 파라미터 대신 토큰에서 추출 */
+    @GetMapping("/me")
+    public ApiResponse<List<OrderResponse>> getMyOrders(@RequestParam Long userId) {
+        List<OrderResponse> responses = orderApiService.getOrdersByUser(userId).stream()
                 .map(OrderResponse::from)
                 .toList();
         return ApiResponse.ok(responses);
@@ -33,6 +32,12 @@ public class OrderController {
         return ApiResponse.ok(OrderResponse.from(orderApiService.placeOrder(request.toCommand())));
     }
 
+    /** 후원 상세. TODO(팀): 본인(또는 해당 창작자)만 조회 가능 — 인증 도입 후 검증 */
+    @GetMapping("/{orderId}")
+    public ApiResponse<OrderResponse> getOrder(@PathVariable Long orderId) {
+        return ApiResponse.ok(OrderResponse.from(orderApiService.getOrderInfo(orderId)));
+    }
+
     @PostMapping("/{orderId}/cancel")
     public ApiResponse<OrderResponse> cancelOrder(@PathVariable Long orderId) {
         return ApiResponse.ok(OrderResponse.from(orderApiService.cancelOrder(orderId)));
@@ -41,17 +46,5 @@ public class OrderController {
     @GetMapping("/{orderId}/inspect")
     public ApiResponse<OrderConsistencyResponse> inspectOrder(@PathVariable Long orderId) {
         return ApiResponse.ok(OrderConsistencyResponse.from(orderApiService.inspectOrder(orderId)));
-    }
-
-    @PatchMapping("/{orderId}/orderItems/{orderItemId}/price")
-    public ApiResponse<Void> changeOrderItemPrice(@PathVariable Long orderId, @PathVariable Long orderItemId, @RequestBody ChangeOrderItemPriceRequest request) {
-        orderApiService.changeItemPrice(orderId, orderItemId, request.price());
-        return ApiResponse.ok();
-    }
-
-    @PatchMapping("/{orderId}/orderItems/{orderItemId}/quantity")
-    public ApiResponse<Void> changeOrderItemQuantity(@PathVariable Long orderId, @PathVariable Long orderItemId, @RequestBody ChangeOrderItemQuantityRequest request) {
-        orderApiService.changeItemQuantity(orderId, orderItemId, request.quantity());
-        return ApiResponse.ok();
     }
 }

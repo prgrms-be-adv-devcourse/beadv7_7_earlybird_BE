@@ -20,6 +20,13 @@ public class CommentService {
         return commentRepository.save(Comment.create(projectId, userId, parentId, content));
     }
 
+    @Transactional
+    public Comment registerReply(Long parentId, Long userId, String content) {
+        Comment parent = commentRepository.findById(parentId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 의견입니다. commentId=" + parentId));
+        return commentRepository.save(Comment.create(parent.getProjectId(), userId, parent.getId(), content));
+    }
+
     @Transactional(readOnly = true)
     public List<Comment> getByProject(Long projectId) {
         return commentRepository.findByProjectId(projectId);

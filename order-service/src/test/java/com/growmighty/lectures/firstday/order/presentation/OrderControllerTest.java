@@ -13,6 +13,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -46,6 +47,30 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.status").value("PAID"))
                 .andExpect(jsonPath("$.error").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("내 후원 내역은 GET /orders/me 로 userId 기준 조회한다")
+    void getMyOrders_success() throws Exception {
+        when(orderApiService.getOrdersByUser(1L)).thenReturn(List.of(new OrderResult(
+                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000))));
+
+        mockMvc.perform(get("/orders/me").param("userId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].id").value(1));
+    }
+
+    @Test
+    @DisplayName("후원 상세는 GET /orders/{orderId} 로 조회한다")
+    void getOrder_success() throws Exception {
+        when(orderApiService.getOrderInfo(1L)).thenReturn(new OrderResult(
+                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000)));
+
+        mockMvc.perform(get("/orders/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1));
     }
 
     @Test

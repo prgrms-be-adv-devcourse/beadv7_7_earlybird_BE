@@ -30,6 +30,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
+    public List<Order> findByUserId(Long userId) {
+        return jpaRepository.findByUserId(userId);
+    }
+
+    @Override
     public List<Order> findPage(int page, int size) {
         return jpaRepository.findAll(PageRequest.of(page, size)).getContent();
     }

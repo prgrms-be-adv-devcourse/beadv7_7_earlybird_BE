@@ -13,8 +13,9 @@ import org.springframework.web.bind.annotation.*;
 public class PaymentController {
     private final PaymentService paymentService;
 
-    @PostMapping
-    public ApiResponse<PaymentResponse> pay(@RequestBody PayRequest request) {
+    /** 결제 승인. TODO(팀): PG 확정 후 orderId·paymentKey 파라미터 추가 (API 명세서 §5, §10) */
+    @PostMapping("/confirm")
+    public ApiResponse<PaymentResponse> confirm(@RequestBody PayRequest request) {
         return ApiResponse.ok(PaymentResponse.from(paymentService.pay(request.amount())));
     }
 

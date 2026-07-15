@@ -10,6 +10,8 @@ public interface OrderRepository {
 
     List<Order> findAll();
 
+    List<Order> findByUserId(Long userId);
+
     /** 페이지 단위 조회 (정산 데모에서 "조금씩 읽기"에 사용) */
     List<Order> findPage(int page, int size);
 

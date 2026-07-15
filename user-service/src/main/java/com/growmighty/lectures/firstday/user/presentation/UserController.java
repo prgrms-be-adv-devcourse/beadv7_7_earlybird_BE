@@ -14,8 +14,8 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
     private final UserService userService;
 
-    @PostMapping
-    public ApiResponse<UserResponse> register(@RequestBody RegisterUserRequest request) {
+    @PostMapping("/signup")
+    public ApiResponse<UserResponse> signup(@RequestBody RegisterUserRequest request) {
         return ApiResponse.ok(UserResponse.from(userService.register(request.toCommand())));
     }
 
@@ -24,8 +24,9 @@ public class UserController {
         return ApiResponse.ok(UserResponse.from(userService.authenticate(request.toCommand())));
     }
 
-    @GetMapping("/{userId}")
-    public ApiResponse<UserResponse> getUser(@PathVariable Long userId) {
+    /** 내 정보 조회. TODO(팀): JWT 도입 후 userId 파라미터 대신 토큰에서 추출 */
+    @GetMapping("/me")
+    public ApiResponse<UserResponse> getMe(@RequestParam Long userId) {
         return ApiResponse.ok(UserResponse.from(userService.getUser(userId)));
     }
 }

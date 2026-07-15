@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 @FeignClient(name = "payment-service")
 public interface PaymentFeignClient {
 
-    @PostMapping("/payments")
+    @PostMapping("/payments/confirm")
     ApiResponseBody<PaymentApiData> pay(@RequestBody PayBody body);
 
     @PostMapping("/payments/{paymentId}/cancel")
