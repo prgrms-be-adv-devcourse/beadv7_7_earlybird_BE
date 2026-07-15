@@ -18,3 +18,24 @@ services:
       - "5601:5601"
     depends_on:
       - elasticsearch
+
+  mysql:
+    image: mysql:8.4
+    container_name: earlybird-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_USER=earlybird       # 애플리케이션 공용 계정 (로컬 개발용)
+      - MYSQL_PASSWORD=earlybird
+      - TZ=Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      # 최초 기동 시 서비스별 데이터베이스 9개를 생성한다 (볼륨이 이미 있으면 실행되지 않음)
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - earlybird-mysql-data:/var/lib/mysql
+
+volumes:
+  earlybird-mysql-data:
