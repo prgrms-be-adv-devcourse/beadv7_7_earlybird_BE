@@ -9,6 +9,9 @@
 - **Docker Desktop** 설치 및 실행 ([다운로드](https://www.docker.com/products/docker-desktop/))
 - 로컬에 MySQL을 직접 설치해서 쓰고 있다면 → [트러블슈팅: 3306 포트 충돌](#3306-포트-충돌) 참고
 
+> ⚠️ DB 의존 테스트(order/settlement)는 **Testcontainers** 로 일회용 MySQL 컨테이너를 띄워서 돈다.
+> 따라서 `./gradlew build` (테스트 포함) 실행 시에도 Docker 가 켜져 있어야 한다. (CI 구성 시에도 동일)
+
 ## 1. MySQL 컨테이너 실행
 
 레포 루트에서:
@@ -46,8 +49,8 @@ docker compose -f infrastructure/docker-compose.yml up -d mysql
 | cart-service (:8085) | `cartdb` | `jdbc:mysql://localhost:3306/cartdb` |
 | settlement-service (:8086) | `settlementdb` | `jdbc:mysql://localhost:3306/settlementdb` |
 | file-service (:8087) | `filedb` | `jdbc:mysql://localhost:3306/filedb` |
-| board-service | `boarddb` | `jdbc:mysql://localhost:3306/boarddb` |
-| notification-service | `notificationdb` | `jdbc:mysql://localhost:3306/notificationdb` |
+| board-service (:8088) | `boarddb` | `jdbc:mysql://localhost:3306/boarddb` |
+| notification-service (:8089) | `notificationdb` | `jdbc:mysql://localhost:3306/notificationdb` |
 
 각 서비스가 실제로 어떤 URL/계정을 쓰는지는 서비스 모듈이 아니라
 **config 레포(`beadv7_7_earlybird_config`)의 서비스별 `.yml`** 에 정의되어 있다.

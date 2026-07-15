@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "settlement.batch.chunk-size=10",
         "spring.jpa.show-sql=false"
 })
-class SettlementRestartIntegrationTest {
+class SettlementRestartIntegrationTest extends MySqlIntegrationTestSupport {
 
     private static final int TOTAL = 100;
 
