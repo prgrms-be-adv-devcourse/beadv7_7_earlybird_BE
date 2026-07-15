@@ -98,10 +98,6 @@ docker compose -f infrastructure/docker-compose.yml up -d
 
 현재 모든 서비스는 인메모리 H2를 쓴다 (`ddl-auto: create`, 재시작 시 초기화). 각 서비스의 `/h2-console` 에서 DB를 볼 수 있다.
 
-## 협업 규칙
-
-브랜치 전략, PR 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md) 참고.
-
 ## 문서
 
 - `5팀 프로젝트 문서/` (팀 공유 폴더) — 기획서, API 명세서, 회의록
