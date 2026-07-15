@@ -23,14 +23,14 @@ public class CartController {
         return CartResponse.from(cartService.addItem(request.toCommand(userId)));
     }
 
-    @PatchMapping("/items/{projectId}")
-    public CartResponse changeQuantity(@PathVariable Long userId, @PathVariable Long projectId, @RequestBody ChangeCartItemQuantityRequest request) {
-        return CartResponse.from(cartService.changeQuantity(userId, projectId, request.quantity()));
+    @PatchMapping("/items/{rewardId}")
+    public CartResponse changeQuantity(@PathVariable Long userId, @PathVariable Long rewardId, @RequestBody ChangeCartItemQuantityRequest request) {
+        return CartResponse.from(cartService.changeQuantity(userId, rewardId, request.quantity()));
     }
 
-    @DeleteMapping("/items/{projectId}")
-    public CartResponse removeItem(@PathVariable Long userId, @PathVariable Long projectId) {
-        return CartResponse.from(cartService.removeItem(userId, projectId));
+    @DeleteMapping("/items/{rewardId}")
+    public CartResponse removeItem(@PathVariable Long userId, @PathVariable Long rewardId) {
+        return CartResponse.from(cartService.removeItem(userId, rewardId));
     }
 
     @DeleteMapping

@@ -10,7 +10,11 @@ public record OrderResult(
         OrderStatus status,
         BigDecimal itemsAmount,
         BigDecimal shippingFee,
-        BigDecimal totalAmount
+        BigDecimal totalAmount,
+        String receiverName,
+        String receiverPhone,
+        String shippingAddress,
+        String zipCode
 ) {
     public static OrderResult from(Order order) {
         return new OrderResult(
@@ -18,6 +22,10 @@ public record OrderResult(
                 order.getStatus(),
                 order.getItemsAmount().getValue(),
                 order.getShippingFee().getValue(),
-                order.getTotalAmount().getValue());
+                order.getTotalAmount().getValue(),
+                order.getReceiverName(),
+                order.getReceiverPhone(),
+                order.getShippingAddress(),
+                order.getZipCode());
     }
 }

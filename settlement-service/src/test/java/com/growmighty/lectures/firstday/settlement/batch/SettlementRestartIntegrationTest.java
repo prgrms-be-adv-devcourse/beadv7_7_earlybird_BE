@@ -46,9 +46,9 @@ class SettlementRestartIntegrationTest extends MySqlIntegrationTestSupport {
         jdbc.update("DELETE FROM payments");
         for (long id = 1; id <= TOTAL; id++) {
             BigDecimal amount = BigDecimal.valueOf(1_000 + id * 37 % 99_000);
-            jdbc.update("INSERT INTO payments (id, amount, status) VALUES (?, ?, 'PAID')", id, amount);
-            jdbc.update("INSERT INTO orders (id, user_id, payment_id, items_amount, shipping_fee, total_amount, status) "
-                    + "VALUES (?, ?, ?, ?, 0, ?, 'PAID')", id, id % 1000 + 1, id, amount, amount);
+            jdbc.update("INSERT INTO payments (id, amount, status, created_at, updated_at) VALUES (?, ?, 'PAID', NOW(), NOW())", id, amount);
+            jdbc.update("INSERT INTO orders (id, user_id, payment_id, items_amount, shipping_fee, total_amount, status, created_at, updated_at) "
+                    + "VALUES (?, ?, ?, ?, 0, ?, 'PAID', NOW(), NOW())", id, id % 1000 + 1, id, amount, amount);
         }
     }
 

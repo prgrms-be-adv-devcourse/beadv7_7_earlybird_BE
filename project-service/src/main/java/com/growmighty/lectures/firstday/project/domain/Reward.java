@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -15,7 +16,7 @@ import java.math.BigDecimal;
 @Table(name = "rewards")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Reward {
+public class Reward extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

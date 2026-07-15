@@ -1,18 +1,17 @@
 package com.growmighty.lectures.firstday.board.comment.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /** 사용자 의견·문의 — 프로젝트에 달리는 댓글형 게시글. 프로젝트/유저와는 ID로만 참조한다. */
 @Entity
 @Table(name = "comments")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Comment {
+public class Comment extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -30,15 +29,11 @@ public class Comment {
     @Column(nullable = false)
     private String content;
 
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-
     private Comment(Long projectId, Long userId, Long parentId, String content) {
         this.projectId = projectId;
         this.userId = userId;
         this.parentId = parentId;
         this.content = content;
-        this.createdAt = LocalDateTime.now();
     }
 
     public static Comment create(Long projectId, Long userId, Long parentId, String content) {

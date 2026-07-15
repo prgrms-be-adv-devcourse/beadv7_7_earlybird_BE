@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 
 public interface PaymentPort {
 
-    PaymentResult pay(BigDecimal amount);
+    PaymentResult pay(Long orderId, BigDecimal amount);
 
     void cancel(Long paymentId);
 }

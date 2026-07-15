@@ -6,10 +6,11 @@ import java.math.BigDecimal;
 
 public record PaymentResponse(
         Long paymentId,
+        Long orderId,
         BigDecimal amount,
         String status
 ) {
     public static PaymentResponse from(PaymentInfo info) {
-        return new PaymentResponse(info.paymentId(), info.amount(), info.status().name());
+        return new PaymentResponse(info.paymentId(), info.orderId(), info.amount(), info.status().name());
     }
 }

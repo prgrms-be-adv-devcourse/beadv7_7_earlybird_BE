@@ -58,9 +58,9 @@ public class SettlementDataSeeder implements CommandLineRunner {
             final long base = inserted;
             final int rows = (int) Math.min(batchSize, count - inserted);
 
-            // 1) 결제 데이터
+            // 1) 결제 데이터 (created_at/updated_at: JdbcTemplate 직접 적재라 JPA Auditing 이 안 타서 NOW()로 채운다)
             jdbcTemplate.batchUpdate(
-                    "INSERT INTO payments (id, amount, status) VALUES (?, ?, ?)",
+                    "INSERT INTO payments (id, amount, status, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())",
                     new BatchPreparedStatementSetter() {
                         @Override
                         public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -78,8 +78,8 @@ public class SettlementDataSeeder implements CommandLineRunner {
 
             // 2) 주문 데이터 (payment_id = id 로 1:1 매핑, 배송비 0, 전액 프로젝트금액)
             jdbcTemplate.batchUpdate(
-                    "INSERT INTO orders (id, user_id, payment_id, items_amount, shipping_fee, total_amount, status) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO orders (id, user_id, payment_id, items_amount, shipping_fee, total_amount, status, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
                     new BatchPreparedStatementSetter() {
                         @Override
                         public void setValues(PreparedStatement ps, int i) throws SQLException {

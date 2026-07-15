@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 public record RegisterProjectCommand(
         Long creatorId,
+        Long categoryId,
         String title,
         String description,
         BigDecimal goalAmount,

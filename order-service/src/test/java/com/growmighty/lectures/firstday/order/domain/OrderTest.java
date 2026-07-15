@@ -15,10 +15,14 @@ class OrderTest {
         return OrderItem.create("리워드-" + projectId, new BigDecimal(price), projectId, projectId, quantity);
     }
 
+    private Order order(List<OrderItem> items) {
+        return Order.create(1L, items, "김하나한", "010-0000-0000", "서울시 강남구", "06236");
+    }
+
     @Test
     @DisplayName("주문 생성 시 항목 합계와 총액을 스스로 계산한다")
     void create_calculatesAmounts() {
-        Order order = Order.create(1L, List.of(item(1L, "10000", 2)));
+        Order order = order(List.of(item(1L, "10000", 2)));
 
         assertThat(order.getItemsAmount().getValue()).isEqualByComparingTo("20000");
         assertThat(order.getTotalAmount().getValue()).isEqualByComparingTo("23000");
@@ -28,7 +32,7 @@ class OrderTest {
     @Test
     @DisplayName("프로젝트 합계가 무료배송 기준(50000) 미만이면 배송비 3000원이 붙는다")
     void shippingFee_charged_belowThreshold() {
-        Order order = Order.create(1L, List.of(item(1L, "10000", 1)));
+        Order order = order(List.of(item(1L, "10000", 1)));
 
         assertThat(order.getShippingFee().getValue()).isEqualByComparingTo("3000");
         assertThat(order.getTotalAmount().getValue()).isEqualByComparingTo("13000");
@@ -37,7 +41,7 @@ class OrderTest {
     @Test
     @DisplayName("프로젝트 합계가 무료배송 기준 이상이면 배송비가 0원이다")
     void shippingFee_free_atOrAboveThreshold() {
-        Order order = Order.create(1L, List.of(item(1L, "50000", 1)));
+        Order order = order(List.of(item(1L, "50000", 1)));
 
         assertThat(order.getShippingFee().getValue()).isEqualByComparingTo("0");
         assertThat(order.getTotalAmount().getValue()).isEqualByComparingTo("50000");
@@ -46,14 +50,24 @@ class OrderTest {
     @Test
     @DisplayName("주문 항목이 없으면 생성할 수 없다")
     void create_withoutItems_throws() {
-        assertThatThrownBy(() -> Order.create(1L, List.of()))
+        assertThatThrownBy(() -> order(List.of()))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("배송지 정보가 비어 있으면 생성할 수 없다")
+    void create_withoutShippingInfo_throws() {
+        List<OrderItem> items = List.of(item(1L, "10000", 1));
+        assertThatThrownBy(() -> Order.create(1L, items, "", "010-0000-0000", "서울시 강남구", "06236"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Order.create(1L, items, "김하나한", null, "서울시 강남구", "06236"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("결제 완료 시 상태가 PAID로 전이되고 결제 ID가 연결된다")
     void completePayment_transitions() {
-        Order order = Order.create(1L, List.of(item(1L, "10000", 1)));
+        Order order = order(List.of(item(1L, "10000", 1)));
 
         order.completePayment(99L);
 
@@ -64,7 +78,7 @@ class OrderTest {
     @Test
     @DisplayName("CREATED가 아닌 상태에서 결제 완료를 호출하면 예외가 발생한다")
     void completePayment_whenNotCreated_throws() {
-        Order order = Order.create(1L, List.of(item(1L, "10000", 1)));
+        Order order = order(List.of(item(1L, "10000", 1)));
         order.completePayment(99L);
 
         assertThatThrownBy(() -> order.completePayment(100L))
@@ -74,7 +88,7 @@ class OrderTest {
     @Test
     @DisplayName("주문을 취소하면 상태가 CANCELLED로 전이된다")
     void cancel_transitions() {
-        Order order = Order.create(1L, List.of(item(1L, "10000", 1)));
+        Order order = order(List.of(item(1L, "10000", 1)));
 
         order.cancel();
 
@@ -84,7 +98,7 @@ class OrderTest {
     @Test
     @DisplayName("이미 취소된 주문을 다시 취소하면 예외가 발생한다")
     void cancel_twice_throws() {
-        Order order = Order.create(1L, List.of(item(1L, "10000", 1)));
+        Order order = order(List.of(item(1L, "10000", 1)));
         order.cancel();
 
         assertThatThrownBy(order::cancel)
@@ -94,7 +108,7 @@ class OrderTest {
     @Test
     @DisplayName("재계산 총액은 저장된 총액과 항상 일치한다")
     void recalculatedTotal_matchesStored() {
-        Order order = Order.create(1L, List.of(item(1L, "10000", 2), item(2L, "5000", 1)));
+        Order order = order(List.of(item(1L, "10000", 2), item(2L, "5000", 1)));
 
         assertThat(order.recalculatedTotal().isSameAmount(order.getTotalAmount())).isTrue();
     }

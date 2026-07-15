@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.cart.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -12,7 +13,7 @@ import java.util.List;
 @Table(name = "carts")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Cart {
+public class Cart extends BaseEntity {
     public static final int MAX_DISTINCT_ITEMS = 50;
 
     @Id
@@ -33,8 +34,8 @@ public class Cart {
         return new Cart(userId);
     }
 
-    public void addItem(Long projectId, int quantity) {
-        CartItem existing = findItem(projectId);
+    public void addItem(Long rewardId, int quantity) {
+        CartItem existing = findItem(rewardId);
         if (existing != null) {
             existing.addQuantity(quantity);
             return;
@@ -42,35 +43,35 @@ public class Cart {
         if (items.size() >= MAX_DISTINCT_ITEMS) {
             throw new IllegalStateException("장바구니에는 최대 " + MAX_DISTINCT_ITEMS + "종류까지 담을 수 있습니다.");
         }
-        CartItem item = CartItem.create(projectId, quantity);
+        CartItem item = CartItem.create(rewardId, quantity);
         item.assignCart(this);
         this.items.add(item);
     }
 
-    public void changeQuantity(Long projectId, int newQuantity) {
-        requireItem(projectId).changeQuantity(newQuantity);
+    public void changeQuantity(Long rewardId, int newQuantity) {
+        requireItem(rewardId).changeQuantity(newQuantity);
     }
 
-    public void removeItem(Long projectId) {
-        requireItem(projectId);
-        this.items.removeIf(item -> item.hasProject(projectId));
+    public void removeItem(Long rewardId) {
+        requireItem(rewardId);
+        this.items.removeIf(item -> item.hasReward(rewardId));
     }
 
     public void clear() {
         this.items.clear();
     }
 
-    private CartItem findItem(Long projectId) {
+    private CartItem findItem(Long rewardId) {
         return items.stream()
-                .filter(item -> item.hasProject(projectId))
+                .filter(item -> item.hasReward(rewardId))
                 .findFirst()
                 .orElse(null);
     }
 
-    private CartItem requireItem(Long projectId) {
-        CartItem item = findItem(projectId);
+    private CartItem requireItem(Long rewardId) {
+        CartItem item = findItem(rewardId);
         if (item == null) {
-            throw new IllegalArgumentException("장바구니에 없는 프로젝트입니다. projectId=" + projectId);
+            throw new IllegalArgumentException("장바구니에 없는 리워드입니다. rewardId=" + rewardId);
         }
         return item;
     }

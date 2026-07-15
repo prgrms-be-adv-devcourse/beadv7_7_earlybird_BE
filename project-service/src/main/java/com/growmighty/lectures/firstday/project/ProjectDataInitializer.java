@@ -5,6 +5,8 @@ import com.growmighty.lectures.firstday.project.application.RewardService;
 import com.growmighty.lectures.firstday.project.application.dto.ProjectInfo;
 import com.growmighty.lectures.firstday.project.application.dto.RegisterProjectCommand;
 import com.growmighty.lectures.firstday.project.application.dto.RegisterRewardCommand;
+import com.growmighty.lectures.firstday.project.domain.ProjectCategory;
+import com.growmighty.lectures.firstday.project.domain.ProjectCategoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
@@ -24,9 +26,14 @@ import java.time.LocalDateTime;
 public class ProjectDataInitializer implements CommandLineRunner {
     private final ProjectService projectService;
     private final RewardService rewardService;
+    private final ProjectCategoryRepository categoryRepository;
+
+    private Long lifeCategoryId;
 
     @Override
     public void run(String... args) {
+        seedCategories();
+
         // 프로젝트 1 (rewardId 1~3)
         Long p1 = openProject("수제 가죽 노트커버", 3_000_000,
             "장인이 한 땀 한 땀 만드는 A5 가죽 노트커버 펀딩입니다.");
@@ -53,11 +60,18 @@ public class ProjectDataInitializer implements CommandLineRunner {
         reward(p4, "급식기 1대 + 전용 사료통", 99_000, 300, "색상 선택 가능");
     }
 
+    /** 대분류 1개 + 소분류 1개만 시드로 넣는다. 카테고리 전체 체계는 관리자 기능 확정 후 채운다. */
+    private void seedCategories() {
+        ProjectCategory root = categoryRepository.save(ProjectCategory.createRoot("라이프스타일", 1));
+        ProjectCategory child = categoryRepository.save(ProjectCategory.createChild(root.getId(), "생활용품", 1));
+        this.lifeCategoryId = child.getId();
+    }
+
     /** 등록 → 심사 요청 → 승인(공개)까지 진행해 후원 가능한 상태로 만든다 */
     private Long openProject(String title, long goalAmount, String description) {
         LocalDateTime now = LocalDateTime.now();
         ProjectInfo info = projectService.register(new RegisterProjectCommand(
-            1L, title, description, BigDecimal.valueOf(goalAmount), now, now.plusDays(30)));
+            1L, lifeCategoryId, title, description, BigDecimal.valueOf(goalAmount), now, now.plusDays(30)));
         projectService.submitForReview(info.id());
         projectService.approve(info.id());
         return info.id();

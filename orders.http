@@ -18,7 +18,11 @@ Content-Type: application/json
       "rewardId": 1,
       "quantity": 1
     }
-  ]
+  ],
+  "receiverName": "김하나한",
+  "receiverPhone": "010-0000-0000",
+  "shippingAddress": "서울시 강남구",
+  "zipCode": "06236"
 }
 
 ### 후원 취소 (리워드 재고 복원 + 결제 환불 + 상태 전이)

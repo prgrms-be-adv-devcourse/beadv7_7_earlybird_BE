@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.user.presentation;
 
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.presentation.dto.LoginRequest;
+import com.growmighty.lectures.firstday.user.presentation.dto.RegisterCreatorRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.RegisterUserRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.UserResponse;
 import lombok.RequiredArgsConstructor;
@@ -27,5 +28,11 @@ public class UserController {
     @GetMapping("/me")
     public UserResponse getMe(@RequestParam Long userId) {
         return UserResponse.from(userService.getUser(userId));
+    }
+
+    /** 판매자(창작자) 등록. TODO(팀): JWT 도입 후 userId 파라미터 대신 토큰에서 추출 */
+    @PostMapping("/me/creator")
+    public UserResponse registerAsCreator(@RequestParam Long userId, @RequestBody RegisterCreatorRequest request) {
+        return UserResponse.from(userService.registerAsCreator(request.toCommand(userId)));
     }
 }

@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public record ProjectResponse(
         Long id,
         Long creatorId,
+        Long categoryId,
         String title,
         String description,
         BigDecimal goalAmount,
@@ -20,6 +21,7 @@ public record ProjectResponse(
         return new ProjectResponse(
                 info.id(),
                 info.creatorId(),
+                info.categoryId(),
                 info.title(),
                 info.description(),
                 info.goalAmount(),

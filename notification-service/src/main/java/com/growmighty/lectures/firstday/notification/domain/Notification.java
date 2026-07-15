@@ -1,17 +1,16 @@
 package com.growmighty.lectures.firstday.notification.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 @Entity
 @Table(name = "notifications")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Notification {
+public class Notification extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -19,9 +18,9 @@ public class Notification {
     @Column(nullable = false)
     private Long userId;
 
-    /** TODO(팀): 알림 유형 enum 확정 (PAYMENT_COMPLETED, PROJECT_CLOSED, NOTICE_PUBLISHED, SETTLEMENT_COMPLETED...) */
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String type;
+    private NotificationType type;
 
     @Column(nullable = false)
     private String message;
@@ -29,18 +28,14 @@ public class Notification {
     @Column(nullable = false)
     private boolean isRead;
 
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-
-    private Notification(Long userId, String type, String message) {
+    private Notification(Long userId, NotificationType type, String message) {
         this.userId = userId;
         this.type = type;
         this.message = message;
         this.isRead = false;
-        this.createdAt = LocalDateTime.now();
     }
 
-    public static Notification create(Long userId, String type, String message) {
+    public static Notification create(Long userId, NotificationType type, String message) {
         return new Notification(userId, type, message);
     }
 

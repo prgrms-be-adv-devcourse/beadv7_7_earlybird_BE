@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.order.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -13,7 +14,7 @@ import java.util.List;
 @Table(name = "orders")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Order {
+public class Order extends BaseEntity {
     private static final Money FREE_SHIPPING_THRESHOLD = Money.from(BigDecimal.valueOf(50_000));
 
     private static final Money BASE_SHIPPING_FEE = Money.from(BigDecimal.valueOf(3_000));
@@ -47,21 +48,50 @@ public class Order {
     @Column(nullable = false)
     private OrderStatus status;
 
-    private Order(Long userId, List<OrderItem> items) {
+    /** 배송지 스냅샷 — 주소록 없이 주문 시 직접 입력한 값을 그대로 보관한다. */
+    @Column(nullable = false)
+    private String receiverName;
+
+    @Column(nullable = false)
+    private String receiverPhone;
+
+    @Column(nullable = false)
+    private String shippingAddress;
+
+    @Column(nullable = false)
+    private String zipCode;
+
+    private Order(Long userId, List<OrderItem> items,
+                  String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
         validateItems(items);
+        validateShippingInfo(receiverName, receiverPhone, shippingAddress, zipCode);
         items.forEach(this::addOrderItem);
         this.userId = userId;
+        this.receiverName = receiverName;
+        this.receiverPhone = receiverPhone;
+        this.shippingAddress = shippingAddress;
+        this.zipCode = zipCode;
         this.status = OrderStatus.CREATED;
         recalculateAmounts();
     }
 
-    public static Order create(Long userId, List<OrderItem> items) {
-        return new Order(userId, items);
+    public static Order create(Long userId, List<OrderItem> items,
+                               String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
+        return new Order(userId, items, receiverName, receiverPhone, shippingAddress, zipCode);
     }
 
     private void validateItems(List<OrderItem> items) {
         if (items == null || items.isEmpty()) {
             throw new IllegalStateException("주문할 프로젝트이 없습니다.");
+        }
+    }
+
+    private void validateShippingInfo(String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
+        if (receiverName == null || receiverName.isBlank()
+                || receiverPhone == null || receiverPhone.isBlank()
+                || shippingAddress == null || shippingAddress.isBlank()
+                || zipCode == null || zipCode.isBlank()) {
+            throw new IllegalArgumentException("배송지 정보는 비어 있을 수 없습니다.");
         }
     }
 

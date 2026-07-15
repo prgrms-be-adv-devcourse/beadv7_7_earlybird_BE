@@ -10,12 +10,12 @@ public record CartResponse(
         int itemCount,
         List<ItemResponse> items
 ) {
-    public record ItemResponse(Long projectId, int quantity) {
+    public record ItemResponse(Long rewardId, int quantity) {
     }
 
     public static CartResponse from(CartView view) {
         List<ItemResponse> items = view.items().stream()
-                .map(line -> new ItemResponse(line.projectId(), line.quantity()))
+                .map(line -> new ItemResponse(line.rewardId(), line.quantity()))
                 .toList();
         return new CartResponse(view.cartId(), view.userId(), items.size(), items);
     }

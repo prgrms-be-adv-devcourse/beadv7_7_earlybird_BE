@@ -4,5 +4,5 @@ import lombok.NonNull;
 
 import java.math.BigDecimal;
 
-public record PayRequest(@NonNull BigDecimal amount) {
+public record PayRequest(@NonNull Long orderId, @NonNull BigDecimal amount) {
 }

@@ -35,12 +35,13 @@ class OrderControllerTest {
     @DisplayName("주문 생성 성공 시 success=true 와 data를 감싼 응답을 반환한다")
     void placeOrder_success_envelope() throws Exception {
         when(orderApiService.placeOrder(any())).thenReturn(new OrderResult(
-                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000)));
+                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000),
+                "김하나한", "010-0000-0000", "서울시 강남구", "06236"));
 
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requests":[{"rewardId":1,"quantity":1}]}
+                                {"userId":1,"requests":[{"rewardId":1,"quantity":1}],"receiverName":"김하나한","receiverPhone":"010-0000-0000","shippingAddress":"서울시 강남구","zipCode":"06236"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -53,7 +54,8 @@ class OrderControllerTest {
     @DisplayName("내 후원 내역은 GET /orders/me 로 userId 기준 조회한다")
     void getMyOrders_success() throws Exception {
         when(orderApiService.getOrdersByUser(1L)).thenReturn(List.of(new OrderResult(
-                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000))));
+                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000),
+                "김하나한", "010-0000-0000", "서울시 강남구", "06236")));
 
         mockMvc.perform(get("/orders/me").param("userId", "1"))
                 .andExpect(status().isOk())
@@ -65,7 +67,8 @@ class OrderControllerTest {
     @DisplayName("후원 상세는 GET /orders/{orderId} 로 조회한다")
     void getOrder_success() throws Exception {
         when(orderApiService.getOrderInfo(1L)).thenReturn(new OrderResult(
-                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000)));
+                1L, OrderStatus.PAID, BigDecimal.valueOf(20_000), BigDecimal.ZERO, BigDecimal.valueOf(20_000),
+                "김하나한", "010-0000-0000", "서울시 강남구", "06236"));
 
         mockMvc.perform(get("/orders/1"))
                 .andExpect(status().isOk())

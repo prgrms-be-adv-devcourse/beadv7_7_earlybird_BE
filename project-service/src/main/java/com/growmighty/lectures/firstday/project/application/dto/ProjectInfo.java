@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public record ProjectInfo(
         Long id,
         Long creatorId,
+        Long categoryId,
         String title,
         String description,
         BigDecimal goalAmount,
@@ -20,6 +21,7 @@ public record ProjectInfo(
         return new ProjectInfo(
                 project.getId(),
                 project.getCreatorId(),
+                project.getCategoryId(),
                 project.getTitle(),
                 project.getDescription(),
                 project.getGoalAmount(),

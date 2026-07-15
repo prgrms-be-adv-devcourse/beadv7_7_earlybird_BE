@@ -55,12 +55,15 @@ public class OrderApiService {
             rewardPort.decreaseStock(line.rewardId(), line.quantity());
         }
 
-        Order order = Order.create(command.userId(), orderItems);
+        Order order = Order.create(command.userId(), orderItems,
+                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
+        // payments.order_id 를 채우려면 결제를 호출하기 전에 주문 id 가 있어야 한다 — 먼저 저장(CREATED)한다.
+        Order savedOrder = orderRepository.save(order);
 
-        PaymentResult payment = paymentPort.pay(order.getTotalAmount().getValue());
-        order.completePayment(payment.paymentId());
+        PaymentResult payment = paymentPort.pay(savedOrder.getId(), savedOrder.getTotalAmount().getValue());
+        savedOrder.completePayment(payment.paymentId());
 
-        return OrderResult.from(orderRepository.save(order));
+        return OrderResult.from(orderRepository.save(savedOrder));
     }
 
     @Transactional

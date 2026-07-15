@@ -21,17 +21,17 @@ public class PaymentHttpClient implements PaymentPort {
     private final CircuitBreakerFactory circuitBreakerFactory;   // 문지기는 그대로
 
     @Override
-    public PaymentResult pay(BigDecimal amount) {
+    public PaymentResult pay(Long orderId, BigDecimal amount) {
         // Step 5 와 완전히 동일 — 차단기는 "호출을 감싸는" 물건이라,
         // 안에서 RestClient 가 뛰든 Feign 이 뛰든 관심이 없다. 추상화의 힘.
         return circuitBreakerFactory.create("payment").run(
-            () -> callPay(amount),   // ① 본 호출 (평소엔 이게 실행된다)
+            () -> callPay(orderId, amount),   // ① 본 호출 (평소엔 이게 실행된다)
             this::payFallback);      // ② 실패했거나, 차단기가 OPEN 이라 거부됐을 때 (plan B)
     }
 
     // 몸통이 6줄 → 2줄. 하는 일은 완전히 같다.
-    private PaymentResult callPay(BigDecimal amount) {
-        PaymentApiData data = paymentFeignClient.pay(new PayBody(amount)).data();
+    private PaymentResult callPay(Long orderId, BigDecimal amount) {
+        PaymentApiData data = paymentFeignClient.pay(new PayBody(orderId, amount)).data();
         return new PaymentResult(data.paymentId(), data.amount(), data.status());
     }
 

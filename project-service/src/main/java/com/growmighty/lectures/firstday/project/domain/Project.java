@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -16,7 +17,7 @@ import java.time.LocalDateTime;
 @Table(name = "projects")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Project {
+public class Project extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -24,6 +25,10 @@ public class Project {
     /** 창작자 = User 도메인의 userId (유저 단일 도메인 + role 구분) */
     @Column(nullable = false)
     private Long creatorId;
+
+    /** projectdb.project_categories.id (논리) — 2차(소분류)만 지정, 필수값 */
+    @Column(nullable = false)
+    private Long categoryId;
 
     @Column(nullable = false)
     private String title;
@@ -45,11 +50,15 @@ public class Project {
     @Column(nullable = false)
     private ProjectStatus status;
 
-    private Project(Long creatorId, String title, String description,
+    private Project(Long creatorId, Long categoryId, String title, String description,
                     BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
         validateGoalAmount(goalAmount);
         validatePeriod(startAt, endAt);
+        if (categoryId == null) {
+            throw new IllegalArgumentException("카테고리는 필수입니다.");
+        }
         this.creatorId = creatorId;
+        this.categoryId = categoryId;
         this.title = title;
         this.description = description;
         this.goalAmount = goalAmount;
@@ -58,9 +67,9 @@ public class Project {
         this.status = ProjectStatus.DRAFT;
     }
 
-    public static Project register(Long creatorId, String title, String description,
+    public static Project register(Long creatorId, Long categoryId, String title, String description,
                                    BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
-        return new Project(creatorId, title, description, goalAmount, startAt, endAt);
+        return new Project(creatorId, categoryId, title, description, goalAmount, startAt, endAt);
     }
 
     // ── 상태 전이 ──────────────────────────────────────────────

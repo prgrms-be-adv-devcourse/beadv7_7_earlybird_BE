@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.order;
 
+import com.growmighty.lectures.firstday.order.config.JpaAuditingConfig;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
@@ -24,7 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 // 내장 DB 가 아니면 Boot 가 ddl-auto 를 기본 none 으로 두므로, 테스트 스키마 생성을 명시한다.
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
-@Import(OrderRepositoryAdapter.class)
+// JpaAuditingConfig: @DataJpaTest 도 @WebMvcTest 처럼 일반 @Configuration 빈은 스캔에서 걸러내므로
+// created_at/updated_at 을 실제로 채우려면 명시적으로 가져와야 한다 (@Import 는 그 필터를 우회한다).
+@Import({OrderRepositoryAdapter.class, JpaAuditingConfig.class})
 class OrderRepositoryTests {
 
     // 테스트도 운영과 동일한 MySQL 로 돈다 (로컬 docker-compose 와 동일 버전, Docker 필요)
@@ -48,7 +51,7 @@ class OrderRepositoryTests {
 
         List<OrderItem> items = new ArrayList<>();
         items.add(OrderItem.create("원목 4인용 식탁", BigDecimal.valueOf(179000), projectId, rewardId, 1));
-        Order order = Order.create(userId, items);
+        Order order = Order.create(userId, items, "김하나한", "010-0000-0000", "서울시 강남구", "06236");
 
         Order saved = orderRepository.save(order);
         entityManager.flush();

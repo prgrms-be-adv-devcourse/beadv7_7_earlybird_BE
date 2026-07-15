@@ -1,16 +1,17 @@
 package com.growmighty.lectures.firstday.cart.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/** 장바구니 항목 — 후원은 리워드(후원 옵션) 단위로 이루어진다. 프로젝트 정보는 reward → project 경유 조회. */
 @Entity
 @Table(name = "cart_items")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-// TODO(팀): rewardId 기반 재설계 필요 — 후원은 리워드(후원 옵션) 단위로 이루어진다 (CartService 참고)
-public class CartItem {
+public class CartItem extends BaseEntity {
     public static final int MAX_QUANTITY = 99;
 
     @Id
@@ -22,19 +23,19 @@ public class CartItem {
     private Cart cart;
 
     @Column(nullable = false)
-    private Long projectId;
+    private Long rewardId;
 
     @Column(nullable = false)
     private Integer quantity;
 
-    private CartItem(Long projectId, int quantity) {
+    private CartItem(Long rewardId, int quantity) {
         validateQuantity(quantity);
-        this.projectId = projectId;
+        this.rewardId = rewardId;
         this.quantity = quantity;
     }
 
-    public static CartItem create(Long projectId, int quantity) {
-        return new CartItem(projectId, quantity);
+    public static CartItem create(Long rewardId, int quantity) {
+        return new CartItem(rewardId, quantity);
     }
 
     void addQuantity(int amount) {
@@ -47,8 +48,8 @@ public class CartItem {
         this.quantity = newQuantity;
     }
 
-    boolean hasProject(Long projectId) {
-        return this.projectId.equals(projectId);
+    boolean hasReward(Long rewardId) {
+        return this.rewardId.equals(rewardId);
     }
 
     void assignCart(Cart cart) {
@@ -60,7 +61,7 @@ public class CartItem {
             throw new IllegalArgumentException("수량은 1개 이상이어야 합니다. 입력값: " + quantity);
         }
         if (quantity > MAX_QUANTITY) {
-            throw new IllegalArgumentException("한 프로젝트은 최대 " + MAX_QUANTITY + "개까지 담을 수 있습니다.");
+            throw new IllegalArgumentException("한 리워드는 최대 " + MAX_QUANTITY + "개까지 담을 수 있습니다.");
         }
     }
 }

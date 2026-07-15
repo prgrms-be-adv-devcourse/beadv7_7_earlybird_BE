@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 
 public record RegisterProjectRequest(
         @NonNull Long creatorId,
+        @NonNull Long categoryId,
         @NonNull String title,
         String description,
         @NonNull BigDecimal goalAmount,
@@ -15,6 +16,6 @@ public record RegisterProjectRequest(
         @NonNull LocalDateTime endAt
 ) {
     public RegisterProjectCommand toCommand() {
-        return new RegisterProjectCommand(creatorId, title, description, goalAmount, startAt, endAt);
+        return new RegisterProjectCommand(creatorId, categoryId, title, description, goalAmount, startAt, endAt);
     }
 }

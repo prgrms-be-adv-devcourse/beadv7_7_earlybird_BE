@@ -17,8 +17,8 @@ public class PaymentService {
     private final PaymentGateway paymentGateway;
 
     @Transactional
-    public PaymentInfo pay(BigDecimal amount) {
-        Payment payment = Payment.ready(amount);
+    public PaymentInfo pay(Long orderId, BigDecimal amount) {
+        Payment payment = Payment.ready(orderId, amount);
         try {
             PaymentGateway.PgApproval approval = paymentGateway.approve(amount);
             payment.approve(approval.transactionId());

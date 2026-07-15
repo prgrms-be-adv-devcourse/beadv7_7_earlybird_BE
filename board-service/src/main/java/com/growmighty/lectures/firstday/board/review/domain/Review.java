@@ -1,18 +1,17 @@
 package com.growmighty.lectures.firstday.board.review.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /** 리뷰 — 리워드 수령 후원자의 평가. 게시판형과 DB 구조가 달라 별도 도메인으로 분리 (팀 설계 결정). */
 @Entity
 @Table(name = "reviews")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Review {
+public class Review extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -29,9 +28,6 @@ public class Review {
     @Lob
     private String content;
 
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-
     private Review(Long projectId, Long userId, Integer rating, String content) {
         if (rating == null || rating < 1 || rating > 5) {
             throw new IllegalArgumentException("평점은 1~5 사이여야 합니다. 입력값: " + rating);
@@ -40,7 +36,6 @@ public class Review {
         this.userId = userId;
         this.rating = rating;
         this.content = content;
-        this.createdAt = LocalDateTime.now();
     }
 
     public static Review create(Long projectId, Long userId, Integer rating, String content) {

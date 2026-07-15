@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.notification.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.notification.domain.Notification;
 import com.growmighty.lectures.firstday.notification.domain.NotificationRepository;
+import com.growmighty.lectures.firstday.notification.domain.NotificationType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +17,7 @@ public class NotificationService {
 
     /** TODO(팀): 지금은 HTTP 로 직접 생성하지만, 최종적으로는 이벤트 구독으로 생성되어야 한다 */
     @Transactional
-    public Notification create(Long userId, String type, String message) {
+    public Notification create(Long userId, NotificationType type, String message) {
         return notificationRepository.save(Notification.create(userId, type, message));
     }
 

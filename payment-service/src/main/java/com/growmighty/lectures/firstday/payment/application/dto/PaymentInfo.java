@@ -7,10 +7,11 @@ import java.math.BigDecimal;
 
 public record PaymentInfo(
         Long paymentId,
+        Long orderId,
         BigDecimal amount,
         PaymentStatus status
 ) {
     public static PaymentInfo from(Payment payment) {
-        return new PaymentInfo(payment.getId(), payment.getAmount(), payment.getStatus());
+        return new PaymentInfo(payment.getId(), payment.getOrderId(), payment.getAmount(), payment.getStatus());
     }
 }

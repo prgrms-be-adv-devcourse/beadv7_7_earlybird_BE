@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,10 +53,11 @@ class OrderApiServiceTest {
     @Test
     @DisplayName("주문 생성: 재고 차감·결제 승인을 호출하고 결제 ID를 주문에 연결한다")
     void placeOrder_orchestratesStockAndPayment() {
-        PlaceOrderCommand command = new PlaceOrderCommand(1L, List.of(new OrderLine(10L, 2)));
+        PlaceOrderCommand command = new PlaceOrderCommand(1L, List.of(new OrderLine(10L, 2)),
+                "김하나한", "010-0000-0000", "서울시 강남구", "06236");
         when(rewardPort.getReward(10L))
                 .thenReturn(new RewardSnapshot(10L, 1L, "원목 식탁", BigDecimal.valueOf(10_000), 5, true));
-        when(paymentPort.pay(any()))
+        when(paymentPort.pay(any(), any()))
                 .thenReturn(new PaymentResult(99L, BigDecimal.valueOf(23_000), "PAID"));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -66,11 +68,12 @@ class OrderApiServiceTest {
         verify(rewardPort).decreaseStock(10L, 2);
 
         ArgumentCaptor<BigDecimal> paidAmount = ArgumentCaptor.forClass(BigDecimal.class);
-        verify(paymentPort).pay(paidAmount.capture());
+        verify(paymentPort).pay(any(), paidAmount.capture());
         assertThat(paidAmount.getValue()).isEqualByComparingTo("23000");
 
+        // 결제 호출 전(주문 id 확보용)과 결제 완료 후, 총 2번 저장된다.
         ArgumentCaptor<Order> saved = ArgumentCaptor.forClass(Order.class);
-        verify(orderRepository).save(saved.capture());
+        verify(orderRepository, times(2)).save(saved.capture());
         assertThat(saved.getValue().getPaymentId()).isEqualTo(99L);
         assertThat(saved.getValue().getStatus()).isEqualTo(OrderStatus.PAID);
     }
@@ -78,19 +81,21 @@ class OrderApiServiceTest {
     @Test
     @DisplayName("주문 생성: 라인이 비어 있으면 재고/결제를 건드리지 않고 예외가 발생한다")
     void placeOrder_emptyLines_throws() {
-        PlaceOrderCommand command = new PlaceOrderCommand(1L, List.of());
+        PlaceOrderCommand command = new PlaceOrderCommand(1L, List.of(),
+                "김하나한", "010-0000-0000", "서울시 강남구", "06236");
 
         assertThatThrownBy(() -> orderApiService.placeOrder(command))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(rewardPort, never()).decreaseStock(any(), ArgumentMatchers.anyInt());
-        verify(paymentPort, never()).pay(any());
+        verify(paymentPort, never()).pay(any(), any());
     }
 
     @Test
     @DisplayName("주문 취소: 재고를 복원하고 결제를 취소하며 상태가 CANCELLED로 전이된다")
     void cancelOrder_restoresStockAndRefunds() {
-        Order order = Order.create(1L, List.of(OrderItem.create("원목 식탁", BigDecimal.valueOf(10_000), 1L, 10L, 2)));
+        Order order = Order.create(1L, List.of(OrderItem.create("원목 식탁", BigDecimal.valueOf(10_000), 1L, 10L, 2)),
+                "김하나한", "010-0000-0000", "서울시 강남구", "06236");
         order.completePayment(99L);
         when(orderRepository.findById(5L)).thenReturn(Optional.of(order));
 

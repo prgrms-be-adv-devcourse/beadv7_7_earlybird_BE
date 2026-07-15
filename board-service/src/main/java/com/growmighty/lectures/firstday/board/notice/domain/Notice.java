@@ -1,18 +1,17 @@
 package com.growmighty.lectures.firstday.board.notice.domain;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
 
 /** 창작자 공지(새 소식) — 프로젝트에 달리는 업데이트 게시글. 프로젝트와는 ID로만 참조한다. */
 @Entity
 @Table(name = "notices")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Notice {
+public class Notice extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -26,14 +25,10 @@ public class Notice {
     @Lob
     private String content;
 
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
-
     private Notice(Long projectId, String title, String content) {
         this.projectId = projectId;
         this.title = title;
         this.content = content;
-        this.createdAt = LocalDateTime.now();
     }
 
     public static Notice create(Long projectId, String title, String content) {

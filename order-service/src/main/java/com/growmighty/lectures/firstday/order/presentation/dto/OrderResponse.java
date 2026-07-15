@@ -9,7 +9,11 @@ public record OrderResponse(
         String status,
         BigDecimal itemsAmount,
         BigDecimal shippingFee,
-        BigDecimal totalAmount
+        BigDecimal totalAmount,
+        String receiverName,
+        String receiverPhone,
+        String shippingAddress,
+        String zipCode
 ) {
     public static OrderResponse from(OrderResult result) {
         return new OrderResponse(
@@ -17,6 +21,10 @@ public record OrderResponse(
                 result.status().name(),
                 result.itemsAmount(),
                 result.shippingFee(),
-                result.totalAmount());
+                result.totalAmount(),
+                result.receiverName(),
+                result.receiverPhone(),
+                result.shippingAddress(),
+                result.zipCode());
     }
 }

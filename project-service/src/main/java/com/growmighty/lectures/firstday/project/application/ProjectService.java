@@ -20,7 +20,7 @@ public class ProjectService {
     @Transactional
     public ProjectInfo register(RegisterProjectCommand command) {
         Project project = Project.register(
-            command.creatorId(), command.title(), command.description(),
+            command.creatorId(), command.categoryId(), command.title(), command.description(),
             command.goalAmount(), command.startAt(), command.endAt());
         ProjectInfo info = ProjectInfo.from(projectRepository.save(project));
         eventPublisher.publishEvent(new ProjectChangedEvent(info.id()));

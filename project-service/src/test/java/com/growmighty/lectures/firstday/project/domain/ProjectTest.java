@@ -15,7 +15,7 @@ class ProjectTest {
     private static final LocalDateTime END = LocalDateTime.of(2026, 8, 31, 23, 59);
 
     private Project project() {
-        return Project.register(1L, "수제 가죽 노트커버", "설명", BigDecimal.valueOf(3_000_000), START, END);
+        return Project.register(1L, 1L, "수제 가죽 노트커버", "설명", BigDecimal.valueOf(3_000_000), START, END);
     }
 
     @Test
@@ -29,9 +29,16 @@ class ProjectTest {
     @Test
     @DisplayName("목표 금액이 0 이하이거나 마감일이 시작일보다 앞서면 등록할 수 없다")
     void register_invalidValues_throw() {
-        assertThatThrownBy(() -> Project.register(1L, "x", "d", BigDecimal.ZERO, START, END))
+        assertThatThrownBy(() -> Project.register(1L, 1L, "x", "d", BigDecimal.ZERO, START, END))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Project.register(1L, "x", "d", BigDecimal.valueOf(1000), END, START))
+        assertThatThrownBy(() -> Project.register(1L, 1L, "x", "d", BigDecimal.valueOf(1000), END, START))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("카테고리 없이는 등록할 수 없다")
+    void register_withoutCategory_throws() {
+        assertThatThrownBy(() -> Project.register(1L, null, "x", "d", BigDecimal.valueOf(1000), START, END))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
