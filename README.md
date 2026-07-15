@@ -1,135 +1,108 @@
-# [Day 1 사전 과제] 도메인 분석 과제
+# 얼리버드 (Earlybird) — Backend
 
-> Day 1 DDD 강의에 앞서, **앞으로 고도화해 나갈 프로젝트의 도메인을 직접 분석**해보는 사전 과제입니다. 
-> 이 과제의 목적은 정답을 맞히는 것이 아니라, 현재 코드가 어떤 방식으로 서로 얽혀 있는지 스스로 파악하고 체감해보는 것입니다. 
-> 강의 시간에는 이러한 얽힌 연관관계를 하나씩 분리해 나가며, 도메인 경계를 세우는 과정을 함께 살펴볼 예정입니다.
+리워드 기반 크라우드펀딩 플랫폼. **All-or-Nothing 펀딩** 모델 — 마감일까지 목표 금액을 달성하면 창작자에게 정산하고, 실패하면 후원자 전원에게 일괄 환불한다.
 
-> (중요) 아직 설계에 익숙하지 않으신 분은 해당 과제가 어려울 수 있습니다. 전혀 걱정하지 않으셔도 됩니다, 강의 때 같이 진행해보고 그래도 이해가 안 가신다면 강의 이후 개인적으로 봐드리겠습니다. 
----
+> 프로그래머스 백엔드 심화 데브코스 7기 · 7회차 세미프로젝트 · **5팀**
 
-## 📦 분석 대상 도메인
+## 팀원
 
-현재 프로젝트는 **하나의 모놀리식 프로젝트**에 아래 6개 도메인이 섞여 있습니다.
-
-| 도메인 | 주요 Entity |
+| 이름 | 역할 |
 | --- | --- |
-| 유저 (User) | `User` |
-| 셀러 (Seller) | `Seller` |
-| 프로젝트 (Project) | `Project` |
-| 장바구니 (Cart) | `Cart`, `CartItem` |
-| 주문 (Order) | `Order`, `OrderItem` |
-| 결제 (Payment) | `Payment` |
+| 조우진 | PO |
+| 강대혁 | 팀원 |
+| 김지원 | 팀원 (AWS/인프라) |
+| 김하나한 | 팀원 |
+| 류민송 | 팀원 |
+| 정창민 | 팀원 |
 
-각 Entity는 다음 경로에 있습니다.
+## 아키텍처
+
+Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle 멀티모듈 MSA.
+
+각 서비스는 동일한 레이어 구조를 따른다:
 
 ```
-src/main/java/com/growmighty/lectures/firstday/tangledmonolith/
-├── user/User.java
-├── seller/Seller.java
-├── project/Project.java
-├── cart/Cart.java
-├── cart/CartItem.java
-├── order/Order.java
-├── order/OrderItem.java
-└── payment/Payment.java
+presentation/    컨트롤러 + 요청/응답 DTO
+application/     서비스. application/port/ 에 타 도메인 호출용 인터페이스(+DTO)
+domain/          엔티티와 도메인 로직
+infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어댑터
 ```
 
----
+**도메인 간 참조는 객체가 아닌 ID로만** 한다 — 서비스끼리 엔티티나 JPA 연관관계를 공유하지 않고, 포트 인터페이스 + HTTP 어댑터를 통해 호출한다. 기능을 추가할 때 이 패턴을 유지할 것. 배경 설명은 [`docs/lecture/`](docs/lecture/)의 강의 세션 노트 참고.
 
-## ✏️ 과제 1. 도메인 연관관계 다이어그램 그리기 (draw.io)
+### 모듈 / 포트
 
-### 무엇을 하나요?
+| 모듈 | 포트 | 설명 |
+| --- | --- | --- |
+| config-server | 8888 | 설정 중앙화 — [beadv7_7_earlybird_config](https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_config) 저장소에서 설정을 읽는다 |
+| discovery-server | 8761 | Eureka 서비스 디스커버리 |
+| gateway-server | 8000 | API 게이트웨이 (모든 외부 요청 진입점) |
+| order-service | 8080 | 주문(후원) |
+| project-service | 8081 | 펀딩 프로젝트 + 리워드 (Elasticsearch 검색 포함) |
+| payment-service | 8082 | 결제 |
+| user-service | 8083 | 회원 |
+| cart-service | 8085 | 장바구니 |
+| settlement-service | 8086 | 정산 (Spring Batch) |
+| file-service | 8087 | 파일 (미구현 스켈레톤) |
+| board-service | 8088 | 커뮤니티 (공지/의견/리뷰) |
+| notification-service | 8089 | 알림 |
+| common | — | 공유 모듈 (`ApiResponse`, `BusinessException`, `ErrorCode` 등) |
 
-현재 구현된 **Entity 코드(특히 JPA 연관관계 어노테이션)를 직접 읽고**,
-Entity 간의 연관관계를 **[draw.io](https://app.diagrams.net/)** 로 다이어그램으로 표현해주세요.
+`/internal/**` API는 게이트웨이에 라우트가 없다 — 서비스 간 Eureka 직접 호출 전용이며 외부에서 접근 불가.
 
-### 어떻게 그리나요? (예시)
+## 실행 방법
 
-아래는 **다른 도메인의 예시**입니다. 우리 프로젝트와 모양은 다르지만, **이런 식으로** 그려주시면 됩니다.
+### 사전 준비
 
-- 각 Entity를 **네모 박스**로 그리고, 한글명과 영문 클래스명을 함께 적기 (예: `주문 (Order)`)
-- Entity 사이를 **선으로 연결**하고, 그 선 위에 연관관계 종류를 표기
-  - `@OneToOne`, `@OneToMany`, `@ManyToOne`, `@ManyToMany`
-- **방향(누가 누구를 참조하는지)** 과 **다중성(1, N)** 을 화살표 / 까치발 표기로 드러내기
+- Java 21
+- Docker (Elasticsearch/Kibana 용 — project-service 검색 기능에만 필요)
 
-> 💡 예시 이미지처럼 "박스 + 연결선 + 연관관계 어노테이션 라벨" 형태면 충분합니다.
-> 디자인보다 **연관관계를 정확히 읽어내는 것**이 중요합니다.
+### 설정 저장소
 
-<img width="853" height="592" alt="스크린샷 2026-06-26 오전 10 50 15" src="https://github.com/user-attachments/assets/9f0b997b-6bdd-4456-8665-474fed3bef6a" />
+각 서비스의 로컬 `application.yml`에는 `spring.application.name`과 config-server 주소만 있다. **포트/DB 등 실제 설정은 [beadv7_7_earlybird_config](https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_config) 저장소에 있고**, config-server가 기동 시 GitHub에서 가져온다. 설정을 바꾸려면 그 저장소를 수정할 것. (로컬 설정 저장소로 테스트하려면 config-server를 `--spring.cloud.config.server.git.uri=file:///경로` 로 실행)
 
-> ⚠️ 위 이미지는 **참고용 예시**이며, 우리 프로젝트의 실제 도메인과는 다릅니다. 실제 코드를 보고 직접 그려주세요.
+### 기동 순서 (순서 중요!)
 
-### 분석 시 꼭 확인할 포인트
+```bash
+# 0. (검색 기능 쓸 때만) Elasticsearch + Kibana
+docker compose -f infrastructure/docker-compose.yml up -d
 
-코드를 읽을 때 아래를 단서로 삼으세요.
+# 1. 설정 서버
+./gradlew :config-server:bootRun
 
-- 필드에 붙은 `@OneToOne` / `@OneToMany` / `@ManyToOne` 어노테이션
-- `@JoinColumn(name = "...")` → **외래키(FK)를 누가 들고 있는지**
-- `mappedBy = "..."` → **양방향 관계인지, 연관관계의 주인이 누구인지**
-- `cascade`, `orphanRemoval`, `fetch` 옵션 → **함께 묶여 움직이는 객체 묶음(힌트!)**
+# 2. 디스커버리 (Eureka)
+./gradlew :discovery-server:bootRun
 
-### 제출물
+# 3. 게이트웨이
+./gradlew :gateway-server:bootRun
 
-- draw.io 다이어그램 파일(`.drawio`) **또는** 내보낸 이미지(`.png` / `.jpg`)
+# 4. 비즈니스 서비스 (필요한 것만, 순서 무관)
+./gradlew :project-service:bootRun
+./gradlew :user-service:bootRun
+# ...
+```
 
----
+기동 확인: Eureka 대시보드 http://localhost:8761 에 서비스가 등록되면 성공. 모든 API 호출은 게이트웨이(http://localhost:8000)를 통한다.
 
-## ✏️ 과제 2. 현재 코드의 문제점 서술하기 (주관식)
+### 빌드 / 테스트
 
-### 무엇을 하나요?
+```bash
+./gradlew build                                        # 전체 빌드
+./gradlew :order-service:test                          # 모듈 테스트
+./gradlew :order-service:test --tests "OrderServiceTest.메서드명"  # 단일 테스트
+```
 
-과제 1에서 그린 다이어그램을 보면서,
-**"지금 이 코드, 이대로 괜찮을까?"** 를 스스로 질문해보고 자유롭게 서술해주세요.
+### 수동 테스트
 
-> 정답은 없습니다. **느낀 점, 불편한 점, 위험해 보이는 점**을 솔직하게 적어주세요.
-> 수업에서 다룰 내용을 미리 고민해보는 것이 목적입니다.
+저장소 루트의 `.http` 파일(`orders.http`, `domain-communication.http`, `settlement.http`)은 IntelliJ HTTP Client로 바로 실행 가능한 요청 모음이다.
 
-### 이런 관점에서 생각해보세요 (가이드 질문)
+현재 모든 서비스는 인메모리 H2를 쓴다 (`ddl-auto: create`, 재시작 시 초기화). 각 서비스의 `/h2-console` 에서 DB를 볼 수 있다.
 
-아래 질문은 **생각을 돕기 위한 힌트**일 뿐, 전부 답할 필요는 없습니다.
+## 협업 규칙
 
-1. **연관관계의 방향과 결합도**
-   - 한 Entity가 다른 도메인의 Entity를 **객체로 직접 참조**하고 있나요?
-   - 예를 들어 `OrderItem`이 `Project`를 직접 들고 있을 때, 어떤 문제가 생길 수 있을까요?
-   - 한 도메인을 수정하면 다른 도메인까지 영향을 받게 되지는 않나요?
+브랜치 전략, PR 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md) 참고.
 
-2. **도메인 경계**
-   - 지금 6개 도메인은 서로 **명확히 구분**되어 있나요, 아니면 **거미줄처럼 얽혀** 있나요?
-   - "이 객체는 어느 도메인의 것인가?"를 명확히 말할 수 있나요?
+## 문서
 
-3. **데이터 정합성 / 변경에 대한 취약성**
-   - `OrderItem`이 `Project`를 참조하는데, **주문 이후 프로젝트 가격이 바뀌면** 어떻게 될까요?
-   - 주문 당시의 정보는 어떻게 보존되어야 할까요?
-
-4. **객체로 직접 참조 vs ID로 간접 참조**
-   - 지금처럼 객체로 직접 참조하는 방식의 **장점과 단점**은 무엇일까요?
-   - 만약 도메인을 나중에 **별도 서비스로 분리**한다면 어떤 문제가 생길까요?
-
-5. **(선택) 비즈니스 로직의 위치**
-   - 도메인 규칙(재고 차감, 금액 계산 등)은 지금 **어디에** 작성되어 있나요?
-   - Entity는 단순히 데이터만 담는 그릇 역할만 하고 있지는 않나요?
-   
-6. **(선택) 이외에 코드 수정이 필요하다고 느끼는 부분을 자유롭게 서술해주세요!** 
-
-### 제출물
-
-- 자유 형식 문서 (`.md`, `.txt`, `.docx`, `.pdf` 등 무엇이든 OK)
-- 분량 제한 없음 — **3~5개 문제점**을 골라 각각 2~3줄씩만 적어도 충분합니다.
-
----
-
-## 📮 제출 안내
-
-### 👉 제출은 아래 구글 폼으로 받습니다
-
-### **[📝 사전 과제 제출하기 (Google Form)](https://docs.google.com/forms/d/e/1FAIpQLSexj6GrUcdo92huwJLHpjPLVHi5ymdxCf1HPLmFvTV1AMBn_Q/viewform)**
-
-- **제출 기한**: Day 1 수업 시작 전까지
-- **제출물 2종** (폼에서 한 번에 제출)
-  1. 도메인 연관관계 다이어그램 (draw.io 파일 또는 이미지) → **파일 업로드**
-  2. 코드 문제점 서술 → **폼에 직접 작성** (또는 문서 파일 업로드)
-- ⚠️ 파일 업로드를 위해 **구글 계정 로그인**이 필요합니다.
-- 완벽하지 않아도 됩니다. **직접 코드를 읽고 고민한 흔적**이 가장 중요합니다. 💪
-
-> 이 과제에서 느낀 "얽힘"과 "불편함"을, 수업에서 **하나씩 끊어내며 해결**해 나갈 예정입니다.
-> 가벼운 마음으로, 그러나 진지하게 코드를 들여다봐 주세요!
+- `5팀 프로젝트 문서/` (팀 공유 폴더) — 기획서, API 명세서, 회의록
+- [`docs/lecture/`](docs/lecture/) — 강사님 세션 노트 (DDD, 도메인 통신, 정산 등 설계 배경)
