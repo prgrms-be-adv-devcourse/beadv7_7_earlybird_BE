@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.settlement.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.settlement.read.OrderRepository;
 import com.growmighty.lectures.firstday.settlement.application.NaiveSettlementService;
 import com.growmighty.lectures.firstday.settlement.application.SettlementBatchService;
@@ -44,11 +43,10 @@ public class SettlementController {
      * limit 이 있으면 그 수만큼만 메모리에 쌓으며 정산(추세 관찰).
      */
     @PostMapping("/naive")
-    public ApiResponse<SettleReport> settleNaive(@RequestParam(required = false) Integer limit) {
-        SettleReport report = limit == null
+    public SettleReport settleNaive(@RequestParam(required = false) Integer limit) {
+        return limit == null
                 ? naiveSettlementService.settleAll()
                 : naiveSettlementService.settleUpTo(limit);
-        return ApiResponse.ok(report);
     }
 
     /**
@@ -59,11 +57,10 @@ public class SettlementController {
      * {@code failAt} 없이 다시 호출하면 멱등 스킵으로 이미 정산된 부분은 건너뛰고 나머지만 처리한다.
      */
     @PostMapping("/batch")
-    public ApiResponse<SettleReport> settleBatch(@RequestParam(required = false) Double failAt) {
-        SettleReport report = failAt == null
+    public SettleReport settleBatch(@RequestParam(required = false) Double failAt) {
+        return failAt == null
                 ? settlementBatchService.run()
                 : settlementBatchService.runFailing(failAt);
-        return ApiResponse.ok(report);
     }
 
     /**
@@ -79,9 +76,9 @@ public class SettlementController {
      * @param failAt null 이면 정상/재개, 값이 있으면 그 비율에서 실패.
      */
     @PostMapping("/batch/restart")
-    public ApiResponse<SettleReport> restartBatch(@RequestParam(defaultValue = "1") long runId,
+    public SettleReport restartBatch(@RequestParam(defaultValue = "1") long runId,
                                                   @RequestParam(required = false) Double failAt) {
-        return ApiResponse.ok(settlementBatchService.runRestartable(runId, failAt));
+        return settlementBatchService.runRestartable(runId, failAt);
     }
 
     /**
@@ -98,8 +95,8 @@ public class SettlementController {
      * @param threads 동시 스레드 수. 생략 시 {@code settlement.batch.thread-count} 기본값.
      */
     @PostMapping("/batch/multi-threaded")
-    public ApiResponse<SettleReport> settleMultiThreaded(@RequestParam(required = false) Integer threads) {
-        return ApiResponse.ok(settlementBatchService.runMultiThreaded(threads));
+    public SettleReport settleMultiThreaded(@RequestParam(required = false) Integer threads) {
+        return settlementBatchService.runMultiThreaded(threads);
     }
 
     /**
@@ -113,9 +110,9 @@ public class SettlementController {
      * </ul>
      */
     @PostMapping("/batch/multi-threaded/restart")
-    public ApiResponse<SettleReport> restartMultiThreaded(@RequestParam(defaultValue = "1") long runId,
+    public SettleReport restartMultiThreaded(@RequestParam(defaultValue = "1") long runId,
                                                           @RequestParam(required = false) Double failAt) {
-        return ApiResponse.ok(settlementBatchService.runMultiThreadedRestartable(runId, failAt));
+        return settlementBatchService.runMultiThreadedRestartable(runId, failAt);
     }
 
     /**
@@ -126,25 +123,25 @@ public class SettlementController {
      * @param gridSize 파티션 수. 생략 시 {@code settlement.batch.grid-size} 기본값.
      */
     @PostMapping("/batch/partitioned")
-    public ApiResponse<SettleReport> settlePartitioned(@RequestParam(required = false) Integer gridSize) {
-        return ApiResponse.ok(settlementBatchService.runPartitioned(gridSize));
+    public SettleReport settlePartitioned(@RequestParam(required = false) Integer gridSize) {
+        return settlementBatchService.runPartitioned(gridSize);
     }
 
     @GetMapping("/status")
-    public ApiResponse<Map<String, Object>> status() {
+    public Map<String, Object> status() {
         Runtime rt = Runtime.getRuntime();
         long usedMb = (rt.totalMemory() - rt.freeMemory()) / MB;
         long maxMb = rt.maxMemory() / MB;
-        return ApiResponse.ok(Map.of(
+        return Map.of(
                 "orderCount", orderRepository.count(),
                 "settlementCount", settlementRepository.count(),
                 "heapUsedMb", usedMb,
-                "heapMaxMb", maxMb));
+                "heapMaxMb", maxMb);
     }
 
     @DeleteMapping
-    public ApiResponse<Void> clear() {
+    public Void clear() {
         settlementRepository.deleteAll();
-        return ApiResponse.ok();
+        return null;
     }
 }

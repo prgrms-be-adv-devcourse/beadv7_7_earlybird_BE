@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.project.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.presentation.dto.ProjectResponse;
 import lombok.RequiredArgsConstructor;
@@ -19,13 +18,13 @@ public class ProjectAdminController {
 
     /** 심사 승인 (IN_REVIEW → OPEN) */
     @PostMapping("/{projectId}/approve")
-    public ApiResponse<ProjectResponse> approve(@PathVariable Long projectId) {
-        return ApiResponse.ok(ProjectResponse.from(projectService.approve(projectId)));
+    public ProjectResponse approve(@PathVariable Long projectId) {
+        return ProjectResponse.from(projectService.approve(projectId));
     }
 
     /** 심사 반려 (IN_REVIEW → REJECTED) */
     @PostMapping("/{projectId}/reject")
-    public ApiResponse<ProjectResponse> reject(@PathVariable Long projectId) {
-        return ApiResponse.ok(ProjectResponse.from(projectService.reject(projectId)));
+    public ProjectResponse reject(@PathVariable Long projectId) {
+        return ProjectResponse.from(projectService.reject(projectId));
     }
 }

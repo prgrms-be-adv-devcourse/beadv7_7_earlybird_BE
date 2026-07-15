@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.project.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.presentation.dto.ProjectResponse;
 import com.growmighty.lectures.firstday.project.presentation.dto.RegisterProjectRequest;
@@ -22,19 +21,19 @@ public class ProjectController {
     private String bannerMessage;
 
     @PostMapping
-    public ApiResponse<ProjectResponse> register(@RequestBody RegisterProjectRequest request) {
-        return ApiResponse.ok(ProjectResponse.from(projectService.register(request.toCommand())));
+    public ProjectResponse register(@RequestBody RegisterProjectRequest request) {
+        return ProjectResponse.from(projectService.register(request.toCommand()));
     }
 
     @GetMapping("/{projectId}")
-    public ApiResponse<ProjectResponse> getProject(@PathVariable Long projectId) {
-        return ApiResponse.ok(ProjectResponse.from(projectService.getProjectInfo(projectId)));
+    public ProjectResponse getProject(@PathVariable Long projectId) {
+        return ProjectResponse.from(projectService.getProjectInfo(projectId));
     }
 
     /** 창작자: 심사 요청. TODO(팀): 인증 붙인 뒤 본인 프로젝트인지 검증 */
     @PostMapping("/{projectId}/submit")
-    public ApiResponse<ProjectResponse> submitForReview(@PathVariable Long projectId) {
-        return ApiResponse.ok(ProjectResponse.from(projectService.submitForReview(projectId)));
+    public ProjectResponse submitForReview(@PathVariable Long projectId) {
+        return ProjectResponse.from(projectService.submitForReview(projectId));
     }
 
     @GetMapping("/banner")

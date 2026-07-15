@@ -20,6 +20,21 @@ import java.util.List;
  * 프레임워크가 던지는 예외(요청 형식 오류, 404, 405, 클라이언트 연결 끊김 등)는
  * 부모인 ResponseEntityExceptionHandler가 RFC 9457 ProblemDetail로 알아서 처리한다.
  * 여기서는 스프링이 알 수 없는 것들만 직접 다룬다.
+ *
+ * <p>실패 응답 예시 ({@link BusinessException}으로 존재하지 않는 주문을 조회한 경우):
+ * <pre>{@code
+ * {
+ *   "type": "about:blank",
+ *   "title": "Not Found",
+ *   "status": 404,
+ *   "detail": "존재하지 않는 주문입니다. orderId=999",
+ *   "instance": "/orders/999",
+ *   "code": "C003"
+ * }
+ * }</pre>
+ *
+ * <p>성공 응답은 이 클래스가 아니라
+ * {@link com.growmighty.lectures.firstday.common.response.ApiResponseWrappingAdvice}가 만든다.
  */
 @Slf4j
 @RestControllerAdvice

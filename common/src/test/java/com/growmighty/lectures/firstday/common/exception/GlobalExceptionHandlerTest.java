@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.common.exception;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -84,22 +83,22 @@ class GlobalExceptionHandlerTest {
     static class TestController {
 
         @GetMapping("/test/business")
-        ApiResponse<Void> business() {
+        Void business() {
             throw new BusinessException(ErrorCode.ENTITY_NOT_FOUND);
         }
 
         @PostMapping("/test/valid")
-        ApiResponse<Void> valid(@Valid @RequestBody SampleRequest request) {
-            return ApiResponse.ok();
+        Void valid(@Valid @RequestBody SampleRequest request) {
+            return null;
         }
 
         @GetMapping("/test/boom")
-        ApiResponse<Void> boom() {
+        Void boom() {
             throw new RuntimeException("secret detail");
         }
 
         @GetMapping("/test/state")
-        ApiResponse<Void> state() {
+        Void state() {
             throw new IllegalStateException("이미 처리된 요청입니다.");
         }
     }

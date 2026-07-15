@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.project.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.application.RewardService;
 import com.growmighty.lectures.firstday.project.presentation.dto.ChangeStockRequest;
 import com.growmighty.lectures.firstday.project.presentation.dto.RegisterRewardRequest;
@@ -21,32 +20,32 @@ public class RewardController {
     private final RewardService rewardService;
 
     @PostMapping("/projects/{projectId}/rewards")
-    public ApiResponse<RewardResponse> register(@PathVariable Long projectId,
+    public RewardResponse register(@PathVariable Long projectId,
                                                 @RequestBody RegisterRewardRequest request) {
-        return ApiResponse.ok(RewardResponse.from(rewardService.register(request.toCommand(projectId))));
+        return RewardResponse.from(rewardService.register(request.toCommand(projectId)));
     }
 
     @GetMapping("/projects/{projectId}/rewards")
-    public ApiResponse<List<RewardResponse>> getRewardsByProject(@PathVariable Long projectId) {
-        return ApiResponse.ok(rewardService.getRewardsByProject(projectId).stream()
+    public List<RewardResponse> getRewardsByProject(@PathVariable Long projectId) {
+        return rewardService.getRewardsByProject(projectId).stream()
             .map(RewardResponse::from)
-            .toList());
+            .toList();
     }
 
     @GetMapping("/rewards/{rewardId}")
-    public ApiResponse<RewardResponse> getReward(@PathVariable Long rewardId) {
-        return ApiResponse.ok(RewardResponse.from(rewardService.getReward(rewardId)));
+    public RewardResponse getReward(@PathVariable Long rewardId) {
+        return RewardResponse.from(rewardService.getReward(rewardId));
     }
 
     @PostMapping("/internal/rewards/{rewardId}/decrease-stock")
-    public ApiResponse<Void> decreaseStock(@PathVariable Long rewardId, @RequestBody ChangeStockRequest request) {
+    public Void decreaseStock(@PathVariable Long rewardId, @RequestBody ChangeStockRequest request) {
         rewardService.decreaseStock(rewardId, request.quantity());
-        return ApiResponse.ok();
+        return null;
     }
 
     @PostMapping("/internal/rewards/{rewardId}/restore-stock")
-    public ApiResponse<Void> restoreStock(@PathVariable Long rewardId, @RequestBody ChangeStockRequest request) {
+    public Void restoreStock(@PathVariable Long rewardId, @RequestBody ChangeStockRequest request) {
         rewardService.restoreStock(rewardId, request.quantity());
-        return ApiResponse.ok();
+        return null;
     }
 }

@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.user.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.presentation.dto.UserResponse;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +16,7 @@ public class UserInternalController {
     private final UserService userService;
 
     @GetMapping("/{userId}")
-    public ApiResponse<UserResponse> getUser(@PathVariable Long userId) {
-        return ApiResponse.ok(UserResponse.from(userService.getUser(userId)));
+    public UserResponse getUser(@PathVariable Long userId) {
+        return UserResponse.from(userService.getUser(userId));
     }
 }

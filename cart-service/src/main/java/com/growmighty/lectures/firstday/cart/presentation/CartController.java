@@ -4,7 +4,6 @@ import com.growmighty.lectures.firstday.cart.application.CartService;
 import com.growmighty.lectures.firstday.cart.presentation.dto.AddCartItemRequest;
 import com.growmighty.lectures.firstday.cart.presentation.dto.CartResponse;
 import com.growmighty.lectures.firstday.cart.presentation.dto.ChangeCartItemQuantityRequest;
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,28 +14,28 @@ public class CartController {
     private final CartService cartService;
 
     @GetMapping
-    public ApiResponse<CartResponse> getCart(@PathVariable Long userId) {
-        return ApiResponse.ok(CartResponse.from(cartService.getCart(userId)));
+    public CartResponse getCart(@PathVariable Long userId) {
+        return CartResponse.from(cartService.getCart(userId));
     }
 
     @PostMapping("/items")
-    public ApiResponse<CartResponse> addItem(@PathVariable Long userId, @RequestBody AddCartItemRequest request) {
-        return ApiResponse.ok(CartResponse.from(cartService.addItem(request.toCommand(userId))));
+    public CartResponse addItem(@PathVariable Long userId, @RequestBody AddCartItemRequest request) {
+        return CartResponse.from(cartService.addItem(request.toCommand(userId)));
     }
 
     @PatchMapping("/items/{projectId}")
-    public ApiResponse<CartResponse> changeQuantity(@PathVariable Long userId, @PathVariable Long projectId, @RequestBody ChangeCartItemQuantityRequest request) {
-        return ApiResponse.ok(CartResponse.from(cartService.changeQuantity(userId, projectId, request.quantity())));
+    public CartResponse changeQuantity(@PathVariable Long userId, @PathVariable Long projectId, @RequestBody ChangeCartItemQuantityRequest request) {
+        return CartResponse.from(cartService.changeQuantity(userId, projectId, request.quantity()));
     }
 
     @DeleteMapping("/items/{projectId}")
-    public ApiResponse<CartResponse> removeItem(@PathVariable Long userId, @PathVariable Long projectId) {
-        return ApiResponse.ok(CartResponse.from(cartService.removeItem(userId, projectId)));
+    public CartResponse removeItem(@PathVariable Long userId, @PathVariable Long projectId) {
+        return CartResponse.from(cartService.removeItem(userId, projectId));
     }
 
     @DeleteMapping
-    public ApiResponse<Void> clear(@PathVariable Long userId) {
+    public Void clear(@PathVariable Long userId) {
         cartService.clear(userId);
-        return ApiResponse.ok();
+        return null;
     }
 }
