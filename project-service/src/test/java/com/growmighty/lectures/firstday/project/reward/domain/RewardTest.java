@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.project.domain;
+package com.growmighty.lectures.firstday.project.reward.domain;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +30,28 @@ class RewardTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> Reward.register(1L, "x", "d", BigDecimal.valueOf(1000), -1))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("총 수량이 null이면 무제한 리워드로 등록되고 항상 후원 가능하다")
+    void register_nullTotalQuantity_unlimited() {
+        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        assertThat(reward.getTotalQuantity()).isNull();
+        assertThat(reward.getRemainingQuantity()).isNull();
+        assertThat(reward.isOrderable()).isTrue();
+    }
+
+    @Test
+    @DisplayName("무제한 리워드는 재고 차감/복원 검증을 건너뛴다")
+    void unlimitedReward_skipsStockValidation() {
+        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+
+        reward.decreaseStock(1_000_000);
+        assertThat(reward.getRemainingQuantity()).isNull();
+        assertThat(reward.isOrderable()).isTrue();
+
+        reward.restoreStock(1_000_000);
+        assertThat(reward.getRemainingQuantity()).isNull();
     }
 
     @Test
@@ -86,5 +108,13 @@ class RewardTest {
 
         assertThatThrownBy(() -> reward.increaseQuantity(0))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("무제한 리워드는 수량 추가 대상이 아니다")
+    void increaseQuantity_unlimitedReward_throws() {
+        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        assertThatThrownBy(() -> reward.increaseQuantity(5))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

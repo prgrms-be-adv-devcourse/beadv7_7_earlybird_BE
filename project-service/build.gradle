@@ -10,6 +10,11 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
+    // 선언적 HTTP 클라이언트 — 인터페이스를 선언하면 구현체(프록시)가 생긴다.
+    // 이 스타터가 로드밸런서(spring-cloud-starter-loadbalancer)도 함께 끌고 온다.
+    // 버전이 없어도 되는 이유: 늘 그랬듯 Spring Cloud BOM 이 채워준다.
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
@@ -17,4 +22,12 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // 서킷 브레이커 — Spring Cloud 추상화 + Resilience4j 구현체 세트.
+    // 버전이 없어도 되는 이유: Spring Cloud BOM 이 채워준다.
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+
+    // Reward 낙관적 락(@Version) 충돌 시 재시도용. @Retryable은 spring-aspects(AOP)가 있어야 동작한다.
+    implementation 'org.springframework.retry:spring-retry'
+    implementation 'org.springframework:spring-aspects'
 }
