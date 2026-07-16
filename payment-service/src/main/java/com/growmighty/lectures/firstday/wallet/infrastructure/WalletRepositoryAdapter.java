@@ -1,7 +1,7 @@
-package com.growmighty.lectures.firstday.payment.infrastructure;
+package com.growmighty.lectures.firstday.wallet.infrastructure;
 
-import com.growmighty.lectures.firstday.payment.domain.Wallet;
-import com.growmighty.lectures.firstday.payment.domain.WalletRepository;
+import com.growmighty.lectures.firstday.wallet.domain.Wallet;
+import com.growmighty.lectures.firstday.wallet.domain.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 

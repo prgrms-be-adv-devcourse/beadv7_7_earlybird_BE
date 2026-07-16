@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.payment.domain;
+package com.growmighty.lectures.firstday.refund.domain;
 
 public enum RefundStatus {
     REQUESTED,

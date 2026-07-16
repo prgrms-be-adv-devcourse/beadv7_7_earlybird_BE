@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.payment.domain;
+package com.growmighty.lectures.firstday.refund.domain;
 
 import java.util.List;
 import java.util.Optional;

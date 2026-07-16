@@ -12,6 +12,6 @@ public record PaymentInfo(
         PaymentStatus status
 ) {
     public static PaymentInfo from(Payment payment) {
-        return new PaymentInfo(payment.getId(), payment.getOrderId(), payment.getAmount(), payment.getStatus());
+        return new PaymentInfo(payment.getPaymentId(), payment.getOrderId(), payment.getAmount(), payment.getStatus());
     }
 }

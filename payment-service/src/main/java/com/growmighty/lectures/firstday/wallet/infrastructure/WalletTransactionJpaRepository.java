@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.payment.infrastructure;
+package com.growmighty.lectures.firstday.wallet.infrastructure;
 
-import com.growmighty.lectures.firstday.payment.domain.WalletTransaction;
+import com.growmighty.lectures.firstday.wallet.domain.WalletTransaction;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

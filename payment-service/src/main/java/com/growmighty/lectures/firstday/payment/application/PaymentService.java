@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.payment.application;
 
+import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
-import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,7 +21,7 @@ public class PaymentService {
         Payment payment = Payment.ready(orderId, amount);
         try {
             PaymentGateway.PgApproval approval = paymentGateway.approve(amount);
-            payment.approve(approval.transactionId());
+            payment.confirm(approval.transactionId());
         } catch (RuntimeException e) {
             payment.fail();
             paymentRepository.save(payment);
