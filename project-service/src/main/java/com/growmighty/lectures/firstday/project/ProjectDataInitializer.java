@@ -5,8 +5,9 @@ import com.growmighty.lectures.firstday.project.application.RewardService;
 import com.growmighty.lectures.firstday.project.application.dto.ProjectInfo;
 import com.growmighty.lectures.firstday.project.application.dto.RegisterProjectCommand;
 import com.growmighty.lectures.firstday.project.application.dto.RegisterRewardCommand;
-import com.growmighty.lectures.firstday.project.domain.ProjectCategory;
-import com.growmighty.lectures.firstday.project.domain.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.category.application.ProjectCategoryService;
+import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryCreateRequest;
+import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
@@ -26,16 +27,12 @@ import java.time.LocalDateTime;
 public class ProjectDataInitializer implements CommandLineRunner {
     private final ProjectService projectService;
     private final RewardService rewardService;
-    private final ProjectCategoryRepository categoryRepository;
+    private final ProjectCategoryService projectCategoryService;
 
     private Long lifeCategoryId;
 
     @Override
     public void run(String... args) {
-        if (!categoryRepository.findAll().isEmpty()) {
-            return;
-        }
-
         seedCategories();
 
         // 프로젝트 1 (rewardId 1~3)
@@ -66,9 +63,9 @@ public class ProjectDataInitializer implements CommandLineRunner {
 
     /** 대분류 1개 + 소분류 1개만 시드로 넣는다. 카테고리 전체 체계는 관리자 기능 확정 후 채운다. */
     private void seedCategories() {
-        ProjectCategory root = categoryRepository.save(ProjectCategory.createRoot("라이프스타일", 1));
-        ProjectCategory child = categoryRepository.save(ProjectCategory.createChild(root.getId(), "생활용품", 1));
-        this.lifeCategoryId = child.getId();
+        ProjectCategoryResponse root = projectCategoryService.create(new ProjectCategoryCreateRequest(null, "라이프스타일"));
+        ProjectCategoryResponse child = projectCategoryService.create(new ProjectCategoryCreateRequest(root.id(), "생활용품"));
+        this.lifeCategoryId = child.id();
     }
 
     /** 등록 → 심사 요청 → 승인(공개)까지 진행해 후원 가능한 상태로 만든다 */
