@@ -28,34 +28,36 @@
 ### 2.2 패키지 구조
 ```
 project/category/
-├── controller/CategoryController.java
-├── service/
-│   ├── CategoryService.java        (interface)
-│   └── CategoryServiceImpl.java
-├── repository/CategoryRepository.java
-├── domain/Category.java
-└── dto/
-    ├── request/CategoryCreateRequest.java
-    ├── request/CategoryUpdateRequest.java
-    └── response/CategoryResponse.java
+├── presentation/
+│   ├── ProjectCategoryController.java
+│   └── dto/
+│       ├── request/ProjectCategoryCreateRequest.java
+│       ├── request/ProjectCategoryUpdateRequest.java
+│       └── response/ProjectCategoryResponse.java
+├── application/
+│   ├── ProjectCategoryService.java        (interface)
+│   └── ProjectCategoryServiceImpl.java
+├── infrastructure/ProjectCategoryRepository.java
+└── domain/ProjectCategory.java
 ```
+(계층명은 CLAUDE.md에 명시된 프로젝트 표준 `presentation/application/domain/infrastructure` 컨벤션을 따름 — 최초 작성 시 `controller/service/repository`로 적었다가 표준에 맞춰 리네임했고, 클래스명도 다른 도메인과의 혼동을 막기 위해 `ProjectCategory*` 접두사로 통일함. 이 문서는 리네임 후 기준으로 갱신됨.)
 
-### 2.3 `Category` 엔티티
+### 2.3 `ProjectCategory` 엔티티
 - 테이블: `categories`
 - 필드: `id`(PK, IDENTITY), `parentCategoryId`(Long, nullable — **JPA 연관관계가 아니라 스칼라 값**으로만 부모를 참조), `name`
 - 생성/이름변경/부모변경을 위한 정적 팩토리(`create`) + 도메인 메서드(`rename`, `changeParent`, `isRoot`) 제공
 - `parentCategoryId`를 `@ManyToOne` 연관관계로 만들지 않은 이유: 순환참조 검증 로직(부모 체인을 id로만 타고 올라가는 방식)을 단순하게 유지하기 위함. 트리 조립은 서비스 레이어에서 flat list를 그룹핑해서 재귀적으로 구성.
 
-### 2.4 `CategoryRepository`
-- `JpaRepository<Category, Long>` 상속만 (별도 커스텀 쿼리 없음)
+### 2.4 `ProjectCategoryRepository`
+- `JpaRepository<ProjectCategory, Long>` 상속만 (별도 커스텀 쿼리 없음)
 
-### 2.5 `CategoryService` / `CategoryServiceImpl`
+### 2.5 `ProjectCategoryService` / `ProjectCategoryServiceImpl`
 전체 CRUD를 인터페이스에 정의했으나, **컨트롤러에는 요청받은 범위만 노출**(create/findAllAsTree/findById/update — delete는 서비스 로직은 있지만 컨트롤러에 노출 안 함, 아래 4.3 참고):
 
-- `create(CategoryCreateRequest)` — 부모 존재 검증(`parentCategoryId`가 있으면 `existsById`) 후 저장
-- `findAllAsTree()` — 전체 카테고리를 조회해 `parentCategoryId` 기준으로 그룹핑한 뒤, 루트(`parentCategoryId == null`)부터 재귀적으로 `CategoryResponse.children`을 채워 트리로 반환
+- `create(ProjectCategoryCreateRequest)` — 부모 존재 검증(`parentCategoryId`가 있으면 `existsById`) 후 저장
+- `findAllAsTree()` — 전체 카테고리를 조회해 `parentCategoryId` 기준으로 그룹핑한 뒤, 루트(`parentCategoryId == null`)부터 재귀적으로 `ProjectCategoryResponse.children`을 채워 트리로 반환
 - `findById(Long)` — 단건 조회, 없으면 `EntityNotFoundException`(common 모듈, → 404 `C003`)
-- `update(Long, CategoryUpdateRequest)` — 이름 변경 + 부모 변경. 부모가 바뀌는 경우에만 존재 검증 + **순환참조 검증**(`validateNotSelfOrDescendant`) 수행
+- `update(Long, ProjectCategoryUpdateRequest)` — 이름 변경 + 부모 변경. 부모가 바뀌는 경우에만 존재 검증 + **순환참조 검증**(`validateNotSelfOrDescendant`) 수행
 - `delete(Long)` — 구현은 되어 있으나 컨트롤러 미노출 (4.3 참고)
 
 **순환참조 검증 로직** (`validateNotSelfOrDescendant`):
@@ -67,15 +69,15 @@ categoryId == newParentCategoryId면 자기 자신을 부모로 설정하려는 
 ```
 매 단계 `categoryRepository.findById(cursor)`로 조회하는 O(depth) 쿼리 방식. 카테고리 트리 깊이가 일반적으로 얕으므로(수 단계) 성능상 문제 없음.
 
-### 2.6 `CategoryController` (`/api/v1/categories`)
+### 2.6 `ProjectCategoryController` (`/api/v1/project-categories`)
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/api/v1/categories` | 등록 |
-| GET | `/api/v1/categories` | 전체 목록 (트리 구조) |
-| GET | `/api/v1/categories/{categoryId}` | 단건 조회 |
-| PUT | `/api/v1/categories/{categoryId}` | 이름/부모 변경 (이번 세션에서 추가, 아래 4.1 참고) |
+| POST | `/api/v1/project-categories` | 등록 |
+| GET | `/api/v1/project-categories` | 전체 목록 (트리 구조) |
+| GET | `/api/v1/project-categories/{categoryId}` | 단건 조회 |
+| PUT | `/api/v1/project-categories/{categoryId}` | 이름/부모 변경 (이번 세션에서 추가, 아래 4.1 참고) |
 
-`CategoryCreateRequest`/`CategoryUpdateRequest`에 `@NotBlank name` 검증 적용, 위반 시 common의 `GlobalExceptionHandler`가 400으로 처리.
+`ProjectCategoryCreateRequest`/`ProjectCategoryUpdateRequest`에 `@NotBlank name` 검증 적용, 위반 시 common의 `GlobalExceptionHandler`가 400으로 처리.
 
 ---
 
@@ -116,24 +118,25 @@ src/main/resources/elasticsearch/project-settings.json
 ### 3.3 패키지 구조 (신규)
 ```
 project/project/
-├── controller/
+├── presentation/
 │   ├── ProjectController.java
-│   └── ProjectAdminController.java
-├── service/
+│   ├── ProjectAdminController.java
+│   └── dto/
+│       ├── request/ProjectCreateRequest.java
+│       ├── request/ProjectUpdateRequest.java
+│       ├── request/ProjectRejectRequest.java
+│       ├── request/ProjectDeadlineExtendRequest.java
+│       └── response/ProjectResponse.java
+├── application/
 │   ├── ProjectService.java        (interface)
 │   └── ProjectServiceImpl.java
-├── repository/ProjectRepository.java
-├── domain/
-│   ├── Project.java
-│   ├── ProjectStatus.java
-│   └── ProjectSort.java
-└── dto/
-    ├── request/ProjectCreateRequest.java
-    ├── request/ProjectUpdateRequest.java
-    ├── request/ProjectRejectRequest.java
-    └── response/ProjectResponse.java
+├── infrastructure/ProjectRepository.java
+└── domain/
+    ├── Project.java
+    ├── ProjectStatus.java
+    └── ProjectSort.java
 ```
-(주의: `project.project` 로 "project"가 중첩되는 패키지명 — project-service 모듈의 베이스 패키지가 `com.growmighty.lectures.firstday.project`이고, 그 아래 도메인별 서브패키지를 붙이는 Category와 동일한 컨벤션을 따른 결과입니다.)
+(주의: `project.project` 로 "project"가 중첩되는 패키지명 — project-service 모듈의 베이스 패키지가 `com.growmighty.lectures.firstday.project`이고, 그 아래 도메인별 서브패키지를 붙이는 Category와 동일한 컨벤션을 따른 결과입니다. 계층명은 2.2절과 마찬가지로 `presentation/application/domain/infrastructure` 표준을 따름 — 최초 작성 시 `controller/service/repository`였던 걸 리네임 후 기준으로 갱신.)
 
 ### 3.4 `Project` 엔티티
 - 테이블: `projects`
@@ -187,7 +190,7 @@ project/project/
 ## 4. 이번 세션에서 추가로 처리한 것
 
 ### 4.1 Category `PUT` 엔드포인트 추가
-`CategoryServiceImpl.update()`는 이미 순환참조 검증까지 구현되어 있었지만 컨트롤러에 노출되어 있지 않았음 → `PUT /api/v1/categories/{categoryId}` 추가해서 노출 완료.
+`ProjectCategoryServiceImpl.update()`는 이미 순환참조 검증까지 구현되어 있었지만 컨트롤러에 노출되어 있지 않았음 → `PUT /api/v1/project-categories/{categoryId}` 추가해서 노출 완료.
 
 ### 4.2 시드 데이터 계층화 (`ProjectDataInitializer`)
 기존에는 플랫한 카테고리 4개(패션잡화/전자기기/도서·출판/반려동물)만 만들어서 Project가 참조했으나, Category 트리 기능을 실제로 확인하기 위해 계층 구조로 확장:
@@ -213,7 +216,7 @@ project/project/
 프로젝트는 리프(최하위) 카테고리를 참조하도록 배선. Reward ID 시퀀스(1~9번, orders.http가 rewardId=1을 가정)는 그대로 유지됨 — 카테고리/프로젝트 생성 순서를 바꿔도 Reward는 별도 테이블 시퀀스라 영향 없음.
 
 ### 4.3 Category `DELETE`는 아직 미구현 (의도적)
-요청 목록에 없었기 때문에 만들지 않았습니다. `CategoryServiceImpl.delete()` 메서드 자체는 존재하지만 자식 카테고리가 있는 경우, 또는 Project가 참조 중인 카테고리인 경우에 대한 정책이 없는 상태라 컨트롤러에 노출하지 않았습니다. **정책 결정 필요** (차단 / cascade 삭제 / 자식을 상위로 재배치 중 택1).
+요청 목록에 없었기 때문에 만들지 않았습니다. `ProjectCategoryServiceImpl.delete()` 메서드 자체는 존재하지만 자식 카테고리가 있는 경우, 또는 Project가 참조 중인 카테고리인 경우에 대한 정책이 없는 상태라 컨트롤러에 노출하지 않았습니다. **정책 결정 필요** (차단 / cascade 삭제 / 자식을 상위로 재배치 중 택1).
 
 ### 4.4 Elasticsearch 의존성/설정 제거
 - `build.gradle`: `spring-boot-starter-data-elasticsearch` 제거
@@ -251,10 +254,10 @@ API 명세서 안에서 두 가지 패턴이 혼재:
 - 실제 본문 예시 대부분(Project/Reward 섹션 포함): `/api/v1/{서비스}/xxx` (예: `/api/v1/projects`)
 
 **현재 구현은 후자(`/api/v1/{서비스}/xxx`) 패턴**으로 되어 있음:
-- Category: `/api/v1/categories`
+- Category: `/api/v1/project-categories`
 - Project: `/api/v1/projects`, `/api/v1/admin/projects`
 
-팀 채널에서 확정 필요 — §0.1절 규칙으로 확정되면 위 경로들을 `/api/categories/v1/...`, `/api/projects/v1/...` 형태로 전부 변경해야 함 (Gateway 라우팅 규칙에도 영향).
+팀 채널에서 확정 필요 — §0.1절 규칙으로 확정되면 위 경로들을 `/api/project-categories/v1/...`, `/api/projects/v1/...` 형태로 전부 변경해야 함 (Gateway 라우팅 규칙에도 영향).
 
 ### ✅ `endAt` 수정 권한 애매함 — 해결됨 (7.5절 참고)
 - 이전 확정: 창작자가 자유롭게 연장 가능
@@ -303,20 +306,21 @@ Category/Project는 package-by-feature로 정리됐지만 Reward는 여전히 �
 ### 7.3 패키지 구조 (신규)
 ```
 project/reward/
-├── controller/
+├── presentation/
 │   ├── RewardController.java          (공개 API, /api/v1/...)
-│   └── RewardInternalController.java  (재고 차감/복원, /internal/rewards/...)
-├── service/
+│   ├── RewardInternalController.java  (재고 차감/복원, /internal/rewards/...)
+│   └── dto/
+│       ├── request/RewardCreateRequest.java   (jakarta 검증: @NotBlank/@NotNull/@PositiveOrZero)
+│       ├── request/StockChangeRequest.java
+│       └── response/RewardResponse.java
+├── application/
 │   ├── RewardService.java        (interface)
-│   └── RewardServiceImpl.java
-├── repository/RewardRepository.java   (JpaRepository 단일 인터페이스 — 기존 port+adapter 분리 제거)
-├── domain/Reward.java
-├── exception/ConcurrentUpdateFailedException.java
-└── dto/
-    ├── request/RewardCreateRequest.java   (jakarta 검증: @NotBlank/@NotNull/@PositiveOrZero)
-    ├── request/StockChangeRequest.java
-    └── response/RewardResponse.java
+│   ├── RewardServiceImpl.java
+│   └── exception/ConcurrentUpdateFailedException.java
+├── infrastructure/RewardRepository.java   (JpaRepository 단일 인터페이스 — 기존 port+adapter 분리 제거)
+└── domain/Reward.java
 ```
+(계층명은 2.2/3.3절과 동일하게 `presentation/application/domain/infrastructure` 표준을 따름 — 최초 작성 시 `controller/service/repository`였던 걸 리네임 후 기준으로 갱신. `ConcurrentUpdateFailedException`은 `exception/`이 아니라 `application/exception/` 하위에 위치.)
 기존 레이어드 파일(`project/domain/Reward*.java`, `project/application/Reward*`, `project/infrastructure/Reward*`, `project/infrastructure/RewardRepositoryAdapter.java`, `project/presentation/Reward*`) 전부 삭제. 기존 `RewardTest.java`도 새 패키지(`test/.../reward/domain/RewardTest.java`)로 이동 + 무제한 리워드 케이스 테스트 2개 추가 (총 10개 테스트).
 
 Category/Project와 마찬가지로 application 계층의 별도 Command/Info DTO는 두지 않음 — request DTO에 `toEntity()`, response DTO에 `from(entity)` 방식 그대로 적용.
