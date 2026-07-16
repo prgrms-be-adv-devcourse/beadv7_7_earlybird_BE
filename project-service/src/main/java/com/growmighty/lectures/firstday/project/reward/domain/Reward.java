@@ -1,7 +1,13 @@
-package com.growmighty.lectures.firstday.project.domain;
+package com.growmighty.lectures.firstday.project.reward.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Column;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,6 +17,7 @@ import java.math.BigDecimal;
 /**
  * 리워드 = 펀딩 액수별 후원 옵션(상품). 한정 수량 리워드(얼리버드) 포함.
  * 프로젝트와는 ID로만 참조한다 (같은 컨텍스트, 별도 애그리거트).
+ * totalQuantity가 null이면 무제한 리워드 — 재고 검증/차감·복원을 건너뛴다.
  */
 @Entity
 @Table(name = "rewards")
@@ -32,16 +39,18 @@ public class Reward extends BaseEntity {
     @Column(nullable = false)
     private BigDecimal price;
 
-    /** 총 수량. TODO(팀): 무제한 리워드(수량 제한 없음) 허용 여부 결정 — 현재는 필수값 */
-    @Column(nullable = false)
+    /** null이면 무제한 리워드 */
     private Integer totalQuantity;
 
-    @Column(nullable = false)
     private Integer remainingQuantity;
+
+    /** 동시 차감/복원 요청 사이의 낙관적 락 — 재고 갱신 충돌 감지용 */
+    @Version
+    private Long version;
 
     private Reward(Long projectId, String name, String description, BigDecimal price, Integer totalQuantity) {
         validatePrice(price);
-        if (totalQuantity == null || totalQuantity < 0) {
+        if (totalQuantity != null && totalQuantity < 0) {
             throw new IllegalArgumentException("수량은 0개 이상이어야 합니다. 입력값: " + totalQuantity);
         }
         this.projectId = projectId;
@@ -57,11 +66,10 @@ public class Reward extends BaseEntity {
         return new Reward(projectId, name, description, price, totalQuantity);
     }
 
-    // TODO(팀): 한정 수량 리워드의 동시성 제어 정책 결정 (@Version 낙관적 락 vs 비관적 락 vs 원자적 UPDATE).
-    //           선착순 얼리버드가 학습 포인트 — 부하 테스트로 검증할 것.
     public void decreaseStock(int quantity) {
-        if (quantity <= 0) {
-            throw new IllegalArgumentException("차감 수량은 1개 이상이어야 합니다.");
+        validateQuantity(quantity, "차감");
+        if (this.totalQuantity == null) {
+            return;
         }
         if (this.remainingQuantity < quantity) {
             throw new IllegalStateException(
@@ -72,8 +80,9 @@ public class Reward extends BaseEntity {
 
     /** 후원 취소·일괄 환불 시 재고 복원 */
     public void restoreStock(int quantity) {
-        if (quantity <= 0) {
-            throw new IllegalArgumentException("복원 수량은 1개 이상이어야 합니다.");
+        validateQuantity(quantity, "복원");
+        if (this.totalQuantity == null) {
+            return;
         }
         if (this.remainingQuantity + quantity > this.totalQuantity) {
             throw new IllegalStateException(
@@ -91,13 +100,22 @@ public class Reward extends BaseEntity {
         if (amount <= 0) {
             throw new IllegalArgumentException("추가 수량은 1개 이상이어야 합니다.");
         }
+        if (this.totalQuantity == null) {
+            throw new IllegalStateException("무제한 리워드는 수량을 추가할 대상이 없습니다.");
+        }
         this.totalQuantity += amount;
         this.remainingQuantity += amount;
     }
 
     /** TODO(팀): 부모 프로젝트가 OPEN인지 함께 검증하는 위치(애플리케이션 서비스) 결정 */
     public boolean isOrderable() {
-        return this.remainingQuantity > 0;
+        return this.totalQuantity == null || this.remainingQuantity > 0;
+    }
+
+    private void validateQuantity(int quantity, String action) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException(action + " 수량은 1개 이상이어야 합니다.");
+        }
     }
 
     private void validatePrice(BigDecimal price) {

@@ -6,8 +6,8 @@ import com.growmighty.lectures.firstday.project.category.application.ProjectCate
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectCreateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
-import com.growmighty.lectures.firstday.project.application.RewardService;
-import com.growmighty.lectures.firstday.project.application.dto.RegisterRewardCommand;
+import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardCreateRequest;
+import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
@@ -92,7 +92,7 @@ public class ProjectDataInitializer implements CommandLineRunner {
     }
 
     private void reward(Long projectId, String name, long price, int quantity, String desc) {
-        rewardService.register(new RegisterRewardCommand(
-            projectId, name, desc, BigDecimal.valueOf(price), quantity));
+        rewardService.register(projectId, new RewardCreateRequest(
+            name, desc, BigDecimal.valueOf(price), quantity));
     }
 }

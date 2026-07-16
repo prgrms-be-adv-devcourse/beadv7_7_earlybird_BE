@@ -62,6 +62,6 @@ public class ProjectController {
     @DeleteMapping("/{projectId}")
     public ApiResponse<Void> delete(@PathVariable Long projectId) {
         projectService.delete(projectId);
-        return ApiResponse.ok();
+        return ApiResponse.ok(null);
     }
 }
