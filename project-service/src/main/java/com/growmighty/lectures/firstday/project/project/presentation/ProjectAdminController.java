@@ -22,6 +22,8 @@ import java.util.List;
 /**
  * 관리자 심사 API.
  * TODO(팀): 관리자 권한 검증은 인증 도입 후 — Gateway 라우팅에 /admin 규칙 추가 필요
+ * TODO(팀): JWT 도입만으로는 해결 안 됨 — 로그인 여부와 별개로 "이 사용자가 ADMIN role인가"를
+ *           검증하는 role 체크 로직을 이 컨트롤러/서비스에 별도로 추가해야 한다.
  */
 @RestController
 @RequiredArgsConstructor

@@ -46,12 +46,16 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    // TODO(팀): 인증 도입만으로는 해결 안 됨 — status가 PENDING_REVIEW/REJECTED인 프로젝트는
+    //           creatorId 소유자 또는 관리자 외에는 조회 불가하도록 별도 필터링 로직 추가 필요.
     public ProjectResponse findById(Long projectId) {
         return ProjectResponse.from(getProject(projectId));
     }
 
     @Override
     @Transactional
+    // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
+    //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
     public ProjectResponse update(Long projectId, ProjectUpdateRequest request) {
         Project project = getProject(projectId);
         if (project.isPublished()) {
@@ -74,6 +78,8 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional
     public void delete(Long projectId) {
         // TODO(팀): 후원 발생 여부 검증 — 현재는 항상 삭제 가능하다고 가정한다.
+        // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
+        //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
         projectRepository.delete(getProject(projectId));
     }
 
