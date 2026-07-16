@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "payments")
@@ -15,11 +16,22 @@ import java.math.BigDecimal;
 public class Payment extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long paymentId;
 
     /** orderdb.orders.id (논리) — 일괄 환불 배치의 역추적 키. 주문당 결제 1건(멱등성). */
     @Column(name = "order_id", nullable = false, unique = true)
     private Long orderId;
+
+    /**user의 userId와 payment의 userId의 일치함을 검증하기 위한 필드*/
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
+    /**confirm의 중복 요청 방지를 위한 키.*/
+    @Column(unique = true)
+    private String idempotencyKey;
+
+    private LocalDateTime confirmedAt;
+    private LocalDateTime canceledAt;
 
     @Column(nullable = false)
     private BigDecimal amount;
@@ -47,11 +59,12 @@ public class Payment extends BaseEntity {
         return new Payment(orderId, amount);
     }
 
-    public void approve(String pgTransactionId) {
+    public void confirm(String pgTransactionId) {
         if (this.status != PaymentStatus.READY) {
             throw new IllegalStateException("승인 대기(READY) 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
         }
         this.pgTransactionId = pgTransactionId;
+        this.confirmedAt = LocalDateTime.now();
         this.status = PaymentStatus.PAID;
     }
 
@@ -66,10 +79,16 @@ public class Payment extends BaseEntity {
         if (this.status != PaymentStatus.PAID) {
             throw new IllegalStateException("결제 완료(PAID) 상태에서만 취소할 수 있습니다. 현재 상태: " + this.status);
         }
+        this.canceledAt = LocalDateTime.now();
         this.status = PaymentStatus.CANCELLED;
     }
 
     public boolean isPaid() {
         return this.status == PaymentStatus.PAID;
+    }
+
+    /**소유자 검증 메소드*/
+    public boolean isOwnedBy(Long userId) {
+        return this.userId.equals(userId);
     }
 }

@@ -26,10 +26,10 @@ class PaymentTest {
 
     @Test
     @DisplayName("승인하면 PAID로 전이되고 거래번호가 저장된다")
-    void approve_transitions() {
+    void confirm_transitions() {
         Payment payment = Payment.ready(1L, BigDecimal.valueOf(10000));
 
-        payment.approve("PG-1");
+        payment.confirm("PG-1");
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         assertThat(payment.getPgTransactionId()).isEqualTo("PG-1");
@@ -38,11 +38,11 @@ class PaymentTest {
 
     @Test
     @DisplayName("이미 승인된 결제를 다시 승인하면 예외가 발생한다")
-    void approve_twice_throws() {
+    void confirm_twice_throws() {
         Payment payment = Payment.ready(1L, BigDecimal.valueOf(10000));
-        payment.approve("PG-1");
+        payment.confirm("PG-1");
 
-        assertThatThrownBy(() -> payment.approve("PG-2"))
+        assertThatThrownBy(() -> payment.confirm("PG-2"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -50,7 +50,7 @@ class PaymentTest {
     @DisplayName("결제 완료 상태에서만 취소할 수 있다")
     void cancel_onlyFromPaid() {
         Payment paid = Payment.ready(1L, BigDecimal.valueOf(10000));
-        paid.approve("PG-1");
+        paid.confirm("PG-1");
         paid.cancel();
         assertThat(paid.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
 
