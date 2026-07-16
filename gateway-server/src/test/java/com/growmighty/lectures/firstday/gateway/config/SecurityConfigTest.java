@@ -5,6 +5,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.http.HttpStatus;
@@ -30,7 +31,7 @@ import java.util.Base64;
 @AutoConfigureWebTestClient
 class SecurityConfigTest {
 
-    // gateway-server/src/test/resources/application.yml 의 jwt.secret 과 동일해야 한다.
+    @Value("${jwt.secret}")
     private static final String TEST_SECRET = "A196b/7T15tWsckvVi3uwbzkfgbxZnvVYHTQ5kl+6nQ=";
 
     private final JwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(
