@@ -46,10 +46,15 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    // TODO(팀): 인증 도입만으로는 해결 안 됨 — status가 PENDING_REVIEW/REJECTED인 프로젝트는
-    //           creatorId 소유자 또는 관리자 외에는 조회 불가하도록 별도 필터링 로직 추가 필요.
+    // TODO(팀): 소유자/관리자는 자기 PENDING_REVIEW·REJECTED 프로젝트를 이 엔드포인트로
+    //           조회할 방법이 없다 (인증 도입 전이라 창작자는 /me 목록으로만 확인 가능).
+    //           인증 도입 후 creatorId/관리자 여부를 받아 그 경우엔 이 제한을 우회하도록 보강 필요.
     public ProjectResponse findById(Long projectId) {
-        return ProjectResponse.from(getProject(projectId));
+        Project project = getProject(projectId);
+        if (!project.isPublished()) {
+            throw new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId);
+        }
+        return ProjectResponse.from(project);
     }
 
     @Override
@@ -135,6 +140,11 @@ public class ProjectServiceImpl implements ProjectService {
     private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다 (status 파라미터로 요청해도 결과 없음).
+            // 창작자 본인의 심사 대기/반려 프로젝트는 findByCreator(/me)로 확인한다.
+            predicates.add(cb.and(
+                    cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
+                    cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
             if (keyword != null && !keyword.isBlank()) {
                 String pattern = "%" + keyword + "%";
                 predicates.add(cb.or(
