@@ -26,15 +26,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  *   "error": null
  * }
  * }</pre>
- *
- * <p>실패 응답 예시:
- * <pre>{@code
- * {
- *   "success": false,
- *   "data": null,
- *   "error": { "code": "C003", "message": "존재하지 않는 주문입니다. orderId=999", "errors": null }
- * }
- * }</pre>
  */
 @RestControllerAdvice
 public class ApiResponseWrappingAdvice implements ResponseBodyAdvice<Object> {
