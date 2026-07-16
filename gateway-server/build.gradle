@@ -15,4 +15,20 @@ dependencies {
 
     // 부팅 시 config-server 에서 설정을 받아온다 (actuator 는 위에 이미 있음 — /actuator/refresh 겸용)
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
+
+    // JWT 클레임/헤더 이름 상수, jwt.secret 설정 바인딩(JwtProperties) 공유.
+    // common 의 webmvc/data-jpa/validation 은 실제로 쓰는 게 없는데도 Gradle 은 (api 든 implementation
+    // 이든 상관없이) 이 모듈들을 런타임 클래스패스엔 그대로 올린다 — Tomcat 이 얹히면서 WebApplicationType
+    // 이 SERVLET 으로 오판되고, spring-data-jpa 는 DataSource 도 없이 자동 설정을 시도해 기동이 깨진다.
+    // JwtProperties/JwtHeaders 는 이 셋 중 아무것도 필요로 하지 않으므로 명시적으로 제외한다.
+    implementation(project(':common')) {
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-webmvc'
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-data-jpa'
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-validation'
+    }
+
+    // JWT 검증 — ReactiveJwtDecoder, SecurityWebFilterChain 등 Spring Security 리액티브 리소스 서버 지원.
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-webflux-test'
 }

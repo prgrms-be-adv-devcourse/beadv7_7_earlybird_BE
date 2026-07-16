@@ -17,4 +17,7 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // JWT 발급(JwtEncoder/NimbusJwtEncoder) — gateway-server 는 검증만 하고, 발급은 여기서만 한다.
+    implementation 'org.springframework.security:spring-security-oauth2-jose'
 }
