@@ -32,6 +32,10 @@ public class ProjectDataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        if (!categoryRepository.findAll().isEmpty()) {
+            return;
+        }
+
         seedCategories();
 
         // 프로젝트 1 (rewardId 1~3)
