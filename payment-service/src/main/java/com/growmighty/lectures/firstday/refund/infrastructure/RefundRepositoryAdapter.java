@@ -1,7 +1,7 @@
-package com.growmighty.lectures.firstday.payment.infrastructure;
+package com.growmighty.lectures.firstday.refund.infrastructure;
 
-import com.growmighty.lectures.firstday.payment.domain.Refund;
-import com.growmighty.lectures.firstday.payment.domain.RefundRepository;
+import com.growmighty.lectures.firstday.refund.domain.Refund;
+import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 

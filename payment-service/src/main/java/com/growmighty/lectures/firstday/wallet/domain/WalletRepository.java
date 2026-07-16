@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.payment.domain;
+package com.growmighty.lectures.firstday.wallet.domain;
 
 import java.util.Optional;
 
