@@ -8,6 +8,8 @@ public interface OrderRepository {
 
     Optional<Order> findById(Long id);
 
+    Optional<Order> findByIdWithItems(Long id);
+
     List<Order> findAll();
 
     List<Order> findByUserId(Long userId);

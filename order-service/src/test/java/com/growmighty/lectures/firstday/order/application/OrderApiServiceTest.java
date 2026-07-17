@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.order.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.order.application.dto.OrderInspectionView;
 import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
@@ -12,6 +13,7 @@ import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
+import com.growmighty.lectures.firstday.order.domain.Money;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +22,7 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -31,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -114,5 +118,64 @@ class OrderApiServiceTest {
 
         assertThatThrownBy(() -> orderApiService.cancelOrder(404L))
                 .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("placeOrderInspection returns stored order and item details")
+    void placeOrderInspection_returnsStoredOrderAndItems() {
+        OrderItem first = OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 100L, 10L, 2);
+        OrderItem second = OrderItem.create("Reward B", BigDecimal.valueOf(5_000), 101L, 11L, 3);
+        Order order = Order.create(7L, List.of(first, second),
+                "Receiver", "010-0000-0000", "Seoul", "06236");
+        setId(order, 55L);
+        setId(first, 1L);
+        setId(second, 2L);
+        when(orderRepository.findByIdWithItems(55L)).thenReturn(Optional.of(order));
+
+        OrderInspectionView result = orderApiService.placeOrderInspection(55L);
+
+        assertThat(result.orderId()).isEqualTo(55L);
+        assertThat(result.userId()).isEqualTo(7L);
+        assertThat(result.orderStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(result.itemsAmount()).isEqualByComparingTo("35000");
+        assertThat(result.paymentAmount()).isEqualByComparingTo("38000");
+        assertThat(result.totalAmount()).isEqualByComparingTo("38000");
+        assertThat(result.items()).hasSize(2);
+        assertThat(result.items().get(0).rewardId()).isEqualTo(10L);
+        assertThat(result.items().get(0).quantity()).isEqualTo(2);
+        assertThat(result.items().get(0).unitAmount()).isEqualByComparingTo("10000");
+        assertThat(result.items().get(0).amount()).isEqualByComparingTo("20000");
+        assertThat(result.items().get(1).rewardId()).isEqualTo(11L);
+        assertThat(result.items().get(1).amount()).isEqualByComparingTo("15000");
+        verifyNoInteractions(rewardPort, paymentPort);
+    }
+
+    @Test
+    @DisplayName("placeOrderInspection uses stored total and payment amount")
+    void placeOrderInspection_usesStoredTotalAmount() {
+        OrderItem item = OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 100L, 10L, 2);
+        Order order = Order.create(7L, List.of(item),
+                "Receiver", "010-0000-0000", "Seoul", "06236");
+        setId(order, 55L);
+        ReflectionTestUtils.setField(item, "price", Money.from(BigDecimal.valueOf(99_999)));
+        when(orderRepository.findByIdWithItems(55L)).thenReturn(Optional.of(order));
+
+        OrderInspectionView result = orderApiService.placeOrderInspection(55L);
+
+        assertThat(result.totalAmount()).isEqualByComparingTo("23000");
+        assertThat(result.paymentAmount()).isEqualByComparingTo("23000");
+    }
+
+    @Test
+    @DisplayName("placeOrderInspection throws EntityNotFoundException when order is missing")
+    void placeOrderInspection_notFound_throws() {
+        when(orderRepository.findByIdWithItems(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> orderApiService.placeOrderInspection(404L))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    private void setId(Object target, Long id) {
+        ReflectionTestUtils.setField(target, "id", id);
     }
 }

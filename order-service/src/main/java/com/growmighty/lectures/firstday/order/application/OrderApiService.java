@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.order.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.order.application.dto.OrderConsistencyView;
+import com.growmighty.lectures.firstday.order.application.dto.OrderInspectionView;
 import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
@@ -102,6 +103,13 @@ public class OrderApiService {
                 storedTotal.getValue(),
                 recalculatedTotal.getValue(),
                 storedTotal.isSameAmount(recalculatedTotal));
+    }
+
+    @Transactional(readOnly = true)
+    public OrderInspectionView placeOrderInspection(Long orderId) {
+        Order order = orderRepository.findByIdWithItems(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 주문입니다. orderId=" + orderId));
+        return OrderInspectionView.from(order);
     }
 
     private Order getOrder(Long orderId) {

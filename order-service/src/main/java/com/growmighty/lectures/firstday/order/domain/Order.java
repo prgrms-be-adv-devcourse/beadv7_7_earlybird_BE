@@ -27,6 +27,7 @@ public class Order extends BaseEntity {
     private Long userId;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.PERSIST)
+    @OrderBy("id ASC")
     private final List<OrderItem> items = new ArrayList<>();
 
     @Column
