@@ -127,10 +127,18 @@ public class RewardServiceImpl implements RewardService {
         getRewardEntity(rewardId).decreaseStock(quantity);
     }
 
+    /**
+     * decreaseStock/restoreStock 둘 다 파라미터 시그니처(Long, int)가 같아서, Spring Retry는 이
+     * @Recover를 "어느 쪽에서 재시도가 소진됐는지" 구분하지 않고 예외 타입+파라미터 시그니처로만
+     * 매칭한다. 실제로 시그니처가 같은 @Recover 두 개를 두고 실험해본 결과, decreaseStock이든
+     * restoreStock이든 항상 먼저 선언된 쪽만 호출되고 나머지 하나는 절대 안 불림(랜덤도, 원본
+     * 메서드별 구분도 아님) — 그래서 둘로 나누는 건 죽은 코드만 남기고, 두 작업을 모두 포괄하는
+     * 문구 하나로 통일하는 게 맞다.
+     */
     @Recover
-    public void recoverDecreaseStock(ObjectOptimisticLockingFailureException e, Long rewardId, int quantity) {
+    public void recoverStockChangeConflict(ObjectOptimisticLockingFailureException e, Long rewardId, int quantity) {
         throw new ConcurrentUpdateFailedException(
-            "재고 차감 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
+            "재고 변경(차감/복원) 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
     }
 
     /**
@@ -143,7 +151,13 @@ public class RewardServiceImpl implements RewardService {
         throw e;
     }
 
+    /**
+     * decreaseStock과 같은 이유로 @Retryable — 동시 취소·환불로 여러 restoreStock 요청이
+     * 같은 리워드에 몰리면 낙관적 락 충돌이 날 수 있어, 재시도 없이는 정상적인 동시 복원 요청도
+     * 그냥 실패해버린다.
+     */
     @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
     public void restoreStock(Long rewardId, int quantity) {
         getRewardEntity(rewardId).restoreStock(quantity);
