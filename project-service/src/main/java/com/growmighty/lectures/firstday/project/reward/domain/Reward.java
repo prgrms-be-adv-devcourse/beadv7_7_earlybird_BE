@@ -115,7 +115,12 @@ public class Reward extends BaseEntity {
         this.remainingQuantity += amount;
     }
 
-    /** 공개 전: 자유 수정 (null 필드는 미변경). 공개 전이라 아직 판매된 적 없으므로 totalQuantity를 바꾸면 remainingQuantity도 그대로 맞춘다. */
+    /**
+     * 공개 전: 자유 수정 (null 필드는 미변경).
+     * totalQuantity를 바꿔도 이미 차감된(판매된) 수량은 그대로 보존한다 — "공개 전이라 아직 판매된 적
+     * 없다"는 가정이 항상 맞지는 않기 때문(프로젝트가 아직 PENDING_REVIEW여도 order-service가 프로젝트
+     * 상태를 확인하지 않고 재고를 차감할 수 있는 경로가 있어, 이미 팔린 수량이 있을 수 있다).
+     */
     public void updateBeforePublish(String name, String description, BigDecimal price, Integer totalQuantity) {
         if (name != null) {
             this.name = name;
@@ -131,9 +136,22 @@ public class Reward extends BaseEntity {
             if (totalQuantity < 0) {
                 throw new IllegalArgumentException("수량은 0개 이상이어야 합니다. 입력값: " + totalQuantity);
             }
+            int sold = soldQuantity();
+            if (totalQuantity < sold) {
+                throw new IllegalArgumentException(
+                    "이미 판매된 수량(" + sold + "개)보다 적게 설정할 수 없습니다. 입력값: " + totalQuantity);
+            }
             this.totalQuantity = totalQuantity;
-            this.remainingQuantity = totalQuantity;
+            this.remainingQuantity = totalQuantity - sold;
         }
+    }
+
+    /** 지금까지 차감된(판매된) 수량. 기존에 무제한 리워드였다면 판매량을 추적하지 않았으므로 0으로 취급한다. */
+    private int soldQuantity() {
+        if (this.totalQuantity == null) {
+            return 0;
+        }
+        return this.totalQuantity - this.remainingQuantity;
     }
 
     /** 공개 후 삭제 요청을 받았을 때 호출 — 하드 삭제 대신 판매 종료 처리만 한다 */

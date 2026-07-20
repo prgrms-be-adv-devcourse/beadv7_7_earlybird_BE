@@ -170,4 +170,26 @@ class RewardTest {
         assertThatThrownBy(() -> reward.decreaseStock(1))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    @DisplayName("공개 전 총수량을 바꿔도 이미 차감된 수량은 보존된다")
+    void updateBeforePublish_totalQuantity_preservesAlreadySoldAmount() {
+        Reward reward = reward(10);
+        reward.decreaseStock(3);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(7);
+
+        reward.updateBeforePublish(null, null, null, 20);
+        assertThat(reward.getTotalQuantity()).isEqualTo(20);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(17);
+    }
+
+    @Test
+    @DisplayName("이미 판매된 수량보다 적은 총수량으로는 변경할 수 없다")
+    void updateBeforePublish_totalQuantity_belowSold_throws() {
+        Reward reward = reward(10);
+        reward.decreaseStock(8);
+
+        assertThatThrownBy(() -> reward.updateBeforePublish(null, null, null, 5))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
