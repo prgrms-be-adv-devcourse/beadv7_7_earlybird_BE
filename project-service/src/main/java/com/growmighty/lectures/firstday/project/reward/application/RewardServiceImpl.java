@@ -29,8 +29,11 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     @Transactional
+    // TODO(팀): 등록 가능한 상태(PENDING_REVIEW?)인지 검증 — 존재 여부는 아래에서 확인함
     public RewardResponse register(Long projectId, RewardCreateRequest request) {
-        // TODO(팀): 존재하는 프로젝트인지 + 등록 가능한 상태(PENDING_REVIEW?)인지 검증
+        if (!projectRepository.existsById(projectId)) {
+            throw new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId);
+        }
         Reward reward = rewardRepository.save(request.toEntity(projectId));
         return RewardResponse.from(reward);
     }
