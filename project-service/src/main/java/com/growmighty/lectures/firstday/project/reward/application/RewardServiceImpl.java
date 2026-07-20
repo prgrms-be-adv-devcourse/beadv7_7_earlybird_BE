@@ -119,8 +119,12 @@ public class RewardServiceImpl implements RewardService {
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 리워드입니다. rewardId=" + rewardId));
     }
 
+    /**
+     * update()/delete()의 published 여부 판단용. 일반 findById는 트랜잭션의 REPEATABLE READ
+     * 스냅샷에 갇혀 동시에 승인(approve)된 최신 상태를 못 볼 수 있어, 공유 락으로 최신 커밋 상태를 읽는다.
+     */
     private Project getProjectEntity(Long projectId) {
-        return projectRepository.findById(projectId)
+        return projectRepository.findByIdForStatusCheck(projectId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
     }
 }
