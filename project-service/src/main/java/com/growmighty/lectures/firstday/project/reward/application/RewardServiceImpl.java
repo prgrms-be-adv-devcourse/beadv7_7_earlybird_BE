@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -50,12 +51,12 @@ public class RewardServiceImpl implements RewardService {
     @Transactional
     public RewardResponse update(Long rewardId, RewardUpdateRequest request) {
         Reward reward = getRewardEntity(rewardId);
-        Project project = getProjectEntity(reward.getProjectId());
-        if (project.isClosed()) {
+        Optional<Project> project = findProject(reward.getProjectId());
+        if (project.isPresent() && project.get().isClosed()) {
             throw new IllegalStateException(
-                "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.getStatus());
+                "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.get().getStatus());
         }
-        if (project.isPublished()) {
+        if (project.isPresent() && project.get().isPublished()) {
             if (request.name() != null || request.description() != null
                     || request.price() != null || request.totalQuantity() != null) {
                 throw new IllegalArgumentException("공개된 프로젝트의 리워드는 수량 추가(increaseQuantity)만 가능합니다.");
@@ -77,8 +78,8 @@ public class RewardServiceImpl implements RewardService {
     @Transactional
     public void delete(Long rewardId) {
         Reward reward = getRewardEntity(rewardId);
-        Project project = getProjectEntity(reward.getProjectId());
-        if (project.isPublished()) {
+        Optional<Project> project = findProject(reward.getProjectId());
+        if (project.isPresent() && project.get().isPublished()) {
             reward.deactivate();
         } else {
             rewardRepository.delete(reward);
@@ -126,9 +127,12 @@ public class RewardServiceImpl implements RewardService {
     /**
      * update()/delete()의 published 여부 판단용. 일반 findById는 트랜잭션의 REPEATABLE READ
      * 스냅샷에 갇혀 동시에 승인(approve)된 최신 상태를 못 볼 수 있어, 공유 락으로 최신 커밋 상태를 읽는다.
+     * register()가 프로젝트 존재 여부를 검증하지 않고(TODO), Project.delete()도 참조 중인 리워드
+     * 여부를 확인하지 않아 부모 프로젝트가 사라진 "고아" 리워드가 있을 수 있다 — 이 경우 404로
+     * 막아버리면 그 리워드를 영영 정리할 방법이 없으므로, 존재하지 않으면 "공개 전"과 동일하게
+     * 취급한다(자유 수정/하드 삭제 허용).
      */
-    private Project getProjectEntity(Long projectId) {
-        return projectRepository.findByIdForStatusCheck(projectId)
-            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
+    private Optional<Project> findProject(Long projectId) {
+        return projectRepository.findByIdForStatusCheck(projectId);
     }
 }
