@@ -73,6 +73,9 @@ public class Reward extends BaseEntity {
 
     public void decreaseStock(int quantity) {
         validateQuantity(quantity, "차감");
+        if (!this.active) {
+            throw new IllegalStateException("판매 종료된 리워드는 주문할 수 없습니다. reward=" + this.name);
+        }
         if (this.totalQuantity == null) {
             return;
         }

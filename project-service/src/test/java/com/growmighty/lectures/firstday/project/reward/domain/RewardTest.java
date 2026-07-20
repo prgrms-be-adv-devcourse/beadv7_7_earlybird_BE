@@ -150,4 +150,24 @@ class RewardTest {
         assertThat(reward.isActive()).isFalse();
         assertThat(reward.isOrderable()).isFalse();
     }
+
+    @Test
+    @DisplayName("비활성화된 리워드는 재고가 남아있어도 차감(주문)할 수 없다")
+    void decreaseStock_deactivated_throws() {
+        Reward reward = reward(10);
+        reward.deactivate();
+
+        assertThatThrownBy(() -> reward.decreaseStock(1))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("무제한 리워드도 비활성화되면 차감할 수 없다")
+    void decreaseStock_deactivated_unlimitedReward_throws() {
+        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        reward.deactivate();
+
+        assertThatThrownBy(() -> reward.decreaseStock(1))
+                .isInstanceOf(IllegalStateException.class);
+    }
 }
