@@ -28,7 +28,7 @@ public class RewardHttpClient implements RewardPort {
 
     private RewardSnapshot callGetReward(Long rewardId) {
         ApiResponseBody<RewardApiData> body = projectRestClient.get()
-            .uri("/rewards/{rewardId}", rewardId)
+            .uri("/api/v1//rewards/{rewardId}", rewardId)
             .retrieve()
             .body(new ParameterizedTypeReference<>() {
             });

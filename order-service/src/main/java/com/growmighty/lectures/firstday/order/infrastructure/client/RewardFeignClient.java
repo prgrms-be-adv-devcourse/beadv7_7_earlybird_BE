@@ -20,7 +20,7 @@ public interface RewardFeignClient extends RewardPort {
     // ── 실제 HTTP 계약 (Feign 이 프록시로 구현) ──────────────────────────
     // project-service 의 RewardController 시그니처를 거울처럼 비춰 적는다.
     // 응답 봉투(ApiResponseBody)와 API DTO(RewardApiData)는 HTTP 세계의 언어라 여기 남긴다.
-    @GetMapping("/rewards/{rewardId}")
+    @GetMapping("/api/v1/rewards/{rewardId}")
     ApiResponseBody<RewardApiData> fetchReward(@PathVariable("rewardId") Long rewardId);
 
     @PostMapping("/internal/rewards/{rewardId}/decrease-stock")
