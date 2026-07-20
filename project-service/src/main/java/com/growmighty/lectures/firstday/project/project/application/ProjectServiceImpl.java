@@ -11,6 +11,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
@@ -27,6 +28,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
+    private final RewardRepository rewardRepository;
 
     @Override
     @Transactional
@@ -85,7 +87,9 @@ public class ProjectServiceImpl implements ProjectService {
         // TODO(팀): 후원 발생 여부 검증 — 현재는 항상 삭제 가능하다고 가정한다.
         // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
         //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
-        projectRepository.delete(getProject(projectId));
+        Project project = getProject(projectId);
+        rewardRepository.deleteByProjectId(projectId);
+        projectRepository.delete(project);
     }
 
     @Override
