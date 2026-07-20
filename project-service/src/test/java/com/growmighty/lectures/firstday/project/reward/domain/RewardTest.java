@@ -115,7 +115,7 @@ class RewardTest {
     void increaseQuantity_unlimitedReward_throws() {
         Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
         assertThatThrownBy(() -> reward.increaseQuantity(5))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

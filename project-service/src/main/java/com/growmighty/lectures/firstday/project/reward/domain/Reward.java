@@ -109,7 +109,7 @@ public class Reward extends BaseEntity {
             throw new IllegalArgumentException("추가 수량은 1개 이상이어야 합니다.");
         }
         if (this.totalQuantity == null) {
-            throw new IllegalStateException("무제한 리워드는 수량을 추가할 대상이 없습니다.");
+            throw new IllegalArgumentException("무제한 리워드는 수량을 추가할 대상이 없습니다.");
         }
         this.totalQuantity += amount;
         this.remainingQuantity += amount;
