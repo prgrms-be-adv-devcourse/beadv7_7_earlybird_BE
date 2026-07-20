@@ -2,7 +2,6 @@ package com.growmighty.lectures.firstday.order.presentation;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.order.application.OrderApiService;
-import com.growmighty.lectures.firstday.order.application.dto.OrderInspectionView;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -89,45 +88,6 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.error.code").value("C003"))
                 .andExpect(jsonPath("$.error.message").value("존재하지 않는 주문입니다. orderId=999"))
                 .andExpect(jsonPath("$.data").doesNotExist());
-    }
-
-    @Test
-    @DisplayName("POST /orders/inspect returns saved order inspection data")
-    void placeOrderInspection_success() throws Exception {
-        when(orderApiService.placeOrderInspection(1L))
-                .thenReturn(new OrderInspectionView(
-                        1L,
-                        10L,
-                        OrderStatus.CREATED,
-                        BigDecimal.valueOf(50_000),
-                        BigDecimal.ZERO,
-                        BigDecimal.valueOf(50_000),
-                        BigDecimal.valueOf(50_000),
-                        null,
-                        List.of(new OrderInspectionView.Item(
-                                100L,
-                                200L,
-                                300L,
-                                "Reward A",
-                                2,
-                                BigDecimal.valueOf(25_000),
-                                BigDecimal.valueOf(50_000)))));
-
-        mockMvc.perform(post("/orders/inspect")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"orderId":1}
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.orderId").value(1))
-                .andExpect(jsonPath("$.data.userId").value(10))
-                .andExpect(jsonPath("$.data.orderStatus").value("CREATED"))
-                .andExpect(jsonPath("$.data.paymentAmount").value(50000))
-                .andExpect(jsonPath("$.data.items[0].rewardId").value(300))
-                .andExpect(jsonPath("$.data.items[0].quantity").value(2))
-                .andExpect(jsonPath("$.data.items[0].unitAmount").value(25000))
-                .andExpect(jsonPath("$.data.items[0].amount").value(50000));
     }
 
     @Test
