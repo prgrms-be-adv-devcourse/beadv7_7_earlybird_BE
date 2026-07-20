@@ -3,7 +3,7 @@ package com.growmighty.lectures.firstday.user.presentation;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
-import com.growmighty.lectures.firstday.user.domain.UserRole;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +29,7 @@ class InternalUserControllerTest {
 	@DisplayName("GET /internal/v1/users/{userId} 는 경로의 userId 로 조회한 사용자 정보를 반환한다")
 	void getUser_success() throws Exception {
 		when(userService.getUser(1L))
-				.thenReturn(new UserInfo(1L, "hanahan@example.com", "김하나한", "010-0000-0000", UserRole.USER));
+				.thenReturn(new UserInfo(1L, "hanahan@example.com", "김하나한", "010-0000-0000", UserRole.BACKER));
 
         String contentAsString = mockMvc.perform(get("/internal/v1/users/1"))
                 .andExpect(status().isOk())

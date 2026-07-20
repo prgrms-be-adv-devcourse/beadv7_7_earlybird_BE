@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.gateway.security;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,12 +33,12 @@ class UserHeaderForwardingFilterTest {
         };
 
         filter.filter(exchange, chain)
-                .contextWrite(ReactiveSecurityContextHolder.withAuthentication(jwtAuthentication("42", "USER")))
+                .contextWrite(ReactiveSecurityContextHolder.withAuthentication(jwtAuthentication("42", UserRole.BACKER.getRoleName())))
                 .block();
 
         HttpHeaders headers = captured[0].getRequest().getHeaders();
         assertThat(headers.getFirst(JwtHeaders.USER_ID)).isEqualTo("42");
-        assertThat(headers.getFirst(JwtHeaders.USER_ROLE)).isEqualTo("USER");
+        assertThat(headers.getFirst(JwtHeaders.USER_ROLE)).isEqualTo(UserRole.BACKER.getRoleName());
     }
 
     @Test
@@ -52,7 +53,7 @@ class UserHeaderForwardingFilterTest {
         };
 
         filter.filter(exchange, chain)
-                .contextWrite(ReactiveSecurityContextHolder.withAuthentication(jwtAuthentication("42", "USER")))
+                .contextWrite(ReactiveSecurityContextHolder.withAuthentication(jwtAuthentication("42", UserRole.BACKER.getRoleName())))
                 .block();
 
         assertThat(captured[0].getRequest().getHeaders().get(JwtHeaders.USER_ID)).containsExactly("42");

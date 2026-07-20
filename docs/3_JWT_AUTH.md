@@ -23,7 +23,7 @@ Content-Type: application/json
 ```json
 {
   "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
-  "user": { "id": 1, "email": "buyer@growmighty.co.kr", "name": "구매자", "phoneNumber": "010-1111-1111", "role": "USER" }
+  "user": { "id": 1, "email": "buyer@growmighty.co.kr", "name": "구매자", "phoneNumber": "010-1111-1111", "role": "BACKER" }
 }
 ```
 
@@ -67,7 +67,24 @@ public XxxResponse getMe(@RequestHeader(JwtHeaders.USER_ID) Long userId) { ... }
 
 `JwtHeaders` 는 `common` 모듈(`com.growmighty.lectures.firstday.common.jwt.JwtHeaders`)에 있다 —
 서비스 모듈은 이미 `implementation project(':common')` 을 갖고 있으므로 import 만 추가하면 된다.
-역할(role)이 필요하면 같은 방식으로 `@RequestHeader(JwtHeaders.USER_ROLE) String role` 을 추가한다.
+역할(role) 값 자체가 필요하면 같은 방식으로 `@RequestHeader(JwtHeaders.USER_ROLE) String role` 을 추가한다.
+
+특정 역할만 허용해야 하는 엔드포인트(예: 관리자 전용 `/admin/**`)는 다운스트림 서비스에서 헤더를 직접
+검사하는 커스텀 코드를 만들지 않는다 — 게이트웨이가 이미 검증된 JWT 를 들고 있는 시점에 Spring Security
+의 기본 기능(`authorizeExchange().hasRole(...)`)만으로 라우트 단위 인가를 끝낸다. `SecurityConfig` 에
+`jwtAuthenticationConverter` 빈이 JWT 의 `role` 클레임(예: `"ADMIN"`)을 `ROLE_ADMIN` 권한으로 변환해두었고,
+`filterChain()` 에서 `.pathMatchers("/admin/**").hasRole("ADMIN")` 로 매칭한다 — `project-admin-route`
+(config repo, `/admin/projects/**`) 에 걸려 있던 `TODO(팀)` 를 이 방식으로 해소했다.
+
+새 관리자 전용 라우트가 생기면 같은 패턴(`.pathMatchers("/그경로/**").hasRole("ADMIN")`)을
+`anyExchange().authenticated()` 보다 위에 추가하면 된다 — 순서가 중요하다(먼저 매칭되는 규칙이 이긴다).
+역할이 맞지 않으면 Spring Security 가 기본으로 `403`, 토큰 자체가 없거나 무효하면 `401` 을 반환한다 —
+둘 다 프레임워크 기본 동작이고 커스텀 예외 처리를 추가하지 않았다.
+
+**창작자 전용처럼 같은 경로를 메서드/소유권에 따라 나눠야 하는 경우**(예: `GET /projects/**` 는 공개,
+`POST /projects` 는 CREATOR 전용)는 게이트웨이의 경로 매칭만으로는 부족하다 — HTTP 메서드까지 매칭하는
+`.pathMatchers(HttpMethod.POST, "/projects").hasRole("CREATOR")` 같은 규칙을 추가할 수는 있지만, 이건
+project-service 의 API 설계를 게이트웨이가 대신 결정하는 셈이라 도입 전에 해당 서비스 오너와 맞춰야 한다.
 
 **왜 안전한가**: 게이트웨이의 `UserHeaderForwardingFilter` 가 인바운드 요청의 `X-User-Id`/`X-User-Role` 을
 **항상 먼저 제거한 뒤**, JWT 검증에 성공한 경우에만 검증된 값으로 다시 채운다. 클라이언트가 이 헤더를
@@ -101,6 +118,10 @@ JWT 설정(`JwtProperties`)과 헤더/클레임 이름 상수(`JwtHeaders`)는 `
 ## 범위 밖 (다음 단계)
 
 - Refresh token, 토큰 폐기/로테이션
-- `X-User-Role` 을 이용한 `/admin/**` 전용 권한 검사 (project-service 의 기존 TODO)
+- 역할(BACKER/CREATOR/ADMIN) 검사는 게이트웨이 라우트 단위(`/admin/**` → ADMIN)까지만 도입했다 —
+  같은 경로를 메서드/소유권 기준으로 더 세분화해야 하는 창작자 전용 엔드포인트(프로젝트 생성/수정 등)는
+  아직 아무 보호도 없다. 도입하려면 §4 끝의 메서드 기반 규칙을 해당 서비스 오너와 함께 추가한다.
+- 소유권(ownership) 검사는 완전히 범위 밖 — 역할이 맞아도 "이 리소스의 주인이 맞는가"(예: 본인
+  프로젝트만 수정)는 게이트웨이가 알 수 없고, 각 서비스 로직에서 처리해야 한다.
 - order/cart/payment/board/project/settlement/notification-service 의 `@RequestParam userId` 마이그레이션 —
   각 서비스 오너가 §4 패턴을 그대로 따라 하면 된다.

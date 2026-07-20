@@ -3,7 +3,7 @@ package com.growmighty.lectures.firstday.user.infrastructure;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.common.jwt.JwtProperties;
 import com.growmighty.lectures.firstday.user.application.TokenProvider;
-import com.growmighty.lectures.firstday.user.domain.UserRole;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -28,7 +28,7 @@ public class JwtTokenProvider implements TokenProvider {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject(String.valueOf(userId))
-                .claim(JwtHeaders.ROLE_CLAIM, role.name())
+                .claim(JwtHeaders.ROLE_CLAIM, role.getRoleName())
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(properties.accessTokenExpirationSeconds()))
                 .build();
