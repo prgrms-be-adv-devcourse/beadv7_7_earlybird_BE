@@ -21,4 +21,14 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
     public Optional<Payment> findById(Long id) {
         return jpaRepository.findById(id);
     }
+
+    @Override
+    public Optional<Payment> findByPgOrderId(String pgOrderId) {
+        return jpaRepository.findByPgOrderId(pgOrderId);
+    }
+
+    @Override
+    public Optional<Payment> findByOrderId(Long orderId) {
+        return jpaRepository.findByOrderId(orderId);
+    }
 }

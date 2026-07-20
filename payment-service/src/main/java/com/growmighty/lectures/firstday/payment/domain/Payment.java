@@ -26,6 +26,12 @@ public class Payment extends BaseEntity {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
+    private String pgOrderId;
+
+    @Column(name = "payment_key", unique = true, length = 200)
+    private String paymentKey;
+
     private LocalDateTime confirmedAt;
     private LocalDateTime canceledAt;
 
@@ -36,12 +42,22 @@ public class Payment extends BaseEntity {
     @Column(nullable = false)
     private PaymentStatus status;
 
-    @Column(name = "pg_transaction_id", unique = true)
-    private String pgTransactionId;
 
-    private Payment(Long orderId, Long userId, BigDecimal amount) {
+    private Payment(Long orderId, String pgOrderId, Long userId, BigDecimal amount) {
+        validatePayment(orderId, pgOrderId, userId, amount);
+        this.orderId = orderId;
+        this.pgOrderId = pgOrderId;
+        this.userId = userId;
+        this.amount = amount;
+        this.status = PaymentStatus.READY;
+    }
+
+    private static void validatePayment(Long orderId, String pgOrderId, Long userId, BigDecimal amount) {
         if (orderId == null) {
             throw new IllegalArgumentException("주문 식별자는 필수입니다.");
+        }
+        if (pgOrderId == null) {
+            throw new IllegalArgumentException("PG의 주문 식별자는 필수입니다.");
         }
         if (userId == null) {
             throw new IllegalArgumentException("사용자 식별자는 필수입니다.");
@@ -49,38 +65,47 @@ public class Payment extends BaseEntity {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("결제 금액은 0원보다 커야 합니다. 입력값: " + amount);
         }
-        this.orderId = orderId;
-        this.userId = userId;
-        this.amount = amount;
-        this.status = PaymentStatus.READY;
     }
 
-    public static Payment ready(Long orderId, Long userId, BigDecimal amount) {
-        return new Payment(orderId, userId, amount);
+    public static Payment ready(Long orderId, String pgOrderId, Long userId, BigDecimal amount) {
+        return new Payment(orderId, pgOrderId, userId, amount);
     }
 
-    public void confirm(String pgTransactionId) {
-        if (this.status != PaymentStatus.READY) {
-            throw new IllegalStateException("승인 대기(READY) 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
+    public void startConfirming() {
+        if(status != PaymentStatus.READY) {
+            throw new IllegalStateException("READY 상태에서만 승인할 수 있습니다. 현재 상태: " + status);
         }
-        if (pgTransactionId == null || pgTransactionId.isBlank()) {
-            throw new IllegalArgumentException("PG 결제 키는 필수입니다.");
+        this.status = PaymentStatus.CONFIRMING;
+    }
+
+    public void validateAmount(BigDecimal requestedAmount) {
+        if (requestedAmount == null || this.amount.compareTo(requestedAmount) != 0) {
+            throw new IllegalArgumentException("주문 금액과 결제 요청 금액이 일치하지 않습니다.");
         }
-        this.pgTransactionId = pgTransactionId;
+    }
+
+    public void confirm(String paymentKey) {
+        if (status != PaymentStatus.CONFIRMING) {
+            throw new IllegalStateException("CONFIRMING 상태에서만 승인할 수 있습니다. 현재 상태: " + status);
+        }
+        if (paymentKey == null || paymentKey.isBlank()) {
+            throw new IllegalArgumentException("토스 paymentKey 는 필수입니다.");
+        }
+        this.paymentKey = paymentKey;
         this.confirmedAt = LocalDateTime.now();
         this.status = PaymentStatus.PAID;
     }
 
     public void fail() {
-        if (this.status != PaymentStatus.READY) {
-            throw new IllegalStateException("승인 대기(READY) 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + this.status);
+        if (status != PaymentStatus.CONFIRMING) {
+            throw new IllegalStateException("CONFIRMING 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + status);
         }
         this.status = PaymentStatus.FAILED;
     }
 
     public void cancel() {
-        if (this.status != PaymentStatus.PAID) {
-            throw new IllegalStateException("결제 완료(PAID) 상태에서만 취소할 수 있습니다. 현재 상태: " + this.status);
+        if (status != PaymentStatus.PAID) {
+            throw new IllegalStateException("PAID 상태에서만 취소할 수 있습니다. 현재 상태: " + status);
         }
         this.canceledAt = LocalDateTime.now();
         this.status = PaymentStatus.CANCELLED;

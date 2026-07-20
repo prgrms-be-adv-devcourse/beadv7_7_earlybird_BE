@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.payment.presentation;
 import com.growmighty.lectures.firstday.payment.application.PaymentService;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PayRequest;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,10 +13,10 @@ import org.springframework.web.bind.annotation.*;
 public class PaymentController {
     private final PaymentService paymentService;
 
-    /** 결제 승인. TODO(팀): PG 확정 후 paymentKey 파라미터 추가 (API 명세서 §5, §10) */
+    /** 결제 승인.*/
     @PostMapping("/confirm")
-    public PaymentResponse confirm(@RequestBody PayRequest request) {
-        return PaymentResponse.from(paymentService.pay(request.orderId(), request.userId(), request.amount()));
+    public PaymentResponse confirm(@Valid @RequestBody PayRequest request) {
+        return PaymentResponse.from(paymentService.confirm(request.paymentKey(), request.pgOrderId()));
     }
 
     @GetMapping("/{paymentId}")
