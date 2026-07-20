@@ -51,6 +51,10 @@ public class RewardServiceImpl implements RewardService {
     public RewardResponse update(Long rewardId, RewardUpdateRequest request) {
         Reward reward = getRewardEntity(rewardId);
         Project project = getProjectEntity(reward.getProjectId());
+        if (project.isClosed()) {
+            throw new IllegalStateException(
+                "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.getStatus());
+        }
         if (project.isPublished()) {
             if (request.name() != null || request.description() != null
                     || request.price() != null || request.totalQuantity() != null) {
