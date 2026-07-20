@@ -13,8 +13,8 @@ public record OrderInspectionView(
         OrderStatus orderStatus,
         BigDecimal itemsAmount,
         BigDecimal shippingFee,
-        BigDecimal totalAmount,
-        BigDecimal paymentAmount,
+        BigDecimal totalAmount, // 실제 누적 금액 
+        BigDecimal paymentAmount, // 할인 등의 요소가 있을때 해당 요소까지 반영한 실 결제 금액
         Long paymentId,
         List<Item> items
 ) {
