@@ -26,10 +26,6 @@ public class Payment extends BaseEntity {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    /**confirm의 중복 요청 방지를 위한 키.*/
-    @Column(unique = true)
-    private String idempotencyKey;
-
     private LocalDateTime confirmedAt;
     private LocalDateTime canceledAt;
 
@@ -40,28 +36,35 @@ public class Payment extends BaseEntity {
     @Column(nullable = false)
     private PaymentStatus status;
 
-    @Column
+    @Column(name = "pg_transaction_id", unique = true)
     private String pgTransactionId;
 
-    private Payment(Long orderId, BigDecimal amount) {
+    private Payment(Long orderId, Long userId, BigDecimal amount) {
         if (orderId == null) {
             throw new IllegalArgumentException("주문 식별자는 필수입니다.");
+        }
+        if (userId == null) {
+            throw new IllegalArgumentException("사용자 식별자는 필수입니다.");
         }
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("결제 금액은 0원보다 커야 합니다. 입력값: " + amount);
         }
         this.orderId = orderId;
+        this.userId = userId;
         this.amount = amount;
         this.status = PaymentStatus.READY;
     }
 
-    public static Payment ready(Long orderId, BigDecimal amount) {
-        return new Payment(orderId, amount);
+    public static Payment ready(Long orderId, Long userId, BigDecimal amount) {
+        return new Payment(orderId, userId, amount);
     }
 
     public void confirm(String pgTransactionId) {
         if (this.status != PaymentStatus.READY) {
             throw new IllegalStateException("승인 대기(READY) 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
+        }
+        if (pgTransactionId == null || pgTransactionId.isBlank()) {
+            throw new IllegalArgumentException("PG 결제 키는 필수입니다.");
         }
         this.pgTransactionId = pgTransactionId;
         this.confirmedAt = LocalDateTime.now();
