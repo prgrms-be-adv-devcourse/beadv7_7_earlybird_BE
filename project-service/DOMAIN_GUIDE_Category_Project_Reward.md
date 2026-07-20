@@ -182,15 +182,43 @@ public void decreaseStock(...) { ... }
 
 **무제한 리워드는 어떻게 처리하나?**
 
-`totalQuantity`가 `null`이면 "무제한"으로 취급합니다. `decreaseStock`/`restoreStock` 메서드 맨 앞에서 "총 수량이 null이면 그냥 아무것도 안 하고 리턴"하도록 만들어서, 무제한 리워드는 재고 검증/락 경쟁 자체를 겪지 않습니다.
+`totalQuantity`가 `null`이면 "무제한"으로 취급합니다. `decreaseStock`은 맨 앞에서 `active`(아래 참고)부터 확인하고, 그다음 "총 수량이 null이면 그냥 아무것도 안 하고 리턴"하도록 만들어서, 무제한 리워드는 재고 검증/락 경쟁 자체를 겪지 않습니다.
 
-**공개 API와 내부 API가 나뉜 이유**
+**비활성화(`active`)와 하드 삭제를 구분한 이유**
+
+리워드가 한 번이라도 공개(프로젝트 승인)된 적이 있으면, 이미 후원자의 주문 데이터가 그 리워드를 참조하고 있을 수 있습니다. 이 상태에서 DB에서 진짜로 지워버리면(하드 삭제), 주문 데이터가 "존재하지 않는 리워드"를 가리키게 되는 문제가 생깁니다. 그래서 `Reward`에 `active`라는 boolean 필드를 두고:
+
+- **공개 전** 리워드를 지우면 → 하드 삭제 (아직 아무도 주문 안 했을 테니 안전)
+- **공개 후** 리워드를 "지워달라"고 하면 → 실제로는 지우지 않고 `active = false`로만 바꿉니다(소프트 삭제/"판매 종료" 처리)
+
+중요한 건, 이 `active` 플래그가 **응답에 표시만 되는 게 아니라 실제 재고 차감 로직에서도 강제된다는 점**입니다 — `decreaseStock()`이 `active`가 `false`면 주문 자체를 막습니다. 그래야 "판매 종료" 처리한 리워드를 order-service가 뒤늦게 주문 성사시켜버리는 걸 막을 수 있습니다.
+
+**공개 후엔 "누가" 뭘 할 수 있는지가 갈립니다**
+
+프로젝트가 공개(`IN_PROGRESS`)된 이후에는 크리에이터와 관리자가 할 수 있는 일이 다릅니다 — 이미 후원자들이 리워드 정보를 보고 후원을 결정했을 수 있어서, "수량을 줄이거나 아예 없애는" 것처럼 후원자에게 불리하게 작용할 수 있는 조작은 크리에이터 권한 밖으로 뺐습니다.
+
+| 동작 | 크리에이터 | 관리자 |
+|---|---|---|
+| 새 리워드 등록 | 가능 | - |
+| 수량 **늘리기** | 가능 | - |
+| 수량 **줄이기** | 불가 | 가능 (부득이한 경우만, 이미 판매된 수량 밑으로는 불가) |
+| 비활성화("삭제") | 불가 | 가능 |
+
+이건 `ProjectAdminController`가 이미 쓰고 있는 것과 같은 방식으로 구현했습니다 — 아직 인증 시스템이 없어서 "진짜 관리자인지" 검증은 못 하고, 지금은 **엔드포인트를 `/admin/...` 경로로 분리해서 의도만 명확히 해둔** 상태입니다. 나중에 인증이 들어오면 그 경로에 실제 role 체크를 추가하는 식으로 완성됩니다. 종료된(`SUCCEEDED`/`FAILED`/`CANCELLED`) 프로젝트의 리워드는 크리에이터·관리자 둘 다 아무것도 못 건드립니다 — 더 이상 주문이 안 들어오는 캠페인을 계속 손볼 이유가 없기 때문입니다.
+
+**공개 API 목록**
 
 ```
-공개 API   (누구나 호출 가능, 게이트웨이를 거침)
-  POST /api/v1/projects/{projectId}/rewards   ← 리워드 등록
-  GET  /api/v1/projects/{projectId}/rewards   ← 목록
-  GET  /api/v1/rewards/{rewardId}             ← 상세
+크리에이터용 (RewardController, /api/v1/rewards)
+  POST   /api/v1/projects/{projectId}/rewards   ← 리워드 등록
+  GET    /api/v1/projects/{projectId}/rewards   ← 목록
+  GET    /api/v1/rewards/{rewardId}             ← 상세
+  PATCH  /api/v1/rewards/{rewardId}             ← 공개 전: 자유 수정 / 공개 후: 수량 추가만
+  DELETE /api/v1/rewards/{rewardId}             ← 공개 전: 하드 삭제 / 공개 후: 거부(관리자 전용 API 이용 안내)
+
+관리자용 (RewardAdminController, /api/v1/admin/rewards)
+  PATCH  /api/v1/admin/rewards/{rewardId}/quantity   ← 공개 중 리워드 수량 축소
+  DELETE /api/v1/admin/rewards/{rewardId}             ← 공개 중 리워드 비활성화
 
 내부 API   (서비스끼리만 호출, 게이트웨이 라우팅 자체가 없음)
   POST /internal/rewards/{rewardId}/decrease-stock   ← order-service가 호출
@@ -215,13 +243,16 @@ graph TD
     OrderService["order-service<br/>(다른 서비스)"]
 
     Project -- "categoryId로만 참조<br/>등록 시 존재 여부 확인" --> Category
-    Reward -- "projectId로만 참조<br/>(존재 확인은 아직 안 함, TODO)" --> Project
+    Reward -- "projectId로만 참조<br/>등록 시 존재/종료 여부 확인" --> Project
+    Project -- "삭제 시 참조하는<br/>리워드를 함께 삭제" --> Reward
     OrderService -- "Feign + 내부 API<br/>재고 차감/복원 요청" --> Reward
 ```
 
 **Project → Category**: `Project`는 `categoryId`라는 숫자만 갖고 있습니다. 프로젝트를 등록할 때 `ProjectServiceImpl`이 `ProjectCategoryRepository.existsById(categoryId)`를 직접 호출해서 "이 카테고리가 진짜 있는지"만 확인하고, 그 외에는 서로 관계없는 별도 테이블입니다. (JPA 연관관계를 안 걸어놓은 건 Category 내부와 같은 이유 — 결합을 느슨하게 유지하기 위해서입니다.)
 
-**Reward → Project**: `Reward`는 `projectId`라는 숫자만 갖고 있고, **아직은 그 프로젝트가 실제로 있는지조차 확인하지 않습니다** (이건 현재 알려진 미해결 항목입니다 — 나중에 리워드 등록 시 프로젝트 존재/상태 검증을 추가해야 합니다). 같은 `project-service` 안에 있지만, "같은 애그리거트로 묶지 않고 ID로만 느슨하게 연결한다"는 원칙은 동일하게 지켰습니다.
+**Reward → Project**: `Reward`는 `projectId`라는 숫자만 갖고 있습니다. 리워드를 등록할 때 `RewardServiceImpl`이 `ProjectRepository`를 직접 호출해서 "이 프로젝트가 실제 존재하는지"와 "이미 종료된 프로젝트는 아닌지"를 확인합니다. 리워드 수정/삭제(`update()`/`delete()`)도 마찬가지로 이 프로젝트가 지금 공개된 상태인지 확인해서 허용 범위를 정합니다 — 이때 일반 조회 대신 **공유 락(`LOCK IN SHARE MODE`)** 이 걸린 조회를 씁니다. 이유는: MySQL의 기본 격리수준(REPEATABLE READ)에서는 한 트랜잭션이 처음 조회한 시점의 DB 상태가 그 트랜잭션이 끝날 때까지 고정되는데, 관리자가 그 사이 프로젝트를 승인(commit)해도 이 스냅샷 때문에 옛날 상태(승인 전)로 착각할 수 있기 때문입니다. 공유 락 조회는 이 스냅샷을 우회해서 항상 최신 커밋 상태를 읽고, 만약 지금 딱 그 순간 다른 트랜잭션이 이 프로젝트 행을 수정 중이면 그 트랜잭션이 끝날 때까지 기다렸다가 읽습니다.
+
+**Project → Reward (역방향)**: 프로젝트를 삭제할 때, 그 프로젝트를 참조하는 리워드가 남아있으면 부모를 잃은 "고아" 리워드가 됩니다. 이를 막기 위해 `ProjectServiceImpl.delete()`가 프로젝트를 지우기 전에 `RewardRepository.deleteByProjectId()`로 참조하는 리워드를 먼저 전부 삭제합니다. 즉 Reward와 Project는 서로의 리포지토리를 양방향으로 참조합니다 — 같은 서비스(같은 JVM, 같은 DB 커넥션) 안이라 이 정도 직접 참조는 허용되고, "숫자 ID로만 느슨하게 연결한다"는 원칙(엔티티/JPA 연관관계를 걸지 않는다는 원칙)만 지키면 됩니다.
 
 **Reward ↔ order-service (다른 서비스, MSA 경계를 넘는 관계)**: 여기서부터는 프로세스 자체가 다른 서비스입니다. `project-service`와 `order-service`는 같은 DB도 안 쓰고 같은 JVM도 아닙니다. 그래서 "숫자 ID 참조"조차 안 되고, **HTTP로 직접 요청을 보내야** 합니다. order-service는 `RewardFeignClient`라는 인터페이스로 이 HTTP 호출을 선언하고, 실제 호출은 서킷 브레이커(Resilience4j)로 감싸서, project-service가 응답을 안 하면 정해진 대체 동작(fallback)으로 넘어가게 만들어져 있습니다. 이렇게 **다른 서비스와의 통신은 반드시 네트워크(HTTP)를 거치게 강제**하는 게 이 프로젝트 전체(project-service뿐 아니라 order-service, payment-service 등 모든 서비스)의 핵심 설계 원칙입니다 — 그래야 나중에 project-service를 통째로 다시 만들어도 order-service는 API 계약만 안 바뀌면 전혀 영향을 안 받습니다.
 
@@ -246,8 +277,8 @@ graph TD
 ## 6. 지금 시점에서 알려진 한계
 
 이 문서는 "어떻게 만들었는지" 설명이 목적이라 자세한 목록은 생략하지만, 요약하면:
-- **인증(로그인) 시스템 자체가 아직 없어서**, "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증이 곳곳에 빠져 있습니다.
-- Project의 **삭제 시 후원 여부 검증**, **마감 감지 배치**, **SUCCEEDED/FAILED/CANCELLED 상태 전이**가 아직 없습니다.
-- Reward의 **PATCH(수량 증가)/DELETE(비활성화) 엔드포인트**가 아직 없습니다.
+- **인증(로그인) 시스템 자체가 아직 없어서**, "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증이 곳곳에 빠져 있습니다. 관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)도 지금은 URL만 분리해뒀을 뿐, 실제로 "이 사람이 관리자인가"를 검증하지는 않습니다.
+- Project의 **삭제 시 후원(주문) 여부 검증**(주문이 있으면 삭제 불가)은 아직 없습니다 — order-service 쪽에 "이 프로젝트에 주문이 있는지" 확인하는 API가 필요해서 별도 조율 중입니다. (참조하는 **리워드**가 있는지는 확인해서 함께 삭제하도록 이미 처리했습니다 — 이건 서로 다른 검증입니다.)
+- Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED/CANCELLED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
 
 각 항목의 자세한 내용과 다음 작업 우선순위는 `WORK_LOG_Category_Project.md`와 각 브랜치의 TODO 주석을 참고하세요.

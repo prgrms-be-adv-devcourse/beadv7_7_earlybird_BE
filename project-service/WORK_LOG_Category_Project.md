@@ -162,7 +162,7 @@ project/project/
 - `update(Long, ProjectUpdateRequest)` — `project.isPublished()`로 분기:
   - 공개 전: `updateBeforePublish` 호출 (categoryId 바뀌면 존재 검증도 다시 수행)
   - 공개 후: `title/categoryId/goalAmount/startAt` 중 하나라도 요청에 들어있으면 `IllegalArgumentException`(400)으로 거부, 나머지는 `updateAfterPublish` 호출
-- `delete(Long)` — 항상 삭제 가능 (요청사항대로 "후원 발생 전만" 검증은 TODO로 남김, 코드에 TODO 주석 있음)
+- `delete(Long)` — 참조하는 리워드를 먼저 cascade 삭제한 뒤 프로젝트 삭제 (8.5절에서 추가). "후원(주문) 발생 전만" 검증은 여전히 TODO — order-service 쪽 API가 필요해서 별도 조율 중 (8.7절 참고)
 - `findByCreator(Long creatorId)` — `/me`용
 - 관리자용: `findByStatus`, `approve`, `reject`
 
@@ -248,16 +248,17 @@ order-service와 동일 패턴으로: `webmvc, data-jpa, h2console, eureka-clien
 
 ## 5. 팀 문서 검토 중 발견된 이슈 (미해결 / 팀 확인 필요)
 
-### 🔴 URL prefix 규칙 불일치 (미확정, 가장 시급)
-API 명세서 안에서 두 가지 패턴이 혼재:
+### ✅ URL prefix 규칙 불일치 — 해결됨 (2026-07-16)
+API 명세서 안에 두 가지 패턴이 혼재해 있었음:
 - §0.1절 규칙: `/api/{서비스}/v1/xxx` (예: `/api/users/v1/xxx`)
 - 실제 본문 예시 대부분(Project/Reward 섹션 포함): `/api/v1/{서비스}/xxx` (예: `/api/v1/projects`)
 
-**현재 구현은 후자(`/api/v1/{서비스}/xxx`) 패턴**으로 되어 있음:
+**최종 결론(팀 확인): `/api/v1/{서비스}/xxx`가 맞는 규칙.** 이미 이 패턴으로 구현되어 있던 경로들 그대로 유지, 변경 불필요:
 - Category: `/api/v1/project-categories`
 - Project: `/api/v1/projects`, `/api/v1/admin/projects`
+- Reward: `/api/v1/projects/{projectId}/rewards`, `/api/v1/rewards/{rewardId}`, `/api/v1/admin/rewards/{rewardId}`
 
-팀 채널에서 확정 필요 — §0.1절 규칙으로 확정되면 위 경로들을 `/api/project-categories/v1/...`, `/api/projects/v1/...` 형태로 전부 변경해야 함 (Gateway 라우팅 규칙에도 영향).
+§0.1절 쪽 문구는 죽은 규칙 — API 명세서 문서 자체도 나중에 §0.1절을 이 패턴에 맞게 정정하는 게 좋음(코드 변경 아님, 문서 정리).
 
 ### ✅ `endAt` 수정 권한 애매함 — 해결됨 (7.5절 참고)
 - 이전 확정: 창작자가 자유롭게 연장 가능
@@ -367,8 +368,70 @@ ApiResponseBody<RewardApiData> fetchReward(@PathVariable("rewardId") Long reward
 ```
 → `@GetMapping("/api/v1/rewards/{rewardId}")`로 변경 필요. **의도적으로 이 세션에서는 수정하지 않음** (project-service 범위 밖, 사용자가 별도 세션/담당자에게 맡기기로 결정). `decrease-stock`/`restore-stock` 내부 경로는 이미 일치하므로 order-service 쪽 추가 조치 불필요.
 
-### 7.9 다음 단계 (갱신)
-- order-service `RewardFeignClient.fetchReward()` 경로 수정 (7.8절, 별도 세션/담당자)
+### 7.9 다음 단계 (갱신 — 이후 갱신은 8절 참고)
+- ~~order-service `RewardFeignClient.fetchReward()` 경로 수정~~ → project-service 범위 밖, order-service 담당자에게 넘김 (7.8절)
 - Category `DELETE` 정책 결정 후 엔드포인트 추가 (미해결, 4.3절)
-- URL prefix(`/api/v1/{서비스}/xxx` vs `/api/{서비스}/v1/xxx`) 팀 확정 대기 (미해결, 5절)
+- ~~URL prefix 팀 확정~~ → 완료, `/api/v1/{서비스}/xxx`로 확정 (5절)
 - Elasticsearch 검색 재구현 (필요 시점, 4.4절)
+- ~~Reward PATCH(수정)/DELETE(삭제) 엔드포인트 구현~~ → 완료 (8절)
+
+---
+
+## 8. Reward PATCH/DELETE 구현 + 코드리뷰 다각도 반영 + 정책 확정 (신규 세션 — 2026-07-20)
+
+### 8.1 배경
+7절에서 Reward는 등록/조회/재고 차감·복원(내부 API)까지만 구현했고, 수정(PATCH)·삭제(DELETE)는 미구현 상태로 남아 있었음. 이번 세션 목표: PATCH/DELETE 구현 → `/code-review`(다각도: 정확성 3개 + 정리/재사용 3개 + 설계 고도 + CLAUDE.md 컨벤션, 검증 단계 포함)로 리뷰 → 발견된 문제 전부 수정 → 브랜치 분리해서 PR까지.
+
+### 8.2 PATCH/DELETE 기본 구현
+- `PATCH /api/v1/rewards/{rewardId}`: 공개 전엔 `name`/`description`/`price`/`totalQuantity` 자유 수정, 공개 후엔 `increaseQuantity`(수량 추가)만 허용 — Project의 공개 전/후 필드 제한 패턴을 그대로 따름
+- `DELETE /api/v1/rewards/{rewardId}`: 공개 전엔 하드 삭제, 공개 후엔 `active=false`로 비활성화만 (이미 후원 데이터가 리워드를 참조하고 있을 수 있어 레코드 보존)
+- `Reward`에 `active` 필드 추가, `isOrderable()`이 `active`도 함께 판단하도록 변경
+- `RewardServiceImpl`이 published 여부 판단을 위해 `ProjectRepository`를 직접 참조 (같은 서비스 내 다른 서브도메인 — `ProjectServiceImpl`→`ProjectCategoryRepository`와 동일한 기존 패턴)
+
+### 8.3 코드리뷰에서 발견 및 수정한 문제 7가지
+다각도 리뷰(8개 앵글) → 1차 검증(11개 후보 중 9개 생존, 2개는 REFUTED로 제외) → 심각도 순으로 하나씩 수정. `CLAUDE.md`의 "cross-domain은 ID로만 참조" 규칙 위반 후보는, 그 규칙이 서비스 간(inter-service) 경계에 한정된 것이지 같은 서비스 내 서브도메인 간에는 이미 선례(Project↔Category)가 있어 REFUTED됨.
+
+1. **비활성화된 리워드가 재고 차감 경로에서 여전히 주문 가능** — `decreaseStock()`이 `active`를 전혀 안 봐서, DELETE로 "판매 종료" 처리해도 order-service의 내부 재고 차감 API를 통하면 그대로 주문이 성사됨. `decreaseStock()` 맨 앞에 `active` 체크 추가(무제한 리워드 조기 반환보다 먼저 둬서 리워드 종류 무관하게 적용).
+2. **`updateBeforePublish`가 이미 판매된 재고를 조건 없이 지워버림** — `totalQuantity` 변경 시 `remainingQuantity = totalQuantity`로 무조건 덮어씀. "공개 전이라 안 팔렸을 것"이라는 가정이 항상 맞지는 않아(주문 흐름이 프로젝트 상태를 확인 안 하는 경로가 있음) 이미 판매된 수량이 사라지는 문제. `soldQuantity()`(=`totalQuantity - remainingQuantity`) 계산해서 보존하고, 판매량보다 적게 설정하면 거부하도록 변경.
+3. **프로젝트 공개 여부를 트랜잭션 스냅샷으로 판단** — MySQL REPEATABLE READ에서 트랜잭션 첫 조회 시점에 스냅샷이 고정돼, 관리자가 그 사이 승인해도 옛 상태(PENDING_REVIEW)로 착각할 수 있음. `ProjectRepository`에 공유락(`LOCK IN SHARE MODE`) 조회 메서드(`findByIdForStatusCheck`) 추가해서 항상 최신 커밋 상태를 읽도록 변경 (이 메서드 자체는 `강대혁/project`에 커밋, 사용처는 `강대혁/reward`).
+4. **종료된(FAILED/CANCELLED) 프로젝트의 리워드에도 수량 추가 허용** — `isPublished()`가 "한 번이라도 승인된 적 있는지"만 판단해서 `SUCCEEDED`/`FAILED`/`CANCELLED`도 전부 "공개됨"으로 묶임. 기존 `Project.isClosed()`를 재사용해 `update()` 맨 앞에 가드 추가, `IN_PROGRESS`만 수량 추가 허용하고 종료된 상태는 전부 차단.
+5. **무제한 리워드에 수량 추가 시도 시 상태코드 오류(409→400)** — `IllegalStateException`을 던져 자동으로 409(Conflict)로 매핑됐는데, 동시성 충돌이 아니라 애초에 성립 안 하는 요청이라 400이 맞음. `IllegalArgumentException`으로 예외 타입만 변경.
+6. **PATCH로 리워드 이름을 빈 값으로 바꿀 수 있음** — `RewardCreateRequest.name`엔 `@NotBlank`가 있는데 `RewardUpdateRequest.name`엔 없어서 `{"name": ""}`이 그대로 통과. DTO에 `@NotBlank`를 안 붙인 이유: PATCH에서 `name`은 "안 보내면 그대로 두는" 선택 필드라 `@NotBlank`(null도 거부)를 쓰면 부분 수정 자체가 깨짐 — 대신 `updateBeforePublish()` 안에 `name.isBlank()` 체크 추가(null이면 통과, 값 있으면 빈 값 금지).
+7. **고아 리워드를 PATCH/DELETE로 정리할 수 없음** — `register()`가 projectId 존재 검증을 안 하고(기존 TODO), Project 하드 삭제도 참조 리워드를 확인 안 해서(기존 TODO) 둘이 겹치면 부모 없는 "고아" 리워드가 생길 수 있는데, `update()`/`delete()`가 프로젝트 조회 실패 시 404를 던져서 이 고아를 영영 정리할 방법이 없었음. 프로젝트 조회를 `Optional`로 바꿔서 "프로젝트 없음"을 "공개 전"과 동일하게 취급하도록 변경 — 자유 수정/하드 삭제(정리) 가능해짐.
+
+각 항목 모두 실기동(로컬 MySQL)해서 curl로 직접 재현·확인. 도메인 단위 테스트도 각 수정마다 추가.
+
+### 8.4 근본 원인 두 가지도 별도로 수정
+8.3-7의 "고아 리워드"는 증상만 완화했을 뿐 원인(TODO 2개)은 그대로였음. 이후 명시적으로 요청받아 원인 자체도 처리:
+- `RewardServiceImpl.register()` — `projectRepository.existsById()`로 프로젝트 존재 검증 추가 (`강대혁/reward`)
+- `ProjectServiceImpl.delete()` — 프로젝트 삭제 전 `RewardRepository.deleteByProjectId()`로 참조 리워드를 먼저 cascade 삭제 (`강대혁/project`, `RewardRepository`에 파생 삭제 쿼리 추가)
+
+### 8.5 비즈니스 정책 확정: 리워드 등록 허용 범위
+`register()`에 남아있던 "등록 가능한 상태인지" TODO를 팀 확인 후 정책으로 확정: `PENDING_REVIEW`/`REJECTED`/`IN_PROGRESS`에서는 등록 가능(프로젝트 공개 후에도 새 리워드 등급 추가 가능), `SUCCEEDED`/`FAILED`/`CANCELLED`(종료)에서만 차단. 기존 `existsById` 존재 검증을 `findProject()`(공유락 조회, 8.3-3절)로 통합해 존재 여부와 종료 여부를 한 번에 확인.
+
+### 8.6 관리자 권한 분리: 공개 후 수량 축소·비활성화
+정책 확정: 프로젝트 공개 이후 리워드 수량 축소·비활성화는 크리에이터 권한 밖, 관리자 전용으로 분리. 크리에이터는 여전히 수량 추가(`increaseQuantity`)만 가능.
+
+- `Reward.decreaseQuantity(amount)` 신규 도메인 메서드 (판매량 밑으로는 축소 불가, `increaseQuantity`의 대칭 버전)
+- `RewardAdminController` 신규 — `ProjectAdminController`와 동일 패턴(`/api/v1/admin/rewards`):
+  - `PATCH /api/v1/admin/rewards/{rewardId}/quantity` — 수량 축소
+  - `DELETE /api/v1/admin/rewards/{rewardId}` — 비활성화
+  - 둘 다 "공개 중(`IN_PROGRESS`)"인 리워드만 대상, 공개 전/종료는 거부
+- 기존 `RewardController.delete()`는 공개 후 요청이 오면 이제 하드 삭제/비활성화 대신 `IllegalStateException`("관리자 전용 API를 이용하세요")으로 거부
+- 인증이 아직 없어 `ProjectAdminController`와 동일한 한계 — 지금은 URL 차원의 분리일 뿐, 실제 role 검증은 인증 도입 후 추가 필요(TODO)
+
+### 8.7 브랜치 분리 + PR
+도메인 파일 수정 위치 기준으로 커밋을 재구성(`git add -p`처럼 파일 단위/hunk 단위로 나눠 재배치) — Reward 도메인 파일은 `강대혁/reward`, Project 도메인 파일(`ProjectRepository` 공유락 메서드, `ProjectServiceImpl.delete()` cascade)은 `강대혁/project`로 분리. `강대혁/reward`는 `강대혁/project` 위에 얹은 상태(dependency 순서 유지).
+
+- PR #11 (`강대혁/project` → `develop`): Project 도메인 후속 개선 (WORK_LOG 정합성, TODO 명시, 상태 기반 노출 제한, 공유락, cascade 삭제)
+- PR #12 (`강대혁/reward` → `develop`): Reward PATCH/DELETE + 8.3절 수정 7건 + 8.5/8.6절 정책
+- 기존 원격 `강대혁/project`/`강대혁/reward` 브랜치는 각각 PR #4, #6이 이미 merge된 낡은 상태라 force-push로 덮어씀 (안전 — 그 내용은 이미 develop 히스토리에 영구 보존됨)
+- 머지 순서: #11(Project) 먼저 → develop 반영 후 #12(Reward) 처리 (dependency 순서)
+
+### 8.8 다음 단계 (갱신)
+- PR #11, #12 리뷰/merge (순서대로)
+- Category `DELETE` 정책 결정 후 엔드포인트 추가 (미해결, 4.3절)
+- Project 삭제 시 "후원(주문) 발생 여부" 검증 — order-service의 주문 존재 확인 API 필요 (별도 조율 중, 참조 리워드 cascade는 8.4절에서 이미 처리 완료 — 이건 서로 다른 검증)
+- 마감 감지 배치(`endAt` 도달 시 이벤트 발행), `SUCCEEDED`/`FAILED`/`CANCELLED` 상태 전이 — Settlement 도메인 판정 로직/계약 확정 후 진행
+- 관리자 API(`ProjectAdminController`, `RewardAdminController`) 실제 role 검증 — 인증 도입 후
+- Reward 상세조회 응답에 창작자 이름 등 enrichment — user-service의 `GET /internal/v1/users/{userId}` 확정됨, 연동은 아직 미착수
