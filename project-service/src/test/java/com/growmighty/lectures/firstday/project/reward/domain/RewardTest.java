@@ -192,4 +192,14 @@ class RewardTest {
         assertThatThrownBy(() -> reward.updateBeforePublish(null, null, null, 5))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("공개 전 이름을 빈 값으로 변경할 수 없다")
+    void updateBeforePublish_blankName_throws() {
+        Reward reward = reward(10);
+
+        assertThatThrownBy(() -> reward.updateBeforePublish("   ", null, null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(reward.getName()).isEqualTo("[얼리버드] 노트커버 1개");
+    }
 }

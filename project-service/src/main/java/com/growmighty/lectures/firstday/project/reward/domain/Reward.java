@@ -123,6 +123,9 @@ public class Reward extends BaseEntity {
      */
     public void updateBeforePublish(String name, String description, BigDecimal price, Integer totalQuantity) {
         if (name != null) {
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("이름은 빈 값일 수 없습니다.");
+            }
             this.name = name;
         }
         if (description != null) {
