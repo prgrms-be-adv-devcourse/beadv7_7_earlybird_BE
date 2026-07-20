@@ -52,7 +52,17 @@ public class RewardServiceImpl implements RewardService {
         return RewardResponse.from(getRewardEntity(rewardId));
     }
 
+    /**
+     * decreaseStock/restoreStock과 같은 이유로 @Retryable — 공개 후 경로(increaseQuantity)가
+     * 다른 후원자의 동시 주문(decreaseStock)과 같은 리워드의 @Version을 두고 경합할 수 있다.
+     * update()는 self-invocation이 아니라 컨트롤러가 프록시를 통해 직접 호출하는 public
+     * 메서드라 별도 분리 없이 바로 @Retryable을 붙일 수 있다. 파라미터 타입(Long,
+     * RewardUpdateRequest)이 decreaseStock류와 달라 기존 @Recover를 공유할 수 없으므로
+     * 전용 쌍을 아래에 별도로 둔다 — catch-all을 빠뜨리면 이 메서드의 IllegalArgumentException/
+     * IllegalStateException 검증 예외까지 500으로 마스킹되므로 필수.
+     */
     @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
     public RewardResponse update(Long rewardId, RewardUpdateRequest request) {
         Reward reward = getRewardEntity(rewardId);
@@ -79,6 +89,17 @@ public class RewardServiceImpl implements RewardService {
         return RewardResponse.from(reward);
     }
 
+    @Recover
+    public RewardResponse recoverUpdateConflict(ObjectOptimisticLockingFailureException e, Long rewardId, RewardUpdateRequest request) {
+        throw new ConcurrentUpdateFailedException(
+            "리워드 수정 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId);
+    }
+
+    @Recover
+    public RewardResponse recoverUpdateOther(RuntimeException e, Long rewardId, RewardUpdateRequest request) {
+        throw e;
+    }
+
     @Override
     @Transactional
     public void delete(Long rewardId) {
@@ -90,13 +111,31 @@ public class RewardServiceImpl implements RewardService {
         rewardRepository.delete(reward);
     }
 
+    /**
+     * decreaseStock/restoreStock과 같은 이유로 @Retryable — 관리자가 수량을 줄이는 동안 다른
+     * 후원자의 주문(decreaseStock)이 같은 리워드에 겹치면 낙관적 락 충돌이 날 수 있다.
+     * 반환 타입이 RewardResponse라 decreaseStock/restoreStock의 void @Recover와는 시그니처가
+     * 갈려서(반환 타입 불일치) 공유할 수 없다 — 아래 전용 @Recover 두 개를 별도로 둔다.
+     */
     @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
     public RewardResponse decreaseQuantity(Long rewardId, int amount) {
         Reward reward = getRewardEntity(rewardId);
         requirePublishedAndOpen(reward.getProjectId());
         reward.decreaseQuantity(amount);
         return RewardResponse.from(reward);
+    }
+
+    @Recover
+    public RewardResponse recoverDecreaseQuantityConflict(ObjectOptimisticLockingFailureException e, Long rewardId, int amount) {
+        throw new ConcurrentUpdateFailedException(
+            "리워드 수량 축소 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", amount=" + amount);
+    }
+
+    @Recover
+    public RewardResponse recoverDecreaseQuantityOther(RuntimeException e, Long rewardId, int amount) {
+        throw e;
     }
 
     @Override
