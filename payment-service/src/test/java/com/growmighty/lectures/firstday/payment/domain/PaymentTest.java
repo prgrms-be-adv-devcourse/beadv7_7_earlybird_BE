@@ -131,24 +131,6 @@ class PaymentTest {
     }
 
     @Test
-    @DisplayName("저장된 주문 금액과 요청 금액이 다르면 검증에 실패한다")
-    void validateAmount_whenDifferent_throws() {
-        Payment payment = readyPayment();
-
-        assertThatThrownBy(() -> payment.validateAmount(BigDecimal.valueOf(9_999)))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    @DisplayName("저장된 주문 금액과 요청 금액이 같으면 금액 검증에 성공한다")
-    void validateAmount_whenSame_succeeds() {
-        Payment payment = readyPayment();
-
-        payment.validateAmount(AMOUNT);
-        log.info("payment amount verified: orderId={}, amount={}", ORDER_ID, AMOUNT);
-    }
-
-    @Test
     @DisplayName("prepare는 서버가 전달받은 주문 정보를 READY 결제로 저장한다")
     void prepare_savesReadyPayment() {
         PaymentInfo result = paymentService.prepare(ORDER_ID, PG_ORDER_ID, USER_ID, AMOUNT);

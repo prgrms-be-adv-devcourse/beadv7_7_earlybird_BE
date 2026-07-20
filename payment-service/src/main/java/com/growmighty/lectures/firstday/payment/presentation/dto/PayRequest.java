@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.payment.presentation.dto;
 
-import lombok.NonNull;
+import jakarta.validation.constraints.NotBlank;
 
-public record PayRequest(@NonNull String paymentKey, @NonNull String pgOrderId) {
+public record PayRequest(@NotBlank String paymentKey, @NotBlank String pgOrderId) {
 
 }

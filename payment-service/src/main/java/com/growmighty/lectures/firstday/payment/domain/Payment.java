@@ -78,12 +78,6 @@ public class Payment extends BaseEntity {
         this.status = PaymentStatus.CONFIRMING;
     }
 
-    public void validateAmount(BigDecimal requestedAmount) {
-        if (requestedAmount == null || this.amount.compareTo(requestedAmount) != 0) {
-            throw new IllegalArgumentException("주문 금액과 결제 요청 금액이 일치하지 않습니다.");
-        }
-    }
-
     public void confirm(String paymentKey) {
         if (status != PaymentStatus.CONFIRMING) {
             throw new IllegalStateException("CONFIRMING 상태에서만 승인할 수 있습니다. 현재 상태: " + status);
