@@ -29,10 +29,12 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     @Transactional
-    // TODO(팀): 등록 가능한 상태(PENDING_REVIEW?)인지 검증 — 존재 여부는 아래에서 확인함
     public RewardResponse register(Long projectId, RewardCreateRequest request) {
-        if (!projectRepository.existsById(projectId)) {
-            throw new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId);
+        Project project = findProject(projectId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
+        if (project.isClosed()) {
+            throw new IllegalStateException(
+                "종료된 프로젝트(성공/실패/취소)에는 리워드를 추가할 수 없습니다. 현재 상태=" + project.getStatus());
         }
         Reward reward = rewardRepository.save(request.toEntity(projectId));
         return RewardResponse.from(reward);
