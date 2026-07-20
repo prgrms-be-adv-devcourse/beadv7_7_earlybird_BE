@@ -85,9 +85,34 @@ public class RewardServiceImpl implements RewardService {
         Reward reward = getRewardEntity(rewardId);
         Optional<Project> project = findProject(reward.getProjectId());
         if (project.isPresent() && project.get().isPublished()) {
-            reward.deactivate();
-        } else {
-            rewardRepository.delete(reward);
+            throw new IllegalStateException("공개된 프로젝트의 리워드 비활성화는 관리자 전용 API를 이용하세요.");
+        }
+        rewardRepository.delete(reward);
+    }
+
+    @Override
+    @Transactional
+    public RewardResponse decreaseQuantity(Long rewardId, int amount) {
+        Reward reward = getRewardEntity(rewardId);
+        requirePublishedAndOpen(reward.getProjectId());
+        reward.decreaseQuantity(amount);
+        return RewardResponse.from(reward);
+    }
+
+    @Override
+    @Transactional
+    public void deactivate(Long rewardId) {
+        Reward reward = getRewardEntity(rewardId);
+        requirePublishedAndOpen(reward.getProjectId());
+        reward.deactivate();
+    }
+
+    /** 관리자 전용 API 대상 검증 — 지금 공개 중(진행중)인 리워드만 해당, 공개 전/종료된 프로젝트는 대상 아님. */
+    private void requirePublishedAndOpen(Long projectId) {
+        Project project = findProject(projectId)
+            .orElseThrow(() -> new IllegalStateException("공개 중(진행중)인 프로젝트의 리워드만 대상입니다. projectId=" + projectId));
+        if (!project.isPublished() || project.isClosed()) {
+            throw new IllegalStateException("공개 중(진행중)인 프로젝트의 리워드만 대상입니다. 현재 상태=" + project.getStatus());
         }
     }
 

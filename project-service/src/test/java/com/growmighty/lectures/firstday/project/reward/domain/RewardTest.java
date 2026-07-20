@@ -119,6 +119,35 @@ class RewardTest {
     }
 
     @Test
+    @DisplayName("수량 축소 시 총 수량과 잔여 수량이 함께 줄어든다")
+    void decreaseQuantity_reducesBoth() {
+        Reward reward = reward(10);
+        reward.decreaseStock(3);
+
+        reward.decreaseQuantity(4);
+        assertThat(reward.getTotalQuantity()).isEqualTo(6);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("이미 판매된 수량보다 적게는 축소할 수 없다")
+    void decreaseQuantity_belowSold_throws() {
+        Reward reward = reward(10);
+        reward.decreaseStock(8);
+
+        assertThatThrownBy(() -> reward.decreaseQuantity(3))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("무제한 리워드는 수량 축소 대상이 아니다")
+    void decreaseQuantity_unlimitedReward_throws() {
+        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        assertThatThrownBy(() -> reward.decreaseQuantity(5))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("공개 전에는 이름/설명/가격/총수량을 자유롭게 수정할 수 있고, null 필드는 바뀌지 않는다")
     void updateBeforePublish_changesOnlyNonNullFields() {
         Reward reward = reward(10);

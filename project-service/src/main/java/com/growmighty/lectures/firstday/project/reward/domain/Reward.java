@@ -101,8 +101,8 @@ public class Reward extends BaseEntity {
     }
 
     /**
-     * 판매 개시 후 수량은 "추가만 허용, 축소 불가" (기획 정책 — 락 경합·판매분 초과 방지).
-     * TODO(팀): 판매 개시 여부 판단 기준과 부득이한 축소(판매 수량 하한) 정책 확정
+     * 판매 개시 후 수량 추가 — 크리에이터가 직접 호출 가능 (일반 리워드 수정 API).
+     * "추가만 허용, 축소 불가" 원칙(락 경합·판매분 초과 방지)이라 축소는 이 메서드에 없다.
      */
     public void increaseQuantity(int amount) {
         if (amount <= 0) {
@@ -113,6 +113,27 @@ public class Reward extends BaseEntity {
         }
         this.totalQuantity += amount;
         this.remainingQuantity += amount;
+    }
+
+    /**
+     * 판매 개시 후 수량 축소 — 크리에이터 권한 밖, 관리자 전용 (부득이한 축소: 재료 수급 문제 등).
+     * 이미 판매된 수량(soldQuantity) 밑으로는 줄일 수 없다.
+     */
+    public void decreaseQuantity(int amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("줄일 수량은 1개 이상이어야 합니다.");
+        }
+        if (this.totalQuantity == null) {
+            throw new IllegalArgumentException("무제한 리워드는 수량을 줄일 대상이 없습니다.");
+        }
+        int newTotal = this.totalQuantity - amount;
+        int sold = soldQuantity();
+        if (newTotal < sold) {
+            throw new IllegalArgumentException(
+                "이미 판매된 수량(" + sold + "개)보다 적게 줄일 수 없습니다. 현재 총수량=" + this.totalQuantity + ", 요청 감소량=" + amount);
+        }
+        this.totalQuantity = newTotal;
+        this.remainingQuantity = newTotal - sold;
     }
 
     /**
