@@ -1,8 +1,11 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.project.project.domain.Project;
+import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardCreateRequest;
+import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.response.RewardResponse;
 import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
@@ -21,6 +24,7 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class RewardServiceImpl implements RewardService {
     private final RewardRepository rewardRepository;
+    private final ProjectRepository projectRepository;
 
     @Override
     @Transactional
@@ -40,6 +44,41 @@ public class RewardServiceImpl implements RewardService {
     @Override
     public RewardResponse getReward(Long rewardId) {
         return RewardResponse.from(getRewardEntity(rewardId));
+    }
+
+    @Override
+    @Transactional
+    public RewardResponse update(Long rewardId, RewardUpdateRequest request) {
+        Reward reward = getRewardEntity(rewardId);
+        Project project = getProjectEntity(reward.getProjectId());
+        if (project.isPublished()) {
+            if (request.name() != null || request.description() != null
+                    || request.price() != null || request.totalQuantity() != null) {
+                throw new IllegalArgumentException("공개된 프로젝트의 리워드는 수량 추가(increaseQuantity)만 가능합니다.");
+            }
+            if (request.increaseQuantity() == null) {
+                throw new IllegalArgumentException("추가할 수량(increaseQuantity)을 입력해주세요.");
+            }
+            reward.increaseQuantity(request.increaseQuantity());
+        } else {
+            if (request.increaseQuantity() != null) {
+                throw new IllegalArgumentException("공개 전에는 increaseQuantity 대신 totalQuantity로 수량을 직접 지정해주세요.");
+            }
+            reward.updateBeforePublish(request.name(), request.description(), request.price(), request.totalQuantity());
+        }
+        return RewardResponse.from(reward);
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long rewardId) {
+        Reward reward = getRewardEntity(rewardId);
+        Project project = getProjectEntity(reward.getProjectId());
+        if (project.isPublished()) {
+            reward.deactivate();
+        } else {
+            rewardRepository.delete(reward);
+        }
     }
 
     /**
@@ -78,5 +117,10 @@ public class RewardServiceImpl implements RewardService {
     private Reward getRewardEntity(Long rewardId) {
         return rewardRepository.findById(rewardId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 리워드입니다. rewardId=" + rewardId));
+    }
+
+    private Project getProjectEntity(Long projectId) {
+        return projectRepository.findById(projectId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
     }
 }

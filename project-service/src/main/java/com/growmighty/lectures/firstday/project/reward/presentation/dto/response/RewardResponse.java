@@ -12,7 +12,8 @@ public record RewardResponse(
         BigDecimal price,
         Integer totalQuantity,
         Integer remainingQuantity,
-        boolean orderable
+        boolean orderable,
+        boolean active
 ) {
     public static RewardResponse from(Reward reward) {
         return new RewardResponse(
@@ -23,6 +24,7 @@ public record RewardResponse(
                 reward.getPrice(),
                 reward.getTotalQuantity(),
                 reward.getRemainingQuantity(),
-                reward.isOrderable());
+                reward.isOrderable(),
+                reward.isActive());
     }
 }

@@ -117,4 +117,37 @@ class RewardTest {
         assertThatThrownBy(() -> reward.increaseQuantity(5))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    @DisplayName("공개 전에는 이름/설명/가격/총수량을 자유롭게 수정할 수 있고, null 필드는 바뀌지 않는다")
+    void updateBeforePublish_changesOnlyNonNullFields() {
+        Reward reward = reward(10);
+
+        reward.updateBeforePublish("새 이름", null, BigDecimal.valueOf(35_000), null);
+        assertThat(reward.getName()).isEqualTo("새 이름");
+        assertThat(reward.getDescription()).isEqualTo("설명");
+        assertThat(reward.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(35_000));
+        assertThat(reward.getTotalQuantity()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("공개 전 총수량을 바꾸면 잔여 수량도 그대로 맞춰진다")
+    void updateBeforePublish_totalQuantity_syncsRemaining() {
+        Reward reward = reward(10);
+
+        reward.updateBeforePublish(null, null, null, 20);
+        assertThat(reward.getTotalQuantity()).isEqualTo(20);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(20);
+    }
+
+    @Test
+    @DisplayName("비활성화하면 재고가 남아있어도 후원 불가능해진다")
+    void deactivate_notOrderable() {
+        Reward reward = reward(10);
+        assertThat(reward.isOrderable()).isTrue();
+
+        reward.deactivate();
+        assertThat(reward.isActive()).isFalse();
+        assertThat(reward.isOrderable()).isFalse();
+    }
 }
