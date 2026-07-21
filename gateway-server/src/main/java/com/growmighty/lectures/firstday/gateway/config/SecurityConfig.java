@@ -39,6 +39,9 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.POST,
                                 URI_PREFIX_API + "/users/signup",
                                 URI_PREFIX_API + "/users/login").permitAll()
+                        .pathMatchers(HttpMethod.GET,
+                                "/*/v3/api-docs", "/*/v3/api-docs/**",
+                                "/*/swagger-ui.html", "/*/swagger-ui/**").permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt
                         .jwtDecoder(jwtDecoder)

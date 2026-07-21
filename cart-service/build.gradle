@@ -21,4 +21,8 @@ dependencies {
     // 서킷 브레이커 — Spring Cloud 추상화 + Resilience4j 구현체 세트.
     // 버전이 없어도 되는 이유: Step 2 세션에서 깔아둔 Spring Cloud BOM 이 채워준다.
     implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+
+    // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
+    // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 }
