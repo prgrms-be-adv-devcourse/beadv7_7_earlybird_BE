@@ -67,6 +67,7 @@ public class PaymentService {
 
         return paymentConfirmationService.completeConfirmation(
             target.paymentId(),
+            paymentKey,
             approval
         );
     }

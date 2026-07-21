@@ -55,11 +55,16 @@ public class PaymentConfirmationService {
     @Transactional
     public PaymentInfo completeConfirmation(
         Long paymentId,
+        String requestedPaymentKey,
         PaymentGateway.PgApproval approval) {
         Payment payment = paymentRepository.findById(paymentId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId = " + paymentId));
 
-        if(!payment.getPgOrderId().equals(approval.pgOrderId())) {
+        if (!requestedPaymentKey.equals(approval.paymentKey())) {
+            throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
+        }
+
+        if (!payment.getPgOrderId().equals(approval.pgOrderId())) {
             throw new IllegalStateException("PG 주문번호가 일치하지 않습니다. expected = " + payment.getPgOrderId() + ", actual = " + approval.pgOrderId());
         }
 
