@@ -4,11 +4,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface NoticeRepository {
-    Notice save(Notice notice);
+    ProjectNotice save(ProjectNotice notice);
 
-    Optional<Notice> findById(Long id);
+    Optional<ProjectNotice> findById(Long id);
 
-    List<Notice> findByProjectId(Long projectId);
-
-    void delete(Notice notice);
+    List<ProjectNotice> findByProjectId(Long projectId);
 }

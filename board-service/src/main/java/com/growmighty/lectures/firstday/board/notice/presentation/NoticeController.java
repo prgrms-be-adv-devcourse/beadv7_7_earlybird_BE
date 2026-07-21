@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.board.notice.presentation;
 import com.growmighty.lectures.firstday.board.notice.application.NoticeService;
 import com.growmighty.lectures.firstday.board.notice.presentation.dto.NoticeRequest;
 import com.growmighty.lectures.firstday.board.notice.presentation.dto.NoticeResponse;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,8 +17,9 @@ public class NoticeController {
     private final NoticeService noticeService;
 
     @PostMapping("/projects/{projectId}/notices")
-    public NoticeResponse register(@PathVariable Long projectId, @RequestBody NoticeRequest request) {
-        return NoticeResponse.from(noticeService.register(projectId, request.title(), request.content()));
+    public NoticeResponse register(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
+                                    @RequestBody NoticeRequest request) {
+        return NoticeResponse.from(noticeService.register(projectId, authorId, request.title(), request.content()));
     }
 
     @GetMapping("/projects/{projectId}/notices")
@@ -25,13 +28,17 @@ public class NoticeController {
     }
 
     @PatchMapping("/notices/{noticeId}")
-    public NoticeResponse update(@PathVariable Long noticeId, @RequestBody NoticeRequest request) {
-        return NoticeResponse.from(noticeService.update(noticeId, request.title(), request.content()));
+    public NoticeResponse update(@PathVariable Long noticeId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                                  @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+                                  @RequestBody NoticeRequest request) {
+        return NoticeResponse.from(
+            noticeService.update(noticeId, requesterId, requesterRole, request.title(), request.content()));
     }
 
     @DeleteMapping("/notices/{noticeId}")
-    public Void delete(@PathVariable Long noticeId) {
-        noticeService.delete(noticeId);
+    public Void delete(@PathVariable Long noticeId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                        @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+        noticeService.delete(noticeId, requesterId, requesterRole);
         return null;
     }
 }
