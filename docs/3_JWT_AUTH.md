@@ -6,6 +6,27 @@
 서명 키도 모른다 — 게이트웨이가 검증을 마친 뒤 넣어주는 `X-User-Id` / `X-User-Role` 헤더만 읽는다.
 클라이언트가 이 두 헤더를 직접 보내도 게이트웨이가 먼저 제거하므로 위조할 수 없다.
 
+## 빠른 참고 — 컨트롤러에서 user id/role 꺼내 쓰기
+
+각 서비스 컨트롤러에서 로그인한 사용자의 id/role이 필요하면, JWT를 직접 파싱하지 않고 HTTP 헤더에서
+바로 꺼내 쓰면 된다.
+
+- `X-User-Id` : 로그인한 사용자 id
+- `X-User-Role` : 로그인한 사용자 role (예: BACKER, CREATOR, ADMIN)
+
+이 두 헤더는 gateway가 JWT 검증에 성공했을 때만 채워서 다운스트림 서비스로 넘겨주는 인프라 내부용
+헤더다. 클라이언트가 직접 보내도 gateway가 먼저 제거하기 때문에 위조는 불가능하고, 반대로 gateway를
+거치지 않고 서비스에 직접 요청하면(예: 로컬에서 `:8083` 직접 호출) 이 헤더 자체가 없다.
+
+사용 예시:
+```java
+@GetMapping("/me")
+public UserResponse getMe(@RequestHeader(JwtHeaders.USER_ID) Long userId,
+                           @RequestHeader(JwtHeaders.USER_ROLE) String role) {
+    ...
+}
+```
+
 ## 1. 토큰 발급 — `POST /users/login`
 
 ```http
