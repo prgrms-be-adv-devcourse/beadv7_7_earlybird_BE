@@ -23,11 +23,36 @@ Content-Type: application/json
 ```json
 {
   "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
   "user": { "id": 1, "email": "buyer@growmighty.co.kr", "name": "구매자", "phoneNumber": "010-1111-1111", "role": "BACKER" }
 }
 ```
 
 `POST /users/signup` 은 토큰을 발급하지 않는다 — 가입 후 `/users/login` 을 따로 호출한다.
+
+## 1-1. access token 재발급 — `POST /users/refresh`
+
+access token 이 만료되면 매번 재로그인하는 대신, 로그인 때 함께 받은 `refreshToken` 으로 새 access token 만
+재발급받는다:
+
+```http
+POST http://localhost:8000/users/refresh
+Content-Type: application/json
+
+{ "refreshToken": "eyJhbGciOiJIUzI1NiJ9..." }
+```
+
+응답:
+
+```json
+{ "accessToken": "eyJhbGciOiJIUzI1NiJ9..." }
+```
+
+refresh token 자체는 만료 전까지 그대로 재사용한다 — 재발급(로테이션)이나 폐기는 하지 않는다(§범위 밖 참고).
+검증은 발급처인 user-service 가 직접 한다: 서명·만료를 확인하고, access token 이 아니라 refresh token인지
+(`tokenType: "refresh"` 클레임)까지 확인한 뒤 subject(userId)로 최신 role 을 다시 조회해 access token 을
+새로 만든다 — 로그인 이후 role 이 바뀐 경우(예: 창작자 전환)에도 새 access token 에는 최신 role 이 실린다.
+토큰이 없거나 서명이 잘못됐거나 만료됐거나 access token 을 잘못 넣으면 `401 (C401)` 을 반환한다.
 
 ## 2. 보호된 엔드포인트 호출
 
@@ -45,8 +70,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 
 - `POST /users/signup`
 - `POST /users/login`
+- `POST /users/refresh` (access token 이 없으니 당연히 permitAll — 대신 body 의 refresh token 자체를 검증한다)
 
-새 공개 API 를 추가하려면 이 목록(`.pathMatchers(HttpMethod.POST, "/users/signup", "/users/login").permitAll()`)에 함께 추가해야 한다.
+새 공개 API 를 추가하려면 이 목록(`.pathMatchers(HttpMethod.POST, "/users/signup", "/users/login", "/users/refresh").permitAll()`)에 함께 추가해야 한다.
 빼먹으면 기본값(`.anyExchange().authenticated()`)에 걸려 `401` 이 난다.
 
 ## 4. 팀원이 자기 서비스에 도입할 때 — 패턴
@@ -96,9 +122,11 @@ project-service 의 API 설계를 게이트웨이가 대신 결정하는 셈이�
 
 ## 5. 비밀 키
 
-`beadv7_7_earlybird_config/application.yml` 의 `jwt.secret` / `jwt.access-token-expiration-seconds` —
-이 파일은 서비스 이름과 무관하게 **모든** 서비스에 배달되지만, 실제로 읽는 건 user-service(발급)와
-gateway-server(검증) 뿐이다. 값을 바꾸고 재기동 없이 반영하려면 두 서비스 모두 `/actuator/refresh` 호출.
+`beadv7_7_earlybird_config/application.yml` 의 `jwt.secret` / `jwt.access-token-expiration-seconds` /
+`jwt.refresh-token-expiration-seconds` — 이 파일은 서비스 이름과 무관하게 **모든** 서비스에 배달되지만,
+실제로 읽는 건 user-service(발급 + refresh token 검증)와 gateway-server(access token 검증) 뿐이다
+(refresh-token-expiration-seconds 는 user-service만 사용한다). 값을 바꾸고 재기동 없이 반영하려면
+두 서비스 모두 `/actuator/refresh` 호출.
 
 로컬 개발용 값이 이미 들어 있다. 새로 생성하려면:
 ```bash
@@ -117,7 +145,9 @@ JWT 설정(`JwtProperties`)과 헤더/클레임 이름 상수(`JwtHeaders`)는 `
 
 ## 범위 밖 (다음 단계)
 
-- Refresh token, 토큰 폐기/로테이션
+- Refresh token 로테이션(재발급 시 새 refresh token 발급 + 기존 것 무효화), 토큰 폐기(로그아웃 시 즉시 무효화) —
+  지금은 발급된 refresh token 을 서버가 어디에도 저장하지 않는 stateless 방식이라 만료 전에는 강제로
+  무효화할 방법이 없다.
 - 역할(BACKER/CREATOR/ADMIN) 검사는 게이트웨이 라우트 단위(`/admin/**` → ADMIN)까지만 도입했다 —
   같은 경로를 메서드/소유권 기준으로 더 세분화해야 하는 창작자 전용 엔드포인트(프로젝트 생성/수정 등)는
   아직 아무 보호도 없다. 도입하려면 §4 끝의 메서드 기반 규칙을 해당 서비스 오너와 함께 추가한다.
