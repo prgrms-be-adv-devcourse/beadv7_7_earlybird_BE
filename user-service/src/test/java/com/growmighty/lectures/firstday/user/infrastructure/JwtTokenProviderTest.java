@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.user.infrastructure;
 
-import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.common.jwt.JwtProperties;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
@@ -18,21 +17,19 @@ import java.time.Duration;
 import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JwtTokenProviderTest {
 
     private static final String TEST_SECRET = Base64.getEncoder().encodeToString(
             "test-signing-key-at-least-256-bits-long!".getBytes());
     private static final long EXPIRATION_SECONDS = 3600L;
-    private static final long REFRESH_EXPIRATION_SECONDS = 1_209_600L;
 
     private final SecretKeySpec key = new SecretKeySpec(Base64.getDecoder().decode(TEST_SECRET), "HmacSHA256");
     private final JwtEncoder encoder = new NimbusJwtEncoder(new ImmutableSecret<>(key));
     private final JwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).build();
 
-    private final JwtTokenProvider tokenProvider = new JwtTokenProvider(
-            encoder, decoder, new JwtProperties(TEST_SECRET, EXPIRATION_SECONDS, REFRESH_EXPIRATION_SECONDS));
+    private final JwtTokenProvider tokenProvider =
+            new JwtTokenProvider(encoder, new JwtProperties(TEST_SECRET, EXPIRATION_SECONDS));
 
     @Test
     @DisplayName("발급한 토큰의 subject 는 userId, role 클레임은 요청한 role 이다")
@@ -63,39 +60,5 @@ class JwtTokenProviderTest {
         Duration lifetime = Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt());
 
         assertThat(lifetime).isCloseTo(Duration.ofSeconds(EXPIRATION_SECONDS), Duration.ofSeconds(1));
-    }
-
-    @Test
-    @DisplayName("발급한 리프레시 토큰을 검증하면 subject(userId)를 반환한다")
-    void issueRefreshToken_thenParse_returnsUserId() {
-        String refreshToken = tokenProvider.issueRefreshToken(1L);
-
-        assertThat(tokenProvider.parseRefreshToken(refreshToken)).isEqualTo(1L);
-    }
-
-    @Test
-    @DisplayName("리프레시 토큰의 만료 시각은 access token 과 별도로 설정된 만료 시간만큼 뒤다")
-    void issueRefreshToken_expiresAfterConfiguredDuration() {
-        Jwt jwt = decoder.decode(tokenProvider.issueRefreshToken(1L));
-
-        Duration lifetime = Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt());
-
-        assertThat(lifetime).isCloseTo(Duration.ofSeconds(REFRESH_EXPIRATION_SECONDS), Duration.ofSeconds(1));
-    }
-
-    @Test
-    @DisplayName("access token 을 리프레시 토큰으로 검증하면 예외가 발생한다")
-    void parseRefreshToken_rejectsAccessToken() {
-        String accessToken = tokenProvider.issueAccessToken(1L, UserRole.BACKER);
-
-        assertThatThrownBy(() -> tokenProvider.parseRefreshToken(accessToken))
-                .isInstanceOf(BusinessException.class);
-    }
-
-    @Test
-    @DisplayName("서명이 다른(위조된) 리프레시 토큰은 검증에 실패한다")
-    void parseRefreshToken_rejectsForgedToken() {
-        assertThatThrownBy(() -> tokenProvider.parseRefreshToken("not.a.valid.jwt"))
-                .isInstanceOf(BusinessException.class);
     }
 }

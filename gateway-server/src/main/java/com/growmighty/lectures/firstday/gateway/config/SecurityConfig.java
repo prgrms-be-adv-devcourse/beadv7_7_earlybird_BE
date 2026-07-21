@@ -28,8 +28,8 @@ import java.util.Base64;
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
-    public static final String URI_PREFIX_API = "/api/v1";
-    public static final String URI_PREFIX_INTERNAL = "/internal/v1";
+    public static final String URI_PREFIX_API = "/api/v1/";
+    public static final String URI_PREFIX_INTERNAL = "/internal/v1/";
 
     @Bean
     public SecurityWebFilterChain filterChain(ServerHttpSecurity http, ReactiveJwtDecoder jwtDecoder,
@@ -39,8 +39,9 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(HttpMethod.POST,
                                 URI_PREFIX_API + "/users/signup",
-                                URI_PREFIX_API + "/users/login",
-                                URI_PREFIX_API + "/users/refresh").permitAll()
+                                URI_PREFIX_API + "/users/login").permitAll()
+                        // project-admin-route(config repo, /admin/projects/**)의 TODO(팀) 를 여기서 해소한다.
+                        .pathMatchers("/admin/**").hasRole(UserRole.ADMIN.getRoleName())
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt
                         .jwtDecoder(jwtDecoder)

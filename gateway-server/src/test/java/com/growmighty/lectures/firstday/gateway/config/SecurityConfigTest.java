@@ -44,7 +44,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("Authorization 헤더 없이 보호된 경로를 호출하면 401")
     void protectedPath_withoutToken_isUnauthorized() {
-        webTestClient.get().uri("/api/v1/users/me")
+        webTestClient.get().uri("/users/me")
                 .exchange()
                 .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -54,7 +54,7 @@ class SecurityConfigTest {
     void protectedPath_withValidToken_passesSecurityLayer() {
         String token = issueToken(Instant.now(), Instant.now().plusSeconds(3600));
 
-        webTestClient.get().uri("/api/v1/users/me")
+        webTestClient.get().uri("/users/me")
                 .header("Authorization", "Bearer " + token)
                 .exchange()
                 .expectStatus().value(status ->
@@ -66,7 +66,7 @@ class SecurityConfigTest {
     void protectedPath_withExpiredToken_isUnauthorized() {
         String token = issueToken(Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));
 
-        webTestClient.get().uri("/api/v1/users/me")
+        webTestClient.get().uri("/users/me")
                 .header("Authorization", "Bearer " + token)
                 .exchange()
                 .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -75,7 +75,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("로그인/회원가입은 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
     void publicPaths_withoutToken_areNotRejectedBySecurityLayer() {
-        webTestClient.post().uri("/api/v1/users/login")
+        webTestClient.post().uri("/users/login")
                 .exchange()
                 .expectStatus().value(status ->
                         Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
