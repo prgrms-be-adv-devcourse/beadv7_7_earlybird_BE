@@ -56,6 +56,7 @@ class PaymentTest {
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
         assertThat(payment.isConfirming()).isTrue();
+        assertThat(payment.getConfirmingAt()).isNotNull();
     }
 
     @Test
@@ -69,6 +70,7 @@ class PaymentTest {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         assertThat(payment.getPaymentKey()).isEqualTo("payment-key-1");
         assertThat(payment.isPaid()).isTrue();
+        assertThat(payment.getConfirmingAt()).isNull();
     }
 
     @Test
@@ -100,6 +102,7 @@ class PaymentTest {
         payment.fail();
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getConfirmingAt()).isNull();
     }
 
     private Payment readyPayment() {
