@@ -2,6 +2,10 @@ package com.growmighty.lectures.firstday.cart.application.port;
 
 import com.growmighty.lectures.firstday.cart.application.port.dto.RewardSnapshot;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 장바구니가 소유한 리워드 조회 계약(Port).
  *
@@ -11,4 +15,10 @@ import com.growmighty.lectures.firstday.cart.application.port.dto.RewardSnapshot
  */
 public interface RewardPort {
     RewardSnapshot getReward(Long rewardId);
+
+    default Map<Long, RewardSnapshot> getRewards(Collection<Long> rewardIds) {
+        Map<Long, RewardSnapshot> rewards = new HashMap<>();
+        rewardIds.stream().distinct().forEach(rewardId -> rewards.put(rewardId, getReward(rewardId)));
+        return rewards;
+    }
 }

@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.cart.infrastructure.client;
 import com.growmighty.lectures.firstday.cart.application.port.RewardPort;
 import com.growmighty.lectures.firstday.cart.application.port.dto.RewardSnapshot;
 import com.growmighty.lectures.firstday.cart.infrastructure.client.dto.ApiResponseBody;
+import com.growmighty.lectures.firstday.cart.infrastructure.client.dto.ProjectApiData;
 import com.growmighty.lectures.firstday.cart.infrastructure.client.dto.RewardApiData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,10 @@ import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -22,11 +27,30 @@ public class RewardHttpClient implements RewardPort {
     @Override
     public RewardSnapshot getReward(Long rewardId) {
         return circuitBreakerFactory.create("reward").run(
-            () -> callGetReward(rewardId),
+            () -> callGetReward(rewardId, new HashMap<>()),
             cause -> optimisticFallback(rewardId, cause));
     }
 
-    private RewardSnapshot callGetReward(Long rewardId) {
+    @Override
+    public Map<Long, RewardSnapshot> getRewards(Collection<Long> rewardIds) {
+        return circuitBreakerFactory.create("reward").run(
+            () -> {
+                Map<Long, ProjectApiData> projects = new HashMap<>();
+                Map<Long, RewardSnapshot> rewards = new HashMap<>();
+                rewardIds.stream().distinct()
+                        .forEach(rewardId -> rewards.put(rewardId, callGetReward(rewardId, projects)));
+                return rewards;
+            },
+            cause -> {
+                log.warn("리워드 배치 확인 실패 후 낙관적으로 담기 진행. rewardIds={}, 원인={}", rewardIds, cause.toString());
+                Map<Long, RewardSnapshot> rewards = new HashMap<>();
+                rewardIds.stream().distinct()
+                        .forEach(rewardId -> rewards.put(rewardId, new RewardSnapshot(rewardId, true)));
+                return rewards;
+            });
+    }
+
+    private RewardSnapshot callGetReward(Long rewardId, Map<Long, ProjectApiData> projects) {
         ApiResponseBody<RewardApiData> body = projectRestClient.get()
             .uri("/api/v1//rewards/{rewardId}", rewardId)
             .retrieve()
@@ -34,7 +58,27 @@ public class RewardHttpClient implements RewardPort {
             });
 
         RewardApiData data = body.data();
-        return new RewardSnapshot(data.id(), data.orderable());
+        ProjectApiData project = data.projectId() == null
+                ? null
+                : projects.computeIfAbsent(data.projectId(), this::callGetProject);
+        return new RewardSnapshot(
+                data.id(),
+                data.projectId(),
+                data.name(),
+                project == null ? null : project.title(),
+                data.price(),
+                data.remainingQuantity(),
+                data.orderable() && (project == null || project.orderable()));
+    }
+
+    private ProjectApiData callGetProject(Long projectId) {
+        ApiResponseBody<ProjectApiData> body = projectRestClient.get()
+            .uri("/api/v1/projects/{projectId}", projectId)
+            .retrieve()
+            .body(new ParameterizedTypeReference<>() {
+            });
+
+        return body.data();
     }
 
     private RewardSnapshot optimisticFallback(Long rewardId, Throwable cause) {
