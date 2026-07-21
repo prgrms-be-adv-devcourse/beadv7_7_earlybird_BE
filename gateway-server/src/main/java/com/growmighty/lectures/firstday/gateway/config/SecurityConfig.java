@@ -42,6 +42,11 @@ public class SecurityConfig {
                                 URI_PREFIX_API + "/users/login").permitAll()
                         // project-admin-route(config repo, /admin/projects/**)의 TODO(팀) 를 여기서 해소한다.
                         .pathMatchers("/admin/**").hasRole(UserRole.ADMIN.getRoleName())
+                        // Swagger UI/OpenAPI 문서 — 서비스별 docs 라우트(config repo, /{service}/v3/api-docs 등)는
+                        // {service} 세그먼트 하나만 앞에 붙으므로 "/*/" 로 매칭한다.
+                        .pathMatchers(HttpMethod.GET,
+                                "/*/v3/api-docs", "/*/v3/api-docs/**",
+                                "/*/swagger-ui.html", "/*/swagger-ui/**").permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt
                         .jwtDecoder(jwtDecoder)

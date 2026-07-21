@@ -82,6 +82,20 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("Swagger UI/OpenAPI 문서 경로는 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
+    void swaggerPaths_withoutToken_areNotRejectedBySecurityLayer() {
+        webTestClient.get().uri("/user-service/swagger-ui/index.html")
+                .exchange()
+                .expectStatus().value(status ->
+                        Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
+
+        webTestClient.get().uri("/user-service/v3/api-docs")
+                .exchange()
+                .expectStatus().value(status ->
+                        Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
+    }
+
+    @Test
     @DisplayName("Authorization 헤더 없이 /admin/** 를 호출하면 401")
     void adminPath_withoutToken_isUnauthorized() {
         webTestClient.get().uri("/admin/projects")
