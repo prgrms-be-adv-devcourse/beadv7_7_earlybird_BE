@@ -75,6 +75,25 @@ refresh token 자체는 만료 전까지 그대로 재사용한다 — 재발급
 새로 만든다 — 로그인 이후 role 이 바뀐 경우(예: 창작자 전환)에도 새 access token 에는 최신 role 이 실린다.
 토큰이 없거나 서명이 잘못됐거나 만료됐거나 access token 을 잘못 넣으면 `401 (C401)` 을 반환한다.
 
+## 1-2. 로그아웃 — `POST /users/logout`
+
+```http
+POST http://localhost:8000/users/logout
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+
+{ "refreshToken": "eyJhbGciOiJIUzI1NiJ9..." }
+```
+
+성공하면 `204 No Content`. 다른 보호된 엔드포인트와 마찬가지로 access token 이 없으면 게이트웨이 단계에서
+바로 `401` 이 난다(permitAll 목록에 없음).
+
+refresh token 을 서버가 저장하지 않는 stateless 방식이라(§범위 밖) **실제로 폐기하지는 않는다** —
+`parseRefreshToken` 으로 서명·만료·타입만 검증하고 유효하면 204 를 반환할 뿐이다. 로그아웃을 완료하려면
+클라이언트가 들고 있는 access/refresh token 을 직접 삭제해야 한다. 즉 로그아웃 후에도 만료 전까지는
+그 refresh token 으로 `/users/refresh` 호출이 계속 성공한다 — 강제 무효화가 필요해지면 §범위 밖의
+토큰 폐기 항목을 먼저 구현해야 한다.
+
 ## 2. 보호된 엔드포인트 호출
 
 ```http

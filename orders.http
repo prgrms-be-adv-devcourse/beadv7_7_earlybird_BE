@@ -63,6 +63,15 @@ Content-Type: application/json
   "refreshToken": "여기에 로그인 응답의 refreshToken 을 붙여넣는다"
 }
 
+### 로그아웃 (실제 폐기는 안 함 - 토큰 유효성만 검증 후 204, docs/3_JWT_AUTH.md 참고)
+POST http://localhost:8000/users/logout
+Authorization: Bearer 여기에 로그인 응답의 accessToken 을 붙여넣는다
+Content-Type: application/json
+
+{
+  "refreshToken": "여기에 로그인 응답의 refreshToken 을 붙여넣는다"
+}
+
 ### 프로젝트 등록 (DRAFT 상태로 생성)
 POST http://localhost:8000/projects
 Content-Type: application/json

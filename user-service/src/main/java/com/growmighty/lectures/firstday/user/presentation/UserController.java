@@ -12,6 +12,7 @@ import com.growmighty.lectures.firstday.user.presentation.dto.RegisterCreatorReq
 import com.growmighty.lectures.firstday.user.presentation.dto.RegisterUserRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.UserResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -41,6 +42,17 @@ public class UserController {
         UserInfo info = userService.getUser(userId);
         String accessToken = tokenProvider.issueAccessToken(info.id(), info.role());
         return new RefreshResponse(accessToken);
+    }
+
+    /**
+     * 로그아웃. refresh token 은 서버에 저장되지 않는 stateless 방식이라(docs/3_JWT_AUTH.md §범위 밖)
+     * 실제로 폐기하지는 않는다 — 주어진 토큰이 유효한지만 검증하고, 유효하면 204 를 반환한다.
+     * 클라이언트가 보관 중인 access/refresh token 을 직접 삭제해야 로그아웃이 완료된다.
+     */
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@RequestBody RefreshRequest request) {
+        tokenProvider.parseRefreshToken(request.refreshToken());
     }
 
     /** 내 정보 조회. userId 는 gateway 가 검증한 JWT 에서 추출해 X-User-Id 헤더로 전달한다. */

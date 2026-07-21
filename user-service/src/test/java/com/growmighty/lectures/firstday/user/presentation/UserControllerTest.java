@@ -79,4 +79,29 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("C401"));
     }
+
+    @Test
+    @DisplayName("POST /api/v1/users/logout 은 유효한 리프레시 토큰이면 204 를 반환한다")
+    void logout_withValidToken_returnsNoContent() throws Exception {
+        when(tokenProvider.parseRefreshToken("valid-refresh-token")).thenReturn(1L);
+
+        mockMvc.perform(post("/api/v1/users/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"valid-refresh-token\"}"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/logout 은 유효하지 않은 리프레시 토큰이면 401 을 반환한다")
+    void logout_withInvalidToken_returns401() throws Exception {
+        when(tokenProvider.parseRefreshToken(eq("bad-token")))
+                .thenThrow(new BusinessException(ErrorCode.INVALID_TOKEN, "유효하지 않거나 만료된 리프레시 토큰입니다."));
+
+        mockMvc.perform(post("/api/v1/users/logout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"bad-token\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C401"));
+    }
 }
