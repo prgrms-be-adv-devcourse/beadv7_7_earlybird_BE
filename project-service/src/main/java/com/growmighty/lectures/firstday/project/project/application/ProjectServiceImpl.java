@@ -11,11 +11,17 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +38,9 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
     private final RewardRepository rewardRepository;
+    // closeExpiredProjects()가 같은 빈의 @Retryable 메서드를 self-invocation으로 부르면 프록시를
+    // 안 거쳐서 재시도가 아예 발동 안 한다 — ObjectProvider로 프록시 인스턴스를 지연 조회해 우회한다.
+    private final ObjectProvider<ProjectService> selfProvider;
 
     @Override
     @Transactional
@@ -126,6 +135,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
     public ProjectResponse extendDeadline(Long projectId, ProjectDeadlineExtendRequest request) {
         Project project = getProject(projectId);
@@ -133,18 +143,67 @@ public class ProjectServiceImpl implements ProjectService {
         return ProjectResponse.from(project);
     }
 
+    @Recover
+    public ProjectResponse recoverExtendDeadlineConflict(RuntimeException e, Long projectId, ProjectDeadlineExtendRequest request) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "마감일 연장 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
+        }
+        throw e;
+    }
+
     @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
+    public ProjectResponse closeEarly(Long projectId) {
+        Project project = getProject(projectId);
+        project.closeEarlyAsSucceeded();
+        return ProjectResponse.from(project);
+    }
+
+    @Recover
+    public ProjectResponse recoverCloseEarlyConflict(RuntimeException e, Long projectId) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "조기 마감 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
+        }
+        throw e;
+    }
+
+    /**
+     * closeExpiredProjects()는 한 트랜잭션으로 묶이면 안 된다 — 그러면 개별 재시도가 같은
+     * 영속성 컨텍스트를 재사용해 엔티티를 새로 못 읽어오고, try/catch도 flush가 커밋 시점까지
+     * 미뤄져서 실제로는 격리가 안 된다. 그래서 조회만 하고, 실제 처리는 프로젝트 하나당
+     * closeProjectByDeadline() 호출로 위임해 각자 독립된 트랜잭션 + 재시도를 갖게 한다.
+     */
+    @Override
     public void closeExpiredProjects() {
         List<Project> expired = projectRepository.findByStatusAndEndAtLessThanEqual(ProjectStatus.IN_PROGRESS, LocalDate.now());
+        ProjectService self = selfProvider.getObject();
         for (Project project : expired) {
             try {
-                project.closeByDeadline();
+                self.closeProjectByDeadline(project.getProjectId());
             } catch (RuntimeException e) {
                 // 한 프로젝트 처리 실패가 같은 배치 실행의 나머지 프로젝트까지 롤백시키지 않도록 격리.
                 log.warn("프로젝트 마감 처리 실패. projectId={}", project.getProjectId(), e);
             }
         }
+    }
+
+    @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public void closeProjectByDeadline(Long projectId) {
+        getProject(projectId).closeByDeadline();
+    }
+
+    @Recover
+    public void recoverCloseProjectByDeadlineConflict(RuntimeException e, Long projectId) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "프로젝트 마감 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
+        }
+        throw e;
     }
 
     private Project getProject(Long projectId) {

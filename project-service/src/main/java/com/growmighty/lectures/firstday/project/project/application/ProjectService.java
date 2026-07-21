@@ -34,6 +34,12 @@ public interface ProjectService {
     /** 마감일 연장 (기존 값보다 뒤로만) */
     ProjectResponse extendDeadline(Long projectId, ProjectDeadlineExtendRequest request);
 
+    /** 크리에이터: 목표 금액을 이미 달성한 프로젝트를 마감일 전에 조기 종료(성공 확정)한다. */
+    ProjectResponse closeEarly(Long projectId);
+
     /** 배치 전용: 마감시각이 지난 진행중 프로젝트를 모금액 기준으로 일괄 성공/실패 확정한다. */
     void closeExpiredProjects();
+
+    /** closeExpiredProjects()가 프로젝트 하나씩 재시도 가능하도록 호출하는 단위. 외부에서 직접 부를 일은 없다. */
+    void closeProjectByDeadline(Long projectId);
 }

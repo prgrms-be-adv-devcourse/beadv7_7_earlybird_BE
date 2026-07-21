@@ -176,4 +176,34 @@ class ProjectTest {
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.SUCCEEDED);
         assertThat(project.isClosed()).isTrue();
     }
+
+    @Test
+    @DisplayName("목표 금액을 이미 달성했으면 마감일 전에도 조기 종료해 성공으로 확정할 수 있다")
+    void closeEarlyAsSucceeded_goalReached_succeeds() {
+        Project project = publishedProject();
+        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+
+        project.closeEarlyAsSucceeded();
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.SUCCEEDED);
+        assertThat(project.isClosed()).isTrue();
+        assertThat(project.getClosedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("목표 금액 미달이면 조기 종료할 수 없다")
+    void closeEarlyAsSucceeded_belowGoal_throws() {
+        Project project = publishedProject();
+        assertThatThrownBy(project::closeEarlyAsSucceeded)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("목표 금액을 아직 달성하지 못해");
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("조기 종료도 진행중 상태에서만 가능하다")
+    void closeEarlyAsSucceeded_notInProgress_throws() {
+        Project project = project();
+        assertThatThrownBy(project::closeEarlyAsSucceeded).isInstanceOf(IllegalStateException.class);
+    }
 }

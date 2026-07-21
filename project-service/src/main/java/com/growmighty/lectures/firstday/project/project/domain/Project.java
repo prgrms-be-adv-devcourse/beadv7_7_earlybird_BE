@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -90,6 +91,10 @@ public class Project {
     @LastModifiedDate
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    /** 마감 배치(closeByDeadline)와 관리자 마감일 연장(extendDeadline)이 같은 행을 동시에 건드릴 수 있어 충돌 감지용 */
+    @Version
+    private Long version;
 
     private Project(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
                      String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
@@ -210,6 +215,21 @@ public class Project {
         this.status = this.fundedAmount.compareTo(this.goalAmount) >= 0
             ? ProjectStatus.SUCCEEDED
             : ProjectStatus.FAILED;
+        this.closedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 크리에이터: 이미 목표 금액을 달성한 프로젝트를 마감일 전에 조기 종료해 성공으로 확정한다
+     * (재료 소진 등으로 더 이상 후원을 받고 싶지 않은 경우). 목표 미달 상태에서는 허용하지
+     * 않는다 — 그건 취소(CANCELLED, 전원 환불)로 처리할 문제지 조기 마감이 아니다.
+     */
+    public void closeEarlyAsSucceeded() {
+        requireStatus(ProjectStatus.IN_PROGRESS, "조기 마감은 진행중 상태에서만 가능합니다.");
+        if (this.fundedAmount.compareTo(this.goalAmount) < 0) {
+            throw new IllegalStateException(
+                "목표 금액을 아직 달성하지 못해 조기 마감할 수 없습니다. 모금액=" + this.fundedAmount + ", 목표=" + this.goalAmount);
+        }
+        this.status = ProjectStatus.SUCCEEDED;
         this.closedAt = LocalDateTime.now();
     }
 
