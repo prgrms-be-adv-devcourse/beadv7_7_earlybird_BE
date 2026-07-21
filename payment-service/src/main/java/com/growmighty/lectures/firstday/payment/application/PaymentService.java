@@ -74,8 +74,7 @@ public class PaymentService {
 
     @Transactional
     public PaymentInfo cancel(Long paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
+        Payment payment = findPayment(paymentId);
 
         paymentGateway.cancel(payment.getPaymentKey());
         payment.cancel();
@@ -84,8 +83,12 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PaymentInfo getPayment(Long paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
+        Payment payment = findPayment(paymentId);
         return PaymentInfo.from(payment);
+    }
+
+    private Payment findPayment(Long paymentId) {
+        return paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
     }
 }

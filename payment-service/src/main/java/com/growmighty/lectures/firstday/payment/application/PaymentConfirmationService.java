@@ -57,8 +57,7 @@ public class PaymentConfirmationService {
         Long paymentId,
         String requestedPaymentKey,
         PaymentGateway.PgApproval approval) {
-        Payment payment = paymentRepository.findById(paymentId)
-            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId = " + paymentId));
+        Payment payment = findPayment(paymentId);
 
         if (!requestedPaymentKey.equals(approval.paymentKey())) {
             throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
@@ -79,10 +78,14 @@ public class PaymentConfirmationService {
 
     @Transactional
     public void failConfirmation(Long paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
-            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId = " + paymentId));
+        Payment payment = findPayment(paymentId);
 
         payment.fail();
         paymentRepository.save(payment);
+    }
+
+    private Payment findPayment(Long paymentId) {
+        return paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId = " + paymentId));
     }
 }

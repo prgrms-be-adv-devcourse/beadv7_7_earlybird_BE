@@ -124,9 +124,7 @@ public class FakePaymentGateway implements PaymentGateway {
 
     @Override
     public void cancel(String paymentKey) {
-        if (paymentKey == null || paymentKey.isBlank()) {
-            throw new IllegalArgumentException("paymentKey는 필수입니다.");
-        }
+        validatePaymentKey(paymentKey);
 
         simulateSlowPg();
     }
@@ -134,9 +132,8 @@ public class FakePaymentGateway implements PaymentGateway {
 
 
     private void validateApprovalRequest(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
-        if (paymentKey == null || paymentKey.isBlank()) {
-            throw new IllegalArgumentException("paymentKey는 필수입니다.");
-        }
+        validatePaymentKey(paymentKey);
+
         if (pgOrderId == null || pgOrderId.isBlank()) {
             throw new IllegalArgumentException("PG 주문번호는 필수입니다.");
         }
@@ -145,6 +142,12 @@ public class FakePaymentGateway implements PaymentGateway {
         }
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw new IllegalArgumentException("승인 멱등키는 필수입니다.");
+        }
+    }
+
+    private void validatePaymentKey(String paymentKey) {
+        if (paymentKey == null || paymentKey.isBlank()) {
+            throw new IllegalArgumentException("paymentKey는 필수입니다.");
         }
     }
 
