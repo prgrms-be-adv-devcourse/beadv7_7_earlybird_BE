@@ -52,6 +52,15 @@ public class Cart extends BaseEntity {
         requireItem(rewardId).changeQuantity(newQuantity);
     }
 
+    public int quantityOf(Long rewardId) {
+        CartItem item = findItem(rewardId);
+        return item == null ? 0 : item.getQuantity();
+    }
+
+    public boolean containsReward(Long rewardId) {
+        return findItem(rewardId) != null;
+    }
+
     public void removeItem(Long rewardId) {
         requireItem(rewardId);
         this.items.removeIf(item -> item.hasReward(rewardId));

@@ -1,15 +1,26 @@
 package com.growmighty.lectures.firstday.cart.application;
 
-import com.growmighty.lectures.firstday.cart.application.dto.AddCartItemCommand;
+import com.growmighty.lectures.firstday.cart.application.dto.AddCartItemsCommand;
 import com.growmighty.lectures.firstday.cart.application.dto.CartView;
-import com.growmighty.lectures.firstday.cart.domain.Cart;
-import com.growmighty.lectures.firstday.cart.domain.CartRepository;
+import com.growmighty.lectures.firstday.cart.application.dto.UpdateCartItemQuantitiesCommand;
 import com.growmighty.lectures.firstday.cart.application.port.RewardPort;
 import com.growmighty.lectures.firstday.cart.application.port.dto.RewardSnapshot;
+import com.growmighty.lectures.firstday.cart.domain.Cart;
+import com.growmighty.lectures.firstday.cart.domain.CartItem;
+import com.growmighty.lectures.firstday.cart.domain.CartRepository;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -18,29 +29,44 @@ public class CartService {
     private final RewardPort rewardPort;
 
     @Transactional
-    public CartView addItem(AddCartItemCommand command) {
-        RewardSnapshot reward = rewardPort.getReward(command.rewardId());
-        if (!reward.orderable()) {
-            throw new IllegalStateException("현재 후원할 수 없는 리워드입니다. rewardId=" + command.rewardId());
-        }
+    public CartView addItems(AddCartItemsCommand command) {
+        validateProjectId(command.projectId());
+        List<CartLineCommand> items = toCartLineCommands(
+                command.items(),
+                item -> new CartLineCommand(item.rewardId(), item.quantity()));
         Cart cart = cartRepository.findByUserId(command.userId())
                 .orElseGet(() -> Cart.create(command.userId()));
-        cart.addItem(command.rewardId(), command.quantity());
-        return CartView.from(cartRepository.save(cart));
+        Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(rewardIds(items));
+
+        validateRewards(command.projectId(), items, rewards);
+        validateFinalQuantities(cart, items, rewards, true);
+
+        items.forEach(item -> cart.addItem(item.rewardId(), item.quantity()));
+        return toView(cartRepository.save(cart));
     }
 
     @Transactional
-    public CartView changeQuantity(Long userId, Long rewardId, int quantity) {
-        Cart cart = getCartEntity(userId);
-        cart.changeQuantity(rewardId, quantity);
-        return CartView.from(cart);
+    public CartView updateItemQuantities(UpdateCartItemQuantitiesCommand command) {
+        validateProjectId(command.projectId());
+        List<CartLineCommand> items = toCartLineCommands(
+                command.items(),
+                item -> new CartLineCommand(item.rewardId(), item.quantity()));
+        Cart cart = getCartEntity(command.userId());
+        Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(rewardIds(items));
+
+        validateRewards(command.projectId(), items, rewards);
+        validateExistingItems(cart, items);
+        validateFinalQuantities(cart, items, rewards, false);
+
+        items.forEach(item -> cart.changeQuantity(item.rewardId(), item.quantity()));
+        return toView(cart);
     }
 
     @Transactional
     public CartView removeItem(Long userId, Long rewardId) {
         Cart cart = getCartEntity(userId);
         cart.removeItem(rewardId);
-        return CartView.from(cart);
+        return toView(cart);
     }
 
     @Transactional
@@ -50,11 +76,100 @@ public class CartService {
 
     @Transactional(readOnly = true)
     public CartView getCart(Long userId) {
-        return CartView.from(getCartEntity(userId));
+        return toView(getCartEntity(userId));
+    }
+
+    private <T> List<CartLineCommand> toCartLineCommands(List<T> items, Function<T, CartLineCommand> mapper) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("Items are required.");
+        }
+        Set<Long> rewardIds = new HashSet<>();
+        return items.stream()
+                .map(item -> {
+                    if (item == null) {
+                        throw new IllegalArgumentException("Cart item is required.");
+                    }
+                    CartLineCommand command = mapper.apply(item);
+                    if (command.rewardId() == null) {
+                        throw new IllegalArgumentException("rewardId is required.");
+                    }
+                    if (command.quantity() == null || command.quantity() <= 0) {
+                        throw new IllegalArgumentException("quantity must be positive. rewardId=" + command.rewardId());
+                    }
+                    if (!rewardIds.add(command.rewardId())) {
+                        throw new IllegalArgumentException("Duplicate rewardId is not allowed. rewardId=" + command.rewardId());
+                    }
+                    return command;
+                })
+                .toList();
+    }
+
+    private void validateProjectId(Long projectId) {
+        if (projectId == null) {
+            throw new IllegalArgumentException("projectId is required.");
+        }
+    }
+
+    private void validateRewards(Long projectId, List<CartLineCommand> items, Map<Long, RewardSnapshot> rewards) {
+        for (CartLineCommand item : items) {
+            RewardSnapshot reward = rewards.get(item.rewardId());
+            if (reward == null) {
+                throw new EntityNotFoundException("Reward not found. rewardId=" + item.rewardId());
+            }
+            if (!Objects.equals(projectId, reward.projectId())) {
+                throw new IllegalArgumentException("Reward does not belong to the project. projectId="
+                        + projectId + ", rewardId=" + item.rewardId());
+            }
+            if (!reward.orderable()) {
+                throw new IllegalStateException("Reward is not orderable. rewardId=" + item.rewardId());
+            }
+        }
+    }
+
+    private void validateExistingItems(Cart cart, List<CartLineCommand> items) {
+        for (CartLineCommand item : items) {
+            if (!cart.containsReward(item.rewardId())) {
+                throw new IllegalArgumentException("Cart item not found. rewardId=" + item.rewardId());
+            }
+        }
+    }
+
+    private void validateFinalQuantities(Cart cart, List<CartLineCommand> items,
+                                         Map<Long, RewardSnapshot> rewards, boolean increment) {
+        for (CartLineCommand item : items) {
+            int finalQuantity = increment ? cart.quantityOf(item.rewardId()) + item.quantity() : item.quantity();
+            if (finalQuantity > CartItem.MAX_QUANTITY) {
+                throw new IllegalArgumentException("Cart item quantity cannot exceed " + CartItem.MAX_QUANTITY
+                        + ". rewardId=" + item.rewardId());
+            }
+            RewardSnapshot reward = rewards.get(item.rewardId());
+            if (reward.remainingQuantity() != null && finalQuantity > reward.remainingQuantity()) {
+                throw new IllegalStateException("Reward stock is insufficient. rewardId=" + item.rewardId());
+            }
+        }
+    }
+
+    private Set<Long> rewardIds(Collection<CartLineCommand> items) {
+        return items.stream()
+                .map(CartLineCommand::rewardId)
+                .collect(Collectors.toSet());
+    }
+
+    private Set<Long> cartRewardIds(Cart cart) {
+        return cart.getItems().stream()
+                .map(CartItem::getRewardId)
+                .collect(Collectors.toSet());
+    }
+
+    private CartView toView(Cart cart) {
+        return CartView.from(cart, rewardPort.getRewards(cartRewardIds(cart)));
     }
 
     private Cart getCartEntity(Long userId) {
         return cartRepository.findByUserId(userId)
                 .orElseThrow(() -> new EntityNotFoundException("장바구니가 비어 있습니다. userId=" + userId));
+    }
+
+    private record CartLineCommand(Long rewardId, Integer quantity) {
     }
 }
