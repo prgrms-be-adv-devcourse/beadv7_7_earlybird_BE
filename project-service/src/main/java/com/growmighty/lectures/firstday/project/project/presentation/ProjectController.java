@@ -64,13 +64,4 @@ public class ProjectController {
         projectService.delete(projectId);
         return ApiResponse.ok(null);
     }
-
-    /**
-     * 크리에이터: 목표 금액을 이미 달성한 프로젝트를 마감일 전에 조기 종료(성공 확정)한다.
-     * TODO(팀): 소유권 검증 없음 — 인증 도입 후 이 프로젝트의 크리에이터인지 확인하는 로직 필요.
-     */
-    @PostMapping("/{projectId}/close-early")
-    public ApiResponse<ProjectResponse> closeEarly(@PathVariable Long projectId) {
-        return ApiResponse.ok(projectService.closeEarly(projectId));
-    }
 }

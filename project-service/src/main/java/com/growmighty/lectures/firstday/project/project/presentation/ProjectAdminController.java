@@ -66,4 +66,10 @@ public class ProjectAdminController {
         projectService.closeExpiredProjects();
         return ApiResponse.ok(null);
     }
+
+    /** 목표 금액을 이미 달성한 진행중 프로젝트를 마감일 전에 관리자가 조기 종료(성공 확정)한다. */
+    @PostMapping("/{projectId}/close-early")
+    public ApiResponse<ProjectResponse> closeEarly(@PathVariable Long projectId) {
+        return ApiResponse.ok(projectService.closeEarly(projectId));
+    }
 }
