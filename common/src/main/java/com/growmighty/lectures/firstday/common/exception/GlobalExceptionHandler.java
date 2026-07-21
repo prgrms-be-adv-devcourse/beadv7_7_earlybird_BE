@@ -27,7 +27,7 @@ import java.util.List;
  * {
  *   "success": false,
  *   "data": null,
- *   "error": { "code": "C003", "message": "존재하지 않는 주문입니다. orderId=999", "errors": null }
+ *   "error": { "code": "404", "message": "존재하지 않는 주문입니다. orderId=999", "errors": null }
  * }
  * }</pre>
  *
@@ -37,7 +37,7 @@ import java.util.List;
  *   "success": false,
  *   "data": null,
  *   "error": {
- *     "code": "C001",
+ *     "code": "400",
  *     "message": "Invalid request content.",
  *     "errors": [ { "field": "userId", "message": "must not be null" } ]
  *   }
@@ -53,32 +53,32 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
-        ErrorCode errorCode = e.getErrorCode();
+        HttpStatus status = e.getStatus();
         if (e.getCause() != null) {
-            log.warn("[{}] {}", errorCode.getCode(), e.getMessage(), e);
+            log.warn("[{}] {}", status.value(), e.getMessage(), e);
         } else {
-            log.warn("[{}] {}", errorCode.getCode(), e.getMessage());
+            log.warn("[{}] {}", status.value(), e.getMessage());
         }
-        return fail(errorCode.getStatus(), errorCode.getCode(), e.getMessage());
+        return fail(status, String.valueOf(status.value()), e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException e) {
-        log.warn("[{}] {}", ErrorCode.INVALID_INPUT.getCode(), e.getMessage());
-        return fail(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_INPUT.getCode(), e.getMessage());
+        log.warn("[{}] {}", HttpStatus.BAD_REQUEST.value(), e.getMessage());
+        return fail(HttpStatus.BAD_REQUEST, String.valueOf(HttpStatus.BAD_REQUEST.value()), e.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException e) {
-        log.warn("[{}] {}", ErrorCode.INVALID_STATE.getCode(), e.getMessage());
-        return fail(HttpStatus.CONFLICT, ErrorCode.INVALID_STATE.getCode(), e.getMessage());
+        log.warn("[{}] {}", HttpStatus.CONFLICT.value(), e.getMessage());
+        return fail(HttpStatus.CONFLICT, String.valueOf(HttpStatus.CONFLICT.value()), e.getMessage());
     }
 
     // 예상 못 한 예외. 내부 사정(e.getMessage())을 클라이언트에 노출하지 않는다.
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
-        log.error("[{}] unhandled exception", ErrorCode.INTERNAL_ERROR.getCode(), e);
-        return fail(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_ERROR.getCode(), ErrorCode.INTERNAL_ERROR.getMessage());
+        log.error("[{}] unhandled exception", HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
+        return fail(HttpStatus.INTERNAL_SERVER_ERROR, String.valueOf(HttpStatus.INTERNAL_SERVER_ERROR.value()), "서버 오류가 발생했습니다.");
     }
 
     // @Valid 실패: 기본 메시지("Invalid request content.")에 필드별 오류 목록을 담아 준다.
@@ -90,7 +90,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         List<ApiResponse.ApiError.FieldErrorDetail> errors = ex.getBindingResult().getFieldErrors().stream()
                 .map(fe -> new ApiResponse.ApiError.FieldErrorDetail(fe.getField(), fe.getDefaultMessage()))
                 .toList();
-        ApiResponse<Void> body = ApiResponse.fail(new ApiResponse.ApiError(ErrorCode.INVALID_INPUT.getCode(), "Invalid request content.", errors));
+        ApiResponse<Void> body = ApiResponse.fail(new ApiResponse.ApiError(String.valueOf(HttpStatus.BAD_REQUEST.value()), "Invalid request content.", errors));
         return handleExceptionInternal(ex, body, headers, status, request);
     }
 

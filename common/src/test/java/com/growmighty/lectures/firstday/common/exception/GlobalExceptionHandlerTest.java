@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -37,13 +38,13 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void BusinessException은_ErrorCode의_상태와_코드로_응답한다() throws Exception {
+    void BusinessException은_지정한_상태와_코드로_응답한다() throws Exception {
         mockMvc.perform(get("/test/business"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.error.code").value("C003"))
-                .andExpect(jsonPath("$.error.message").value(ErrorCode.ENTITY_NOT_FOUND.getMessage()));
+                .andExpect(jsonPath("$.error.code").value("404"))
+                .andExpect(jsonPath("$.error.message").value("대상을 찾을 수 없습니다."));
     }
 
     @Test
@@ -53,7 +54,7 @@ class GlobalExceptionHandlerTest {
                         .content("{\"quantity\": -1}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C001"))
+                .andExpect(jsonPath("$.error.code").value("400"))
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'userId')]").exists())
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'quantity')]").exists());
     }
@@ -63,8 +64,8 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/test/boom"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C500"))
-                .andExpect(jsonPath("$.error.message").value(ErrorCode.INTERNAL_ERROR.getMessage()))
+                .andExpect(jsonPath("$.error.code").value("500"))
+                .andExpect(jsonPath("$.error.message").value("서버 오류가 발생했습니다."))
                 .andExpect(content().string(not(containsString("secret detail"))));
     }
 
@@ -79,7 +80,7 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/test/state"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C002"))
+                .andExpect(jsonPath("$.error.code").value("409"))
                 .andExpect(jsonPath("$.error.message").value("이미 처리된 요청입니다."));
     }
 
@@ -88,7 +89,7 @@ class GlobalExceptionHandlerTest {
 
         @GetMapping("/test/business")
         Void business() {
-            throw new BusinessException(ErrorCode.ENTITY_NOT_FOUND);
+            throw new BusinessException(HttpStatus.NOT_FOUND, "대상을 찾을 수 없습니다.");
         }
 
         @PostMapping("/test/valid")
