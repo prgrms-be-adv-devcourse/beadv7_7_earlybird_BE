@@ -11,6 +11,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
@@ -27,6 +28,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
+    private final RewardRepository rewardRepository;
 
     @Override
     @Transactional
@@ -46,12 +48,21 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    // TODO(팀): 소유자/관리자는 자기 PENDING_REVIEW·REJECTED 프로젝트를 이 엔드포인트로
+    //           조회할 방법이 없다 (인증 도입 전이라 창작자는 /me 목록으로만 확인 가능).
+    //           인증 도입 후 creatorId/관리자 여부를 받아 그 경우엔 이 제한을 우회하도록 보강 필요.
     public ProjectResponse findById(Long projectId) {
-        return ProjectResponse.from(getProject(projectId));
+        Project project = getProject(projectId);
+        if (!project.isPublished()) {
+            throw new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId);
+        }
+        return ProjectResponse.from(project);
     }
 
     @Override
     @Transactional
+    // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
+    //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
     public ProjectResponse update(Long projectId, ProjectUpdateRequest request) {
         Project project = getProject(projectId);
         if (project.isPublished()) {
@@ -74,7 +85,11 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional
     public void delete(Long projectId) {
         // TODO(팀): 후원 발생 여부 검증 — 현재는 항상 삭제 가능하다고 가정한다.
-        projectRepository.delete(getProject(projectId));
+        // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
+        //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
+        Project project = getProject(projectId);
+        rewardRepository.deleteByProjectId(projectId);
+        projectRepository.delete(project);
     }
 
     @Override
@@ -129,6 +144,11 @@ public class ProjectServiceImpl implements ProjectService {
     private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다 (status 파라미터로 요청해도 결과 없음).
+            // 창작자 본인의 심사 대기/반려 프로젝트는 findByCreator(/me)로 확인한다.
+            predicates.add(cb.and(
+                    cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
+                    cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
             if (keyword != null && !keyword.isBlank()) {
                 String pattern = "%" + keyword + "%";
                 predicates.add(cb.or(
