@@ -235,10 +235,10 @@ public class RewardServiceImpl implements RewardService {
     /**
      * update()/delete()의 published 여부 판단용. ProjectService.findStatusView()가 내부적으로
      * 공유 락(최신 커밋 상태)으로 조회해준다 — 일반 조회는 REPEATABLE READ 스냅샷에 갇혀 동시에
-     * 승인(approve)된 최신 상태를 못 볼 수 있기 때문. register()가 프로젝트 존재 여부를 검증하지
-     * 않고(TODO), Project.delete()도 참조 중인 리워드 여부를 확인하지 않아 부모 프로젝트가 사라진
-     * "고아" 리워드가 있을 수 있다 — 이 경우 404로 막아버리면 그 리워드를 영영 정리할 방법이
-     * 없으므로, 존재하지 않으면 "공개 전"과 동일하게 취급한다(자유 수정/하드 삭제 허용).
+     * 승인(approve)된 최신 상태를 못 볼 수 있기 때문. register()는 이제 프로젝트 존재 여부를
+     * 검증하고, ProjectServiceImpl.delete()도 참조하는 리워드를 먼저 지우므로 정상 경로로는
+     * "고아" 리워드(부모 프로젝트가 사라진 리워드)가 새로 생기지 않는다 — 그래도 혹시 남아있는
+     * 과거 데이터를 위해 존재하지 않으면 404 대신 "공개 전"과 동일하게 취급한다(자유 수정/하드 삭제 허용).
      */
     private Optional<ProjectStatusView> findProjectStatus(Long projectId) {
         return projectServiceProvider.getObject().findStatusView(projectId);

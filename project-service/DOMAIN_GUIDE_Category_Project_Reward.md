@@ -250,9 +250,16 @@ graph TD
 
 **Project → Category**: `Project`는 `categoryId`라는 숫자만 갖고 있습니다. 프로젝트를 등록할 때 `ProjectServiceImpl`이 `ProjectCategoryRepository.existsById(categoryId)`를 직접 호출해서 "이 카테고리가 진짜 있는지"만 확인하고, 그 외에는 서로 관계없는 별도 테이블입니다. (JPA 연관관계를 안 걸어놓은 건 Category 내부와 같은 이유 — 결합을 느슨하게 유지하기 위해서입니다.)
 
-**Reward → Project**: `Reward`는 `projectId`라는 숫자만 갖고 있습니다. 리워드를 등록할 때 `RewardServiceImpl`이 `ProjectRepository`를 직접 호출해서 "이 프로젝트가 실제 존재하는지"와 "이미 종료된 프로젝트는 아닌지"를 확인합니다. 리워드 수정/삭제(`update()`/`delete()`)도 마찬가지로 이 프로젝트가 지금 공개된 상태인지 확인해서 허용 범위를 정합니다 — 이때 일반 조회 대신 **공유 락(`LOCK IN SHARE MODE`)** 이 걸린 조회를 씁니다. 이유는: MySQL의 기본 격리수준(REPEATABLE READ)에서는 한 트랜잭션이 처음 조회한 시점의 DB 상태가 그 트랜잭션이 끝날 때까지 고정되는데, 관리자가 그 사이 프로젝트를 승인(commit)해도 이 스냅샷 때문에 옛날 상태(승인 전)로 착각할 수 있기 때문입니다. 공유 락 조회는 이 스냅샷을 우회해서 항상 최신 커밋 상태를 읽고, 만약 지금 딱 그 순간 다른 트랜잭션이 이 프로젝트 행을 수정 중이면 그 트랜잭션이 끝날 때까지 기다렸다가 읽습니다.
+**Reward → Project**: `Reward`는 `projectId`라는 숫자만 갖고 있습니다. 리워드를 등록할 때 `RewardServiceImpl`이 `ProjectService.findStatusView(projectId)`를 호출해서 "이 프로젝트가 실제 존재하는지"와 "이미 종료된 프로젝트는 아닌지"를 확인합니다(더 이상 `ProjectRepository`/`Project` 엔티티를 직접 참조하지 않습니다 — 아래 "왜 인터페이스로만 통신하나" 참고). 리워드 수정/삭제(`update()`/`delete()`)도 마찬가지로 이 프로젝트가 지금 공개된 상태인지 확인해서 허용 범위를 정합니다 — `ProjectService.findStatusView()` 내부적으로 일반 조회 대신 **공유 락(`LOCK IN SHARE MODE`)** 이 걸린 조회를 씁니다. 이유는: MySQL의 기본 격리수준(REPEATABLE READ)에서는 한 트랜잭션이 처음 조회한 시점의 DB 상태가 그 트랜잭션이 끝날 때까지 고정되는데, 관리자가 그 사이 프로젝트를 승인(commit)해도 이 스냅샷 때문에 옛날 상태(승인 전)로 착각할 수 있기 때문입니다. 공유 락 조회는 이 스냅샷을 우회해서 항상 최신 커밋 상태를 읽고, 만약 지금 딱 그 순간 다른 트랜잭션이 이 프로젝트 행을 수정 중이면 그 트랜잭션이 끝날 때까지 기다렸다가 읽습니다.
 
-**Project → Reward (역방향)**: 프로젝트를 삭제할 때, 그 프로젝트를 참조하는 리워드가 남아있으면 부모를 잃은 "고아" 리워드가 됩니다. 이를 막기 위해 `ProjectServiceImpl.delete()`가 프로젝트를 지우기 전에 `RewardRepository.deleteByProjectId()`로 참조하는 리워드를 먼저 전부 삭제합니다. 즉 Reward와 Project는 서로의 리포지토리를 양방향으로 참조합니다 — 같은 서비스(같은 JVM, 같은 DB 커넥션) 안이라 이 정도 직접 참조는 허용되고, "숫자 ID로만 느슨하게 연결한다"는 원칙(엔티티/JPA 연관관계를 걸지 않는다는 원칙)만 지키면 됩니다.
+**Project → Reward (역방향)**: 프로젝트를 삭제할 때, 그 프로젝트를 참조하는 리워드가 남아있으면 부모를 잃은 "고아" 리워드가 됩니다. 이를 막기 위해 `ProjectServiceImpl.delete()`가 프로젝트를 지우기 전에 `RewardService.deleteAllByProject(projectId)`를 호출해서 참조하는 리워드를 먼저 전부 삭제합니다.
+
+**왜 인터페이스로만 통신하나 (2026-07-21 리팩토링)**: 원래는 Reward와 Project가 서로의 리포지토리(`RewardRepository`/`ProjectRepository`)를 직접 호출했습니다 — 같은 서비스(같은 JVM, 같은 DB 커넥션) 안이라 "숫자 ID로만 느슨하게 연결한다"는 원칙(엔티티/JPA 연관관계를 걸지 않는다는 원칙)만 지키면 이 정도 직접 참조는 허용된다고 보고 그렇게 시작했습니다. 하지만 두 도메인이 나중에 분리될 가능성과 의존성 역전 원칙(DIP)을 지키는 게 정석이라는 판단으로, 서로의 리포지토리/엔티티 대신 **공개된 서비스 인터페이스(`RewardService`/`ProjectService`)로만** 통신하도록 한 단계 더 엄격하게 리팩토링했습니다:
+
+- `RewardServiceImpl`은 `Project` 엔티티 대신, `ProjectService.findStatusView()`가 반환하는 `ProjectStatusView`(published/closed/open/status만 담은 값 객체)만 받습니다.
+- `ProjectServiceImpl`은 `RewardRepository`/`Reward` 대신 `RewardService.deactivateAllByProject()`/`deleteAllByProject()`를 호출합니다.
+- 두 서비스가 서로의 인터페이스를 필요로 하면서 생기는 Spring 빈 순환 의존은 양쪽 다 `ObjectProvider<T>`로 지연 조회해서 끊었습니다.
+- 두 도메인 모두에서 쓰던 `ConcurrentUpdateFailedException`은 어느 한쪽 소유가 아니라 `project-service` 루트의 공용 위치(`project.exception` 패키지)로 옮겼습니다.
 
 **Reward ↔ order-service (다른 서비스, MSA 경계를 넘는 관계)**: 여기서부터는 프로세스 자체가 다른 서비스입니다. `project-service`와 `order-service`는 같은 DB도 안 쓰고 같은 JVM도 아닙니다. 그래서 "숫자 ID 참조"조차 안 되고, **HTTP로 직접 요청을 보내야** 합니다. order-service는 `RewardFeignClient`라는 인터페이스로 이 HTTP 호출을 선언하고, 실제 호출은 서킷 브레이커(Resilience4j)로 감싸서, project-service가 응답을 안 하면 정해진 대체 동작(fallback)으로 넘어가게 만들어져 있습니다. 이렇게 **다른 서비스와의 통신은 반드시 네트워크(HTTP)를 거치게 강제**하는 게 이 프로젝트 전체(project-service뿐 아니라 order-service, payment-service 등 모든 서비스)의 핵심 설계 원칙입니다 — 그래야 나중에 project-service를 통째로 다시 만들어도 order-service는 API 계약만 안 바뀌면 전혀 영향을 안 받습니다.
 
