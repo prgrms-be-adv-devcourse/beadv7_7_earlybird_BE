@@ -168,11 +168,9 @@ JWT 설정(`JwtProperties`)과 헤더/클레임 이름 상수(`JwtHeaders`)는 `
 - Refresh token 로테이션(재발급 시 새 refresh token 발급 + 기존 것 무효화), 토큰 폐기(로그아웃 시 즉시 무효화) —
   지금은 발급된 refresh token 을 서버가 어디에도 저장하지 않는 stateless 방식이라 만료 전에는 강제로
   무효화할 방법이 없다.
-- 역할(BACKER/CREATOR/ADMIN) 검사는 게이트웨이 라우트 단위 규칙(`jwtAuthenticationConverter` 가
-  `ROLE_ADMIN` 등으로 변환)까지만 준비됐고, 실제 `.pathMatchers(...).hasRole(...)` 규칙은 아직 하나도
-  없다(§4 참고). 관리자 전용 엔드포인트도 다른 서비스와 같은 `/api/v1` 컨벤션을 따른다. 창작자 전용
-  엔드포인트(프로젝트 생성/수정 등)도 마찬가지로 아직 아무 보호가 없다. 도입하려면 §4 끝의 메서드
-  기반 규칙을 해당 서비스 오너와 함께 추가한다.
+- 역할(BACKER/CREATOR/ADMIN) 검사는 게이트웨이 라우트 단위(`/admin/**` → ADMIN)까지만 도입했다 —
+  같은 경로를 메서드/소유권 기준으로 더 세분화해야 하는 창작자 전용 엔드포인트(프로젝트 생성/수정 등)는
+  아직 아무 보호도 없다. 도입하려면 §4 끝의 메서드 기반 규칙을 해당 서비스 오너와 함께 추가한다.
 - 소유권(ownership) 검사는 완전히 범위 밖 — 역할이 맞아도 "이 리소스의 주인이 맞는가"(예: 본인
   프로젝트만 수정)는 게이트웨이가 알 수 없고, 각 서비스 로직에서 처리해야 한다.
 - order/cart/payment/board/project/settlement/notification-service 의 `@RequestParam userId` 마이그레이션 —
