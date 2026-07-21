@@ -92,10 +92,10 @@ class ProjectCategory {
 **상태 전이 (Project의 심장)**
 
 ```
-   등록                승인               (마감 후 판정 — 아직 미구현)
-PENDING_REVIEW ──────→ IN_PROGRESS ──────→ SUCCEEDED / FAILED / CANCELLED
+   등록                승인                마감 배치/조기종료 판정
+PENDING_REVIEW ──────→ IN_PROGRESS ──────→ SUCCEEDED / FAILED
       │
-      └──(반려)──→ REJECTED
+      └──(반려)──→ REJECTED          (CANCELLED — 크리에이터/관리자 취소, 아직 미구현)
 ```
 
 - 프로젝트를 등록하면 무조건 `PENDING_REVIEW`(심사 대기)로 시작합니다.
@@ -112,6 +112,23 @@ public void approve() {
 **공개 전 / 공개 후로 수정 가능한 필드가 다른 이유**
 
 프로젝트가 아직 심사 중이거나 반려된 상태(`isPublished() == false`)일 때는 창작자가 제목, 목표금액, 기간 등 전부 자유롭게 고칠 수 있습니다. 하지만 한 번이라도 승인돼서 공개된 적이 있으면(`isPublished() == true`), 후원자들이 이미 그 정보를 보고 후원을 결정했을 수 있기 때문에 목표금액이나 기간 같은 핵심 정보는 못 바꾸게 막고 `summary`/`description`/`thumbnailId`만 고칠 수 있게 했습니다. (마감일 연장은 창작자가 아예 못 하고, 관리자 전용 API로만 가능하도록 별도 분리했습니다 — 팀에서 논의 후 확정한 정책입니다.)
+
+**마감 판정 — 배치가 자동으로, 또는 조기 종료로 확정 (2026-07-21 추가)**
+
+프로젝트가 성공했는지 실패했는지는 "목표 금액을 채운 시점"이 아니라 **마감일(`endAt`) 도달 시점** 기준으로 판정합니다 — 마감 전에는 취소·환불 등으로 모금액이 줄어들 수 있어서 조기 확정이 불가능하기 때문입니다. 두 가지 경로로 확정됩니다:
+
+1. **배치(자동)**: `ProjectDeadlineScheduler`가 매일 자정에 "아직 진행중인데 마감일이 지난" 프로젝트를 찾아 `Project.closeByDeadline()`을 호출합니다. 이 메서드가 그 순간의 `fundedAmount`(모금액)와 `goalAmount`(목표금액)를 비교해서 `SUCCEEDED`/`FAILED`를 확정합니다. 자정까지 기다리지 않고 즉시 실행하고 싶으면 관리자가 `POST /api/v1/admin/projects/close-expired`로 수동 트리거할 수도 있습니다.
+2. **조기 종료(관리자)**: 이미 목표 금액을 달성한 프로젝트는, 마감일 전이라도 관리자가 `POST /api/v1/admin/projects/{id}/close-early`로 조기 종료해 `SUCCEEDED`로 확정할 수 있습니다(재료 소진 등으로 크리에이터가 더 이상 후원을 안 받고 싶어 하는 경우를 관리자가 처리). 목표 미달 상태에서는 이 API가 거부됩니다 — 그건 조기 종료가 아니라 취소(아직 미구현, 위 상태 전이도 참고)로 처리할 문제이기 때문입니다.
+
+**왜 `endAt`이 `LocalDateTime`이 아니라 `LocalDate`인가?** 프로젝트 진행 기간이 일 단위라, 마감도 "그 날짜의 자정(00:00)"으로 통일했습니다. 만약 시:분:초까지 받을 수 있으면(예: 8/15 14:30에 만든 프로젝트 + 3개월 = 11/15 14:30), 하루 한 번 도는 배치가 최대 거의 하루 가까이 늦게 처리될 수 있는데, 타입 자체를 `LocalDate`로 제한하면 "마감은 항상 자정"이라는 전제가 코드로 보장돼서 배치를 하루 한 번만 돌려도 정확합니다.
+
+**배치 주기와 무관하게 마감 순간 즉시 주문을 막는 장치 — `Project.isOpen()`**: 배치가 자정에 한 번만 도는데, "마감 지났는데 배치가 아직 안 돈 사이"에 주문이 들어오면 안 됩니다. 그래서 저장된 `status`만 보지 않고 `status == IN_PROGRESS && 지금 시각 < endAt`을 그때그때 계산하는 `Project.isOpen()`을 만들어서, `RewardServiceImpl.decreaseStock()`(리워드 구매) 맨 앞에서 확인합니다. 이러면 배치가 실제로 상태를 바꾸기 전이라도 마감 시각이 지나는 순간 바로 새 주문이 막힙니다.
+
+**프로젝트가 마감되면 리워드도 같이 비활성화됩니다.** `closeByDeadline()`/`closeEarlyAsSucceeded()`가 성공하면 `ProjectServiceImpl`이 그 프로젝트의 모든 리워드를 `RewardService.deactivateAllByProject()`로 비활성화합니다. 안 그러면 이미 마감된 프로젝트의 리워드가 조회 응답(`RewardResponse.orderable`)엔 여전히 "주문 가능"으로 잘못 나갈 수 있었습니다(실제 주문은 `Project.isOpen()`이 막아주지만, 조회 응답 자체는 마감 여부와 무관하게 리워드 자신의 `active`/재고만 보고 계산했기 때문).
+
+**`Project`에도 `Reward`와 같은 낙관적 락(`@Version`)을 추가했습니다.** 마감 배치(`closeByDeadline`)와 관리자의 마감일 연장(`extendDeadline`)이 같은 프로젝트 행을 동시에 건드릴 수 있어서(예: 자정 배치가 도는 동안 관리자가 수동으로 `close-expired`를 또 누르는 경우), `Reward`의 재고 차감과 똑같은 이유로 `@Version` + `@Retryable`/`@Recover` 패턴을 그대로 적용했습니다. `closeExpiredProjects()`(여러 프로젝트를 순회하는 배치 진입점)는 그 자체를 트랜잭션으로 묶지 않고, 프로젝트 하나당 `closeProjectByDeadline()`(개별 재시도 단위)을 호출하도록 분리했습니다 — 안 그러면 재시도가 같은 트랜잭션/영속성 컨텍스트를 재사용해서 최신 데이터를 다시 못 읽어옵니다.
+
+**아직 안 된 것**: `fundedAmount`(모금액)를 실제로 채워주는 트리거가 없습니다 — 결제 성공 시 이 값을 갱신해주는 로직이 order-service/payment-service와 아직 연동되지 않아서, 지금은 항상 0으로 남아있고 배치는 늘 FAILED로 판정합니다. 이건 project-service 혼자 해결할 수 없는 cross-service 이슈라 별도 조율이 필요합니다.
 
 **목록 조회에서 쓰는 동적 검색 — JPA Specification**
 
@@ -273,8 +290,10 @@ graph TD
 | Spring Data JPA | 세 도메인 전부 | DB 접근(엔티티 ↔ 테이블 매핑) |
 | `JpaSpecificationExecutor` | Project | 조건이 있을 수도 없을 수도 있는 동적 검색 |
 | Spring Data JPA Auditing | Project | `createdAt`/`updatedAt` 자동 채움 |
-| JPA `@Version` (낙관적 락) | Reward | 동시 재고 차감 시 충돌 감지 |
-| Spring Retry (`@Retryable`/`@Recover`) | Reward | 낙관적 락 충돌 시 자동 재시도, 소진 시 명확한 에러로 변환 |
+| Spring Scheduling (`@Scheduled` cron) | Project | 매일 자정 마감 배치(`ProjectDeadlineScheduler`) |
+| JPA `@Version` (낙관적 락) | Project, Reward | 동시 쓰기(재고 차감/마감 처리/마감일 연장) 시 충돌 감지 |
+| Spring Retry (`@Retryable`/`@Recover`) | Project, Reward | 낙관적 락 충돌 시 자동 재시도, 소진 시 명확한 에러로 변환 |
+| `ObjectProvider<T>` (지연 빈 조회) | Project, Reward | self-invocation으로 인한 재시도 프록시 우회 방지 + 두 서비스 인터페이스 간 순환 빈 의존 해소 |
 | Spring Validation (`@NotBlank` 등) | 세 도메인 전부 | 요청 DTO 값 검증 |
 | MySQL (로컬 Docker) | 세 도메인 전부 | 실제 데이터 저장소 |
 | Gradle 멀티모듈 | project-service 전체 | 다른 서비스와 독립적으로 빌드/배포 |
@@ -286,6 +305,8 @@ graph TD
 이 문서는 "어떻게 만들었는지" 설명이 목적이라 자세한 목록은 생략하지만, 요약하면:
 - **인증(로그인) 시스템 자체가 아직 없어서**, "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증이 곳곳에 빠져 있습니다. 관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)도 지금은 URL만 분리해뒀을 뿐, 실제로 "이 사람이 관리자인가"를 검증하지는 않습니다.
 - Project의 **삭제 시 후원(주문) 여부 검증**(주문이 있으면 삭제 불가)은 아직 없습니다 — order-service 쪽에 "이 프로젝트에 주문이 있는지" 확인하는 API가 필요해서 별도 조율 중입니다. (참조하는 **리워드**가 있는지는 확인해서 함께 삭제하도록 이미 처리했습니다 — 이건 서로 다른 검증입니다.)
-- Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED/CANCELLED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
+- Project의 **마감 감지 배치**(`ProjectDeadlineScheduler`)와 **SUCCEEDED/FAILED 상태 전이**(`closeByDeadline()`/`closeEarlyAsSucceeded()`)는 구현 완료했습니다(위 3.2절 참고). 다만 판정에 쓰는 `fundedAmount`(모금액)를 실제로 채워주는 트리거가 아직 없어서(결제 성공 시 반영하는 로직 미구현, order/payment-service와 조율 필요) 지금은 항상 FAILED로 판정됩니다.
+- **CANCELLED(취소) 상태 전이**는 아직 없습니다 — `ProjectStatus.CANCELLED` enum 값만 있고, 크리에이터/관리자가 이 상태로 바꿔주는 `cancel()` 같은 메서드나 엔드포인트가 없습니다. 취소 시 전원 환불 처리까지 별도 브랜치에서 다룰 예정입니다.
+- Settlement/Payment가 "성공/실패/취소한 프로젝트 목록"을 조회할 internal API(`/internal/projects?status=X` 등)도 아직 없습니다 — 별도 브랜치에서 다룰 예정입니다.
 
 각 항목의 자세한 내용과 다음 작업 우선순위는 `WORK_LOG_Category_Project.md`와 각 브랜치의 TODO 주석을 참고하세요.
