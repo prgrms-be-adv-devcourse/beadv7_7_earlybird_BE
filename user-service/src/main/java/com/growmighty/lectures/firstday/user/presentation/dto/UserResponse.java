@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.user.presentation.dto;
 
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
-import com.growmighty.lectures.firstday.user.domain.UserRole;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 
 public record UserResponse(
         Long id,

@@ -69,7 +69,7 @@ erDiagram
         varchar password "인코딩된 해시"
         varchar name
         varchar phone_number
-        varchar role "(신규) USER | CREATOR | ADMIN - CREATOR도 후원 가능"
+        varchar role "(신규) BACKER | CREATOR | ADMIN - CREATOR도 후원 가능"
     }
     creator_profiles {
         bigint id PK "(신규) 판매자 등록 시 생성"
@@ -348,7 +348,7 @@ erDiagram
 
 | # | 항목 | 결정 | ERD 반영 |
 | --- | --- | --- | --- |
-| 1 | `users.role` | 단일 enum `USER \| CREATOR \| ADMIN`, CREATOR 도 구매 가능 | §2.1 |
+| 1 | `users.role` | 단일 enum `BACKER \| CREATOR \| ADMIN`, CREATOR 도 구매 가능 | §2.1 |
 | 2 | 예치금 | **payment-service 소유** — `wallets` + `wallet_transactions` (결제·차감 원자성) | §2.3 |
 | 3 | 판매자 등록 | `users.role` 전환 + userdb `creator_profiles`(정산 계좌, 암호화) | §2.1 |
 | 4 | 장바구니 reward 단위 | `cart_items.project_id` → **`reward_id` 만** (프로젝트는 경유 조회) | §2.2 |

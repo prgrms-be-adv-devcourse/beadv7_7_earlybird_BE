@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.user.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -40,7 +41,7 @@ public class User extends BaseEntity {
         this.password = encodedPassword;
         this.name = name;
         this.phoneNumber = phoneNumber;
-        this.role = UserRole.USER;
+        this.role = UserRole.BACKER;
     }
 
     public static User register(String email, String encodedPassword, String name, String phoneNumber) {
