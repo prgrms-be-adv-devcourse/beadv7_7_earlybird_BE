@@ -77,11 +77,8 @@ POST http://localhost:8000/projects/5/submit
 ### 내 정보 조회 (TODO(팀): JWT 도입 후 userId 파라미터 제거)
 GET http://localhost:8000/users/me?userId=1
 
-### 심사 승인 (IN_REVIEW → OPEN) — TODO(팀): 관리자 전용 + Gateway /admin 라우팅 필요
-POST http://localhost:8000/admin/projects/5/approve
-
-### 심사 반려 (IN_REVIEW → REJECTED)
-POST http://localhost:8000/admin/projects/5/reject
+### 심사 승인/반려 — TODO(팀): 관리자 전용 인가 + Gateway 라우팅 경로 미확정이라 여기 요청 예시를 아직 못 둠
+### (project-service 오너가 최종 경로를 정하면 그때 추가)
 
 ### 리워드 등록
 POST http://localhost:8000/projects/1/rewards

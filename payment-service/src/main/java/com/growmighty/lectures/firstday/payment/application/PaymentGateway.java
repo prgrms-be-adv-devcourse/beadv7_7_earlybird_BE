@@ -6,7 +6,9 @@ public interface PaymentGateway {
     PgApproval approve(
         String paymentKey,
         String pgOrderId,
-        BigDecimal amount);
+        BigDecimal amount,
+        String idempotencyKey
+    );
 
     void cancel(String paymentKey);
 

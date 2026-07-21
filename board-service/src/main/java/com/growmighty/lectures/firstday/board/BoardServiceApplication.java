@@ -8,7 +8,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 창작자 공지(notice) / 사용자 의견·문의(comment) / 리뷰(review).
  * 게시판형과 리뷰형은 DB 구조가 달라 도메인을 분리하되, DB(스키마)는 서비스 단위로 갖는다.
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+    "com.growmighty.lectures.firstday.board",
+    "com.growmighty.lectures.firstday.common"   // 이게 없으면 GlobalExceptionHandler가 빈으로 안 뜬다
+})
 public class BoardServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(BoardServiceApplication.class, args);

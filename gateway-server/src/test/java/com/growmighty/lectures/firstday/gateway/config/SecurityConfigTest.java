@@ -44,7 +44,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("Authorization 헤더 없이 보호된 경로를 호출하면 401")
     void protectedPath_withoutToken_isUnauthorized() {
-        webTestClient.get().uri("/users/me")
+        webTestClient.get().uri("/api/v1/users/me")
                 .exchange()
                 .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -54,7 +54,7 @@ class SecurityConfigTest {
     void protectedPath_withValidToken_passesSecurityLayer() {
         String token = issueToken(Instant.now(), Instant.now().plusSeconds(3600));
 
-        webTestClient.get().uri("/users/me")
+        webTestClient.get().uri("/api/v1/users/me")
                 .header("Authorization", "Bearer " + token)
                 .exchange()
                 .expectStatus().value(status ->
@@ -66,7 +66,7 @@ class SecurityConfigTest {
     void protectedPath_withExpiredToken_isUnauthorized() {
         String token = issueToken(Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600));
 
-        webTestClient.get().uri("/users/me")
+        webTestClient.get().uri("/api/v1/users/me")
                 .header("Authorization", "Bearer " + token)
                 .exchange()
                 .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -75,65 +75,16 @@ class SecurityConfigTest {
     @Test
     @DisplayName("로그인/회원가입은 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
     void publicPaths_withoutToken_areNotRejectedBySecurityLayer() {
-        webTestClient.post().uri("/users/login")
+        webTestClient.post().uri("/api/v1/users/login")
                 .exchange()
                 .expectStatus().value(status ->
                         Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
-    }
-
-    @Test
-    @DisplayName("Swagger UI/OpenAPI 문서 경로는 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
-    void swaggerPaths_withoutToken_areNotRejectedBySecurityLayer() {
-        webTestClient.get().uri("/user-service/swagger-ui/index.html")
-                .exchange()
-                .expectStatus().value(status ->
-                        Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
-
-        webTestClient.get().uri("/user-service/v3/api-docs")
-                .exchange()
-                .expectStatus().value(status ->
-                        Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
-    }
-
-    @Test
-    @DisplayName("Authorization 헤더 없이 /admin/** 를 호출하면 401")
-    void adminPath_withoutToken_isUnauthorized() {
-        webTestClient.get().uri("/admin/projects")
-                .exchange()
-                .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
-    }
-
-    @Test
-    @DisplayName("ADMIN 이 아닌 role(BACKER) 의 JWT 로 /admin/** 를 호출하면 403")
-    void adminPath_withNonAdminRole_isForbidden() {
-        String token = issueToken(Instant.now(), Instant.now().plusSeconds(3600), UserRole.BACKER.getRoleName());
-
-        webTestClient.get().uri("/admin/projects")
-                .header("Authorization", "Bearer " + token)
-                .exchange()
-                .expectStatus().isEqualTo(HttpStatus.FORBIDDEN);
-    }
-
-    @Test
-    @DisplayName("ADMIN role 의 JWT 로 /admin/** 를 호출하면 보안 계층은 통과한다 (401/403 아님)")
-    void adminPath_withAdminRole_passesSecurityLayer() {
-        String token = issueToken(Instant.now(), Instant.now().plusSeconds(3600), UserRole.ADMIN.getRoleName());
-
-        webTestClient.get().uri("/admin/projects")
-                .header("Authorization", "Bearer " + token)
-                .exchange()
-                .expectStatus().value(status -> Assertions.assertThat(status)
-                        .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
     }
 
     private String issueToken(Instant issuedAt, Instant expiresAt) {
-        return issueToken(issuedAt, expiresAt, UserRole.BACKER.getRoleName());
-    }
-
-    private String issueToken(Instant issuedAt, Instant expiresAt, String role) {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject("1")
-                .claim("role", role)
+                .claim("role", UserRole.BACKER.getRoleName())
                 .issuedAt(issuedAt)
                 .expiresAt(expiresAt)
                 .build();

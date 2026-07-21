@@ -1,9 +1,11 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,12 +18,15 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentGateway paymentGateway;
 
+    // 결제 승인 상태 전이를 트랜잭션 단위로 처리하는 클래스
+    private final PaymentConfirmationService  paymentConfirmationService;
+
     @Transactional
     public PaymentInfo prepare(
-        Long orderId,
-        String pgOrderId,
-        Long userId,
-        BigDecimal amount
+        @NonNull Long orderId,
+        @NonNull String pgOrderId,
+        @NonNull Long userId,
+        @NonNull BigDecimal amount
     ) {
         return paymentRepository.findByOrderId(orderId)
             .map(existingPayment -> {
@@ -50,37 +55,26 @@ public class PaymentService {
             });
     }
 
-    @Transactional
     public PaymentInfo confirm(String paymentKey, String pgOrderId) {
-        Payment payment = paymentRepository.findByPgOrderId(pgOrderId)
-            .orElseThrow(() -> new EntityNotFoundException("준비된 결제가 없습니다. pgOrderId = " + pgOrderId));
-
-        if (payment.isPaid()) {
-            return PaymentInfo.from(payment);
-        }
-
-        payment.startConfirming();
+        PaymentConfirmationTarget target = paymentConfirmationService.startConfirmation(pgOrderId);
 
         PaymentGateway.PgApproval approval = paymentGateway.approve(
             paymentKey,
-            payment.getPgOrderId(),
-            payment.getAmount()
+            target.pgOrderId(),
+            target.amount(),
+            target.idempotencyKey()
         );
 
-        if (!paymentKey.equals(approval.paymentKey())
-            || !payment.getPgOrderId().equals(approval.pgOrderId())
-            || payment.getAmount().compareTo(approval.amount()) != 0) {
-            throw new IllegalStateException("PG 승인 응답이 저장된 결제 정보와 일치하지 않습니다.");
-        }
-
-        payment.confirm(approval.paymentKey());
-        return PaymentInfo.from(paymentRepository.save(payment));
+        return paymentConfirmationService.completeConfirmation(
+            target.paymentId(),
+            paymentKey,
+            approval
+        );
     }
 
     @Transactional
     public PaymentInfo cancel(Long paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
+        Payment payment = findPayment(paymentId);
 
         paymentGateway.cancel(payment.getPaymentKey());
         payment.cancel();
@@ -89,8 +83,12 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PaymentInfo getPayment(Long paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
+        Payment payment = findPayment(paymentId);
         return PaymentInfo.from(payment);
+    }
+
+    private Payment findPayment(Long paymentId) {
+        return paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
     }
 }

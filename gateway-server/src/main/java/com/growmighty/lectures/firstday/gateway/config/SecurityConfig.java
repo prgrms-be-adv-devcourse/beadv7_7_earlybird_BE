@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.gateway.config;
 
-import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.common.jwt.JwtProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,8 +27,8 @@ import java.util.Base64;
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
-    public static final String URI_PREFIX_API = "/api/v1/";
-    public static final String URI_PREFIX_INTERNAL = "/internal/v1/";
+    public static final String URI_PREFIX_API = "/api/v1";
+    public static final String URI_PREFIX_INTERNAL = "/internal/v1";
 
     @Bean
     public SecurityWebFilterChain filterChain(ServerHttpSecurity http, ReactiveJwtDecoder jwtDecoder,
@@ -40,10 +39,6 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.POST,
                                 URI_PREFIX_API + "/users/signup",
                                 URI_PREFIX_API + "/users/login").permitAll()
-                        // project-admin-route(config repo, /admin/projects/**)의 TODO(팀) 를 여기서 해소한다.
-                        .pathMatchers("/admin/**").hasRole(UserRole.ADMIN.getRoleName())
-                        // Swagger UI/OpenAPI 문서 — 서비스별 docs 라우트(config repo, /{service}/v3/api-docs 등)는
-                        // {service} 세그먼트 하나만 앞에 붙으므로 "/*/" 로 매칭한다.
                         .pathMatchers(HttpMethod.GET,
                                 "/*/v3/api-docs", "/*/v3/api-docs/**",
                                 "/*/swagger-ui.html", "/*/swagger-ui/**").permitAll()

@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "payments")
@@ -32,7 +33,19 @@ public class Payment extends BaseEntity {
     @Column(name = "payment_key", unique = true, length = 200)
     private String paymentKey;
 
+    @Version
+    private Long version;
+
+    @Column(name = "approve_idempotency_key", nullable = false, unique = true, length = 64)
+    private String approveIdempotencyKey;
+
+    @Column(name = "confirming_At")
+    private LocalDateTime confirmingAt;
+
+    @Column(name = "confirmed_At")
     private LocalDateTime confirmedAt;
+
+    @Column(name = "canceled_At")
     private LocalDateTime canceledAt;
 
     @Column(nullable = false)
@@ -49,6 +62,7 @@ public class Payment extends BaseEntity {
         this.pgOrderId = pgOrderId;
         this.userId = userId;
         this.amount = amount;
+        this.approveIdempotencyKey = UUID.randomUUID().toString();
         this.status = PaymentStatus.READY;
     }
 
@@ -72,34 +86,37 @@ public class Payment extends BaseEntity {
     }
 
     public void startConfirming() {
-        if(status != PaymentStatus.READY) {
-            throw new IllegalStateException("READY 상태에서만 승인할 수 있습니다. 현재 상태: " + status);
+        if(this.status != PaymentStatus.READY) {
+            throw new IllegalStateException("READY 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
         }
         this.status = PaymentStatus.CONFIRMING;
+        confirmingAt = LocalDateTime.now();
     }
 
     public void confirm(String paymentKey) {
-        if (status != PaymentStatus.CONFIRMING) {
-            throw new IllegalStateException("CONFIRMING 상태에서만 승인할 수 있습니다. 현재 상태: " + status);
+        if (this.status != PaymentStatus.CONFIRMING) {
+            throw new IllegalStateException("CONFIRMING 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
         }
         if (paymentKey == null || paymentKey.isBlank()) {
             throw new IllegalArgumentException("토스 paymentKey 는 필수입니다.");
         }
         this.paymentKey = paymentKey;
         this.confirmedAt = LocalDateTime.now();
+        this.confirmingAt = null;
         this.status = PaymentStatus.PAID;
     }
 
     public void fail() {
-        if (status != PaymentStatus.CONFIRMING) {
-            throw new IllegalStateException("CONFIRMING 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + status);
+        if (this.status != PaymentStatus.CONFIRMING) {
+            throw new IllegalStateException("CONFIRMING 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + this.status);
         }
         this.status = PaymentStatus.FAILED;
+        this.confirmingAt = null;
     }
 
     public void cancel() {
-        if (status != PaymentStatus.PAID) {
-            throw new IllegalStateException("PAID 상태에서만 취소할 수 있습니다. 현재 상태: " + status);
+        if (this.status != PaymentStatus.PAID) {
+            throw new IllegalStateException("PAID 상태에서만 취소할 수 있습니다. 현재 상태: " + this.status);
         }
         this.canceledAt = LocalDateTime.now();
         this.status = PaymentStatus.CANCELLED;
@@ -109,8 +126,7 @@ public class Payment extends BaseEntity {
         return this.status == PaymentStatus.PAID;
     }
 
-    /**소유자 검증 메소드*/
-    public boolean isOwnedBy(Long userId) {
-        return this.userId.equals(userId);
+    public boolean isConfirming() {
+        return this.status == PaymentStatus.CONFIRMING;
     }
 }
