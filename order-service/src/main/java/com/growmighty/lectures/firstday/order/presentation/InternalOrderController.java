@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/internal/orders")
+@RequestMapping("/internal/v1/orders")
 public class InternalOrderController {
 
     private final OrderApiService orderApiService;
