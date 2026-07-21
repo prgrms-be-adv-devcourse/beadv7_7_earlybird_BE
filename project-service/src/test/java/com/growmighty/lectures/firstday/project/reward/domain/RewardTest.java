@@ -115,6 +115,120 @@ class RewardTest {
     void increaseQuantity_unlimitedReward_throws() {
         Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
         assertThatThrownBy(() -> reward.increaseQuantity(5))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("수량 축소 시 총 수량과 잔여 수량이 함께 줄어든다")
+    void decreaseQuantity_reducesBoth() {
+        Reward reward = reward(10);
+        reward.decreaseStock(3);
+
+        reward.decreaseQuantity(4);
+        assertThat(reward.getTotalQuantity()).isEqualTo(6);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("이미 판매된 수량보다 적게는 축소할 수 없다")
+    void decreaseQuantity_belowSold_throws() {
+        Reward reward = reward(10);
+        reward.decreaseStock(8);
+
+        assertThatThrownBy(() -> reward.decreaseQuantity(3))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("무제한 리워드는 수량 축소 대상이 아니다")
+    void decreaseQuantity_unlimitedReward_throws() {
+        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        assertThatThrownBy(() -> reward.decreaseQuantity(5))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("공개 전에는 이름/설명/가격/총수량을 자유롭게 수정할 수 있고, null 필드는 바뀌지 않는다")
+    void updateBeforePublish_changesOnlyNonNullFields() {
+        Reward reward = reward(10);
+
+        reward.updateBeforePublish("새 이름", null, BigDecimal.valueOf(35_000), null);
+        assertThat(reward.getName()).isEqualTo("새 이름");
+        assertThat(reward.getDescription()).isEqualTo("설명");
+        assertThat(reward.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(35_000));
+        assertThat(reward.getTotalQuantity()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("공개 전 총수량을 바꾸면 잔여 수량도 그대로 맞춰진다")
+    void updateBeforePublish_totalQuantity_syncsRemaining() {
+        Reward reward = reward(10);
+
+        reward.updateBeforePublish(null, null, null, 20);
+        assertThat(reward.getTotalQuantity()).isEqualTo(20);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(20);
+    }
+
+    @Test
+    @DisplayName("비활성화하면 재고가 남아있어도 후원 불가능해진다")
+    void deactivate_notOrderable() {
+        Reward reward = reward(10);
+        assertThat(reward.isOrderable()).isTrue();
+
+        reward.deactivate();
+        assertThat(reward.isActive()).isFalse();
+        assertThat(reward.isOrderable()).isFalse();
+    }
+
+    @Test
+    @DisplayName("비활성화된 리워드는 재고가 남아있어도 차감(주문)할 수 없다")
+    void decreaseStock_deactivated_throws() {
+        Reward reward = reward(10);
+        reward.deactivate();
+
+        assertThatThrownBy(() -> reward.decreaseStock(1))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("무제한 리워드도 비활성화되면 차감할 수 없다")
+    void decreaseStock_deactivated_unlimitedReward_throws() {
+        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        reward.deactivate();
+
+        assertThatThrownBy(() -> reward.decreaseStock(1))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("공개 전 총수량을 바꿔도 이미 차감된 수량은 보존된다")
+    void updateBeforePublish_totalQuantity_preservesAlreadySoldAmount() {
+        Reward reward = reward(10);
+        reward.decreaseStock(3);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(7);
+
+        reward.updateBeforePublish(null, null, null, 20);
+        assertThat(reward.getTotalQuantity()).isEqualTo(20);
+        assertThat(reward.getRemainingQuantity()).isEqualTo(17);
+    }
+
+    @Test
+    @DisplayName("이미 판매된 수량보다 적은 총수량으로는 변경할 수 없다")
+    void updateBeforePublish_totalQuantity_belowSold_throws() {
+        Reward reward = reward(10);
+        reward.decreaseStock(8);
+
+        assertThatThrownBy(() -> reward.updateBeforePublish(null, null, null, 5))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("공개 전 이름을 빈 값으로 변경할 수 없다")
+    void updateBeforePublish_blankName_throws() {
+        Reward reward = reward(10);
+
+        assertThatThrownBy(() -> reward.updateBeforePublish("   ", null, null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(reward.getName()).isEqualTo("[얼리버드] 노트커버 1개");
     }
 }
