@@ -55,6 +55,14 @@ Content-Type: application/json
   "password": "rawPassword1!"
 }
 
+### access token 재발급 (로그인 응답의 refreshToken 을 넣어 호출)
+POST http://localhost:8000/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "여기에 로그인 응답의 refreshToken 을 붙여넣는다"
+}
+
 ### 프로젝트 등록 (DRAFT 상태로 생성)
 POST http://localhost:8000/projects
 Content-Type: application/json
