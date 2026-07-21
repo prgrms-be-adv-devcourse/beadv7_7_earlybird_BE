@@ -116,4 +116,9 @@ public class OrderApiService {
         return orderRepository.findById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 주문입니다. orderId=" + orderId));
     }
+
+    @Transactional(readOnly = true)
+    public boolean hasOrderedReward(Long projectId) {
+        return orderRepository.existsByProjectId(projectId);
+    }
 }

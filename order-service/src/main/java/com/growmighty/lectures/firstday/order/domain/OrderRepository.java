@@ -10,6 +10,8 @@ public interface OrderRepository {
 
     Optional<Order> findByIdWithItems(Long id);
 
+    boolean existsByProjectId(Long projectId);
+
     List<Order> findAll();
 
     List<Order> findByUserId(Long userId);

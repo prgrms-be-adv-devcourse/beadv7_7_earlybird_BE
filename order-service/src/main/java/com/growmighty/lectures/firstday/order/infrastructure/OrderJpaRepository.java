@@ -13,4 +13,11 @@ public interface OrderJpaRepository extends JpaRepository<Order, Long> {
 
     @Query("select distinct o from Order o left join fetch o.items where o.id = :id")
     Optional<Order> findByIdWithItems(@Param("id") Long id);
+
+    @Query("""
+            select case when count(oi) > 0 then true else false end
+            from OrderItem oi
+            where oi.projectId = :projectId
+            """)
+    boolean existsByProjectId(@Param("projectId") Long projectId);
 }
