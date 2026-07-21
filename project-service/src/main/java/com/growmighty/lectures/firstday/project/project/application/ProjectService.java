@@ -33,4 +33,7 @@ public interface ProjectService {
 
     /** 마감일 연장 (기존 값보다 뒤로만) */
     ProjectResponse extendDeadline(Long projectId, ProjectDeadlineExtendRequest request);
+
+    /** 배치 전용: 마감시각이 지난 진행중 프로젝트를 모금액 기준으로 일괄 성공/실패 확정한다. */
+    void closeExpiredProjects();
 }

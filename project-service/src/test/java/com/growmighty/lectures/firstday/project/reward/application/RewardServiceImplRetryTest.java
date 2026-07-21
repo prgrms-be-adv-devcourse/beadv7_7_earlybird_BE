@@ -19,6 +19,7 @@ import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -74,7 +75,7 @@ class RewardServiceImplRetryTest {
         reset(rewardRepository, projectRepository);
         reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
         publishedProject = Project.register(1L, null, "title", 1L, "summary", "desc",
-                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDateTime.now().plusDays(30));
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         publishedProject.approve();
         when(rewardRepository.findById(anyLong())).thenReturn(Optional.of(reward));
     }

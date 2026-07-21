@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.project.project.presentation.dto.respon
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public record ProjectResponse(
@@ -16,7 +17,7 @@ public record ProjectResponse(
         BigDecimal goalAmount,
         BigDecimal fundedAmount,
         LocalDateTime startAt,
-        LocalDateTime endAt,
+        LocalDate endAt,
         String status,
         boolean closed,
         String rejectReason,

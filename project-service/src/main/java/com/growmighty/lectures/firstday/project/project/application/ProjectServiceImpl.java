@@ -14,13 +14,16 @@ import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRe
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -128,6 +131,20 @@ public class ProjectServiceImpl implements ProjectService {
         Project project = getProject(projectId);
         project.extendDeadline(request.endAt());
         return ProjectResponse.from(project);
+    }
+
+    @Override
+    @Transactional
+    public void closeExpiredProjects() {
+        List<Project> expired = projectRepository.findByStatusAndEndAtLessThanEqual(ProjectStatus.IN_PROGRESS, LocalDate.now());
+        for (Project project : expired) {
+            try {
+                project.closeByDeadline();
+            } catch (RuntimeException e) {
+                // 한 프로젝트 처리 실패가 같은 배치 실행의 나머지 프로젝트까지 롤백시키지 않도록 격리.
+                log.warn("프로젝트 마감 처리 실패. projectId={}", project.getProjectId(), e);
+            }
+        }
     }
 
     private Project getProject(Long projectId) {

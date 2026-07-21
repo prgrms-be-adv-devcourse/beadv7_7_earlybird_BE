@@ -18,6 +18,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -55,14 +56,20 @@ public class Project {
     @Column(nullable = false)
     private BigDecimal goalAmount;
 
+    // TODO(팀): 결제 성공 시 이 값을 실제로 채워주는 트리거가 아직 없다(order/payment-service
+    // 확인 결과 프로젝트 단위 누적 모금액 집계·통보 API 없음, 주문 1건당 totalAmount만 존재).
+    // order/payment-service와 "언제·어떻게 알려줄지" 별도로 맞춰야 하는 cross-service 이슈.
     @Column(nullable = false)
     private BigDecimal fundedAmount;
 
     @Column(nullable = false)
     private LocalDateTime startAt;
 
+    // 프로젝트 기간이 일 단위라 마감도 일 단위로 끊는다 — 시간까지 받으면 배치가 "오늘 마감인 것"을
+    // 정확히 못 걸러낸다(LocalDateTime이면 시각이 자정이 아닌 값도 들어올 수 있음). endAt은 항상
+    // "이 날짜의 00:00에 마감"으로 취급한다(isOpen()/closeExpiredProjects 배치 참고).
     @Column(nullable = false)
-    private LocalDateTime endAt;
+    private LocalDate endAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -85,7 +92,7 @@ public class Project {
     private LocalDateTime updatedAt;
 
     private Project(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
-                     String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+                     String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         validateGoalAmount(goalAmount);
         validatePeriod(startAt, endAt);
         this.creatorId = creatorId;
@@ -103,7 +110,7 @@ public class Project {
     }
 
     public static Project register(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
-                                    String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+                                    String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         return new Project(creatorId, thumbnailId, title, categoryId, summary, description, goalAmount, startAt, endAt);
     }
 
@@ -130,9 +137,18 @@ public class Project {
         return this.status.isClosed();
     }
 
+    /**
+     * 지금 이 순간 새 주문(리워드 구매)을 받아도 되는 상태인지 — 저장된 status만으로는 마감시각이
+     * 지났는데 배치가 아직 안 돈 구간을 못 걸러낸다. endAt까지 실시간으로 같이 봐야 배치 주기와
+     * 무관하게 마감 순간 즉시 주문이 막힌다(성공/실패 확정은 여전히 closeByDeadline 배치 몫).
+     */
+    public boolean isOpen() {
+        return this.status == ProjectStatus.IN_PROGRESS && LocalDateTime.now().isBefore(this.endAt.atStartOfDay());
+    }
+
     /** 공개 전: 전체 필드 수정 가능 (null인 값은 변경하지 않음) */
     public void updateBeforePublish(String title, Long categoryId, String summary, String description,
-                                     Long thumbnailId, BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+                                     Long thumbnailId, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         if (isPublished()) {
             throw new IllegalStateException("공개된 프로젝트는 이 방식으로 수정할 수 없습니다. 현재 상태=" + this.status);
         }
@@ -157,7 +173,7 @@ public class Project {
         }
         if (startAt != null || endAt != null) {
             LocalDateTime newStartAt = startAt != null ? startAt : this.startAt;
-            LocalDateTime newEndAt = endAt != null ? endAt : this.endAt;
+            LocalDate newEndAt = endAt != null ? endAt : this.endAt;
             validatePeriod(newStartAt, newEndAt);
             this.startAt = newStartAt;
             this.endAt = newEndAt;
@@ -178,11 +194,23 @@ public class Project {
     }
 
     /** 관리자 전용: 마감일 연장만 허용 (과거로 당길 수 없음) */
-    public void extendDeadline(LocalDateTime newEndAt) {
+    public void extendDeadline(LocalDate newEndAt) {
         if (newEndAt == null || !newEndAt.isAfter(this.endAt)) {
             throw new IllegalArgumentException("마감일은 현재 마감일 이후로만 연장할 수 있습니다. 현재 마감일=" + this.endAt + ", 요청값=" + newEndAt);
         }
         this.endAt = newEndAt;
+    }
+
+    /**
+     * 배치 전용: 마감시각이 지난 진행중 프로젝트를 모금액 기준으로 성공/실패 확정한다.
+     * fundedAmount가 아직 항상 0인 이유는 필드 선언부 TODO 참고.
+     */
+    public void closeByDeadline() {
+        requireStatus(ProjectStatus.IN_PROGRESS, "마감 처리는 진행중 상태에서만 가능합니다.");
+        this.status = this.fundedAmount.compareTo(this.goalAmount) >= 0
+            ? ProjectStatus.SUCCEEDED
+            : ProjectStatus.FAILED;
+        this.closedAt = LocalDateTime.now();
     }
 
     private void requireStatus(ProjectStatus expected, String message) {
@@ -197,8 +225,8 @@ public class Project {
         }
     }
 
-    private void validatePeriod(LocalDateTime startAt, LocalDateTime endAt) {
-        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+    private void validatePeriod(LocalDateTime startAt, LocalDate endAt) {
+        if (startAt == null || endAt == null || !endAt.atStartOfDay().isAfter(startAt)) {
             throw new IllegalArgumentException("마감일은 시작일 이후여야 합니다. startAt=" + startAt + ", endAt=" + endAt);
         }
     }

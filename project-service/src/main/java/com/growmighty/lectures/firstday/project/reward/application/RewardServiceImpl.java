@@ -158,12 +158,19 @@ public class RewardServiceImpl implements RewardService {
     /**
      * @Retryable이 @Transactional을 감싸도록 순서가 보장돼야 한다(ProjectServiceApplication의 @EnableRetry order 설정).
      * 그래야 낙관적 락 충돌로 커밋이 실패했을 때 매 재시도가 새 트랜잭션에서 엔티티를 다시 읽어온다.
+     * 프로젝트가 지금 이 순간 열려있는지(Project.isOpen())도 같이 확인한다 — 마감 배치가 아직
+     * 안 돈 상태에서도 마감시각이 지났으면 즉시 주문을 막기 위함(마감 배치 주기와 무관하게 동작).
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
     @Transactional
     public void decreaseStock(Long rewardId, int quantity) {
-        getRewardEntity(rewardId).decreaseStock(quantity);
+        Reward reward = getRewardEntity(rewardId);
+        findProject(reward.getProjectId())
+            .filter(Project::isOpen)
+            .orElseThrow(() -> new IllegalStateException(
+                "마감되었거나 진행중이 아닌 프로젝트의 리워드는 주문할 수 없습니다. rewardId=" + rewardId));
+        reward.decreaseStock(quantity);
     }
 
     /**
