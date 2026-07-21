@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRe
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +25,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -79,12 +81,15 @@ class ProjectServiceImplRetryTest {
     private ProjectService projectService;
     @Autowired
     private ProjectRepository projectRepository;
+    @Autowired
+    private RewardRepository rewardRepository;
 
     private Project project;
 
     @BeforeEach
     void setUp() {
-        reset(projectRepository);
+        reset(projectRepository, rewardRepository);
+        when(rewardRepository.findByProjectId(anyLong())).thenReturn(List.of());
         project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project.approve();
@@ -200,5 +205,30 @@ class ProjectServiceImplRetryTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("진행중 상태에서만");
         verify(projectRepository, times(1)).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("closeProjectByDeadline: 마감 확정에 성공하면 그 프로젝트의 리워드도 비활성화된다")
+    void closeProjectByDeadline_deactivatesRewards() {
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+        Reward reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
+        when(rewardRepository.findByProjectId(1L)).thenReturn(List.of(reward));
+
+        projectService.closeProjectByDeadline(1L);
+
+        assertThat(reward.isActive()).isFalse();
+    }
+
+    @Test
+    @DisplayName("closeEarly: 조기 마감에 성공하면 그 프로젝트의 리워드도 비활성화된다")
+    void closeEarly_deactivatesRewards() {
+        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+        Reward reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
+        when(rewardRepository.findByProjectId(1L)).thenReturn(List.of(reward));
+
+        projectService.closeEarly(1L);
+
+        assertThat(reward.isActive()).isFalse();
     }
 }

@@ -12,6 +12,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -158,6 +159,7 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse closeEarly(Long projectId) {
         Project project = getProject(projectId);
         project.closeEarlyAsSucceeded();
+        deactivateRewards(projectId);
         return ProjectResponse.from(project);
     }
 
@@ -195,6 +197,7 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional
     public void closeProjectByDeadline(Long projectId) {
         getProject(projectId).closeByDeadline();
+        deactivateRewards(projectId);
     }
 
     @Recover
@@ -204,6 +207,16 @@ public class ProjectServiceImpl implements ProjectService {
                 "프로젝트 마감 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
         }
         throw e;
+    }
+
+    /**
+     * 프로젝트가 마감(성공/실패/조기종료)되면 그 리워드들도 비활성화한다. Reward.isOrderable()이
+     * 부모 프로젝트 상태를 모르고 자기 active/재고만 보기 때문에, 여기서 안 꺼주면 이미 마감된
+     * 프로젝트의 리워드가 RewardResponse.orderable=true로 잘못 응답한다(실제 주문은 Project.isOpen()이
+     * 막아주지만, 조회 응답은 그대로 거짓 정보를 준다).
+     */
+    private void deactivateRewards(Long projectId) {
+        rewardRepository.findByProjectId(projectId).forEach(Reward::deactivate);
     }
 
     private Project getProject(Long projectId) {
