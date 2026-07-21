@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,10 +19,10 @@ public class PaymentService {
 
     @Transactional
     public PaymentInfo prepare(
-        Long orderId,
-        String pgOrderId,
-        Long userId,
-        BigDecimal amount
+        @NonNull Long orderId,
+        @NonNull String pgOrderId,
+        @NonNull Long userId,
+        @NonNull BigDecimal amount
     ) {
         return paymentRepository.findByOrderId(orderId)
             .map(existingPayment -> {
