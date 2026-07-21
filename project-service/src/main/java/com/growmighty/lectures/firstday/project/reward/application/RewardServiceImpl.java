@@ -160,33 +160,26 @@ public class RewardServiceImpl implements RewardService {
      * 그래야 낙관적 락 충돌로 커밋이 실패했을 때 매 재시도가 새 트랜잭션에서 엔티티를 다시 읽어온다.
      */
     @Override
-    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
     @Transactional
     public void decreaseStock(Long rewardId, int quantity) {
         getRewardEntity(rewardId).decreaseStock(quantity);
     }
 
     /**
-     * decreaseStock/restoreStock 둘 다 파라미터 시그니처(Long, int)가 같아서, Spring Retry는 이
-     * @Recover를 "어느 쪽에서 재시도가 소진됐는지" 구분하지 않고 예외 타입+파라미터 시그니처로만
-     * 매칭한다. 실제로 시그니처가 같은 @Recover 두 개를 두고 실험해본 결과, decreaseStock이든
-     * restoreStock이든 항상 먼저 선언된 쪽만 호출되고 나머지 하나는 절대 안 불림(랜덤도, 원본
-     * 메서드별 구분도 아님) — 그래서 둘로 나누는 건 죽은 코드만 남기고, 두 작업을 모두 포괄하는
-     * 문구 하나로 통일하는 게 맞다.
+     * decreaseStock/restoreStock이 파라미터 시그니처(Long, int)가 같아서, operation별로 서로 다른
+     * @Recover를 시그니처 자동 매칭에 맡기면 둘 다 먼저 선언된 쪽만 호출되는 문제가 있었다.
+     * @Retryable의 recover 속성으로 이름을 직접 지정해 그 모호성을 없앴는데, recover 속성은
+     * 메서드 하나만 가리킬 수 있어서 "락 충돌 전용 + catch-all" 2단 구조를 그대로 못 쓴다 — 대신
+     * 이 메서드 하나가 RuntimeException을 폭넓게 받고 instanceof로 분기한다. else(원본 재던지기)가
+     * 없으면 retryFor에 없는 예외(재고 부족 등)까지 여기로 흘러들어와 매칭 실패로 500이 되므로 필수.
      */
     @Recover
-    public void recoverStockChangeConflict(ObjectOptimisticLockingFailureException e, Long rewardId, int quantity) {
-        throw new ConcurrentUpdateFailedException(
-            "재고 변경(차감/복원) 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
-    }
-
-    /**
-     * @Recover가 하나라도 등록되면 Spring Retry는 retryFor에 없는 예외(예: 재고 부족)까지도
-     * "재시도 소진"으로 취급해 복구 메서드를 찾는다. 시그니처가 안 맞으면 원본 예외를 삼키고
-     * ExhaustedRetryException(500)을 던지므로, 그런 예외는 여기서 그대로 다시 던져 원래 처리 경로(409/400)로 보낸다.
-     */
-    @Recover
-    public void recoverOther(RuntimeException e, Long rewardId, int quantity) {
+    public void recoverDecreaseStockConflict(RuntimeException e, Long rewardId, int quantity) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "재고 차감 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
+        }
         throw e;
     }
 
@@ -196,10 +189,20 @@ public class RewardServiceImpl implements RewardService {
      * 그냥 실패해버린다.
      */
     @Override
-    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverRestoreStockConflict")
     @Transactional
     public void restoreStock(Long rewardId, int quantity) {
         getRewardEntity(rewardId).restoreStock(quantity);
+    }
+
+    /** recoverDecreaseStockConflict와 동일한 instanceof 분기 패턴 — restoreStock 전용 메시지. */
+    @Recover
+    public void recoverRestoreStockConflict(RuntimeException e, Long rewardId, int quantity) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "재고 복원 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
+        }
+        throw e;
     }
 
     private Reward getRewardEntity(Long rewardId) {
