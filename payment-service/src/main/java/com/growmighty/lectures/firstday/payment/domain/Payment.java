@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "payments")
@@ -32,6 +33,12 @@ public class Payment extends BaseEntity {
     @Column(name = "payment_key", unique = true, length = 200)
     private String paymentKey;
 
+    @Version
+    private Long version;
+
+    @Column(name = "approve_idempotency_key", nullable = false, unique = true, length = 64)
+    private String approveIdempotencyKey;
+
     private LocalDateTime confirmedAt;
     private LocalDateTime canceledAt;
 
@@ -49,6 +56,7 @@ public class Payment extends BaseEntity {
         this.pgOrderId = pgOrderId;
         this.userId = userId;
         this.amount = amount;
+        this.approveIdempotencyKey = UUID.randomUUID().toString();
         this.status = PaymentStatus.READY;
     }
 
@@ -109,8 +117,7 @@ public class Payment extends BaseEntity {
         return this.status == PaymentStatus.PAID;
     }
 
-    /**소유자 검증 메소드*/
-    public boolean isOwnedBy(Long userId) {
-        return this.userId.equals(userId);
+    public boolean isConfirming() {
+        return this.status == PaymentStatus.CONFIRMING;
     }
 }
