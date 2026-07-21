@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.payment.domain;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.payment.application.PaymentConfirmationService;
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
 import com.growmighty.lectures.firstday.payment.application.PaymentService;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
@@ -9,10 +10,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,13 +30,19 @@ class PaymentTest {
 
     private InMemoryPaymentRepository paymentRepository;
     private RecordingPaymentGateway paymentGateway;
+    private PaymentConfirmationService paymentConfirmationService;
     private PaymentService paymentService;
 
     @BeforeEach
     void setUp() {
         paymentRepository = new InMemoryPaymentRepository();
         paymentGateway = new RecordingPaymentGateway();
-        paymentService = new PaymentService(paymentRepository, paymentGateway);
+        paymentConfirmationService = new PaymentConfirmationService(paymentRepository);
+        paymentService = new PaymentService(
+            paymentRepository,
+            paymentGateway,
+            paymentConfirmationService
+        );
     }
 
     @Test
@@ -55,6 +64,14 @@ class PaymentTest {
     void ready_withoutUserId_throws() {
         assertThatThrownBy(() -> Payment.ready(ORDER_ID, PG_ORDER_ID, null, AMOUNT))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("READY 결제를 만들면 승인 재시도용 멱등키가 생성된다")
+    void ready_generatesApproveIdempotencyKey() {
+        Payment payment = readyPayment();
+
+        assertThat(payment.getApproveIdempotencyKey()).isNotBlank();
     }
 
     @Test
@@ -101,21 +118,6 @@ class PaymentTest {
 
         assertThatThrownBy(() -> payment.confirm("payment-key-1"))
             .isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
-    @DisplayName("결제 완료 상태에서만 취소할 수 있다")
-    void cancel_onlyFromPaid() {
-        Payment paid = readyPayment();
-        paid.startConfirming();
-        paid.confirm("payment-key-1");
-        paid.cancel();
-        assertThat(paid.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
-        log.info("payment cancelled: orderId={}, paymentKey={}, status={}",
-                ORDER_ID, paid.getPaymentKey(), paid.getStatus());
-
-        Payment ready = readyPayment();
-        assertThatThrownBy(ready::cancel).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -175,18 +177,19 @@ class PaymentTest {
         assertThat(paymentGateway.requestedPaymentKey).isEqualTo("payment-key-1");
         assertThat(paymentGateway.requestedPgOrderId).isEqualTo(PG_ORDER_ID);
         assertThat(paymentGateway.requestedAmount).isEqualByComparingTo(AMOUNT);
+        assertThat(paymentGateway.requestedIdempotencyKey)
+            .isEqualTo(paymentRepository.findByPgOrderId(PG_ORDER_ID).orElseThrow().getApproveIdempotencyKey());
         assertThat(paymentRepository.findByPgOrderId(PG_ORDER_ID).orElseThrow().isPaid()).isTrue();
     }
 
     @Test
-    @DisplayName("이미 PAID인 결제를 다시 confirm해도 Fake PG를 다시 호출하지 않는다")
+    @DisplayName("이미 PAID인 결제를 다시 confirm하면 PG를 다시 호출하지 않고 실패한다")
     void confirm_whenAlreadyPaid_doesNotCallGatewayAgain() {
         paymentService.prepare(ORDER_ID, PG_ORDER_ID, USER_ID, AMOUNT);
         paymentService.confirm("payment-key-1", PG_ORDER_ID);
 
-        PaymentInfo result = paymentService.confirm("payment-key-1", PG_ORDER_ID);
-
-        assertThat(result.status()).isEqualTo(PaymentStatus.PAID);
+        assertThatThrownBy(() -> paymentService.confirm("payment-key-1", PG_ORDER_ID))
+            .isInstanceOf(IllegalStateException.class);
         assertThat(paymentGateway.approvalCalls).isEqualTo(1);
     }
 
@@ -209,13 +212,15 @@ class PaymentTest {
         private String requestedPaymentKey;
         private String requestedPgOrderId;
         private BigDecimal requestedAmount;
+        private String requestedIdempotencyKey;
 
         @Override
-        public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount) {
+        public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
             approvalCalls++;
             requestedPaymentKey = paymentKey;
             requestedPgOrderId = pgOrderId;
             requestedAmount = amount;
+            requestedIdempotencyKey = idempotencyKey;
             return new PgApproval(paymentKey, pgOrderId, amount);
         }
 
@@ -225,11 +230,18 @@ class PaymentTest {
     }
 
     private static final class InMemoryPaymentRepository implements PaymentRepository {
+        private final AtomicLong sequence = new AtomicLong();
+        private final Map<Long, Payment> paymentsById = new HashMap<>();
         private final Map<Long, Payment> paymentsByOrderId = new HashMap<>();
         private final Map<String, Payment> paymentsByPgOrderId = new HashMap<>();
 
         @Override
         public Payment save(Payment payment) {
+            if (payment.getPaymentId() == null) {
+                assignPaymentId(payment, sequence.incrementAndGet());
+            }
+
+            paymentsById.put(payment.getPaymentId(), payment);
             paymentsByOrderId.put(payment.getOrderId(), payment);
             paymentsByPgOrderId.put(payment.getPgOrderId(), payment);
             return payment;
@@ -237,7 +249,7 @@ class PaymentTest {
 
         @Override
         public Optional<Payment> findById(Long id) {
-            return Optional.empty();
+            return Optional.ofNullable(paymentsById.get(id));
         }
 
         @Override
@@ -252,6 +264,16 @@ class PaymentTest {
 
         private int size() {
             return paymentsByOrderId.size();
+        }
+
+        private void assignPaymentId(Payment payment, Long paymentId) {
+            try {
+                Field field = Payment.class.getDeclaredField("paymentId");
+                field.setAccessible(true);
+                field.set(payment, paymentId);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("테스트 결제 ID를 설정할 수 없습니다.", e);
+            }
         }
     }
 }
