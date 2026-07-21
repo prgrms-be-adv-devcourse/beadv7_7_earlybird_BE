@@ -27,4 +27,11 @@ public interface RewardService {
     void decreaseStock(Long rewardId, int quantity);
 
     void restoreStock(Long rewardId, int quantity);
+
+    // ── project 도메인이 호출하는 API (project-service 내부, 도메인 간) ──────
+    /** 프로젝트가 마감(성공/실패/조기종료)될 때 그 프로젝트의 리워드를 전부 비활성화한다. */
+    void deactivateAllByProject(Long projectId);
+
+    /** 프로젝트가 삭제(공개 전 하드 삭제)될 때 그 프로젝트의 리워드를 전부 지운다. */
+    void deleteAllByProject(Long projectId);
 }

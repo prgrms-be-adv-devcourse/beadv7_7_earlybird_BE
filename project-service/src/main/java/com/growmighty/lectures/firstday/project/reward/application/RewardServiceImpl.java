@@ -1,15 +1,16 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
-import com.growmighty.lectures.firstday.project.project.domain.Project;
-import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.project.application.ProjectService;
+import com.growmighty.lectures.firstday.project.project.application.ProjectStatusView;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardCreateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.response.RewardResponse;
-import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
@@ -25,16 +26,18 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class RewardServiceImpl implements RewardService {
     private final RewardRepository rewardRepository;
-    private final ProjectRepository projectRepository;
+    // ProjectServiceImpl이 반대로 RewardService(ObjectProvider<RewardService>)를 필요로 해서
+    // 생기는 순환 빈 의존을 끊기 위해 ObjectProvider로 지연 조회한다.
+    private final ObjectProvider<ProjectService> projectServiceProvider;
 
     @Override
     @Transactional
     public RewardResponse register(Long projectId, RewardCreateRequest request) {
-        Project project = findProject(projectId)
+        ProjectStatusView project = findProjectStatus(projectId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
-        if (project.isClosed()) {
+        if (project.closed()) {
             throw new IllegalStateException(
-                "종료된 프로젝트(성공/실패/취소)에는 리워드를 추가할 수 없습니다. 현재 상태=" + project.getStatus());
+                "종료된 프로젝트(성공/실패/취소)에는 리워드를 추가할 수 없습니다. 현재 상태=" + project.status());
         }
         Reward reward = rewardRepository.save(request.toEntity(projectId));
         return RewardResponse.from(reward);
@@ -66,12 +69,12 @@ public class RewardServiceImpl implements RewardService {
     @Transactional
     public RewardResponse update(Long rewardId, RewardUpdateRequest request) {
         Reward reward = getRewardEntity(rewardId);
-        Optional<Project> project = findProject(reward.getProjectId());
-        if (project.isPresent() && project.get().isClosed()) {
+        Optional<ProjectStatusView> project = findProjectStatus(reward.getProjectId());
+        if (project.isPresent() && project.get().closed()) {
             throw new IllegalStateException(
-                "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.get().getStatus());
+                "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.get().status());
         }
-        if (project.isPresent() && project.get().isPublished()) {
+        if (project.isPresent() && project.get().published()) {
             if (request.name() != null || request.description() != null
                     || request.price() != null || request.totalQuantity() != null) {
                 throw new IllegalArgumentException("공개된 프로젝트의 리워드는 수량 추가(increaseQuantity)만 가능합니다.");
@@ -104,8 +107,8 @@ public class RewardServiceImpl implements RewardService {
     @Transactional
     public void delete(Long rewardId) {
         Reward reward = getRewardEntity(rewardId);
-        Optional<Project> project = findProject(reward.getProjectId());
-        if (project.isPresent() && project.get().isPublished()) {
+        Optional<ProjectStatusView> project = findProjectStatus(reward.getProjectId());
+        if (project.isPresent() && project.get().published()) {
             throw new IllegalStateException("공개된 프로젝트의 리워드 비활성화는 관리자 전용 API를 이용하세요.");
         }
         rewardRepository.delete(reward);
@@ -148,17 +151,17 @@ public class RewardServiceImpl implements RewardService {
 
     /** 관리자 전용 API 대상 검증 — 지금 공개 중(진행중)인 리워드만 해당, 공개 전/종료된 프로젝트는 대상 아님. */
     private void requirePublishedAndOpen(Long projectId) {
-        Project project = findProject(projectId)
+        ProjectStatusView project = findProjectStatus(projectId)
             .orElseThrow(() -> new IllegalStateException("공개 중(진행중)인 프로젝트의 리워드만 대상입니다. projectId=" + projectId));
-        if (!project.isPublished() || project.isClosed()) {
-            throw new IllegalStateException("공개 중(진행중)인 프로젝트의 리워드만 대상입니다. 현재 상태=" + project.getStatus());
+        if (!project.published() || project.closed()) {
+            throw new IllegalStateException("공개 중(진행중)인 프로젝트의 리워드만 대상입니다. 현재 상태=" + project.status());
         }
     }
 
     /**
      * @Retryable이 @Transactional을 감싸도록 순서가 보장돼야 한다(ProjectServiceApplication의 @EnableRetry order 설정).
      * 그래야 낙관적 락 충돌로 커밋이 실패했을 때 매 재시도가 새 트랜잭션에서 엔티티를 다시 읽어온다.
-     * 프로젝트가 지금 이 순간 열려있는지(Project.isOpen())도 같이 확인한다 — 마감 배치가 아직
+     * 프로젝트가 지금 이 순간 열려있는지(ProjectStatusView.open())도 같이 확인한다 — 마감 배치가 아직
      * 안 돈 상태에서도 마감시각이 지났으면 즉시 주문을 막기 위함(마감 배치 주기와 무관하게 동작).
      */
     @Override
@@ -166,8 +169,8 @@ public class RewardServiceImpl implements RewardService {
     @Transactional
     public void decreaseStock(Long rewardId, int quantity) {
         Reward reward = getRewardEntity(rewardId);
-        findProject(reward.getProjectId())
-            .filter(Project::isOpen)
+        findProjectStatus(reward.getProjectId())
+            .filter(ProjectStatusView::open)
             .orElseThrow(() -> new IllegalStateException(
                 "마감되었거나 진행중이 아닌 프로젝트의 리워드는 주문할 수 없습니다. rewardId=" + rewardId));
         reward.decreaseStock(quantity);
@@ -212,20 +215,32 @@ public class RewardServiceImpl implements RewardService {
         throw e;
     }
 
+    @Override
+    @Transactional
+    public void deactivateAllByProject(Long projectId) {
+        rewardRepository.findByProjectId(projectId).forEach(Reward::deactivate);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAllByProject(Long projectId) {
+        rewardRepository.deleteByProjectId(projectId);
+    }
+
     private Reward getRewardEntity(Long rewardId) {
         return rewardRepository.findById(rewardId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 리워드입니다. rewardId=" + rewardId));
     }
 
     /**
-     * update()/delete()의 published 여부 판단용. 일반 findById는 트랜잭션의 REPEATABLE READ
-     * 스냅샷에 갇혀 동시에 승인(approve)된 최신 상태를 못 볼 수 있어, 공유 락으로 최신 커밋 상태를 읽는다.
-     * register()가 프로젝트 존재 여부를 검증하지 않고(TODO), Project.delete()도 참조 중인 리워드
-     * 여부를 확인하지 않아 부모 프로젝트가 사라진 "고아" 리워드가 있을 수 있다 — 이 경우 404로
-     * 막아버리면 그 리워드를 영영 정리할 방법이 없으므로, 존재하지 않으면 "공개 전"과 동일하게
-     * 취급한다(자유 수정/하드 삭제 허용).
+     * update()/delete()의 published 여부 판단용. ProjectService.findStatusView()가 내부적으로
+     * 공유 락(최신 커밋 상태)으로 조회해준다 — 일반 조회는 REPEATABLE READ 스냅샷에 갇혀 동시에
+     * 승인(approve)된 최신 상태를 못 볼 수 있기 때문. register()가 프로젝트 존재 여부를 검증하지
+     * 않고(TODO), Project.delete()도 참조 중인 리워드 여부를 확인하지 않아 부모 프로젝트가 사라진
+     * "고아" 리워드가 있을 수 있다 — 이 경우 404로 막아버리면 그 리워드를 영영 정리할 방법이
+     * 없으므로, 존재하지 않으면 "공개 전"과 동일하게 취급한다(자유 수정/하드 삭제 허용).
      */
-    private Optional<Project> findProject(Long projectId) {
-        return projectRepository.findByIdForStatusCheck(projectId);
+    private Optional<ProjectStatusView> findProjectStatus(Long projectId) {
+        return projectServiceProvider.getObject().findStatusView(projectId);
     }
 }

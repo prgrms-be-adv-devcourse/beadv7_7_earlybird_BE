@@ -9,6 +9,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ProjectService {
 
@@ -42,4 +43,11 @@ public interface ProjectService {
 
     /** closeExpiredProjects()가 프로젝트 하나씩 재시도 가능하도록 호출하는 단위. 외부에서 직접 부를 일은 없다. */
     void closeProjectByDeadline(Long projectId);
+
+    // ── reward 도메인이 호출하는 API (project-service 내부, 도메인 간) ──────
+    /**
+     * 지금 이 순간의 진짜 상태(공유락)를 뷰로 노출한다 — Reward가 Project 엔티티/리포지토리를
+     * 직접 알 필요 없이 이 포트만으로 published/closed/open 여부를 판단할 수 있게 한다.
+     */
+    Optional<ProjectStatusView> findStatusView(Long projectId);
 }
