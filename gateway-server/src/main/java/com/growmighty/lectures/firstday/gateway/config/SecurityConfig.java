@@ -27,8 +27,8 @@ import java.util.Base64;
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
-    public static final String URI_PREFIX_API = "/api/v1/";
-    public static final String URI_PREFIX_INTERNAL = "/internal/v1/";
+    public static final String URI_PREFIX_API = "/api/v1";
+    public static final String URI_PREFIX_INTERNAL = "/internal/v1";
 
     @Bean
     public SecurityWebFilterChain filterChain(ServerHttpSecurity http, ReactiveJwtDecoder jwtDecoder,
