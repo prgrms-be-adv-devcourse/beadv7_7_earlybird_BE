@@ -9,8 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+
 /** 클래스 별도 생성 이유 : PaymentService 내부 메서드 끼리 호출하면 트랜잭션이 적용되지 않아서.
- *
  *  결제 승인 상태 전이를 트랜잭션 단위로 처리하는 클래스
  *  외부 PG 호출은 담당하지 않음
  * */
@@ -26,12 +27,16 @@ public class PaymentConfirmationService {
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
      */
     @Transactional
-    public PaymentConfirmationTarget startConfirmation(String pgOrderId) {
+    public PaymentConfirmationTarget startConfirmation(String pgOrderId, BigDecimal requestedAmount) {
         Payment payment = paymentRepository.findByPgOrderId(pgOrderId)
             .orElseThrow(() -> new EntityNotFoundException("준비된 결제가 없습니다. pgOrderId = " + pgOrderId));
 
         if (payment.isPaid()) {
             throw new IllegalStateException("이미 승인된 결제입니다. pgOrderId = " + pgOrderId);
+        }
+
+        if(payment.getAmount().compareTo(requestedAmount) != 0) {
+            throw new IllegalStateException("결제 요청 금액이 일치하지 않습니다.");
         }
 
         if (payment.isConfirming()) {
