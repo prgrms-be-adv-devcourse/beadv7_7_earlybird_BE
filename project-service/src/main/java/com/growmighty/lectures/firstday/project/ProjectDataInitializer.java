@@ -93,7 +93,7 @@ public class ProjectDataInitializer implements CommandLineRunner {
     }
 
     private void reward(Long projectId, String name, long price, int quantity, String desc) {
-        rewardService.register(projectId, new RewardCreateRequest(
+        rewardService.register(projectId, 1L, new RewardCreateRequest(
             name, desc, BigDecimal.valueOf(price), quantity));
     }
 }

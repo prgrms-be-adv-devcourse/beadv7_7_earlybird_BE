@@ -29,9 +29,10 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     @Transactional
-    public RewardResponse register(Long projectId, RewardCreateRequest request) {
+    public RewardResponse register(Long projectId, Long requesterId, RewardCreateRequest request) {
         Project project = findProject(projectId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
+        validateOwnership(project, requesterId);
         if (project.isClosed()) {
             throw new IllegalStateException(
                 "종료된 프로젝트(성공/실패/취소)에는 리워드를 추가할 수 없습니다. 현재 상태=" + project.getStatus());
@@ -64,9 +65,10 @@ public class RewardServiceImpl implements RewardService {
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public RewardResponse update(Long rewardId, RewardUpdateRequest request) {
+    public RewardResponse update(Long rewardId, Long requesterId, RewardUpdateRequest request) {
         Reward reward = getRewardEntity(rewardId);
         Optional<Project> project = findProject(reward.getProjectId());
+        project.ifPresent(p -> validateOwnership(p, requesterId));
         if (project.isPresent() && project.get().isClosed()) {
             throw new IllegalStateException(
                 "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.get().getStatus());
@@ -90,21 +92,22 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Recover
-    public RewardResponse recoverUpdateConflict(ObjectOptimisticLockingFailureException e, Long rewardId, RewardUpdateRequest request) {
+    public RewardResponse recoverUpdateConflict(ObjectOptimisticLockingFailureException e, Long rewardId, Long requesterId, RewardUpdateRequest request) {
         throw new ConcurrentUpdateFailedException(
             "리워드 수정 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId);
     }
 
     @Recover
-    public RewardResponse recoverUpdateOther(RuntimeException e, Long rewardId, RewardUpdateRequest request) {
+    public RewardResponse recoverUpdateOther(RuntimeException e, Long rewardId, Long requesterId, RewardUpdateRequest request) {
         throw e;
     }
 
     @Override
     @Transactional
-    public void delete(Long rewardId) {
+    public void delete(Long rewardId, Long requesterId) {
         Reward reward = getRewardEntity(rewardId);
         Optional<Project> project = findProject(reward.getProjectId());
+        project.ifPresent(p -> validateOwnership(p, requesterId));
         if (project.isPresent() && project.get().isPublished()) {
             throw new IllegalStateException("공개된 프로젝트의 리워드 비활성화는 관리자 전용 API를 이용하세요.");
         }
@@ -210,6 +213,14 @@ public class RewardServiceImpl implements RewardService {
                 "재고 복원 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
         }
         throw e;
+    }
+
+    /** ProjectServiceImpl.validateOwnership과 동일한 관례 — 리워드는 자기 creatorId가 없어 부모 프로젝트 걸 본다. */
+    private void validateOwnership(Project project, Long requesterId) {
+        if (!project.getCreatorId().equals(requesterId)) {
+            throw new IllegalArgumentException(
+                "본인이 등록한 프로젝트의 리워드만 관리할 수 있습니다. projectId=" + project.getProjectId());
+        }
     }
 
     private Reward getRewardEntity(Long rewardId) {
