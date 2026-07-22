@@ -85,8 +85,8 @@ public class ProjectDataInitializer implements CommandLineRunner {
     /** 등록(PENDING_REVIEW) → 승인(IN_PROGRESS)까지 진행해 후원 가능한 상태로 만든다 */
     private Long openProject(Long categoryId, String title, long goalAmount, String description) {
         LocalDateTime now = LocalDateTime.now();
-        ProjectResponse project = projectService.create(new ProjectCreateRequest(
-            1L, null, title, categoryId, description, description,
+        ProjectResponse project = projectService.create(1L, new ProjectCreateRequest(
+            null, title, categoryId, description, description,
             BigDecimal.valueOf(goalAmount), now, LocalDate.now().plusDays(30)));
         projectService.approve(project.projectId());
         return project.projectId();

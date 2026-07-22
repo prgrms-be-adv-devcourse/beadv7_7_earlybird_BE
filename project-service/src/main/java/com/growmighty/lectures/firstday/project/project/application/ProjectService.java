@@ -12,15 +12,17 @@ import java.util.List;
 
 public interface ProjectService {
 
-    ProjectResponse create(ProjectCreateRequest request);
+    ProjectResponse create(Long creatorId, ProjectCreateRequest request);
 
     List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort);
 
     ProjectResponse findById(Long projectId);
 
-    ProjectResponse update(Long projectId, ProjectUpdateRequest request);
+    /** requesterId가 본인이 등록한 프로젝트가 아니면 거부한다. */
+    ProjectResponse update(Long projectId, Long requesterId, ProjectUpdateRequest request);
 
-    void delete(Long projectId);
+    /** requesterId가 본인이 등록한 프로젝트가 아니면 거부한다. */
+    void delete(Long projectId, Long requesterId);
 
     List<ProjectResponse> findByCreator(Long creatorId);
 

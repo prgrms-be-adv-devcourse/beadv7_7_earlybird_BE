@@ -277,7 +277,7 @@ graph TD
 ## 6. 지금 시점에서 알려진 한계
 
 이 문서는 "어떻게 만들었는지" 설명이 목적이라 자세한 목록은 생략하지만, 요약하면:
-- **인증(로그인) 시스템 자체가 아직 없어서**, "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증이 곳곳에 빠져 있습니다. 관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)도 지금은 URL만 분리해뒀을 뿐, 실제로 "이 사람이 관리자인가"를 검증하지는 않습니다.
+- **Project 생성/수정/삭제의 창작자 소유권 검증은 완료** (2026-07-22, `강대혁/project/auth`) — `creatorId`는 body가 아니라 게이트웨이가 JWT 검증 후 채워주는 `X-User-Id` 헤더(`JwtHeaders.USER_ID`)에서 받고, `update()`/`delete()`는 `project.getCreatorId()`가 요청자와 일치하는지 확인해 다르면 거부합니다(`IllegalArgumentException`, 400). 다만 **관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)는 여전히 URL만 분리해뒀을 뿐, 실제로 "이 사람이 관리자인가"를 검증하지는 않습니다** — Spring Security의 role 기반 인가(`hasRole`/`@PreAuthorize`)를 아직 안 붙였습니다.
 - Project의 **삭제 시 후원(주문) 여부 검증**(주문이 있으면 삭제 불가)은 아직 없습니다 — order-service 쪽에 "이 프로젝트에 주문이 있는지" 확인하는 API가 필요해서 별도 조율 중입니다. (참조하는 **리워드**가 있는지는 확인해서 함께 삭제하도록 이미 처리했습니다 — 이건 서로 다른 검증입니다.)
 - Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED/CANCELLED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
 

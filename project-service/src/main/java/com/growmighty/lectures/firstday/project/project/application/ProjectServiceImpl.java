@@ -45,9 +45,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public ProjectResponse create(ProjectCreateRequest request) {
+    public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
         validateCategoryExists(request.categoryId());
-        Project project = projectRepository.save(request.toEntity());
+        Project project = projectRepository.save(request.toEntity(creatorId));
         return ProjectResponse.from(project);
     }
 
@@ -74,10 +74,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
-    //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
-    public ProjectResponse update(Long projectId, ProjectUpdateRequest request) {
+    public ProjectResponse update(Long projectId, Long requesterId, ProjectUpdateRequest request) {
         Project project = getProject(projectId);
+        validateOwnership(project, requesterId);
         if (project.isPublished()) {
             if (request.hasPublishOnlyRestrictedField()) {
                 throw new IllegalArgumentException(
@@ -96,11 +95,10 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public void delete(Long projectId) {
+    public void delete(Long projectId, Long requesterId) {
         // TODO(팀): 후원 발생 여부 검증 — 현재는 항상 삭제 가능하다고 가정한다.
-        // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
-        //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
         Project project = getProject(projectId);
+        validateOwnership(project, requesterId);
         rewardRepository.deleteByProjectId(projectId);
         projectRepository.delete(project);
     }
@@ -222,6 +220,14 @@ public class ProjectServiceImpl implements ProjectService {
     private Project getProject(Long projectId) {
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
+    }
+
+    /** board-service ProjectNotice.validateOwnership과 동일한 관례 — 소유자 불일치는 IllegalArgumentException(400). */
+    private void validateOwnership(Project project, Long requesterId) {
+        if (!project.getCreatorId().equals(requesterId)) {
+            throw new IllegalArgumentException(
+                "본인이 등록한 프로젝트만 수정/삭제할 수 있습니다. projectId=" + project.getProjectId());
+        }
     }
 
     private void validateCategoryExists(Long categoryId) {

@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.presentation;
 
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -30,8 +31,9 @@ public class ProjectController {
     private final ProjectService projectService;
 
     @PostMapping
-    public ApiResponse<ProjectResponse> create(@Valid @RequestBody ProjectCreateRequest request) {
-        return ApiResponse.ok(projectService.create(request));
+    public ApiResponse<ProjectResponse> create(@RequestHeader(JwtHeaders.USER_ID) Long creatorId,
+                                                @Valid @RequestBody ProjectCreateRequest request) {
+        return ApiResponse.ok(projectService.create(creatorId, request));
     }
 
     @GetMapping
@@ -43,9 +45,9 @@ public class ProjectController {
         return ApiResponse.ok(projectService.findAll(keyword, categoryId, status, sort));
     }
 
-    /** 내 프로젝트 목록. TODO(팀): 인증 도입 후 X-User-Id를 게이트웨이가 채우도록 전환 */
+    /** 내 프로젝트 목록. */
     @GetMapping("/me")
-    public ApiResponse<List<ProjectResponse>> findMyProjects(@RequestHeader("X-User-Id") Long userId) {
+    public ApiResponse<List<ProjectResponse>> findMyProjects(@RequestHeader(JwtHeaders.USER_ID) Long userId) {
         return ApiResponse.ok(projectService.findByCreator(userId));
     }
 
@@ -55,13 +57,15 @@ public class ProjectController {
     }
 
     @PatchMapping("/{projectId}")
-    public ApiResponse<ProjectResponse> update(@PathVariable Long projectId, @RequestBody ProjectUpdateRequest request) {
-        return ApiResponse.ok(projectService.update(projectId, request));
+    public ApiResponse<ProjectResponse> update(@PathVariable Long projectId,
+                                                @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                                                @RequestBody ProjectUpdateRequest request) {
+        return ApiResponse.ok(projectService.update(projectId, requesterId, request));
     }
 
     @DeleteMapping("/{projectId}")
-    public ApiResponse<Void> delete(@PathVariable Long projectId) {
-        projectService.delete(projectId);
+    public ApiResponse<Void> delete(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+        projectService.delete(projectId, requesterId);
         return ApiResponse.ok(null);
     }
 }
