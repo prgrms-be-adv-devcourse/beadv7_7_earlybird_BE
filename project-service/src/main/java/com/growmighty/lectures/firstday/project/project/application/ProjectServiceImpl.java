@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
@@ -52,8 +53,8 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort) {
-        Specification<Project> specification = buildSpecification(keyword, categoryId, status);
+    public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole) {
+        Specification<Project> specification = buildSpecification(keyword, categoryId, status, requesterRole);
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
@@ -106,13 +107,6 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public List<ProjectResponse> findByCreator(Long creatorId) {
         return projectRepository.findByCreatorId(creatorId).stream()
-                .map(ProjectResponse::from)
-                .toList();
-    }
-
-    @Override
-    public List<ProjectResponse> findByStatus(ProjectStatus status) {
-        return projectRepository.findByStatus(status).stream()
                 .map(ProjectResponse::from)
                 .toList();
     }
@@ -236,14 +230,17 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
-    private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status) {
+    private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다 (status 파라미터로 요청해도 결과 없음).
+            // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
+            // ADMIN은 심사 대기/반려 프로젝트도 봐야 하므로 이 제외를 적용하지 않는다.
             // 창작자 본인의 심사 대기/반려 프로젝트는 findByCreator(/me)로 확인한다.
-            predicates.add(cb.and(
-                    cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
-                    cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
+            if (requesterRole != UserRole.ADMIN) {
+                predicates.add(cb.and(
+                        cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
+                        cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
+            }
             if (keyword != null && !keyword.isBlank()) {
                 String pattern = "%" + keyword + "%";
                 predicates.add(cb.or(

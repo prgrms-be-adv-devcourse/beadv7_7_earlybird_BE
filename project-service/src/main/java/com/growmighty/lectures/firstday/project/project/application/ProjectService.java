@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectCreateRequest;
@@ -14,7 +15,8 @@ public interface ProjectService {
 
     ProjectResponse create(Long creatorId, ProjectCreateRequest request);
 
-    List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort);
+    /** requesterRole이 ADMIN이면 PENDING_REVIEW/REJECTED도 결과에 포함한다. */
+    List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole);
 
     ProjectResponse findById(Long projectId);
 
@@ -27,8 +29,6 @@ public interface ProjectService {
     List<ProjectResponse> findByCreator(Long creatorId);
 
     // ── 관리자 ──────────────────────────────────────────────
-    List<ProjectResponse> findByStatus(ProjectStatus status);
-
     ProjectResponse approve(Long projectId);
 
     ProjectResponse reject(Long projectId, ProjectRejectRequest request);
