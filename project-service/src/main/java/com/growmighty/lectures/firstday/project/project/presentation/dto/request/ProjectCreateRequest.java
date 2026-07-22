@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public record ProjectCreateRequest(
@@ -16,7 +17,7 @@ public record ProjectCreateRequest(
         String description,
         @NotNull BigDecimal goalAmount,
         @NotNull LocalDateTime startAt,
-        @NotNull LocalDateTime endAt
+        @NotNull LocalDate endAt
 ) {
     public Project toEntity() {
         return Project.register(creatorId, thumbnailId, title, categoryId, summary, description,

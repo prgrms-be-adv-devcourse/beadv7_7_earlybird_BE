@@ -183,7 +183,11 @@ public class Reward extends BaseEntity {
         this.active = false;
     }
 
-    /** TODO(팀): 부모 프로젝트가 OPEN인지 함께 검증하는 위치(애플리케이션 서비스) 결정 */
+    /**
+     * 부모 프로젝트가 OPEN인지는 여기서 안 본다 — Reward는 자기 재고/활성 상태만 안다.
+     * 대신 ProjectServiceImpl이 프로젝트 마감(closeByDeadline/closeEarlyAsSucceeded) 시점에
+     * deactivate()를 호출해줘서, 마감된 프로젝트의 리워드는 이 값도 자연히 false가 된다.
+     */
     public boolean isOrderable() {
         return this.active && (this.totalQuantity == null || this.remainingQuantity > 0);
     }

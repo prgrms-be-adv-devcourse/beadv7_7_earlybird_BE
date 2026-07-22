@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -86,7 +87,7 @@ public class ProjectDataInitializer implements CommandLineRunner {
         LocalDateTime now = LocalDateTime.now();
         ProjectResponse project = projectService.create(new ProjectCreateRequest(
             1L, null, title, categoryId, description, description,
-            BigDecimal.valueOf(goalAmount), now, now.plusDays(30)));
+            BigDecimal.valueOf(goalAmount), now, LocalDate.now().plusDays(30)));
         projectService.approve(project.projectId());
         return project.projectId();
     }

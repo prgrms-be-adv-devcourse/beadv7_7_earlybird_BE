@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -55,14 +57,20 @@ public class Project {
     @Column(nullable = false)
     private BigDecimal goalAmount;
 
+    // TODO(팀): 결제 성공 시 이 값을 실제로 채워주는 트리거가 아직 없다(order/payment-service
+    // 확인 결과 프로젝트 단위 누적 모금액 집계·통보 API 없음, 주문 1건당 totalAmount만 존재).
+    // order/payment-service와 "언제·어떻게 알려줄지" 별도로 맞춰야 하는 cross-service 이슈.
     @Column(nullable = false)
     private BigDecimal fundedAmount;
 
     @Column(nullable = false)
     private LocalDateTime startAt;
 
+    // 프로젝트 기간이 일 단위라 마감도 일 단위로 끊는다 — 시간까지 받으면 배치가 "오늘 마감인 것"을
+    // 정확히 못 걸러낸다(LocalDateTime이면 시각이 자정이 아닌 값도 들어올 수 있음). endAt은 항상
+    // "이 날짜의 00:00에 마감"으로 취급한다(isOpen()/closeExpiredProjects 배치 참고).
     @Column(nullable = false)
-    private LocalDateTime endAt;
+    private LocalDate endAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -84,8 +92,12 @@ public class Project {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    /** 마감 배치(closeByDeadline)와 관리자 마감일 연장(extendDeadline)이 같은 행을 동시에 건드릴 수 있어 충돌 감지용 */
+    @Version
+    private Long version;
+
     private Project(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
-                     String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+                     String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         validateGoalAmount(goalAmount);
         validatePeriod(startAt, endAt);
         this.creatorId = creatorId;
@@ -103,7 +115,7 @@ public class Project {
     }
 
     public static Project register(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
-                                    String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+                                    String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         return new Project(creatorId, thumbnailId, title, categoryId, summary, description, goalAmount, startAt, endAt);
     }
 
@@ -130,9 +142,18 @@ public class Project {
         return this.status.isClosed();
     }
 
+    /**
+     * 지금 이 순간 새 주문(리워드 구매)을 받아도 되는 상태인지 — 저장된 status만으로는 마감시각이
+     * 지났는데 배치가 아직 안 돈 구간을 못 걸러낸다. endAt까지 실시간으로 같이 봐야 배치 주기와
+     * 무관하게 마감 순간 즉시 주문이 막힌다(성공/실패 확정은 여전히 closeByDeadline 배치 몫).
+     */
+    public boolean isOpen() {
+        return this.status == ProjectStatus.IN_PROGRESS && LocalDateTime.now().isBefore(this.endAt.atStartOfDay());
+    }
+
     /** 공개 전: 전체 필드 수정 가능 (null인 값은 변경하지 않음) */
     public void updateBeforePublish(String title, Long categoryId, String summary, String description,
-                                     Long thumbnailId, BigDecimal goalAmount, LocalDateTime startAt, LocalDateTime endAt) {
+                                     Long thumbnailId, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         if (isPublished()) {
             throw new IllegalStateException("공개된 프로젝트는 이 방식으로 수정할 수 없습니다. 현재 상태=" + this.status);
         }
@@ -157,7 +178,7 @@ public class Project {
         }
         if (startAt != null || endAt != null) {
             LocalDateTime newStartAt = startAt != null ? startAt : this.startAt;
-            LocalDateTime newEndAt = endAt != null ? endAt : this.endAt;
+            LocalDate newEndAt = endAt != null ? endAt : this.endAt;
             validatePeriod(newStartAt, newEndAt);
             this.startAt = newStartAt;
             this.endAt = newEndAt;
@@ -178,11 +199,39 @@ public class Project {
     }
 
     /** 관리자 전용: 마감일 연장만 허용 (과거로 당길 수 없음) */
-    public void extendDeadline(LocalDateTime newEndAt) {
+    public void extendDeadline(LocalDate newEndAt) {
         if (newEndAt == null || !newEndAt.isAfter(this.endAt)) {
             throw new IllegalArgumentException("마감일은 현재 마감일 이후로만 연장할 수 있습니다. 현재 마감일=" + this.endAt + ", 요청값=" + newEndAt);
         }
         this.endAt = newEndAt;
+    }
+
+    /**
+     * 배치 전용: 마감시각이 지난 진행중 프로젝트를 모금액 기준으로 성공/실패 확정한다.
+     * fundedAmount가 아직 항상 0인 이유는 필드 선언부 TODO 참고.
+     */
+    public void closeByDeadline() {
+        requireStatus(ProjectStatus.IN_PROGRESS, "마감 처리는 진행중 상태에서만 가능합니다.");
+        this.status = this.fundedAmount.compareTo(this.goalAmount) >= 0
+            ? ProjectStatus.SUCCEEDED
+            : ProjectStatus.FAILED;
+        this.closedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 관리자 전용: 이미 목표 금액을 달성한 프로젝트를 마감일 전에 조기 종료해 성공으로 확정한다
+     * (재료 소진 등으로 더 이상 후원을 받고 싶지 않은 경우 — 크리에이터 요청을 받아 관리자가 처리).
+     * 목표 미달 상태에서는 허용하지 않는다 — 그건 취소(CANCELLED, 전원 환불)로 처리할 문제지
+     * 조기 마감이 아니다.
+     */
+    public void closeEarlyAsSucceeded() {
+        requireStatus(ProjectStatus.IN_PROGRESS, "조기 마감은 진행중 상태에서만 가능합니다.");
+        if (this.fundedAmount.compareTo(this.goalAmount) < 0) {
+            throw new IllegalStateException(
+                "목표 금액을 아직 달성하지 못해 조기 마감할 수 없습니다. 모금액=" + this.fundedAmount + ", 목표=" + this.goalAmount);
+        }
+        this.status = ProjectStatus.SUCCEEDED;
+        this.closedAt = LocalDateTime.now();
     }
 
     private void requireStatus(ProjectStatus expected, String message) {
@@ -197,8 +246,8 @@ public class Project {
         }
     }
 
-    private void validatePeriod(LocalDateTime startAt, LocalDateTime endAt) {
-        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+    private void validatePeriod(LocalDateTime startAt, LocalDate endAt) {
+        if (startAt == null || endAt == null || !endAt.atStartOfDay().isAfter(startAt)) {
             throw new IllegalArgumentException("마감일은 시작일 이후여야 합니다. startAt=" + startAt + ", endAt=" + endAt);
         }
     }
