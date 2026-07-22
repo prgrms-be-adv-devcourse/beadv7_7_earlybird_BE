@@ -180,7 +180,7 @@ public class ProjectServiceImpl implements ProjectService {
      */
     @Override
     public void closeExpiredProjects() {
-        List<Project> expired = projectRepository.findByStatusAndEndAtLessThanEqual(ProjectStatus.IN_PROGRESS, LocalDate.now());
+        List<Project> expired = projectRepository.findByStatusAndEndAtLessThan(ProjectStatus.IN_PROGRESS, LocalDate.now());
         ProjectService self = selfProvider.getObject();
         for (Project project : expired) {
             try {

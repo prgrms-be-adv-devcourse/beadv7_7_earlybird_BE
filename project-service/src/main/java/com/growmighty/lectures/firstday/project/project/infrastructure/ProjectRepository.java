@@ -19,8 +19,12 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
 
     List<Project> findByStatus(ProjectStatus status);
 
-    /** 배치용: 아직 진행중인데 마감일(날짜)이 오늘이거나 지난 프로젝트 조회. */
-    List<Project> findByStatusAndEndAtLessThanEqual(ProjectStatus status, LocalDate endAt);
+    /**
+     * 배치용: 아직 진행중인데 마감일(날짜)이 지난 프로젝트 조회. endAt 당일은 하루 종일 열려있는
+     * 게 맞아서(2026-07-22 결정), "오늘"이 아니라 "오늘보다 이전"만 대상으로 한다 — endAt=오늘인
+     * 프로젝트는 다음날 이 배치가 돌 때 비로소 대상이 된다.
+     */
+    List<Project> findByStatusAndEndAtLessThan(ProjectStatus status, LocalDate endAt);
 
     /**
      * 공유 락(LOCK IN SHARE MODE)으로 조회 — 트랜잭션의 REPEATABLE READ 스냅샷을 우회해 항상
