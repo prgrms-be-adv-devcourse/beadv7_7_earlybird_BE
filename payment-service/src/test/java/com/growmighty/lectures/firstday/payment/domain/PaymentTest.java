@@ -11,39 +11,29 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PaymentTest {
 
     private static final Long ORDER_ID = 1L;
-    private static final Long USER_ID = 1L;
-    private static final String PG_ORDER_ID = "order_123";
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
 
     @Test
     @DisplayName("0 이하 금액으로는 결제를 생성할 수 없다")
     void ready_invalidAmount_throws() {
-        assertThatThrownBy(() -> Payment.ready(
-            ORDER_ID, PG_ORDER_ID, USER_ID, BigDecimal.ZERO
-        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Payment.ready(ORDER_ID, BigDecimal.ZERO))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("주문 식별자 없이는 결제를 생성할 수 없다")
     void ready_withoutOrderId_throws() {
-        assertThatThrownBy(() -> Payment.ready(
-            null, PG_ORDER_ID, USER_ID, AMOUNT
-        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Payment.ready(null, AMOUNT))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    @DisplayName("사용자 식별자 없이는 결제를 생성할 수 없다")
-    void ready_withoutUserId_throws() {
-        assertThatThrownBy(() -> Payment.ready(
-            ORDER_ID, PG_ORDER_ID, null, AMOUNT
-        )).isInstanceOf(IllegalArgumentException.class);
-    }
+    @DisplayName("READY 결제를 만들면 PG 주문번호와 승인 재시도용 멱등키가 생성된다")
+    void ready_generatesPgOrderIdAndApproveIdempotencyKey() {
+        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
 
-    @Test
-    @DisplayName("READY 결제를 만들면 승인 재시도용 멱등키가 생성된다")
-    void ready_generatesApproveIdempotencyKey() {
-        Payment payment = Payment.ready(ORDER_ID, PG_ORDER_ID, USER_ID, AMOUNT);
-
+        assertThat(payment.getPgOrderId()).startsWith("order-" + ORDER_ID + "-");
+        assertThat(payment.getPgOrderId()).hasSizeLessThanOrEqualTo(64);
         assertThat(payment.getApproveIdempotencyKey()).isNotBlank();
     }
 
@@ -106,6 +96,6 @@ class PaymentTest {
     }
 
     private Payment readyPayment() {
-        return Payment.ready(ORDER_ID, PG_ORDER_ID, USER_ID, AMOUNT);
+        return Payment.ready(ORDER_ID, AMOUNT);
     }
 }

@@ -24,15 +24,11 @@
   <form id="payment-form">
     <label>
       테스트 클라이언트 키
-      <input id="client-key" required placeholder="test_ck_..." autocomplete="off">
+      <input id="client-key" required value="test_ck_DLJOpm5QrlB72oq9YPMQ3PNdxbWn" autocomplete="off">
     </label>
     <label>
       내부 주문 ID
       <input id="internal-order-id" required type="number" min="1" value="1">
-    </label>
-    <label>
-      토스 주문번호
-      <input id="pg-order-id" required minlength="6">
     </label>
     <label>
       사용자 ID
@@ -53,7 +49,6 @@
 
       const clientKey = document.getElementById('client-key').value.trim();
       const internalOrderId = Number(document.getElementById('internal-order-id').value);
-      const orderId = document.getElementById('pg-order-id').value.trim();
       const userId = Number(document.getElementById('user-id').value);
       const amount = Number(document.getElementById('amount').value);
       const button = form.querySelector('button');
@@ -63,20 +58,34 @@
         const prepareResponse = await fetch('/internal/v1/payments/prepare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: internalOrderId, userId, pgOrderId: orderId, amount }),
+          body: JSON.stringify({ orderId: internalOrderId, userId, amount }),
         });
 
+        const prepareBody = await prepareResponse.json();
         if (!prepareResponse.ok) {
-          throw new Error(`결제 준비에 실패했습니다. HTTP ${prepareResponse.status}`);
+          throw new Error(
+            `결제 준비에 실패했습니다. HTTP ${prepareResponse.status}\n`
+            + (prepareBody.error?.message || '')
+          );
         }
 
-        sessionStorage.setItem('toss-test-payment', JSON.stringify({ orderId, amount }));
+        const preparedPayment = prepareBody.data;
+        if (!preparedPayment?.pgOrderId || !preparedPayment?.amount) {
+          throw new Error('결제 준비 응답에 PG 주문번호 또는 금액이 없습니다.');
+        }
+
+        const pgOrderId = preparedPayment.pgOrderId;
+        const preparedAmount = Number(preparedPayment.amount);
+        sessionStorage.setItem('toss-test-payment', JSON.stringify({
+          orderId: pgOrderId,
+          amount: preparedAmount,
+        }));
 
         const payment = TossPayments(clientKey).payment({ customerKey: `local-user-${userId}` });
         await payment.requestPayment({
           method: 'CARD',
-          amount: { currency: 'KRW', value: amount },
-          orderId,
+          amount: { currency: 'KRW', value: preparedAmount },
+          orderId: pgOrderId,
           orderName: 'Earlybird 로컬 테스트 결제',
           successUrl: `${window.location.origin}/toss-test/success.html`,
           failUrl: `${window.location.origin}/toss-test/fail.html`,
@@ -86,9 +95,6 @@
         button.disabled = false;
       }
     });
-  </script>
-  <script>
-    document.getElementById('pg-order-id').value = `order-local-${Date.now()}`;
   </script>
 </body>
 </html>

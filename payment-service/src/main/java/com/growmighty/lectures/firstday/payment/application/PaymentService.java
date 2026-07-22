@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.payment.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
@@ -24,18 +25,13 @@ public class PaymentService {
     private final PaymentConfirmationService  paymentConfirmationService;
 
     @Transactional
-    public PaymentInfo prepare(
+    public PaymentPreparationInfo prepare(
         @NonNull Long orderId,
-        @NonNull String pgOrderId,
-        @NonNull Long userId,
         @NonNull BigDecimal amount
     ) {
         return paymentRepository.findByOrderId(orderId)
             .map(existingPayment -> {
-                boolean sameRequest =
-                    existingPayment.getPgOrderId().equals(pgOrderId)
-                        && existingPayment.getUserId().equals(userId)
-                        && existingPayment.getAmount().compareTo(amount) == 0;
+                boolean sameRequest = existingPayment.getAmount().compareTo(amount) == 0;
 
                 if (!sameRequest) {
                     throw new IllegalStateException(
@@ -43,17 +39,11 @@ public class PaymentService {
                     );
                 }
 
-                return PaymentInfo.from(existingPayment);
+                return PaymentPreparationInfo.from(existingPayment);
             })
             .orElseGet(() -> {
-                Payment payment = Payment.ready(
-                    orderId,
-                    pgOrderId,
-                    userId,
-                    amount
-                );
-
-                return PaymentInfo.from(paymentRepository.save(payment));
+                Payment payment = Payment.ready(orderId, amount);
+                return PaymentPreparationInfo.from(paymentRepository.save(payment));
             });
     }
 
