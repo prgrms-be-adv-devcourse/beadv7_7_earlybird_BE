@@ -22,22 +22,21 @@ import java.util.List;
  * 부모인 ResponseEntityExceptionHandler가 기본 ProblemDetail을 만든 뒤 {@link #handleExceptionInternal}로
  * 넘기므로, 그 지점에서 한 번만 같은 봉투로 변환한다.
  *
- * <p>커스텀 예외 응답 예시 ({@link BusinessException}으로 존재하지 않는 주문을 조회한 경우):
+ * <p>커스텀 예외 응답 예시 ({@link BusinessException}으로 존재하지 않는 주문을 조회한 경우, HTTP 상태 404):
  * <pre>{@code
  * {
  *   "success": false,
  *   "data": null,
- *   "error": { "code": "404", "message": "존재하지 않는 주문입니다. orderId=999", "errors": null }
+ *   "error": { "message": "존재하지 않는 주문입니다. orderId=999", "errors": null }
  * }
  * }</pre>
  *
- * <p>@Valid 검증 실패 응답 예시:
+ * <p>@Valid 검증 실패 응답 예시 (HTTP 상태 400):
  * <pre>{@code
  * {
  *   "success": false,
  *   "data": null,
  *   "error": {
- *     "code": "400",
  *     "message": "Invalid request content.",
  *     "errors": [ { "field": "userId", "message": "must not be null" } ]
  *   }
@@ -59,26 +58,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         } else {
             log.warn("[{}] {}", status.value(), e.getMessage());
         }
-        return fail(status, String.valueOf(status.value()), e.getMessage());
+        return fail(status, e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException e) {
         log.warn("[{}] {}", HttpStatus.BAD_REQUEST.value(), e.getMessage());
-        return fail(HttpStatus.BAD_REQUEST, String.valueOf(HttpStatus.BAD_REQUEST.value()), e.getMessage());
+        return fail(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException e) {
         log.warn("[{}] {}", HttpStatus.CONFLICT.value(), e.getMessage());
-        return fail(HttpStatus.CONFLICT, String.valueOf(HttpStatus.CONFLICT.value()), e.getMessage());
+        return fail(HttpStatus.CONFLICT, e.getMessage());
     }
 
     // 예상 못 한 예외. 내부 사정(e.getMessage())을 클라이언트에 노출하지 않는다.
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("[{}] unhandled exception", HttpStatus.INTERNAL_SERVER_ERROR.value(), e);
-        return fail(HttpStatus.INTERNAL_SERVER_ERROR, String.valueOf(HttpStatus.INTERNAL_SERVER_ERROR.value()), "서버 오류가 발생했습니다.");
+        return fail(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
     }
 
     // @Valid 실패: 기본 메시지("Invalid request content.")에 필드별 오류 목록을 담아 준다.
@@ -90,7 +89,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         List<ApiResponse.ApiError.FieldErrorDetail> errors = ex.getBindingResult().getFieldErrors().stream()
                 .map(fe -> new ApiResponse.ApiError.FieldErrorDetail(fe.getField(), fe.getDefaultMessage()))
                 .toList();
-        ApiResponse<Void> body = ApiResponse.fail(new ApiResponse.ApiError(String.valueOf(HttpStatus.BAD_REQUEST.value()), "Invalid request content.", errors));
+        ApiResponse<Void> body = ApiResponse.fail(new ApiResponse.ApiError("Invalid request content.", errors));
         return handleExceptionInternal(ex, body, headers, status, request);
     }
 
@@ -100,12 +99,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
                                                               HttpStatusCode statusCode, WebRequest request) {
         if (body instanceof ProblemDetail problem) {
-            body = ApiResponse.fail(new ApiResponse.ApiError(String.valueOf(statusCode.value()), problem.getDetail(), null));
+            body = ApiResponse.fail(new ApiResponse.ApiError(problem.getDetail(), null));
         }
         return super.handleExceptionInternal(ex, body, headers, statusCode, request);
     }
 
-    private ResponseEntity<ApiResponse<Void>> fail(HttpStatus status, String code, String message) {
-        return ResponseEntity.status(status).body(ApiResponse.fail(new ApiResponse.ApiError(code, message, null)));
+    private ResponseEntity<ApiResponse<Void>> fail(HttpStatus status, String message) {
+        return ResponseEntity.status(status).body(ApiResponse.fail(new ApiResponse.ApiError(message, null)));
     }
 }

@@ -43,7 +43,6 @@ class GlobalExceptionHandlerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.error.code").value("404"))
                 .andExpect(jsonPath("$.error.message").value("대상을 찾을 수 없습니다."));
     }
 
@@ -54,7 +53,6 @@ class GlobalExceptionHandlerTest {
                         .content("{\"quantity\": -1}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("400"))
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'userId')]").exists())
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'quantity')]").exists());
     }
@@ -64,7 +62,6 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/test/boom"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("500"))
                 .andExpect(jsonPath("$.error.message").value("서버 오류가 발생했습니다."))
                 .andExpect(content().string(not(containsString("secret detail"))));
     }
@@ -80,7 +77,6 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/test/state"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("409"))
                 .andExpect(jsonPath("$.error.message").value("이미 처리된 요청입니다."));
     }
 

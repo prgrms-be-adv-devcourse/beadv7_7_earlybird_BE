@@ -77,7 +77,7 @@ class OrderControllerTest {
     }
 
     @Test
-    @DisplayName("존재하지 않는 주문 조회는 404와 ENTITY_NOT_FOUND 코드를 반환한다")
+    @DisplayName("존재하지 않는 주문 조회는 404를 반환한다")
     void inspectOrder_notFound_404() throws Exception {
         when(orderApiService.getOrderInfo(999L))
                 .thenThrow(new EntityNotFoundException("존재하지 않는 주문입니다. orderId=999"));
@@ -85,13 +85,12 @@ class OrderControllerTest {
         mockMvc.perform(get("/orders/999"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("404"))
                 .andExpect(jsonPath("$.error.message").value("존재하지 않는 주문입니다. orderId=999"))
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
-    @DisplayName("비즈니스 상태 위반(이미 취소)은 409와 INVALID_STATE 코드를 반환한다")
+    @DisplayName("비즈니스 상태 위반(이미 취소)은 409를 반환한다")
     void cancelOrder_conflict_409() throws Exception {
         when(orderApiService.cancelOrder(1L))
                 .thenThrow(new IllegalStateException("이미 취소된 주문입니다."));
@@ -99,7 +98,7 @@ class OrderControllerTest {
         mockMvc.perform(post("/orders/1/cancel"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("409"));
+                .andExpect(jsonPath("$.error.message").value("이미 취소된 주문입니다."));
     }
 
     @Test
@@ -110,8 +109,7 @@ class OrderControllerTest {
                         .content("{"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.error.code").value("400"));
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -124,7 +122,6 @@ class OrderControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("400"))
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'userId')]").exists())
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'requests[0].quantity')]").exists());
     }
