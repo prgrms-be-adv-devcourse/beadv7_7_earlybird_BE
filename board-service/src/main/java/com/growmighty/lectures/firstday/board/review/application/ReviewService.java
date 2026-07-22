@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -15,9 +16,9 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
 
     @Transactional
-    public Review register(Long projectId, Long userId, Integer rating, String content) {
+    public Review register(Long projectId, Long orderId, Long authorId, BigDecimal rating, String content) {
         // TODO(팀): 리워드 수령 여부 검증 + 프로젝트당 1인 1리뷰 정책 결정
-        return reviewRepository.save(Review.create(projectId, userId, rating, content));
+        return reviewRepository.save(Review.create(projectId, orderId, authorId, rating, content));
     }
 
     @Transactional(readOnly = true)
