@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.user.presentation;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.ErrorCode;
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.user.application.TokenProvider;
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
@@ -189,5 +190,32 @@ class UserControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(userService).changePassword(any());
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/me 는 필수 필드가 빈 값이면 400 과 C001 을 반환한다")
+    void updateMe_withBlankFields_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\",\"phoneNumber\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/me 는 이름과 전화번호를 수정하고 갱신된 정보를 반환한다")
+    void updateMe_withValidFields_returnsUpdatedUser() throws Exception {
+        UserInfo updated = new UserInfo(1L, "hanahan@example.com", "새이름", "010-1111-2222", UserRole.BACKER);
+        when(userService.updateProfile(any())).thenReturn(updated);
+
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("새이름"))
+                .andExpect(jsonPath("$.data.phoneNumber").value("010-1111-2222"));
     }
 }

@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.user.application.dto.ChangePasswordComma
 import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
+import com.growmighty.lectures.firstday.user.application.dto.UpdateProfileCommand;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.user.domain.CreatorProfile;
@@ -46,6 +47,14 @@ public class UserService {
     public UserInfo getUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + userId));
+        return UserInfo.from(user);
+    }
+
+    @Transactional
+    public UserInfo updateProfile(UpdateProfileCommand command) {
+        User user = userRepository.findById(command.userId())
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + command.userId()));
+        user.updateProfile(command.name(), command.phoneNumber());
         return UserInfo.from(user);
     }
 
