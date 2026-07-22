@@ -1,7 +1,8 @@
 package com.growmighty.lectures.firstday.board.notice.application;
 
-import com.growmighty.lectures.firstday.board.notice.domain.Notice;
+import com.growmighty.lectures.firstday.board.notice.domain.ProjectNotice;
 import com.growmighty.lectures.firstday.board.notice.domain.NoticeRepository;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,28 +17,28 @@ public class NoticeService {
 
     // TODO(팀): 공지 등록 시 후원자에게 알림 이벤트 발행 (NoticePublished → notification-service)
     @Transactional
-    public Notice register(Long projectId, String title, String content) {
-        return noticeRepository.save(Notice.create(projectId, title, content));
+    public ProjectNotice register(Long projectId, Long authorId, String title, String content) {
+        return noticeRepository.save(ProjectNotice.create(projectId, authorId, title, content));
     }
 
     @Transactional(readOnly = true)
-    public List<Notice> getByProject(Long projectId) {
+    public List<ProjectNotice> getByProject(Long projectId) {
         return noticeRepository.findByProjectId(projectId);
     }
 
     @Transactional
-    public Notice update(Long noticeId, String title, String content) {
-        Notice notice = getNotice(noticeId);
-        notice.update(title, content);
+    public ProjectNotice update(Long noticeId, Long requesterId, UserRole requesterRole, String title, String content) {
+        ProjectNotice notice = getNotice(noticeId);
+        notice.update(requesterId, requesterRole, title, content);
         return notice;
     }
 
     @Transactional
-    public void delete(Long noticeId) {
-        noticeRepository.delete(getNotice(noticeId));
+    public void delete(Long noticeId, Long requesterId, UserRole requesterRole) {
+        getNotice(noticeId).delete(requesterId, requesterRole);
     }
 
-    private Notice getNotice(Long noticeId) {
+    private ProjectNotice getNotice(Long noticeId) {
         return noticeRepository.findById(noticeId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 공지입니다. noticeId=" + noticeId));
     }
