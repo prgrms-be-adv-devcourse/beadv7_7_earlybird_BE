@@ -74,7 +74,7 @@ class PaymentConfirmationServiceConcurrencyTest {
             start.await();
 
             try {
-                paymentConfirmationService.startConfirmation(payment.getPgOrderId());
+                paymentConfirmationService.startConfirmation(payment.getPgOrderId(), payment.getAmount());
                 return true;
             } catch (RuntimeException ignored) {
                 return false;
