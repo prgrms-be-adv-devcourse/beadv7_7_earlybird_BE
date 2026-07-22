@@ -8,7 +8,7 @@ public interface CommentRepository {
 
     Optional<Comment> findById(Long id);
 
-    List<Comment> findByProjectId(Long projectId);
+    List<Comment> findByTargetTypeAndTargetId(CommentTargetType targetType, Long targetId);
 
     void delete(Comment comment);
 }
