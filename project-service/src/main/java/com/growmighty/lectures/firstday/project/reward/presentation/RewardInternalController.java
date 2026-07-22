@@ -13,12 +13,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 서비스 간 내부 API — order-service가 후원 생성/취소 시 호출한다.
- * /api/v1 프리픽스를 쓰지 않는다: Gateway를 거치지 않는 내부망 전용 경로이며,
+ * Gateway를 거치지 않는 내부망 전용 경로이며, 팀 컨벤션에 따라 /internal/v1 프리픽스를 사용한다.
  * order-service의 RewardFeignClient와 경로가 정확히 일치해야 하는 런타임 계약이다.
  */
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/internal/rewards")
+@RequestMapping("/internal/v1/rewards")
 public class RewardInternalController {
 
     private final RewardService rewardService;
