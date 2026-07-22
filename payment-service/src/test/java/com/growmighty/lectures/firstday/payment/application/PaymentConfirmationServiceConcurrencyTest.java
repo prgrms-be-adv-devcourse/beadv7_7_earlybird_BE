@@ -61,8 +61,6 @@ class PaymentConfirmationServiceConcurrencyTest {
     void startConfirmation_allowsOnlyOneRequest() throws Exception {
         Payment payment = paymentRepository.save(Payment.ready(
             1L,
-            "order_123",
-            1L,
             BigDecimal.valueOf(10_000)
         ));
 

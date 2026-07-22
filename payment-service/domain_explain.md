@@ -54,6 +54,17 @@ Payment 도메인은 주문에 대한 결제 준비, PG 승인 요청, 결제 �
 | `canceledAt` | 내부 취소 처리 시각 |
 | `status` | 결제 상태 |
 
+### 응답 DTO 분리
+
+결제 정보는 용도에 따라 `PaymentInfo`와 `PaymentPreparationInfo`로 나눈다.
+
+| DTO | 사용처 | 포함 정보 | 분리 이유 |
+| --- | --- | --- | --- |
+| `PaymentInfo` | 승인 결과, 결제 단건 조회, 취소 결과 | `paymentId`, `orderId`, `amount`, `status` | 일반 결제 상태 조회에 필요한 내부 결제 정보만 전달 |
+| `PaymentPreparationInfo` | Order의 결제 준비 요청, 토스 결제창 호출 직전 | `paymentId`, `pgOrderId`, `amount`, `status` | 토스 결제창의 `orderId`로 사용할 `pgOrderId`를 전달 |
+
+`pgOrderId`는 Payment가 생성·저장하며, 토스 인증 전 결제창을 열 때만 필수다. 이를 모든 승인·조회 응답에 포함하면 사용처와 무관한 값을 계속 노출하게 되므로, prepare 전용 DTO로 분리한다.
+
 ### 상태
 
 ```text
@@ -94,7 +105,8 @@ READY → CONFIRMING → PAID → CANCELLED
 2. 같은 `orderId` 결제가 있으면 `pgOrderId`, `userId`, `amount`가 모두 같은지 확인한다.
 3. 모두 같으면 기존 결제 정보를 반환한다.
 4. 다르면 예외를 반환한다.
-5. 새 요청이면 `READY` 상태의 `Payment`를 저장한다. 이때 승인용 멱등키를 UUID로 생성한다.
+5. 새 요청이면 Payment가 `pgOrderId`를 생성하고 `READY` 상태의 `Payment`를 저장한다. 이때 승인용 멱등키를 UUID로 생성한다.
+6. `PaymentPreparationInfo`를 통해 `paymentId`, `pgOrderId`, `amount`, `status`를 반환한다. Order 또는 프론트엔드는 이 `pgOrderId`를 토스 결제창의 `orderId`로 사용한다.
 
 ## 6. 승인 흐름
 
