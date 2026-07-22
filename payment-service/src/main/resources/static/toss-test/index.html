@@ -58,7 +58,7 @@
         const prepareResponse = await fetch('/internal/v1/payments/prepare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: internalOrderId, userId, amount }),
+          body: JSON.stringify({ orderId: internalOrderId, amount }),
         });
 
         const prepareBody = await prepareResponse.json();
