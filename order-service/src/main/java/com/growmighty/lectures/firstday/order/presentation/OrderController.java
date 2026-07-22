@@ -43,16 +43,4 @@ public class OrderController {
     public OrderResponse cancelOrder(@PathVariable Long orderId) {
         return OrderResponse.from(orderApiService.cancelOrder(orderId));
     }
-
-    /** 후원 시 결제 검증용 정보 호출. TODO(팀): payment와 연동 — 인증 도입 후 검증, 상세 기능 추후 구현 예정 */
-    @GetMapping("/{orderId}/inspect")
-    public OrderConsistencyResponse inspectOrder(@PathVariable Long orderId) {
-        return OrderConsistencyResponse.from(orderApiService.inspectOrder(orderId));
-    }
-
-    /** 후원 시 결제 정보 검증 저장. TODO(팀): payment와 연동 — 인증 도입 후 검증, 상세 기능 추후 구현 예정 */
-    @PostMapping("/inspect/sace")
-    public OrderInspectionResponse placeOrderInspection(@Valid @RequestBody OrderInspectionRequest request) {
-        return OrderInspectionResponse.from(orderApiService.placeOrderInspection(request.orderId()));
-    }
 }

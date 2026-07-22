@@ -175,6 +175,30 @@ class OrderApiServiceTest {
                 .isInstanceOf(EntityNotFoundException.class);
     }
 
+    @Test
+    @DisplayName("hasOrderedReward returns repository existence result")
+    void hasOrderedReward_delegatesToRepository() {
+        when(orderRepository.existsByProjectId(100L)).thenReturn(true);
+
+        boolean result = orderApiService.hasOrderedReward(100L);
+
+        assertThat(result).isTrue();
+        verify(orderRepository).existsByProjectId(100L);
+        verifyNoInteractions(rewardPort, paymentPort);
+    }
+
+    @Test
+    @DisplayName("hasOrderedReward returns false when repository has no matching order item")
+    void hasOrderedReward_false() {
+        when(orderRepository.existsByProjectId(200L)).thenReturn(false);
+
+        boolean result = orderApiService.hasOrderedReward(200L);
+
+        assertThat(result).isFalse();
+        verify(orderRepository).existsByProjectId(200L);
+        verifyNoInteractions(rewardPort, paymentPort);
+    }
+
     private void setId(Object target, Long id) {
         ReflectionTestUtils.setField(target, "id", id);
     }
