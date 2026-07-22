@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.presentation;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
@@ -30,9 +31,12 @@ public class ProjectController {
 
     private final ProjectService projectService;
 
+    /** BACKER는 프로젝트를 등록할 수 없다 — CREATOR로 전환(users/me/creator)한 사용자 또는 ADMIN만 가능. */
     @PostMapping
     public ApiResponse<ProjectResponse> create(@RequestHeader(JwtHeaders.USER_ID) Long creatorId,
+                                                @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
                                                 @Valid @RequestBody ProjectCreateRequest request) {
+        requireCreatorOrAdmin(requesterRole);
         return ApiResponse.ok(projectService.create(creatorId, request));
     }
 
@@ -67,5 +71,11 @@ public class ProjectController {
     public ApiResponse<Void> delete(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         projectService.delete(projectId, requesterId);
         return ApiResponse.ok(null);
+    }
+
+    private void requireCreatorOrAdmin(UserRole requesterRole) {
+        if (requesterRole != UserRole.CREATOR && requesterRole != UserRole.ADMIN) {
+            throw new IllegalArgumentException("창작자 또는 관리자만 프로젝트를 등록할 수 있습니다.");
+        }
     }
 }

@@ -277,7 +277,7 @@ graph TD
 ## 6. 지금 시점에서 알려진 한계
 
 이 문서는 "어떻게 만들었는지" 설명이 목적이라 자세한 목록은 생략하지만, 요약하면:
-- **Project 생성/수정/삭제의 창작자 소유권 검증, 관리자 전용 API의 ADMIN role 검증 둘 다 완료** (2026-07-22, `강대혁/project/auth`) — `creatorId`는 body가 아니라 게이트웨이가 JWT 검증 후 채워주는 `X-User-Id` 헤더(`JwtHeaders.USER_ID`)에서 받고, `update()`/`delete()`는 `project.getCreatorId()`가 요청자와 일치하는지 확인해 다르면 거부합니다. `ProjectAdminController`/`RewardAdminController`도 `@RequestHeader(JwtHeaders.USER_ROLE)`을 받아 ADMIN이 아니면 거부합니다(둘 다 `IllegalArgumentException`, 400 — board-service `ProjectNotice.validateOwnership`과 동일한 관례). 게이트웨이가 인증(로그인 여부)까지만 확인해주고 role/소유권 같은 인가는 각 서비스 책임이라는 원칙을 따른 것입니다.
+- **Project 생성/수정/삭제의 창작자 소유권 검증, 관리자 전용 API의 ADMIN role 검증 둘 다 완료** (2026-07-22, `강대혁/project/auth`) — `creatorId`는 body가 아니라 게이트웨이가 JWT 검증 후 채워주는 `X-User-Id` 헤더(`JwtHeaders.USER_ID`)에서 받고, `update()`/`delete()`는 `project.getCreatorId()`가 요청자와 일치하는지 확인해 다르면 거부합니다. `POST /api/v1/projects`(등록)는 `@RequestHeader(JwtHeaders.USER_ROLE)`을 받아 `BACKER`는 거부하고 `CREATOR`/`ADMIN`만 허용합니다(`users/me/creator`로 전환하지 않은 일반 후원자는 프로젝트를 만들 수 없다는 뜻). `ProjectAdminController`/`RewardAdminController`도 같은 방식으로 ADMIN이 아니면 거부합니다(전부 `IllegalArgumentException`, 400 — board-service `ProjectNotice.validateOwnership`과 동일한 관례). 게이트웨이가 인증(로그인 여부)까지만 확인해주고 role/소유권 같은 인가는 각 서비스 책임이라는 원칙을 따른 것입니다.
 - 다만 **게이트웨이의 `permitAll` 목록이 아직 좁아서 공개 조회 API까지 로그인을 요구하는 이슈가 남아있습니다** — 이건 project-service가 아니라 gateway-server 쪽에서 고쳐야 하는 별개 사안입니다.
 - Project의 **삭제 시 후원(주문) 여부 검증**(주문이 있으면 삭제 불가)은 아직 없습니다 — order-service 쪽에 "이 프로젝트에 주문이 있는지" 확인하는 API가 필요해서 별도 조율 중입니다. (참조하는 **리워드**가 있는지는 확인해서 함께 삭제하도록 이미 처리했습니다 — 이건 서로 다른 검증입니다.)
 - Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED/CANCELLED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
