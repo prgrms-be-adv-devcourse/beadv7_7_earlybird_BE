@@ -37,6 +37,39 @@ class UserControllerTest {
             new UserInfo(1L, "hanahan@example.com", "김하나한", "010-0000-0000", UserRole.BACKER);
 
     @Test
+    @DisplayName("POST /api/v1/users/signup 은 필수 필드가 빈 값이면 400 과 C001 을 반환한다")
+    void signup_withBlankFields_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/users/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"\",\"password\":\"\",\"name\":\"\",\"phoneNumber\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/login 은 email 이 빈 값이면 400 과 C001 을 반환한다")
+    void login_withBlankEmail_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"\",\"password\":\"rawPassword1!\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/login 은 email 형식이 아니면 400 과 C001 을 반환한다")
+    void login_withInvalidEmailFormat_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"not-an-email\",\"password\":\"rawPassword1!\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"));
+    }
+
+    @Test
     @DisplayName("POST /api/v1/users/login 은 access token 과 refresh token 을 함께 반환한다")
     void login_returnsAccessAndRefreshToken() throws Exception {
         when(userService.authenticate(any())).thenReturn(BACKER);
@@ -50,6 +83,17 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
                 .andExpect(jsonPath("$.data.refreshToken").value("refresh-token"))
                 .andExpect(jsonPath("$.data.user.id").value(1));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/refresh 는 refreshToken 이 빈 값이면 400 과 C001 을 반환한다")
+    void refresh_withBlankToken_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/users/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"));
     }
 
     @Test
