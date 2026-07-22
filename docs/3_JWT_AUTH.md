@@ -75,6 +75,25 @@ refresh token 자체는 만료 전까지 그대로 재사용한다 — 재발급
 새로 만든다 — 로그인 이후 role 이 바뀐 경우(예: 창작자 전환)에도 새 access token 에는 최신 role 이 실린다.
 토큰이 없거나 서명이 잘못됐거나 만료됐거나 access token 을 잘못 넣으면 `401 (C401)` 을 반환한다.
 
+## 1-2. 로그아웃 — `POST /users/logout`
+
+```http
+POST http://localhost:8000/users/logout
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+Content-Type: application/json
+
+{ "refreshToken": "eyJhbGciOiJIUzI1NiJ9..." }
+```
+
+성공하면 `204 No Content`. 다른 보호된 엔드포인트와 마찬가지로 access token 이 없으면 게이트웨이 단계에서
+바로 `401` 이 난다(permitAll 목록에 없음).
+
+refresh token 을 서버가 저장하지 않는 stateless 방식이라(§범위 밖) **실제로 폐기하지는 않는다** —
+`parseRefreshToken` 으로 서명·만료·타입만 검증하고 유효하면 204 를 반환할 뿐이다. 로그아웃을 완료하려면
+클라이언트가 들고 있는 access/refresh token 을 직접 삭제해야 한다. 즉 로그아웃 후에도 만료 전까지는
+그 refresh token 으로 `/users/refresh` 호출이 계속 성공한다 — 강제 무효화가 필요해지면 §범위 밖의
+토큰 폐기 항목을 먼저 구현해야 한다.
+
 ## 2. 보호된 엔드포인트 호출
 
 ```http
@@ -168,11 +187,9 @@ JWT 설정(`JwtProperties`)과 헤더/클레임 이름 상수(`JwtHeaders`)는 `
 - Refresh token 로테이션(재발급 시 새 refresh token 발급 + 기존 것 무효화), 토큰 폐기(로그아웃 시 즉시 무효화) —
   지금은 발급된 refresh token 을 서버가 어디에도 저장하지 않는 stateless 방식이라 만료 전에는 강제로
   무효화할 방법이 없다.
-- 역할(BACKER/CREATOR/ADMIN) 검사는 게이트웨이 라우트 단위 규칙(`jwtAuthenticationConverter` 가
-  `ROLE_ADMIN` 등으로 변환)까지만 준비됐고, 실제 `.pathMatchers(...).hasRole(...)` 규칙은 아직 하나도
-  없다(§4 참고). 관리자 전용 엔드포인트도 다른 서비스와 같은 `/api/v1` 컨벤션을 따른다. 창작자 전용
-  엔드포인트(프로젝트 생성/수정 등)도 마찬가지로 아직 아무 보호가 없다. 도입하려면 §4 끝의 메서드
-  기반 규칙을 해당 서비스 오너와 함께 추가한다.
+- 역할(BACKER/CREATOR/ADMIN) 검사는 게이트웨이 라우트 단위(`/admin/**` → ADMIN)까지만 도입했다 —
+  같은 경로를 메서드/소유권 기준으로 더 세분화해야 하는 창작자 전용 엔드포인트(프로젝트 생성/수정 등)는
+  아직 아무 보호도 없다. 도입하려면 §4 끝의 메서드 기반 규칙을 해당 서비스 오너와 함께 추가한다.
 - 소유권(ownership) 검사는 완전히 범위 밖 — 역할이 맞아도 "이 리소스의 주인이 맞는가"(예: 본인
   프로젝트만 수정)는 게이트웨이가 알 수 없고, 각 서비스 로직에서 처리해야 한다.
 - order/cart/payment/board/project/settlement/notification-service 의 `@RequestParam userId` 마이그레이션 —
