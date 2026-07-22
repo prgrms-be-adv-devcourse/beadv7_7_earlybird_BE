@@ -99,10 +99,139 @@ class SecurityConfigTest {
         }
     }
 
+    @Test
+    @DisplayName("PG 웹훅 경로는 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
+    void paymentsWebhook_withoutToken_isNotRejectedBySecurityLayer() {
+        webTestClient.post().uri("/api/v1/payments/webhook")
+                .exchange()
+                .expectStatus().value(status ->
+                        Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
+    }
+
+    @Test
+    @DisplayName("창작자(CREATOR) 전용 라우트는 BACKER 토큰으로 호출하면 403")
+    void creatorOnlyPath_withBackerToken_isForbidden() {
+        String token = issueToken(UserRole.BACKER);
+
+        webTestClient.post().uri("/api/v1/projects")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    @DisplayName("창작자(CREATOR) 전용 라우트는 CREATOR 토큰으로 호출하면 403/401이 아니다")
+    void creatorOnlyPath_withCreatorToken_passesSecurityLayer() {
+        String token = issueToken(UserRole.CREATOR);
+
+        webTestClient.post().uri("/api/v1/projects")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().value(status -> Assertions.assertThat(status)
+                        .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
+    }
+
+    @Test
+    @DisplayName("/projects/me 는 /projects/* 와일드카드가 아니라 CREATOR 전용 규칙에 매칭된다 (BACKER면 403)")
+    void projectsMe_withBackerToken_isForbidden() {
+        String token = issueToken(UserRole.BACKER);
+
+        webTestClient.get().uri("/api/v1/projects/me")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    @DisplayName("/settlements/all 은 /settlements/* 와일드카드가 아니라 ADMIN 전용 규칙에 매칭된다 (CREATOR면 403)")
+    void settlementsAll_withCreatorToken_isForbidden() {
+        String token = issueToken(UserRole.CREATOR);
+
+        webTestClient.get().uri("/api/v1/settlements/all")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    @DisplayName("/settlements/all 은 ADMIN 토큰이면 403/401이 아니다")
+    void settlementsAll_withAdminToken_passesSecurityLayer() {
+        String token = issueToken(UserRole.ADMIN);
+
+        webTestClient.get().uri("/api/v1/settlements/all")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().value(status -> Assertions.assertThat(status)
+                        .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
+    }
+
+    @Test
+    @DisplayName("관리자(ADMIN) 전용 라우트는 CREATOR 토큰으로 호출하면 403")
+    void adminOnlyPath_withCreatorToken_isForbidden() {
+        String token = issueToken(UserRole.CREATOR);
+
+        webTestClient.post().uri("/api/v1/projects/1/approve")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    @DisplayName("관리자(ADMIN) 전용 라우트는 ADMIN 토큰이면 403/401이 아니다")
+    void adminOnlyPath_withAdminToken_passesSecurityLayer() {
+        String token = issueToken(UserRole.ADMIN);
+
+        webTestClient.post().uri("/api/v1/projects/1/approve")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().value(status -> Assertions.assertThat(status)
+                        .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
+    }
+
+    @Test
+    @DisplayName("신고 목록 조회는 관리자 전용 — BACKER 토큰이면 403")
+    void reportsList_withBackerToken_isForbidden() {
+        String token = issueToken(UserRole.BACKER);
+
+        webTestClient.get().uri("/api/v1/reports")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @Test
+    @DisplayName("공지 삭제는 CREATOR/ADMIN 둘 다 허용되지만 BACKER는 403")
+    void noticeDelete_allowsCreatorAndAdmin_rejectsBacker() {
+        webTestClient.delete().uri("/api/v1/notices/1")
+                .header("Authorization", "Bearer " + issueToken(UserRole.BACKER))
+                .exchange()
+                .expectStatus().isForbidden();
+
+        webTestClient.delete().uri("/api/v1/notices/1")
+                .header("Authorization", "Bearer " + issueToken(UserRole.CREATOR))
+                .exchange()
+                .expectStatus().value(status -> Assertions.assertThat(status)
+                        .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
+
+        webTestClient.delete().uri("/api/v1/notices/1")
+                .header("Authorization", "Bearer " + issueToken(UserRole.ADMIN))
+                .exchange()
+                .expectStatus().value(status -> Assertions.assertThat(status)
+                        .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
+    }
+
     private String issueToken(Instant issuedAt, Instant expiresAt) {
+        return issueToken(issuedAt, expiresAt, UserRole.BACKER);
+    }
+
+    private String issueToken(UserRole role) {
+        return issueToken(Instant.now(), Instant.now().plusSeconds(3600), role);
+    }
+
+    private String issueToken(Instant issuedAt, Instant expiresAt, UserRole role) {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject("1")
-                .claim("role", UserRole.BACKER.getRoleName())
+                .claim("role", role.getRoleName())
                 .issuedAt(issuedAt)
                 .expiresAt(expiresAt)
                 .build();
