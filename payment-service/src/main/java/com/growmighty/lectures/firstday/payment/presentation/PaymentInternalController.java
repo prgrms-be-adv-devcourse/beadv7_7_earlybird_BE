@@ -2,9 +2,9 @@ package com.growmighty.lectures.firstday.payment.presentation;
 
 
 import com.growmighty.lectures.firstday.payment.application.PaymentService;
-import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentPrepareRequest;
-import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentResponse;
+import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentPrepareResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,13 +20,11 @@ public class PaymentInternalController {
     private final PaymentService paymentService;
 
     @PostMapping("/prepare")
-    public PaymentResponse prepare(@Valid @RequestBody PaymentPrepareRequest request) {
-        PaymentInfo payment = paymentService.prepare(
+    public PaymentPrepareResponse prepare(@Valid @RequestBody PaymentPrepareRequest request) {
+        PaymentPreparationInfo payment = paymentService.prepare(
             request.orderId(),
-            request.pgOrderId(),
-            request.userId(),
             request.amount()
         );
-        return PaymentResponse.from(payment);
+        return PaymentPrepareResponse.from(payment);
     }
 }

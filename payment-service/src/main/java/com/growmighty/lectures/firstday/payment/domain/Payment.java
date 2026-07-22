@@ -24,10 +24,6 @@ public class Payment extends BaseEntity {
     @Column(name = "order_id", nullable = false, unique = true)
     private Long orderId;
 
-    /**user의 userId와 payment의 userId의 일치함을 검증하기 위한 필드*/
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
-
     @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
     private String pgOrderId;
 
@@ -57,33 +53,30 @@ public class Payment extends BaseEntity {
     private PaymentStatus status;
 
 
-    private Payment(Long orderId, String pgOrderId, Long userId, BigDecimal amount) {
-        validatePayment(orderId, pgOrderId, userId, amount);
+    private Payment(Long orderId, BigDecimal amount) {
+        validatePayment(orderId, amount);
         this.orderId = orderId;
-        this.pgOrderId = pgOrderId;
-        this.userId = userId;
+        this.pgOrderId = generatePgOrderId(orderId);
         this.amount = amount;
         this.approveIdempotencyKey = UUID.randomUUID().toString();
         this.status = PaymentStatus.READY;
     }
 
-    private static void validatePayment(Long orderId, String pgOrderId, Long userId, BigDecimal amount) {
+    private static void validatePayment(Long orderId, BigDecimal amount) {
         if (orderId == null) {
             throw new IllegalArgumentException("주문 식별자는 필수입니다.");
-        }
-        if (pgOrderId == null) {
-            throw new IllegalArgumentException("PG의 주문 식별자는 필수입니다.");
-        }
-        if (userId == null) {
-            throw new IllegalArgumentException("사용자 식별자는 필수입니다.");
         }
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("결제 금액은 0원보다 커야 합니다. 입력값: " + amount);
         }
     }
 
-    public static Payment ready(Long orderId, String pgOrderId, Long userId, BigDecimal amount) {
-        return new Payment(orderId, pgOrderId, userId, amount);
+    public static Payment ready(Long orderId, BigDecimal amount) {
+        return new Payment(orderId, amount);
+    }
+
+    private static String generatePgOrderId(Long orderId) {
+        return "order-" + orderId + "-" + UUID.randomUUID().toString().replace("-", "");
     }
 
     public void startConfirming() {
