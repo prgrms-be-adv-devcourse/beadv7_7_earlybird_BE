@@ -85,7 +85,7 @@ class OrderControllerTest {
         mockMvc.perform(get("/orders/999"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C003"))
+                .andExpect(jsonPath("$.error.code").value("404"))
                 .andExpect(jsonPath("$.error.message").value("존재하지 않는 주문입니다. orderId=999"))
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
@@ -99,7 +99,7 @@ class OrderControllerTest {
         mockMvc.perform(post("/orders/1/cancel"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C002"));
+                .andExpect(jsonPath("$.error.code").value("409"));
     }
 
     @Test
@@ -124,7 +124,7 @@ class OrderControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C001"))
+                .andExpect(jsonPath("$.error.code").value("400"))
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'userId')]").exists())
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'requests[0].quantity')]").exists());
     }
