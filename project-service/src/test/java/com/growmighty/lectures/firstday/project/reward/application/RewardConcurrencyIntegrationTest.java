@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -111,7 +112,7 @@ class RewardConcurrencyIntegrationTest {
 
     private Long publishedProject() {
         Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
-                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDateTime.now().plusDays(30));
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project = projectRepository.save(project);
         project.approve();
         project = projectRepository.save(project);

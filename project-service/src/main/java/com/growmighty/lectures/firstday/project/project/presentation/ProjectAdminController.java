@@ -55,4 +55,21 @@ public class ProjectAdminController {
                                                         @Valid @RequestBody ProjectDeadlineExtendRequest request) {
         return ApiResponse.ok(projectService.extendDeadline(projectId, request));
     }
+
+    /**
+     * 마감일 지난 진행중 프로젝트 일괄 성공/실패 확정을 수동으로 즉시 실행한다.
+     * 매일 자정 스케줄러가 자동으로 돌지만(ProjectDeadlineScheduler), 자정까지 기다리지 않고
+     * 테스트/운영 확인용으로 즉시 트리거하고 싶을 때 사용.
+     */
+    @PostMapping("/close-expired")
+    public ApiResponse<Void> closeExpiredProjects() {
+        projectService.closeExpiredProjects();
+        return ApiResponse.ok(null);
+    }
+
+    /** 목표 금액을 이미 달성한 진행중 프로젝트를 마감일 전에 관리자가 조기 종료(성공 확정)한다. */
+    @PostMapping("/{projectId}/close-early")
+    public ApiResponse<ProjectResponse> closeEarly(@PathVariable Long projectId) {
+        return ApiResponse.ok(projectService.closeEarly(projectId));
+    }
 }

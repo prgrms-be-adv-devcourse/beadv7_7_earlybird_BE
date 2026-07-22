@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.presentation.dto.request;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -17,7 +18,7 @@ public record ProjectUpdateRequest(
         Long thumbnailId,
         BigDecimal goalAmount,
         LocalDateTime startAt,
-        LocalDateTime endAt
+        LocalDate endAt
 ) {
     public boolean hasPublishOnlyRestrictedField() {
         return title != null || categoryId != null || goalAmount != null || startAt != null || endAt != null;

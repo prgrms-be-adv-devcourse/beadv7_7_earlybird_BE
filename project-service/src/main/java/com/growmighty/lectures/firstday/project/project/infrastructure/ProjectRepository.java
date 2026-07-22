@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,6 +18,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
     List<Project> findByCreatorId(Long creatorId);
 
     List<Project> findByStatus(ProjectStatus status);
+
+    /** 배치용: 아직 진행중인데 마감일(날짜)이 오늘이거나 지난 프로젝트 조회. */
+    List<Project> findByStatusAndEndAtLessThanEqual(ProjectStatus status, LocalDate endAt);
 
     /**
      * 공유 락(LOCK IN SHARE MODE)으로 조회 — 트랜잭션의 REPEATABLE READ 스냅샷을 우회해 항상

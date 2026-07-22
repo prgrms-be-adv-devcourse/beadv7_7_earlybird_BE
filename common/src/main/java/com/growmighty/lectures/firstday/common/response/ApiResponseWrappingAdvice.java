@@ -26,8 +26,12 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
  *   "error": null
  * }
  * }</pre>
+ *
+ * <p>basePackages를 우리 코드로 한정한다 — 그렇지 않으면 springdoc(OpenAPI) 같은 서드파티 컨트롤러의
+ * 응답(예: {@code byte[]}로 선언된 {@code /v3/api-docs})까지 감싸버려서, 이미 선택된
+ * {@link HttpMessageConverter}가 엉뚱한 타입을 받아 캐스팅에 실패한다.
  */
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = "com.growmighty.lectures.firstday")
 public class ApiResponseWrappingAdvice implements ResponseBodyAdvice<Object> {
 
     @Override
