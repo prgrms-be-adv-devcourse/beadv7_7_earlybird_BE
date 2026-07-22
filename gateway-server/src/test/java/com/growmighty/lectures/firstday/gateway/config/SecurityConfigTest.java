@@ -81,6 +81,24 @@ class SecurityConfigTest {
                         Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
     }
 
+    @Test
+    @DisplayName("프로젝트/카테고리/리워드 조회 경로는 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
+    void projectReadPaths_withoutToken_areNotRejectedBySecurityLayer() {
+        for (String uri : new String[] {
+                "/api/v1/projects",
+                "/api/v1/projects/1",
+                "/api/v1/projects/1/rewards",
+                "/api/v1/project-categories",
+                "/api/v1/project-categories/1",
+                "/api/v1/rewards/1"
+        }) {
+            webTestClient.get().uri(uri)
+                    .exchange()
+                    .expectStatus().value(status ->
+                            Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
+        }
+    }
+
     private String issueToken(Instant issuedAt, Instant expiresAt) {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject("1")

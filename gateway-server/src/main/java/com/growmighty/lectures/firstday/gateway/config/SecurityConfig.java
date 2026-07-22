@@ -43,6 +43,14 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET,
                                 "/*/v3/api-docs", "/*/v3/api-docs/**",
                                 "/*/swagger-ui.html", "/*/swagger-ui/**").permitAll()
+                        .pathMatchers(HttpMethod.GET,
+                                URI_PREFIX_API + "/projects",
+                                URI_PREFIX_API + "/projects/*",
+                                URI_PREFIX_API + "/projects/*/rewards",
+                                URI_PREFIX_API + "/project-categories",
+                                URI_PREFIX_API + "/project-categories/*",
+                                URI_PREFIX_API + "/rewards/*"
+                        ).permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt
                         .jwtDecoder(jwtDecoder)
