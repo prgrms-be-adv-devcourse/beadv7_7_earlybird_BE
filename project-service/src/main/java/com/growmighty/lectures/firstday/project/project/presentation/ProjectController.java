@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.presentation;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -63,5 +65,13 @@ public class ProjectController {
     public ApiResponse<Void> delete(@PathVariable Long projectId) {
         projectService.delete(projectId);
         return ApiResponse.ok(null);
+    }
+
+    /** 창작자(본인) 또는 관리자: 진행중이거나 이미 성공한 프로젝트를 자진 취소한다. */
+    @PostMapping("/{projectId}/cancel")
+    public ApiResponse<ProjectResponse> cancel(@PathVariable Long projectId,
+                                                @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                                                @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+        return ApiResponse.ok(projectService.cancel(projectId, requesterId, requesterRole));
     }
 }

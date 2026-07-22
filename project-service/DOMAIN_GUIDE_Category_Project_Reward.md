@@ -279,6 +279,7 @@ graph TD
 이 문서는 "어떻게 만들었는지" 설명이 목적이라 자세한 목록은 생략하지만, 요약하면:
 - **인증(로그인) 시스템 자체가 아직 없어서**, "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증이 곳곳에 빠져 있습니다. 관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)도 지금은 URL만 분리해뒀을 뿐, 실제로 "이 사람이 관리자인가"를 검증하지는 않습니다.
 - Project의 **삭제 시 후원(주문) 여부 검증**(주문이 있으면 삭제 불가)은 아직 없습니다 — order-service 쪽에 "이 프로젝트에 주문이 있는지" 확인하는 API가 필요해서 별도 조율 중입니다. (참조하는 **리워드**가 있는지는 확인해서 함께 삭제하도록 이미 처리했습니다 — 이건 서로 다른 검증입니다.)
-- Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED/CANCELLED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
+- Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
+- **CANCELLED(프로젝트 자진 취소) — 구현 완료** (2026-07-22, `강대혁/project/cancel`) — `Project.cancel()`: 진행중(`IN_PROGRESS`) 또는 이미 목표 달성(`SUCCEEDED`)한 상태에서만 가능(이미 `FAILED`거나 이미 `CANCELLED`는 취소 대상 아님 — 실패는 이미 자동 환불 파이프라인을 타므로 취소가 의미 없음). `POST /api/v1/projects/{projectId}/cancel` — 본인(창작자) 또는 관리자만 호출 가능(board-service `ProjectNotice.validateOwnership`과 동일하게 "ADMIN이면 통과, 아니면 본인 확인"). 취소되면 다른 종료 케이스(`closeByDeadline`/`closeEarlyAsSucceeded`)와 마찬가지로 리워드도 함께 비활성화됨. 성공(SUCCEEDED) 후 취소를 허용하는 이유는 "목표는 달성했지만 창작자가 배송 등을 감당 못 하게 된" 경우를 위함 — Payment가 `GET /internal/v1/projects?status=CANCELLED`로 FAILED와 동일하게 환불 대상으로 조회해간다(§9 내부 API 참고).
 
 각 항목의 자세한 내용과 다음 작업 우선순위는 `WORK_LOG_Category_Project.md`와 각 브랜치의 TODO 주석을 참고하세요.

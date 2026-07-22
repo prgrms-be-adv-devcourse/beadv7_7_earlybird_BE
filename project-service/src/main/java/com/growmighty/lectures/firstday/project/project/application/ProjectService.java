@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectCreateRequest;
@@ -21,6 +22,9 @@ public interface ProjectService {
     ProjectResponse update(Long projectId, ProjectUpdateRequest request);
 
     void delete(Long projectId);
+
+    /** 창작자(본인) 또는 관리자: 진행중이거나 이미 성공한 프로젝트를 자진 취소한다. */
+    ProjectResponse cancel(Long projectId, Long requesterId, UserRole requesterRole);
 
     List<ProjectResponse> findByCreator(Long creatorId);
 

@@ -206,4 +206,52 @@ class ProjectTest {
         Project project = project();
         assertThatThrownBy(project::closeEarlyAsSucceeded).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    @DisplayName("진행중이면 취소할 수 있다")
+    void cancel_inProgress_succeeds() {
+        Project project = publishedProject();
+        project.cancel();
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.CANCELLED);
+        assertThat(project.isClosed()).isTrue();
+        assertThat(project.getClosedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("이미 성공(SUCCEEDED)했어도 취소할 수 있다")
+    void cancel_succeeded_succeeds() {
+        Project project = publishedProject();
+        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        project.closeEarlyAsSucceeded();
+
+        project.cancel();
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.CANCELLED);
+    }
+
+    @Test
+    @DisplayName("심사 대기/반려 상태는 취소할 수 없다")
+    void cancel_notPublished_throws() {
+        Project project = project();
+        assertThatThrownBy(project::cancel).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("이미 실패(FAILED)한 프로젝트는 취소할 수 없다 — 이미 환불 파이프라인을 타는 상태라 취소 대상이 아니다")
+    void cancel_failed_throws() {
+        Project project = publishedProject();
+        project.closeByDeadline();
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.FAILED);
+
+        assertThatThrownBy(project::cancel).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("이미 취소된 프로젝트는 다시 취소할 수 없다")
+    void cancel_alreadyCancelled_throws() {
+        Project project = publishedProject();
+        project.cancel();
+
+        assertThatThrownBy(project::cancel).isInstanceOf(IllegalStateException.class);
+    }
 }
