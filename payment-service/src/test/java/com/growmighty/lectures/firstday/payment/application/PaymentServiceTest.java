@@ -84,7 +84,7 @@ class PaymentServiceTest {
     void confirm_approvesUsingPreparedPayment() {
         paymentService.prepare(ORDER_ID, PG_ORDER_ID, USER_ID, AMOUNT);
 
-        PaymentInfo result = paymentService.confirm("payment-key-1", PG_ORDER_ID);
+        PaymentInfo result = paymentService.confirm("payment-key-1", PG_ORDER_ID, AMOUNT);
         Payment saved = paymentRepository.findByPgOrderId(PG_ORDER_ID).orElseThrow();
 
         assertThat(result.status()).isEqualTo(PaymentStatus.PAID);
@@ -108,7 +108,7 @@ class PaymentServiceTest {
         );
 
         assertThatThrownBy(() -> paymentService.confirm(
-            "payment-key-1", PG_ORDER_ID
+            "payment-key-1", PG_ORDER_ID, AMOUNT
         )).isInstanceOf(IllegalStateException.class)
             .hasMessage("PG paymentKey가 일치하지 않습니다.");
 
@@ -122,10 +122,10 @@ class PaymentServiceTest {
     @DisplayName("이미 PAID인 결제를 다시 confirm하면 PG를 다시 호출하지 않는다")
     void confirm_whenAlreadyPaid_doesNotCallGatewayAgain() {
         paymentService.prepare(ORDER_ID, PG_ORDER_ID, USER_ID, AMOUNT);
-        paymentService.confirm("payment-key-1", PG_ORDER_ID);
+        paymentService.confirm("payment-key-1", PG_ORDER_ID, AMOUNT);
 
         assertThatThrownBy(() -> paymentService.confirm(
-            "payment-key-1", PG_ORDER_ID
+            "payment-key-1", PG_ORDER_ID, AMOUNT
         )).isInstanceOf(IllegalStateException.class);
 
         assertThat(paymentGateway.approvalCalls).isEqualTo(1);
@@ -135,7 +135,7 @@ class PaymentServiceTest {
     @DisplayName("prepare되지 않은 pgOrderId로 confirm하면 실패한다")
     void confirm_withoutPreparedPayment_throws() {
         assertThatThrownBy(() -> paymentService.confirm(
-            "payment-key-1", "unknown-order"
+            "payment-key-1", "unknown-order", AMOUNT
         )).isInstanceOf(EntityNotFoundException.class);
     }
 
