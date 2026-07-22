@@ -1,18 +1,11 @@
 package com.growmighty.lectures.firstday.settlement.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
 import java.math.BigDecimal;
 import java.util.Objects;
 
-@Embeddable
-public class Money {
+public final class Money {
 
-    @Column(name = "amount", nullable = false, precision = 19, scale = 0)
-    private BigDecimal amount;
-
-    protected Money() {
-    }
+    private final BigDecimal amount;
 
     private Money(BigDecimal amount) {
         Objects.requireNonNull(amount, "금액은 null일 수 없습니다.");
@@ -24,6 +17,10 @@ public class Money {
 
     public static Money wons(long amount) {
         return new Money(BigDecimal.valueOf(amount));
+    }
+
+    public static Money wons(BigDecimal amount) {
+        return new Money(amount);
     }
 
     public Money minus(Money other) {
