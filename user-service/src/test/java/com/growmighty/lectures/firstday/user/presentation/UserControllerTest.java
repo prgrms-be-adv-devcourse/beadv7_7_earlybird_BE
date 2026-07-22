@@ -16,7 +16,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -147,5 +150,44 @@ class UserControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("C401"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/me/password 는 필수 필드가 빈 값이면 400 과 C001 을 반환한다")
+    void changePassword_withBlankFields_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me/password")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"\",\"newPassword\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/me/password 는 현재 비밀번호가 틀리면 400 과 C001 을 반환한다")
+    void changePassword_withWrongCurrentPassword_returns400() throws Exception {
+        doThrow(new IllegalArgumentException("현재 비밀번호가 올바르지 않습니다."))
+                .when(userService).changePassword(any());
+
+        mockMvc.perform(patch("/api/v1/users/me/password")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"wrongPassword1!\",\"newPassword\":\"newPassword1!\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("C001"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/me/password 는 정상 요청이면 204 를 반환한다")
+    void changePassword_withValidRequest_returnsNoContent() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me/password")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"rawPassword1!\",\"newPassword\":\"newPassword1!\"}"))
+                .andExpect(status().isNoContent());
+
+        verify(userService).changePassword(any());
     }
 }
