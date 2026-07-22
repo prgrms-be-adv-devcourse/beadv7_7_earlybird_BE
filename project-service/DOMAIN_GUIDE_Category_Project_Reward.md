@@ -277,7 +277,8 @@ graph TD
 ## 6. 지금 시점에서 알려진 한계
 
 이 문서는 "어떻게 만들었는지" 설명이 목적이라 자세한 목록은 생략하지만, 요약하면:
-- **인증(로그인) 시스템 자체가 아직 없어서**, "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증이 곳곳에 빠져 있습니다. 관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)도 지금은 URL만 분리해뒀을 뿐, 실제로 "이 사람이 관리자인가"를 검증하지는 않습니다.
+- "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증은 아직 곳곳에 빠져 있습니다(별도 브랜치에서 진행 중).
+- **관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)의 role 검증은 완료** (2026-07-22, `강대혁/project/admin-role-check`) — 게이트웨이가 인증(로그인 여부)까지만 확인해주고 role별 접근 제어는 각 서비스 책임이라, 두 컨트롤러 모두 `@RequestHeader(JwtHeaders.USER_ROLE)`을 받아 ADMIN이 아니면 `IllegalArgumentException`(400)으로 거부하도록 직접 구현했습니다(board-service `ProjectNotice.validateOwnership`과 동일한 관례). 게이트웨이 단에서 로그인 자체를 요구하는지는 별개 문제입니다 — 아직 게이트웨이의 `permitAll` 목록이 좁아서 공개 조회 API까지 로그인을 요구하는 이슈가 남아있고, 이건 project-service가 아니라 gateway-server 쪽에서 고쳐야 합니다.
 - Project의 **삭제 시 후원(주문) 여부 검증**(주문이 있으면 삭제 불가)은 아직 없습니다 — order-service 쪽에 "이 프로젝트에 주문이 있는지" 확인하는 API가 필요해서 별도 조율 중입니다. (참조하는 **리워드**가 있는지는 확인해서 함께 삭제하도록 이미 처리했습니다 — 이건 서로 다른 검증입니다.)
 - Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED/CANCELLED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
 
