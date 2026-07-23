@@ -39,6 +39,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentConfirmationServiceConcurrencyTest {
 
+    private static final String PAYMENT_KEY = "payment-key-1";
+
     @Container
     @ServiceConnection
     static final MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.4");
@@ -72,7 +74,11 @@ class PaymentConfirmationServiceConcurrencyTest {
             start.await();
 
             try {
-                paymentConfirmationService.startConfirmation(payment.getPgOrderId(), payment.getAmount());
+                paymentConfirmationService.startConfirmation(
+                    PAYMENT_KEY,
+                    payment.getPgOrderId(),
+                    payment.getAmount()
+                );
                 return true;
             } catch (RuntimeException ignored) {
                 return false;

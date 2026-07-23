@@ -54,7 +54,7 @@ public class PaymentService {
 
         /** 중복 요청 승인 방지용 */
         try {
-            target = paymentConfirmationService.startConfirmation(pgOrderId, amount);
+            target = paymentConfirmationService.startConfirmation(paymentKey, pgOrderId, amount);
         } catch (OptimisticLockingFailureException e) {
             throw new PaymentConfirmationInProgressException(pgOrderId);
         }
