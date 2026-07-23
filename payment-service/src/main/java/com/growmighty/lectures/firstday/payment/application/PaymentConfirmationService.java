@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.payment.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +28,7 @@ public class PaymentConfirmationService {
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
      */
     @Transactional
-    public PaymentConfirmationTarget startConfirmation(String pgOrderId, BigDecimal requestedAmount) {
+    public PaymentConfirmationTarget startConfirmation(String paymentKey, String pgOrderId, BigDecimal requestedAmount) {
         Payment payment = paymentRepository.findByPgOrderId(pgOrderId)
             .orElseThrow(() -> new EntityNotFoundException("준비된 결제가 없습니다. pgOrderId = " + pgOrderId));
 
@@ -43,7 +44,7 @@ public class PaymentConfirmationService {
             throw new IllegalStateException("이미 승인 처리 중인 결제입니다. 잠시 후 다시 조회해주세요. pgOrderId = " + pgOrderId);
         }
 
-        payment.startConfirming();
+        payment.startConfirming(paymentKey);
         paymentRepository.save(payment);
 
         return new PaymentConfirmationTarget(
@@ -81,8 +82,29 @@ public class PaymentConfirmationService {
         return PaymentInfo.from(paymentRepository.save(payment));
     }
 
+    @Transactional(readOnly = true)
+    public PaymentRecoveryTarget getRecoveryTarget(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if(!payment.isConfirming()) {
+            throw new IllegalStateException("CONFIRMING 상태의 결제만 복구할 수 있습니다. 현재 상태 : " + payment.getStatus());
+        }
+
+        if (payment.getPaymentKey() == null || payment.getPaymentKey().isBlank()) {
+            throw new IllegalStateException("CONFIRMING 상태의 결제에 paymentKey가 없습니다. paymentId = " + paymentId);
+        }
+
+        return new PaymentRecoveryTarget(
+            payment.getPaymentId(),
+            payment.getPaymentKey(),
+            payment.getPgOrderId(),
+            payment.getAmount()
+        );
+    }
+
     @Transactional
     public void failConfirmation(Long paymentId) {
+
         Payment payment = findPayment(paymentId);
 
         payment.fail();
