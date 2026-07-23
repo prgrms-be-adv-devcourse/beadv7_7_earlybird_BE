@@ -12,6 +12,7 @@ class PaymentTest {
 
     private static final Long ORDER_ID = 1L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
+    private static final String PAYMENT_KEY = "payment-key-1";
 
     @Test
     @DisplayName("0 이하 금액으로는 결제를 생성할 수 없다")
@@ -42,23 +43,24 @@ class PaymentTest {
     void startConfirming_transitions() {
         Payment payment = readyPayment();
 
-        payment.startConfirming();
+        payment.startConfirming(PAYMENT_KEY);
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
         assertThat(payment.isConfirming()).isTrue();
         assertThat(payment.getConfirmingAt()).isNotNull();
+        assertThat(payment.getPaymentKey()).isEqualTo(PAYMENT_KEY);
     }
 
     @Test
     @DisplayName("CONFIRMING 상태에서 승인하면 PAID로 전이되고 paymentKey가 저장된다")
     void confirm_transitions() {
         Payment payment = readyPayment();
-        payment.startConfirming();
+        payment.startConfirming(PAYMENT_KEY);
 
-        payment.confirm("payment-key-1");
+        payment.confirm(PAYMENT_KEY);
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-        assertThat(payment.getPaymentKey()).isEqualTo("payment-key-1");
+        assertThat(payment.getPaymentKey()).isEqualTo(PAYMENT_KEY);
         assertThat(payment.isPaid()).isTrue();
         assertThat(payment.getConfirmingAt()).isNull();
     }
@@ -76,10 +78,10 @@ class PaymentTest {
     @DisplayName("이미 승인된 결제를 다시 승인하면 예외가 발생한다")
     void confirm_twice_throws() {
         Payment payment = readyPayment();
-        payment.startConfirming();
-        payment.confirm("payment-key-1");
+        payment.startConfirming(PAYMENT_KEY);
+        payment.confirm(PAYMENT_KEY);
 
-        assertThatThrownBy(() -> payment.confirm("payment-key-1"))
+        assertThatThrownBy(() -> payment.confirm(PAYMENT_KEY))
             .isInstanceOf(IllegalStateException.class);
     }
 
@@ -87,7 +89,7 @@ class PaymentTest {
     @DisplayName("CONFIRMING 상태에서 실패 처리하면 FAILED로 전이된다")
     void fail_transitions() {
         Payment payment = readyPayment();
-        payment.startConfirming();
+        payment.startConfirming(PAYMENT_KEY);
 
         payment.fail();
 

@@ -27,7 +27,7 @@ public class PaymentConfirmationService {
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
      */
     @Transactional
-    public PaymentConfirmationTarget startConfirmation(String pgOrderId, BigDecimal requestedAmount) {
+    public PaymentConfirmationTarget startConfirmation(String paymentKey, String pgOrderId, BigDecimal requestedAmount) {
         Payment payment = paymentRepository.findByPgOrderId(pgOrderId)
             .orElseThrow(() -> new EntityNotFoundException("준비된 결제가 없습니다. pgOrderId = " + pgOrderId));
 
@@ -43,7 +43,7 @@ public class PaymentConfirmationService {
             throw new IllegalStateException("이미 승인 처리 중인 결제입니다. 잠시 후 다시 조회해주세요. pgOrderId = " + pgOrderId);
         }
 
-        payment.startConfirming();
+        payment.startConfirming(paymentKey);
         paymentRepository.save(payment);
 
         return new PaymentConfirmationTarget(

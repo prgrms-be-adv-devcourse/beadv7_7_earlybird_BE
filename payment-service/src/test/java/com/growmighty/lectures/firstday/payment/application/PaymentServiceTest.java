@@ -119,7 +119,7 @@ class PaymentServiceTest {
         Payment saved = paymentRepository.findByPgOrderId(prepared.pgOrderId()).orElseThrow();
 
         assertThat(saved.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
-        assertThat(saved.getPaymentKey()).isNull();
+        assertThat(saved.getPaymentKey()).isEqualTo("payment-key-1");
     }
 
     @Test
