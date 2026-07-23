@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.user.application.TokenProvider;
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
+import com.growmighty.lectures.firstday.user.presentation.dto.ChangePasswordRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.LoginRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.LoginResponse;
 import com.growmighty.lectures.firstday.user.presentation.dto.RefreshRequest;
@@ -67,5 +68,13 @@ public class UserController {
     public UserResponse registerAsCreator(@RequestHeader(JwtHeaders.USER_ID) Long userId,
                                            @Valid @RequestBody RegisterCreatorRequest request) {
         return UserResponse.from(userService.registerAsCreator(request.toCommand(userId)));
+    }
+
+    /** 비밀번호 변경. userId 는 gateway 가 검증한 JWT 에서 추출해 X-User-Id 헤더로 전달한다. */
+    @PatchMapping("/me/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@RequestHeader(JwtHeaders.USER_ID) Long userId,
+                                @Valid @RequestBody ChangePasswordRequest request) {
+        userService.changePassword(request.toCommand(userId));
     }
 }
