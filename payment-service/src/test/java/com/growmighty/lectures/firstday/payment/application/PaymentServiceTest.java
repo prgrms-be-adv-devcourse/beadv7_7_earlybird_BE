@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
@@ -27,16 +28,19 @@ class PaymentServiceTest {
 
     private InMemoryPaymentRepository paymentRepository;
     private RecordingPaymentGateway paymentGateway;
+    private RecordingOrderStatusPort orderStatusPort;
     private PaymentService paymentService;
 
     @BeforeEach
     void setUp() {
         paymentRepository = new InMemoryPaymentRepository();
         paymentGateway = new RecordingPaymentGateway();
+        orderStatusPort = new RecordingOrderStatusPort();
         paymentService = new PaymentService(
             paymentRepository,
             paymentGateway,
-            new PaymentConfirmationService(paymentRepository)
+            new PaymentConfirmationService(paymentRepository),
+            orderStatusPort
         );
     }
 
@@ -92,6 +96,9 @@ class PaymentServiceTest {
         assertThat(paymentGateway.requestedAmount).isEqualByComparingTo(AMOUNT);
         assertThat(paymentGateway.requestedIdempotencyKey)
             .isEqualTo(saved.getApproveIdempotencyKey());
+        assertThat(orderStatusPort.callCount).isEqualTo(1);
+        assertThat(orderStatusPort.requestedOrderId).isEqualTo(ORDER_ID);
+        assertThat(orderStatusPort.requestedStatus).isEqualTo(PaymentStatus.PAID);
     }
 
     @Test
@@ -164,6 +171,19 @@ class PaymentServiceTest {
 
         @Override
         public void cancel(String paymentKey) {
+        }
+    }
+
+    private static final class RecordingOrderStatusPort implements OrderStatusPort {
+        private Long requestedOrderId;
+        private PaymentStatus requestedStatus;
+        private int callCount;
+
+        @Override
+        public void notifyStatus(Long orderId, PaymentStatus status) {
+            callCount++;
+            requestedOrderId = orderId;
+            requestedStatus = status;
         }
     }
 
