@@ -67,8 +67,10 @@ public class Project {
     private LocalDateTime startAt;
 
     // 프로젝트 기간이 일 단위라 마감도 일 단위로 끊는다 — 시간까지 받으면 배치가 "오늘 마감인 것"을
-    // 정확히 못 걸러낸다(LocalDateTime이면 시각이 자정이 아닌 값도 들어올 수 있음). endAt은 항상
-    // "이 날짜의 00:00에 마감"으로 취급한다(isOpen()/closeExpiredProjects 배치 참고).
+    // 정확히 못 걸러낸다(LocalDateTime이면 시각이 자정이 아닌 값도 들어올 수 있음). endAt 당일은
+    // "마감일까지"라는 의미대로 하루 종일 포함되고, 실제 마감은 "그 다음날 00:00"에 일어난다
+    // (isOpen()/closeExpiredProjects 배치 참고. 2026-07-22 리뷰에서 당일 00:00 마감이 "N일까지"라는
+    // 표현과 어긋난다는 지적을 받아 다음날 00:00 마감으로 결정).
     @Column(nullable = false)
     private LocalDate endAt;
 
@@ -148,7 +150,8 @@ public class Project {
      * 무관하게 마감 순간 즉시 주문이 막힌다(성공/실패 확정은 여전히 closeByDeadline 배치 몫).
      */
     public boolean isOpen() {
-        return this.status == ProjectStatus.IN_PROGRESS && LocalDateTime.now().isBefore(this.endAt.atStartOfDay());
+        return this.status == ProjectStatus.IN_PROGRESS
+                && LocalDateTime.now().isBefore(this.endAt.plusDays(1).atStartOfDay());
     }
 
     /** 공개 전: 전체 필드 수정 가능 (null인 값은 변경하지 않음) */

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>결제 승인 중</title>
+  <style>
+    body { max-width: 560px; margin: 48px auto; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #191f28; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #f2f4f6; white-space: pre-wrap; }
+    a { color: #3182f6; }
+  </style>
+</head>
+<body>
+  <h1 id="title">결제를 승인하고 있습니다.</h1>
+  <p id="description">잠시만 기다려 주세요.</p>
+  <pre id="result" hidden></pre>
+  <p><a href="/toss-test/">새 테스트 결제 시작</a></p>
+
+  <script>
+    const title = document.getElementById('title');
+    const description = document.getElementById('description');
+    const result = document.getElementById('result');
+
+    async function confirmPayment() {
+      const params = new URLSearchParams(window.location.search);
+      const paymentKey = params.get('paymentKey');
+      const pgOrderId = params.get('orderId');
+      const amount = Number(params.get('amount'));
+      const expected = JSON.parse(sessionStorage.getItem('toss-test-payment') || '{}');
+
+      if (!paymentKey || !pgOrderId || !Number.isFinite(amount)) {
+        throw new Error('토스 리다이렉트 파라미터가 올바르지 않습니다.');
+      }
+      if (expected.orderId !== pgOrderId || expected.amount !== amount) {
+        throw new Error('결제 요청 금액 또는 주문 ID가 일치하지 않습니다. 승인을 중단했습니다.');
+      }
+
+      const response = await fetch('/api/v1/payments/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentKey, pgOrderId, amount }),
+      });
+      const body = await response.text();
+      if (!response.ok) {
+        throw new Error(`승인 요청이 실패했습니다. HTTP ${response.status}\n${body}`);
+      }
+
+      title.textContent = '결제가 승인되었습니다.';
+      description.textContent = '백엔드의 토스 승인 API 호출이 성공했습니다.';
+      result.textContent = body;
+      result.hidden = false;
+    }
+
+    confirmPayment().catch((error) => {
+      title.textContent = '결제 승인에 실패했습니다.';
+      description.textContent = error.message || '알 수 없는 오류가 발생했습니다.';
+    });
+  </script>
+</body>
+</html>

@@ -3,10 +3,12 @@ package com.growmighty.lectures.firstday.payment.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,8 +57,15 @@ public class PaymentService {
             });
     }
 
-    public PaymentInfo confirm(String paymentKey, String pgOrderId) {
-        PaymentConfirmationTarget target = paymentConfirmationService.startConfirmation(pgOrderId);
+    public PaymentInfo confirm(String paymentKey, String pgOrderId, BigDecimal amount) {
+        PaymentConfirmationTarget target;
+
+        /** 중복 요청 승인 방지용 */
+        try {
+            target = paymentConfirmationService.startConfirmation(pgOrderId, amount);
+        } catch (OptimisticLockingFailureException e) {
+            throw new PaymentConfirmationInProgressException(pgOrderId);
+        }
 
         PaymentGateway.PgApproval approval = paymentGateway.approve(
             paymentKey,

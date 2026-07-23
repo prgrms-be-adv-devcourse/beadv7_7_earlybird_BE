@@ -1,7 +1,11 @@
 package com.growmighty.lectures.firstday.payment.presentation.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
-public record PayRequest(@NotBlank String paymentKey, @NotBlank String pgOrderId) {
+import java.math.BigDecimal;
+
+public record PayRequest(@NotBlank String paymentKey, @NotBlank String pgOrderId, @NotNull @Positive BigDecimal amount) {
 
 }

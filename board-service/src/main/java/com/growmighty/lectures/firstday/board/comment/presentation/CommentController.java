@@ -17,7 +17,7 @@ public class CommentController {
     @PostMapping("/projects/{projectId}/comments")
     public CommentResponse register(@PathVariable Long projectId, @RequestBody CommentRequest request) {
         return CommentResponse.from(
-            commentService.register(projectId, request.userId(), request.parentId(), request.content()));
+            commentService.register(projectId, request.userId(), request.content()));
     }
 
     @GetMapping("/projects/{projectId}/comments")

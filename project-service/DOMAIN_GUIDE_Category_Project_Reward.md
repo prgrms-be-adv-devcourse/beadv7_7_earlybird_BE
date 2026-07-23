@@ -204,21 +204,19 @@ public void decreaseStock(...) { ... }
 | 수량 **줄이기** | 불가 | 가능 (부득이한 경우만, 이미 판매된 수량 밑으로는 불가) |
 | 비활성화("삭제") | 불가 | 가능 |
 
-이건 `ProjectAdminController`가 이미 쓰고 있는 것과 같은 방식으로 구현했습니다 — 아직 인증 시스템이 없어서 "진짜 관리자인지" 검증은 못 하고, 지금은 **엔드포인트를 `/admin/...` 경로로 분리해서 의도만 명확히 해둔** 상태입니다. 나중에 인증이 들어오면 그 경로에 실제 role 체크를 추가하는 식으로 완성됩니다. 종료된(`SUCCEEDED`/`FAILED`/`CANCELLED`) 프로젝트의 리워드는 크리에이터·관리자 둘 다 아무것도 못 건드립니다 — 더 이상 주문이 안 들어오는 캠페인을 계속 손볼 이유가 없기 때문입니다.
+역할 검증은 `RequestHeader(JwtHeaders.USER_ROLE)`로 받은 값을 컨트롤러에서 직접 확인합니다(board-service `ProjectNotice.validateOwnership`과 동일한 관례) — Spring Security의 URL 기반 라우팅이 아니라 코드로 검증하는 이유는 **URL에 role을 드러내지 않기 위해서**입니다. 그래서 `/admin/...`처럼 role이 URL에 노출되는 경로는 쓰지 않고, 크리에이터용/관리자용 엔드포인트를 전부 같은 리소스 경로(`/api/v1/rewards/...`) 아래 둡니다. 종료된(`SUCCEEDED`/`FAILED`/`CANCELLED`) 프로젝트의 리워드는 크리에이터·관리자 둘 다 아무것도 못 건드립니다 — 더 이상 주문이 안 들어오는 캠페인을 계속 손볼 이유가 없기 때문입니다.
 
 **공개 API 목록**
 
 ```
-크리에이터용 (RewardController, /api/v1/rewards)
-  POST   /api/v1/projects/{projectId}/rewards   ← 리워드 등록
-  GET    /api/v1/projects/{projectId}/rewards   ← 목록
-  GET    /api/v1/rewards/{rewardId}             ← 상세
-  PATCH  /api/v1/rewards/{rewardId}             ← 공개 전: 자유 수정 / 공개 후: 수량 추가만
-  DELETE /api/v1/rewards/{rewardId}             ← 공개 전: 하드 삭제 / 공개 후: 거부(관리자 전용 API 이용 안내)
-
-관리자용 (RewardAdminController, /api/v1/admin/rewards)
-  PATCH  /api/v1/admin/rewards/{rewardId}/quantity   ← 공개 중 리워드 수량 축소
-  DELETE /api/v1/admin/rewards/{rewardId}             ← 공개 중 리워드 비활성화
+크리에이터용/관리자용 (RewardController, /api/v1/rewards — role별 구분은 URL이 아니라 코드에서)
+  POST   /api/v1/projects/{projectId}/rewards      ← 리워드 등록(크리에이터)
+  GET    /api/v1/projects/{projectId}/rewards      ← 목록
+  GET    /api/v1/rewards/{rewardId}                ← 상세
+  PATCH  /api/v1/rewards/{rewardId}                ← 공개 전: 자유 수정 / 공개 후: 수량 추가만 (크리에이터)
+  DELETE /api/v1/rewards/{rewardId}                ← 공개 전: 하드 삭제(크리에이터) / 공개 후: 거부(관리자 전용 API 이용 안내)
+  PATCH  /api/v1/rewards/{rewardId}/quantity        ← 공개 중 리워드 수량 축소 (관리자 전용)
+  POST   /api/v1/rewards/{rewardId}/deactivate      ← 공개 중 리워드 비활성화 (관리자 전용, delete()와 별개 동작 — 레코드 보존)
 
 내부 API   (서비스끼리만 호출, 게이트웨이 라우팅 자체가 없음)
   POST /internal/rewards/{rewardId}/decrease-stock   ← order-service가 호출
@@ -277,7 +275,8 @@ graph TD
 ## 6. 지금 시점에서 알려진 한계
 
 이 문서는 "어떻게 만들었는지" 설명이 목적이라 자세한 목록은 생략하지만, 요약하면:
-- **인증(로그인) 시스템 자체가 아직 없어서**, "이게 진짜 그 프로젝트의 창작자가 요청한 게 맞는지" 같은 소유권 검증이 곳곳에 빠져 있습니다. 관리자 전용 API(`ProjectAdminController`, `RewardAdminController`)도 지금은 URL만 분리해뒀을 뿐, 실제로 "이 사람이 관리자인가"를 검증하지는 않습니다.
+- **Project/Reward 소유권 검증, 관리자 전용 API의 ADMIN role 검증 전부 완료** (2026-07-22, `강대혁/project/auth`) — `creatorId`는 body가 아니라 게이트웨이가 JWT 검증 후 채워주는 `X-User-Id` 헤더(`JwtHeaders.USER_ID`)에서 받고, `ProjectServiceImpl.update()`/`delete()`는 `project.getCreatorId()`가 요청자와 일치하는지 확인해 다르면 거부합니다. `POST /api/v1/projects`(등록)는 `@RequestHeader(JwtHeaders.USER_ROLE)`을 받아 `BACKER`는 거부하고 `CREATOR`/`ADMIN`만 허용합니다(`users/me/creator`로 전환하지 않은 일반 후원자는 프로젝트를 만들 수 없다는 뜻). **Reward는 자기 creatorId가 없어서, `RewardServiceImpl.register()`/`update()`/`delete()`가 부모 프로젝트(`ProjectRepository.findByIdForStatusCheck()`로 조회)의 `creatorId`를 대신 검증합니다** — 원래는 로그인만 하면 아무나 남의 프로젝트에 리워드를 등록/수정/삭제할 수 있던 빈틈이었습니다. 관리자 전용 엔드포인트(승인/반려/마감연장/조기종료/마감배치 트리거는 `ProjectController`, 수량축소/비활성화는 `RewardController`에 함께 있음)도 ADMIN이 아니면 거부합니다(전부 `IllegalArgumentException`, 400 — board-service `ProjectNotice.validateOwnership`과 동일한 관례). 게이트웨이가 인증(로그인 여부)까지만 확인해주고 role/소유권 같은 인가는 각 서비스 책임이라는 원칙을 따른 것이고, 같은 이유로 URL에도 `/admin/...`처럼 role을 노출하지 않습니다 — 예전엔 `ProjectAdminController`/`RewardAdminController`로 컨트롤러 자체를 분리하고 `/admin/...` 경로를 썼는데, 이는 board-service 등 다른 서비스에 없는 project-service만의 예외였고 URL에 role을 넣지 않는다는 팀 원칙과도 어긋나 있었습니다. 그래서 같은 리소스를 다루는 엔드포인트는 하나의 컨트롤러/경로로 합치고(`GET /projects`, `DELETE /rewards/{id}`), role별로 다른 동작을 하는 나머지(승인/반려/마감연장/조기종료/마감배치/수량축소/비활성화)는 `/admin` 없이 일반 리소스 경로 밑으로 옮겼습니다.
+- 다만 **게이트웨이의 `permitAll` 목록이 아직 좁아서 공개 조회 API까지 로그인을 요구하는 이슈가 남아있습니다** — 이건 project-service가 아니라 gateway-server 쪽에서 고쳐야 하는 별개 사안입니다.
 - Project의 **삭제 시 후원(주문) 여부 검증**(주문이 있으면 삭제 불가)은 아직 없습니다 — order-service 쪽에 "이 프로젝트에 주문이 있는지" 확인하는 API가 필요해서 별도 조율 중입니다. (참조하는 **리워드**가 있는지는 확인해서 함께 삭제하도록 이미 처리했습니다 — 이건 서로 다른 검증입니다.)
 - Project의 **마감 감지 배치**(`endAt` 도달 시 이벤트 발행), **SUCCEEDED/FAILED 상태 전이**(현재 `approve()`/`reject()`만 존재)는 아직 없습니다 — Settlement 도메인의 판정 로직/계약이 먼저 정해져야 합니다.
 - **CANCELLED(프로젝트 자진 취소) — 구현 완료** (2026-07-22, `강대혁/project/cancel`) — `Project.cancel()`: 진행중(`IN_PROGRESS`) 또는 이미 목표 달성(`SUCCEEDED`)한 상태에서만 가능(이미 `FAILED`거나 이미 `CANCELLED`는 취소 대상 아님 — 실패는 이미 자동 환불 파이프라인을 타므로 취소가 의미 없음). `POST /api/v1/projects/{projectId}/cancel` — 본인(창작자) 또는 관리자만 호출 가능(board-service `ProjectNotice.validateOwnership`과 동일하게 "ADMIN이면 통과, 아니면 본인 확인"). 취소되면 다른 종료 케이스(`closeByDeadline`/`closeEarlyAsSucceeded`)와 마찬가지로 리워드도 함께 비활성화됨. 성공(SUCCEEDED) 후 취소를 허용하는 이유는 "목표는 달성했지만 창작자가 배송 등을 감당 못 하게 된" 경우를 위함 — Payment가 `GET /internal/v1/projects?status=CANCELLED`로 FAILED와 동일하게 환불 대상으로 조회해간다(§9 내부 API 참고).

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>토스페이먼츠 로컬 테스트</title>
+  <script src="https://js.tosspayments.com/v2/standard"></script>
+  <style>
+    body { max-width: 560px; margin: 48px auto; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #191f28; }
+    h1 { margin-bottom: 8px; }
+    p { color: #4e5968; line-height: 1.5; }
+    form { display: grid; gap: 16px; margin-top: 28px; }
+    label { display: grid; gap: 6px; font-weight: 600; }
+    input { padding: 12px; border: 1px solid #d1d6db; border-radius: 8px; font: inherit; }
+    button { padding: 14px; border: 0; border-radius: 8px; background: #3182f6; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+    .notice { padding: 12px; border-radius: 8px; background: #f2f4f6; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>토스페이먼츠 로컬 테스트</h1>
+  <p>테스트 클라이언트 키를 입력하고 결제창을 엽니다. 시크릿 키는 이 페이지에 입력하거나 노출하면 안 됩니다.</p>
+  <p class="notice">이 페이지는 로컬 테스트 전용입니다. 결제 준비 및 승인은 같은 payment-service에 직접 요청합니다.</p>
+
+  <form id="payment-form">
+    <label>
+      테스트 클라이언트 키
+      <input id="client-key" required placeholder="test_ck_..." autocomplete="off">
+    </label>
+    <label>
+      내부 주문 ID
+      <input id="internal-order-id" required type="number" min="1" value="1">
+    </label>
+    <label>
+      토스 주문번호
+      <input id="pg-order-id" required minlength="6">
+    </label>
+    <label>
+      사용자 ID
+      <input id="user-id" required type="number" min="1" value="1">
+    </label>
+    <label>
+      결제 금액 (원)
+      <input id="amount" required type="number" min="100" step="1" value="1000">
+    </label>
+    <button type="submit">테스트 결제창 열기</button>
+  </form>
+
+  <script>
+    const form = document.getElementById('payment-form');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const clientKey = document.getElementById('client-key').value.trim();
+      const internalOrderId = Number(document.getElementById('internal-order-id').value);
+      const orderId = document.getElementById('pg-order-id').value.trim();
+      const userId = Number(document.getElementById('user-id').value);
+      const amount = Number(document.getElementById('amount').value);
+      const button = form.querySelector('button');
+
+      button.disabled = true;
+      try {
+        const prepareResponse = await fetch('/internal/v1/payments/prepare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: internalOrderId, userId, pgOrderId: orderId, amount }),
+        });
+
+        if (!prepareResponse.ok) {
+          throw new Error(`결제 준비에 실패했습니다. HTTP ${prepareResponse.status}`);
+        }
+
+        sessionStorage.setItem('toss-test-payment', JSON.stringify({ orderId, amount }));
+
+        const payment = TossPayments(clientKey).payment({ customerKey: `local-user-${userId}` });
+        await payment.requestPayment({
+          method: 'CARD',
+          amount: { currency: 'KRW', value: amount },
+          orderId,
+          orderName: 'Earlybird 로컬 테스트 결제',
+          successUrl: `${window.location.origin}/toss-test/success.html`,
+          failUrl: `${window.location.origin}/toss-test/fail.html`,
+        });
+      } catch (error) {
+        alert(error.message || '결제 요청을 시작하지 못했습니다.');
+        button.disabled = false;
+      }
+    });
+  </script>
+  <script>
+    document.getElementById('pg-order-id').value = `order-local-${Date.now()}`;
+  </script>
+</body>
+</html>

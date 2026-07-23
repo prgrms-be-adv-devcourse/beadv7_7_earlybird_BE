@@ -17,7 +17,7 @@ public class ReviewController {
     @PostMapping("/projects/{projectId}/reviews")
     public ReviewResponse register(@PathVariable Long projectId, @RequestBody ReviewRequest request) {
         return ReviewResponse.from(
-            reviewService.register(projectId, request.userId(), request.rating(), request.content()));
+            reviewService.register(projectId, request.orderId(), request.authorId(), request.rating(), request.content()));
     }
 
     @GetMapping("/projects/{projectId}/reviews")

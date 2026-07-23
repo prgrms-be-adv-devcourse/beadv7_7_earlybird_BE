@@ -13,24 +13,32 @@ import java.util.List;
 
 public interface ProjectService {
 
-    ProjectResponse create(ProjectCreateRequest request);
+    ProjectResponse create(Long creatorId, ProjectCreateRequest request);
 
-    List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort);
+    /** requesterRole이 ADMIN이면 PENDING_REVIEW/REJECTED도 결과에 포함한다. */
+    List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole);
 
     ProjectResponse findById(Long projectId);
 
-    ProjectResponse update(Long projectId, ProjectUpdateRequest request);
+    /** requesterId가 본인이 등록한 프로젝트가 아니면 거부한다. */
+    ProjectResponse update(Long projectId, Long requesterId, ProjectUpdateRequest request);
 
-    void delete(Long projectId);
+    /** requesterId가 본인이 등록한 프로젝트가 아니면 거부한다. */
+    void delete(Long projectId, Long requesterId);
 
     /** 창작자(본인) 또는 관리자: 진행중이거나 이미 성공한 프로젝트를 자진 취소한다. */
     ProjectResponse cancel(Long projectId, Long requesterId, UserRole requesterRole);
 
     List<ProjectResponse> findByCreator(Long creatorId);
 
-    // ── 관리자 ──────────────────────────────────────────────
+    /**
+     * 서비스 간 내부 API(ProjectInternalController) 전용 — role 개념이 없는 호출자(Settlement/Payment)를
+     * 위해 findAll()과 별개로 남겨둔다. findAll()의 role 기반 가시성 분기와 섞으면 내부 호출자에게
+     * 억지로 role을 부여해야 해서 오히려 부자연스럽다.
+     */
     List<ProjectResponse> findByStatus(ProjectStatus status);
 
+    // ── 관리자 ──────────────────────────────────────────────
     ProjectResponse approve(Long projectId);
 
     ProjectResponse reject(Long projectId, ProjectRejectRequest request);

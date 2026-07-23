@@ -46,15 +46,15 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public ProjectResponse create(ProjectCreateRequest request) {
+    public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
         validateCategoryExists(request.categoryId());
-        Project project = projectRepository.save(request.toEntity());
+        Project project = projectRepository.save(request.toEntity(creatorId));
         return ProjectResponse.from(project);
     }
 
     @Override
-    public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort) {
-        Specification<Project> specification = buildSpecification(keyword, categoryId, status);
+    public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole) {
+        Specification<Project> specification = buildSpecification(keyword, categoryId, status, requesterRole);
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
@@ -75,10 +75,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
-    //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
-    public ProjectResponse update(Long projectId, ProjectUpdateRequest request) {
+    public ProjectResponse update(Long projectId, Long requesterId, ProjectUpdateRequest request) {
         Project project = getProject(projectId);
+        validateOwnership(project, requesterId);
         if (project.isPublished()) {
             if (request.hasPublishOnlyRestrictedField()) {
                 throw new IllegalArgumentException(
@@ -97,11 +96,10 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public void delete(Long projectId) {
+    public void delete(Long projectId, Long requesterId) {
         // TODO(팀): 후원 발생 여부 검증 — 현재는 항상 삭제 가능하다고 가정한다.
-        // TODO(팀): 인증 도입만으로는 해결 안 됨 — 로그인한 사용자 id를 파라미터로 받아
-        //           project.getCreatorId()와 일치하는지 검증하는 로직을 별도로 추가해야 한다.
         Project project = getProject(projectId);
+        validateOwnership(project, requesterId);
         rewardRepository.deleteByProjectId(projectId);
         projectRepository.delete(project);
     }
@@ -201,7 +199,7 @@ public class ProjectServiceImpl implements ProjectService {
      */
     @Override
     public void closeExpiredProjects() {
-        List<Project> expired = projectRepository.findByStatusAndEndAtLessThanEqual(ProjectStatus.IN_PROGRESS, LocalDate.now());
+        List<Project> expired = projectRepository.findByStatusAndEndAtLessThan(ProjectStatus.IN_PROGRESS, LocalDate.now());
         ProjectService self = selfProvider.getObject();
         for (Project project : expired) {
             try {
@@ -255,20 +253,31 @@ public class ProjectServiceImpl implements ProjectService {
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
     }
 
+    /** board-service ProjectNotice.validateOwnership과 동일한 관례 — 소유자 불일치는 IllegalArgumentException(400). */
+    private void validateOwnership(Project project, Long requesterId) {
+        if (!project.getCreatorId().equals(requesterId)) {
+            throw new IllegalArgumentException(
+                "본인이 등록한 프로젝트만 수정/삭제할 수 있습니다. projectId=" + project.getProjectId());
+        }
+    }
+
     private void validateCategoryExists(Long categoryId) {
         if (!projectCategoryRepository.existsById(categoryId)) {
             throw new EntityNotFoundException("존재하지 않는 카테고리입니다. categoryId=" + categoryId);
         }
     }
 
-    private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status) {
+    private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다 (status 파라미터로 요청해도 결과 없음).
+            // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
+            // ADMIN은 심사 대기/반려 프로젝트도 봐야 하므로 이 제외를 적용하지 않는다.
             // 창작자 본인의 심사 대기/반려 프로젝트는 findByCreator(/me)로 확인한다.
-            predicates.add(cb.and(
-                    cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
-                    cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
+            if (requesterRole != UserRole.ADMIN) {
+                predicates.add(cb.and(
+                        cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
+                        cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
+            }
             if (keyword != null && !keyword.isBlank()) {
                 String pattern = "%" + keyword + "%";
                 predicates.add(cb.or(

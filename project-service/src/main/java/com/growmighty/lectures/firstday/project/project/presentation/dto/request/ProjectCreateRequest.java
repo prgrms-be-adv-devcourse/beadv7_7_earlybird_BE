@@ -9,7 +9,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public record ProjectCreateRequest(
-        @NotNull Long creatorId,
         Long thumbnailId,
         @NotBlank String title,
         @NotNull Long categoryId,
@@ -19,7 +18,8 @@ public record ProjectCreateRequest(
         @NotNull LocalDateTime startAt,
         @NotNull LocalDate endAt
 ) {
-    public Project toEntity() {
+    /** creatorId는 body가 아니라 게이트웨이가 JWT에서 채워주는 X-User-Id 헤더에서 받는다. */
+    public Project toEntity(Long creatorId) {
         return Project.register(creatorId, thumbnailId, title, categoryId, summary, description,
                 goalAmount, startAt, endAt);
     }
