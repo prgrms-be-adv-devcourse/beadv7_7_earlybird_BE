@@ -28,7 +28,7 @@ class InternalOrderControllerTest {
     void hasOrderedReward_true() throws Exception {
         when(orderApiService.hasOrderedReward(100L)).thenReturn(true);
 
-        mockMvc.perform(get("/internal/orders/100/ordered-existence"))
+        mockMvc.perform(get("/internal/v1/orders/100/ordered-existence"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value(true))
@@ -43,7 +43,7 @@ class InternalOrderControllerTest {
     void hasOrderedReward_false() throws Exception {
         when(orderApiService.hasOrderedReward(200L)).thenReturn(false);
 
-        mockMvc.perform(get("/internal/orders/200/ordered-existence"))
+        mockMvc.perform(get("/internal/v1/orders/200/ordered-existence"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value(false))
