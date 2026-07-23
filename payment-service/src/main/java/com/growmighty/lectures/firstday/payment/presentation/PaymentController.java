@@ -16,7 +16,7 @@ public class PaymentController {
     /** 결제 승인.*/
     @PostMapping("/confirm")
     public PaymentResponse confirm(@Valid @RequestBody PayRequest request) {
-        return PaymentResponse.from(paymentService.confirm(request.paymentKey(), request.pgOrderId()));
+        return PaymentResponse.from(paymentService.confirm(request.paymentKey(), request.pgOrderId(), request.amount()));
     }
 
     @GetMapping("/{paymentId}")

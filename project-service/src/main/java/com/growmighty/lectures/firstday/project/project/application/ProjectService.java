@@ -28,6 +28,13 @@ public interface ProjectService {
 
     List<ProjectResponse> findByCreator(Long creatorId);
 
+    /**
+     * 서비스 간 내부 API(ProjectInternalController) 전용 — role 개념이 없는 호출자(Settlement/Payment)를
+     * 위해 findAll()과 별개로 남겨둔다. findAll()의 role 기반 가시성 분기와 섞으면 내부 호출자에게
+     * 억지로 role을 부여해야 해서 오히려 부자연스럽다.
+     */
+    List<ProjectResponse> findByStatus(ProjectStatus status);
+
     // ── 관리자 ──────────────────────────────────────────────
     ProjectResponse approve(Long projectId);
 

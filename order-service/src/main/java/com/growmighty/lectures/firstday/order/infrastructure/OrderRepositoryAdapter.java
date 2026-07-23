@@ -30,6 +30,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
+    public boolean existsByProjectId(Long projectId) {
+        return jpaRepository.existsByProjectId(projectId);
+    }
+
+    @Override
     public List<Order> findAll() {
         return jpaRepository.findAll();
     }

@@ -89,10 +89,19 @@ class ProjectTest {
     }
 
     @Test
-    @DisplayName("마감일이 오늘이거나 지났으면 진행중이어도 주문을 받을 수 없다")
-    void isOpen_deadlinePassed_false() {
+    @DisplayName("마감일 당일은 하루 종일 포함되어 진행중이면 주문을 받을 수 있다 (2026-07-22 결정)")
+    void isOpen_deadlineIsToday_true() {
         Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now().minusDays(1), LocalDate.now());
+        project.approve();
+        assertThat(project.isOpen()).isTrue();
+    }
+
+    @Test
+    @DisplayName("마감일이 어제 이전으로 지났으면 진행중이어도 주문을 받을 수 없다")
+    void isOpen_deadlinePassed_false() {
+        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now().minusDays(2), LocalDate.now().minusDays(1));
         project.approve();
         assertThat(project.isOpen()).isFalse();
     }

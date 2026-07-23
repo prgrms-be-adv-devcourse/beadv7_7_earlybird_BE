@@ -67,4 +67,22 @@ class OrderRepositoryTests {
         assertThat(foundItem.getName()).isEqualTo("원목 4인용 식탁");
         assertThat(foundItem.getPrice().getValue()).isEqualByComparingTo(BigDecimal.valueOf(179000));
     }
+
+    @Test
+    @DisplayName("projectId exists query returns whether at least one matching order item exists")
+    void existsByProjectId() {
+        Long existingProjectId = 100L;
+        Long otherProjectId = 200L;
+
+        List<OrderItem> items = new ArrayList<>();
+        items.add(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), existingProjectId, 10L, 1));
+        Order order = Order.create(1L, items, "Receiver", "010-0000-0000", "Seoul", "06236");
+
+        orderRepository.save(order);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(orderRepository.existsByProjectId(existingProjectId)).isTrue();
+        assertThat(orderRepository.existsByProjectId(otherProjectId)).isFalse();
+    }
 }

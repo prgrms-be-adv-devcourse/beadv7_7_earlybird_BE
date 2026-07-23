@@ -79,10 +79,10 @@ class OrderControllerTest {
     @Test
     @DisplayName("존재하지 않는 주문 조회는 404와 ENTITY_NOT_FOUND 코드를 반환한다")
     void inspectOrder_notFound_404() throws Exception {
-        when(orderApiService.inspectOrder(999L))
+        when(orderApiService.getOrderInfo(999L))
                 .thenThrow(new EntityNotFoundException("존재하지 않는 주문입니다. orderId=999"));
 
-        mockMvc.perform(get("/orders/999/inspect"))
+        mockMvc.perform(get("/orders/999"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("C003"))
