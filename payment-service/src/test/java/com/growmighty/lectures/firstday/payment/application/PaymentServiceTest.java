@@ -225,12 +225,13 @@ class PaymentServiceTest {
         }
 
         @Override
-        public List<Payment> findConfirmingBefore(LocalDateTime cutoff, int limit) {
+        public List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit) {
             return paymentsById.values().stream()
                 .filter(Payment::isConfirming)
                 .filter(payment -> payment.getConfirmingAt().isBefore(cutoff))
                 .sorted(Comparator.comparing(Payment::getConfirmingAt))
                 .limit(limit)
+                .map(Payment::getPaymentId)
                 .toList();
         }
 

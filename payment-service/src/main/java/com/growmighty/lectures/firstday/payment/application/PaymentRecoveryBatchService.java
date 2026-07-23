@@ -2,7 +2,6 @@ package com.growmighty.lectures.firstday.payment.application;
 
 
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
-import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +22,7 @@ public class PaymentRecoveryBatchService {
         LocalDateTime cutoff = LocalDateTime.now()
             .minus(paymentRecoveryProperties.confirmationTimeOut());
 
-        List<Payment> payments = paymentRepository.findConfirmingBefore(
+        List<Long> paymentIds = paymentRepository.findConfirmingPaymentIdsBefore(
             cutoff,
             paymentRecoveryProperties.batchSize()
         );
@@ -33,11 +32,11 @@ public class PaymentRecoveryBatchService {
          * 지금은 최대 100건만 처리하고, 3분 주기로 실행할 예정이므로 순차처리가 적합하다고 판단했음
          * 나중에 적체현상이 보이면 그때 서비스로 동시 최대 N건으로 병렬처리로 확장 예정
          */
-        for (Payment payment : payments) {
+        for (Long paymentId : paymentIds) {
             try {
-                paymentRecoveryService.recover(payment.getPaymentId());
+                paymentRecoveryService.recover(paymentId);
             } catch (RuntimeException e) {
-                log.warn("결제 승인 상태 복구에 실패 했습니다. paymentId={}", payment.getPaymentId(), e);
+                log.warn("결제 승인 상태 복구에 실패했습니다. paymentId={}", paymentId, e);
             }
         }
     }

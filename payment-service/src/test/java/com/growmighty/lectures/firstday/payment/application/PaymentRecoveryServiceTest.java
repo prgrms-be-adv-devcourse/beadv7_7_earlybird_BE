@@ -9,9 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentRecoveryServiceTest {
@@ -90,7 +88,7 @@ class PaymentRecoveryServiceTest {
     }
 
     private PaymentRecoveryTarget recoveryTarget() {
-        return new PaymentRecoveryTarget(PAYMENT_ID, PAYMENT_KEY, PG_ORDER_ID, AMOUNT);
+        return new PaymentRecoveryTarget(PAYMENT_ID, PAYMENT_KEY);
     }
 
     private PaymentGateway.PgPayment pgPayment(PaymentGateway.PgPaymentStatus status) {

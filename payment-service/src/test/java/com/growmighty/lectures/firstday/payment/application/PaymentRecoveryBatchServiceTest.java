@@ -1,7 +1,6 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
-import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,12 +27,6 @@ class PaymentRecoveryBatchServiceTest {
     @Mock
     private PaymentRecoveryService paymentRecoveryService;
 
-    @Mock
-    private Payment firstPayment;
-
-    @Mock
-    private Payment secondPayment;
-
     private PaymentRecoveryBatchService paymentRecoveryBatchService;
 
     @BeforeEach
@@ -52,24 +45,20 @@ class PaymentRecoveryBatchServiceTest {
 
     @Test
     void 타임아웃된_CONFIRMING_결제를_배치_크기만큼_조회해_복구한다() {
-        when(firstPayment.getPaymentId()).thenReturn(1L);
-        when(secondPayment.getPaymentId()).thenReturn(2L);
-        when(paymentRepository.findConfirmingBefore(any(LocalDateTime.class), eq(BATCH_SIZE)))
-            .thenReturn(List.of(firstPayment, secondPayment));
+        when(paymentRepository.findConfirmingPaymentIdsBefore(any(LocalDateTime.class), eq(BATCH_SIZE)))
+            .thenReturn(List.of(1L, 2L));
 
         paymentRecoveryBatchService.recoverTimedOutPayments();
 
-        verify(paymentRepository).findConfirmingBefore(any(LocalDateTime.class), eq(BATCH_SIZE));
+        verify(paymentRepository).findConfirmingPaymentIdsBefore(any(LocalDateTime.class), eq(BATCH_SIZE));
         verify(paymentRecoveryService).recover(1L);
         verify(paymentRecoveryService).recover(2L);
     }
 
     @Test
     void 한_결제의_복구에_실패해도_다음_결제를_계속_복구한다() {
-        when(firstPayment.getPaymentId()).thenReturn(1L);
-        when(secondPayment.getPaymentId()).thenReturn(2L);
-        when(paymentRepository.findConfirmingBefore(any(LocalDateTime.class), eq(BATCH_SIZE)))
-            .thenReturn(List.of(firstPayment, secondPayment));
+        when(paymentRepository.findConfirmingPaymentIdsBefore(any(LocalDateTime.class), eq(BATCH_SIZE)))
+            .thenReturn(List.of(1L, 2L));
         doThrow(new IllegalStateException("Toss 조회 실패"))
             .when(paymentRecoveryService).recover(1L);
 

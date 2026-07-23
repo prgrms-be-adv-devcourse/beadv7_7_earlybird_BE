@@ -37,8 +37,8 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
     }
 
     @Override
-    public List<Payment> findConfirmingBefore(LocalDateTime cutoff, int limit) {
-        return jpaRepository.findByStatusAndConfirmingAtBeforeOrderByConfirmingAtAsc(
+    public List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit) {
+        return jpaRepository.findIdsByStatusAndConfirmingAtBeforeOrderByConfirmingAtAsc(
             PaymentStatus.CONFIRMING,
             cutoff,
             PageRequest.of(0, limit)
