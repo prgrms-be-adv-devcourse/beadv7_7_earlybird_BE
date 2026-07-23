@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.project.project.application;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -46,6 +47,8 @@ public class ProjectServiceImpl implements ProjectService {
     // 순환 빈 의존을 ObjectProvider로 지연 조회해 끊는다 — 생성자 주입 그대로면 Spring이 컨테이너
     // 기동 시점에 서로를 먼저 완성해야 해서 순환 참조 예외가 난다.
     private final ObjectProvider<RewardService> rewardServiceProvider;
+
+    private final OrderPort orderPort;
 
     @Override
     @Transactional
@@ -100,13 +103,14 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @Transactional
     public void delete(Long projectId, Long requesterId) {
-        // TODO(팀): 후원 발생 여부 검증 — 현재는 항상 삭제 가능하다고 가정한다.
         Project project = getProject(projectId);
         validateOwnership(project, requesterId);
+        if (orderPort.hasOrderedReward(projectId)) {
+            throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
+        }
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
     }
-
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional

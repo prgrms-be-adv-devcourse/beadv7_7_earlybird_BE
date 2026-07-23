@@ -41,7 +41,7 @@ import static org.mockito.Mockito.when;
 class RewardServiceImplRetryTest {
 
     private static final ProjectStatusView PUBLISHED_OPEN_VIEW =
-            new ProjectStatusView(true, false, true, "IN_PROGRESS");
+            new ProjectStatusView(true, false, true, "IN_PROGRESS", 1L);
 
     @Configuration
     @EnableRetry(order = Ordered.LOWEST_PRECEDENCE - 1)

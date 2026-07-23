@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
@@ -77,9 +78,15 @@ class ProjectServiceImplRetryTest {
         }
 
         @Bean
+        OrderPort orderPort() {
+            return mock(OrderPort.class);
+        }
+
+        @Bean
         ProjectService projectService(ProjectRepository projectRepository, ProjectCategoryRepository projectCategoryRepository,
-                                       ObjectProvider<ProjectService> selfProvider, ObjectProvider<RewardService> rewardServiceProvider) {
-            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider);
+                                       ObjectProvider<ProjectService> selfProvider, ObjectProvider<RewardService> rewardServiceProvider,
+                                       OrderPort orderPort) {
+            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort);
         }
     }
 
