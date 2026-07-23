@@ -66,7 +66,6 @@ class SettlementPersistenceTest {
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 SettlementBreakdown.of(
                         Money.wons(100_000),
                         Money.wons(4_000),
@@ -298,7 +297,6 @@ class SettlementPersistenceTest {
         ProjectSettlement first = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 breakdown,
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 0)
@@ -306,7 +304,6 @@ class SettlementPersistenceTest {
         ProjectSettlement duplicate = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 breakdown,
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 1)

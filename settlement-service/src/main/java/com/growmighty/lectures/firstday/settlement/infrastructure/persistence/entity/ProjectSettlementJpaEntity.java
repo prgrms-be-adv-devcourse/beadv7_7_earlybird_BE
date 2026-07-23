@@ -29,9 +29,6 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
     @Column(name = "creator_id", nullable = false, updatable = false)
     private Long creatorId;
 
-    @Column(name = "calculation_policy_version", nullable = false, updatable = false, length = 100)
-    private String calculationPolicyVersion;
-
     @Embedded
     private SettlementBreakdownJpaEmbeddable breakdown;
 
@@ -47,7 +44,6 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
     private ProjectSettlementJpaEntity(ProjectSettlement settlement) {
         this.projectId = settlement.projectId();
         this.creatorId = settlement.creatorId();
-        this.calculationPolicyVersion = settlement.calculationPolicyVersion();
         this.breakdown = SettlementBreakdownJpaEmbeddable.fromDomain(settlement.breakdown());
         this.destinationSnapshot = PayoutDestinationSnapshotJpaEmbeddable.fromDomain(
                 settlement.destinationSnapshot()
@@ -67,7 +63,6 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
                 id,
                 projectId,
                 creatorId,
-                calculationPolicyVersion,
                 breakdown.toDomain(),
                 destinationSnapshot.toDomain(),
                 confirmedAt
