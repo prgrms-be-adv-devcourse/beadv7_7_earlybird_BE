@@ -12,9 +12,8 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
-import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
-import com.growmighty.lectures.firstday.project.reward.domain.Reward;
-import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
+import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -39,10 +39,13 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
-    private final RewardRepository rewardRepository;
     // closeExpiredProjects()가 같은 빈의 @Retryable 메서드를 self-invocation으로 부르면 프록시를
     // 안 거쳐서 재시도가 아예 발동 안 한다 — ObjectProvider로 프록시 인스턴스를 지연 조회해 우회한다.
     private final ObjectProvider<ProjectService> selfProvider;
+    // RewardService가 반대로 ProjectService(ObjectProvider<ProjectService>)를 필요로 해서 생기는
+    // 순환 빈 의존을 ObjectProvider로 지연 조회해 끊는다 — 생성자 주입 그대로면 Spring이 컨테이너
+    // 기동 시점에 서로를 먼저 완성해야 해서 순환 참조 예외가 난다.
+    private final ObjectProvider<RewardService> rewardServiceProvider;
 
     @Override
     @Transactional
@@ -100,7 +103,7 @@ public class ProjectServiceImpl implements ProjectService {
         // TODO(팀): 후원 발생 여부 검증 — 현재는 항상 삭제 가능하다고 가정한다.
         Project project = getProject(projectId);
         validateOwnership(project, requesterId);
-        rewardRepository.deleteByProjectId(projectId);
+        rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
     }
 
@@ -235,7 +238,15 @@ public class ProjectServiceImpl implements ProjectService {
      * 막아주지만, 조회 응답은 그대로 거짓 정보를 준다).
      */
     private void deactivateRewards(Long projectId) {
-        rewardRepository.findByProjectId(projectId).forEach(Reward::deactivate);
+        rewardServiceProvider.getObject().deactivateAllByProject(projectId);
+    }
+
+    @Override
+    public Optional<ProjectStatusView> findStatusView(Long projectId) {
+        return projectRepository.findByIdForStatusCheck(projectId)
+                .map(project -> new ProjectStatusView(
+                        project.isPublished(), project.isClosed(), project.isOpen(), project.getStatus().name(),
+                        project.getCreatorId()));
     }
 
     /** board-service ProjectNotice.validateOwnership과 동일한 관례 — ADMIN이면 통과, 아니면 본인 확인. */
