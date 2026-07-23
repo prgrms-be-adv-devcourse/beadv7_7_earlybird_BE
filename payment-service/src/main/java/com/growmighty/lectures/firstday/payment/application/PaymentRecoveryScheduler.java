@@ -18,7 +18,7 @@ public class PaymentRecoveryScheduler {
      recovery:
      schedule-fixed-delay: 180000
      */
-    @Scheduled(fixedDelayString = "${payment.recovery.schedule-fixed-delay:18000}")
+    @Scheduled(fixedDelayString = "${payment.recovery.schedule-fixed-delay:180000}")
     public void recoveryTimedOutPayments() {
         paymentRecoveryBatchService.recoverTimedOutPayments();
     }
