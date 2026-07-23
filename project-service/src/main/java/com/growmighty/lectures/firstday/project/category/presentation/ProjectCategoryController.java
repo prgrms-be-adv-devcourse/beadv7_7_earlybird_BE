@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.project.category.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryCreateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryUpdateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
@@ -25,24 +24,24 @@ public class ProjectCategoryController {
     private final ProjectCategoryService projectCategoryService;
 
     @PostMapping
-    public ApiResponse<ProjectCategoryResponse> create(@Valid @RequestBody ProjectCategoryCreateRequest request) {
-        return ApiResponse.ok(projectCategoryService.create(request));
+    public ProjectCategoryResponse create(@Valid @RequestBody ProjectCategoryCreateRequest request) {
+        return projectCategoryService.create(request);
     }
 
     @GetMapping
-    public ApiResponse<List<ProjectCategoryResponse>> findAll() {
-        return ApiResponse.ok(projectCategoryService.findAllAsTree());
+    public List<ProjectCategoryResponse> findAll() {
+        return projectCategoryService.findAllAsTree();
     }
 
     @GetMapping("/{projectCategoryId}")
-    public ApiResponse<ProjectCategoryResponse> findById(@PathVariable Long projectCategoryId) {
-        return ApiResponse.ok(projectCategoryService.findById(projectCategoryId));
+    public ProjectCategoryResponse findById(@PathVariable Long projectCategoryId) {
+        return projectCategoryService.findById(projectCategoryId);
     }
 
     /** 이름 변경 / 상위 카테고리 변경 (자기 자신·자손을 부모로 설정하면 거부됨) */
     @PutMapping("/{projectCategoryId}")
-    public ApiResponse<ProjectCategoryResponse> update(@PathVariable Long projectCategoryId,
-                                                @Valid @RequestBody ProjectCategoryUpdateRequest request) {
-        return ApiResponse.ok(projectCategoryService.update(projectCategoryId, request));
+    public ProjectCategoryResponse update(@PathVariable Long projectCategoryId,
+                                           @Valid @RequestBody ProjectCategoryUpdateRequest request) {
+        return projectCategoryService.update(projectCategoryId, request);
     }
 }

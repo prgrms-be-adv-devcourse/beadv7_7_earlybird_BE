@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.order.infrastructure.client;
 
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
-import com.growmighty.lectures.firstday.order.infrastructure.client.dto.ApiResponseBody;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.RewardApiData;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.StockChangeBody;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -19,9 +19,9 @@ public interface RewardFeignClient extends RewardPort {
 
     // ── 실제 HTTP 계약 (Feign 이 프록시로 구현) ──────────────────────────
     // project-service 의 RewardController 시그니처를 거울처럼 비춰 적는다.
-    // 응답 봉투(ApiResponseBody)와 API DTO(RewardApiData)는 HTTP 세계의 언어라 여기 남긴다.
+    // 응답 봉투(ApiResponse)와 API DTO(RewardApiData)는 HTTP 세계의 언어라 여기 남긴다.
     @GetMapping("/api/v1/rewards/{rewardId}")
-    ApiResponseBody<RewardApiData> fetchReward(@PathVariable("rewardId") Long rewardId);
+    ApiResponse<RewardApiData> fetchReward(@PathVariable("rewardId") Long rewardId);
 
     @PostMapping("/internal/rewards/{rewardId}/decrease-stock")
     void sendDecreaseStock(@PathVariable("rewardId") Long rewardId, @RequestBody StockChangeBody body);

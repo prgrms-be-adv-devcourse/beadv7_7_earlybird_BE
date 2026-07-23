@@ -2,9 +2,9 @@ package com.growmighty.lectures.firstday.cart.infrastructure.client;
 
 import com.growmighty.lectures.firstday.cart.application.port.RewardPort;
 import com.growmighty.lectures.firstday.cart.application.port.dto.RewardSnapshot;
-import com.growmighty.lectures.firstday.cart.infrastructure.client.dto.ApiResponseBody;
 import com.growmighty.lectures.firstday.cart.infrastructure.client.dto.ProjectApiData;
 import com.growmighty.lectures.firstday.cart.infrastructure.client.dto.RewardApiData;
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
@@ -51,7 +51,7 @@ public class RewardHttpClient implements RewardPort {
     }
 
     private RewardSnapshot callGetReward(Long rewardId, Map<Long, ProjectApiData> projects) {
-        ApiResponseBody<RewardApiData> body = projectRestClient.get()
+        ApiResponse<RewardApiData> body = projectRestClient.get()
             .uri("/api/v1/rewards/{rewardId}", rewardId)
             .retrieve()
             .body(new ParameterizedTypeReference<>() {
@@ -72,7 +72,7 @@ public class RewardHttpClient implements RewardPort {
     }
 
     private ProjectApiData callGetProject(Long projectId) {
-        ApiResponseBody<ProjectApiData> body = projectRestClient.get()
+        ApiResponse<ProjectApiData> body = projectRestClient.get()
             .uri("/api/v1/projects/{projectId}", projectId)
             .retrieve()
             .body(new ParameterizedTypeReference<>() {
