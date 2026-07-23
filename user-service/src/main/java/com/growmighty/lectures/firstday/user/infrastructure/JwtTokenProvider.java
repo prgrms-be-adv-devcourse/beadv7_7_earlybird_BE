@@ -1,12 +1,12 @@
 package com.growmighty.lectures.firstday.user.infrastructure;
 
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
-import com.growmighty.lectures.firstday.common.exception.ErrorCode;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.common.jwt.JwtProperties;
 import com.growmighty.lectures.firstday.user.application.TokenProvider;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import lombok.NonNull;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -65,10 +65,10 @@ public class JwtTokenProvider implements TokenProvider {
         try {
             jwt = jwtDecoder.decode(refreshToken);
         } catch (JwtException e) {
-            throw new BusinessException(ErrorCode.INVALID_TOKEN, "유효하지 않거나 만료된 리프레시 토큰입니다.");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "유효하지 않거나 만료된 리프레시 토큰입니다.");
         }
         if (!TOKEN_TYPE_REFRESH.equals(jwt.getClaimAsString(CLAIM_TOKEN_TYPE))) {
-            throw new BusinessException(ErrorCode.INVALID_TOKEN, "리프레시 토큰이 아닙니다.");
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "리프레시 토큰이 아닙니다.");
         }
         return Long.valueOf(jwt.getSubject());
     }

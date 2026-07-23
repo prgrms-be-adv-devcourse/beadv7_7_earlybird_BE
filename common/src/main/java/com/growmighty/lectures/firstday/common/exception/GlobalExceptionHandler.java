@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.common.exception;
 
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -104,7 +105,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return super.handleExceptionInternal(ex, body, headers, statusCode, request);
     }
 
-    private ResponseEntity<ApiResponse<Void>> fail(HttpStatus status, String message) {
+    private ResponseEntity<ApiResponse<Void>> fail(@NonNull HttpStatus status, String message) {
         return ResponseEntity.status(status).body(ApiResponse.fail(new ApiResponse.ApiError(message, null)));
     }
 }

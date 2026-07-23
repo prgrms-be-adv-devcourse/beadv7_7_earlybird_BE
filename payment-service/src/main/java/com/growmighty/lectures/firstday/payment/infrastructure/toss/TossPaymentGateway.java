@@ -2,13 +2,13 @@ package com.growmighty.lectures.firstday.payment.infrastructure.toss;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.growmighty.lectures.firstday.common.exception.ErrorCode;
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossConfirmRequest;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossConfirmResponse;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossErrorResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
@@ -55,7 +55,7 @@ public class TossPaymentGateway implements PaymentGateway {
             throw toTossPaymentException(e);
         } catch (ResourceAccessException e) {
             throw new TossPaymentException(
-                ErrorCode.SERVICE_UNAVAILABLE,
+                HttpStatus.SERVICE_UNAVAILABLE,
                 "TOSS_NETWORK_ERROR",
                 "토스 결제 서버에 연결할 수 없습니다."
             );
@@ -77,18 +77,18 @@ public class TossPaymentGateway implements PaymentGateway {
                 TossErrorResponse.class
             );
 
-            ErrorCode errorCode = exception.getStatusCode().is5xxServerError()
-                ? ErrorCode.SERVICE_UNAVAILABLE
-                : ErrorCode.INVALID_STATE;
+            HttpStatus status = exception.getStatusCode().is5xxServerError()
+                ? HttpStatus.SERVICE_UNAVAILABLE
+                : HttpStatus.CONFLICT;
 
             return new TossPaymentException(
-                errorCode,
+                status,
                 error.code(),
                 error.message()
             );
         } catch (JsonProcessingException ignored) {
             return new TossPaymentException(
-                ErrorCode.INTERNAL_ERROR,
+                HttpStatus.INTERNAL_SERVER_ERROR,
                 "TOSS_UNKNOWN_ERROR",
                 "토스 결제 승인 중 알 수 없는 오류가 발생했습니다."
             );
