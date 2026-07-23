@@ -2,9 +2,13 @@ package com.growmighty.lectures.firstday.payment.infrastructure;
 
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -30,5 +34,14 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
     @Override
     public Optional<Payment> findByOrderId(Long orderId) {
         return jpaRepository.findByOrderId(orderId);
+    }
+
+    @Override
+    public List<Payment> findConfirmingBefore(LocalDateTime cutoff, int limit) {
+        return jpaRepository.findByStatusAndConfirmingAtBeforeOrderByConfirmingAtAsc(
+            PaymentStatus.CONFIRMING,
+            cutoff,
+            PageRequest.of(0, limit)
+        );
     }
 }
