@@ -40,7 +40,7 @@ public class JwtTokenProvider implements TokenProvider {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject(String.valueOf(userId))
-                .claim(JwtHeaders.ROLE_CLAIM, role.getRoleName())
+                .claim(JwtHeaders.ROLE_CLAIM, role.getCode())
                 .issuedAt(now)
                 .expiresAt(now.plusSeconds(properties.accessTokenExpirationSeconds()))
                 .build();

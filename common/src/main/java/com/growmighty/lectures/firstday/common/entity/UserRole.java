@@ -13,9 +13,9 @@ public enum UserRole {
     /** 관리자 */
     ADMIN("ADMIN");
 
-    private final String roleName;
+    private final String code;
 
-    UserRole(@NonNull final String roleName) {
-        this.roleName = roleName;
+    UserRole(@NonNull final String code) {
+        this.code = code;
     }
 }
