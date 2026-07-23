@@ -4,14 +4,11 @@ import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.support.MySqlIntegrationTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -32,13 +29,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 커밋한 쪽 값으로 덮어써질 수 있었다 — @Version 추가 후에는 정확히 한 스레드만 성공하고,
  * 나머지는 재시도 후에도 여전히 IN_PROGRESS가 아니게 된 걸 감지해 깔끔하게 실패해야 한다.
  */
-@Testcontainers
 @SpringBootTest
-class ProjectConcurrencyIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class ProjectConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private ProjectService projectService;
