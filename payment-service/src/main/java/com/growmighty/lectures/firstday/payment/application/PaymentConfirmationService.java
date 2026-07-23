@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.payment.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -81,8 +82,29 @@ public class PaymentConfirmationService {
         return PaymentInfo.from(paymentRepository.save(payment));
     }
 
+    @Transactional(readOnly = true)
+    public PaymentRecoveryTarget getRecoveryTarget(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if(!payment.isConfirming()) {
+            throw new IllegalStateException("CONFIRMING 상태의 결제만 복구할 수 있습니다. 현재 상태 : " + payment.getStatus());
+        }
+
+        if (payment.getPaymentKey() == null || payment.getPaymentKey().isBlank()) {
+            throw new IllegalStateException("CONFIRMING 상태의 결제에 paymentKey가 없습니다. paymentId = " + paymentId);
+        }
+
+        return new PaymentRecoveryTarget(
+            payment.getPaymentId(),
+            payment.getPaymentKey(),
+            payment.getPgOrderId(),
+            payment.getAmount()
+        );
+    }
+
     @Transactional
     public void failConfirmation(Long paymentId) {
+
         Payment payment = findPayment(paymentId);
 
         payment.fail();
