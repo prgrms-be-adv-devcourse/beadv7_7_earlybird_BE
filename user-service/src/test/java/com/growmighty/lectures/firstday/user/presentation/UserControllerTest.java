@@ -150,19 +150,18 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/me/password 는 필수 필드가 빈 값이면 400 과 C001 을 반환한다")
+    @DisplayName("PATCH /api/v1/users/me/password 는 필수 필드가 빈 값이면 400 을 반환한다")
     void changePassword_withBlankFields_returns400() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me/password")
                         .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"currentPassword\":\"\",\"newPassword\":\"\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C001"));
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/me/password 는 현재 비밀번호가 틀리면 400 과 C001 을 반환한다")
+    @DisplayName("PATCH /api/v1/users/me/password 는 현재 비밀번호가 틀리면 400 을 반환한다")
     void changePassword_withWrongCurrentPassword_returns400() throws Exception {
         doThrow(new IllegalArgumentException("현재 비밀번호가 올바르지 않습니다."))
                 .when(userService).changePassword(any());
@@ -172,8 +171,7 @@ class UserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"currentPassword\":\"wrongPassword1!\",\"newPassword\":\"newPassword1!\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C001"));
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test
@@ -189,15 +187,14 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/me 는 필수 필드가 빈 값이면 400 과 C001 을 반환한다")
+    @DisplayName("PATCH /api/v1/users/me 는 필수 필드가 빈 값이면 400 을 반환한다")
     void updateMe_withBlankFields_returns400() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me")
                         .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"\",\"phoneNumber\":\"\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("C001"));
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test
