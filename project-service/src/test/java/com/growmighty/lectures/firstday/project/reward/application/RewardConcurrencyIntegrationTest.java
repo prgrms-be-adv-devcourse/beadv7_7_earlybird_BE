@@ -92,7 +92,7 @@ class RewardConcurrencyIntegrationTest {
         RewardUpdateRequest increaseByOne = new RewardUpdateRequest(null, null, null, null, 1);
         List<Runnable> tasks = new java.util.ArrayList<>();
         for (int i = 0; i < creatorThreads; i++) {
-            tasks.add(() -> rewardService.update(rewardId, increaseByOne));
+            tasks.add(() -> rewardService.update(rewardId, 1L, increaseByOne));
         }
         for (int i = 0; i < backerThreads; i++) {
             tasks.add(() -> rewardService.decreaseStock(rewardId, 1));

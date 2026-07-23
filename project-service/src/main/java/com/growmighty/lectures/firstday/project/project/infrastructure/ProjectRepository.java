@@ -17,6 +17,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
 
     List<Project> findByCreatorId(Long creatorId);
 
+    /** ProjectInternalController(서비스 간 내부 API) 전용 — role 없이 상태만으로 조회. */
     List<Project> findByStatus(ProjectStatus status);
 
     /**

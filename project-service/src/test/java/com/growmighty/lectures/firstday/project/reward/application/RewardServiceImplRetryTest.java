@@ -124,7 +124,7 @@ class RewardServiceImplRetryTest {
                 .thenReturn(Optional.of(publishedProject));
         RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, 5);
 
-        RewardResponse response = rewardService.update(1L, request);
+        RewardResponse response = rewardService.update(1L, 1L, request);
 
         assertThat(response.totalQuantity()).isEqualTo(15);
         verify(projectRepository, times(2)).findByIdForStatusCheck(anyLong());
@@ -137,7 +137,7 @@ class RewardServiceImplRetryTest {
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L));
         RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, 5);
 
-        assertThatThrownBy(() -> rewardService.update(1L, request))
+        assertThatThrownBy(() -> rewardService.update(1L, 1L, request))
                 .isInstanceOf(ConcurrentUpdateFailedException.class);
         verify(projectRepository, times(3)).findByIdForStatusCheck(anyLong());
     }
@@ -148,7 +148,7 @@ class RewardServiceImplRetryTest {
         when(projectRepository.findByIdForStatusCheck(anyLong())).thenReturn(Optional.of(publishedProject));
         RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, null);
 
-        assertThatThrownBy(() -> rewardService.update(1L, request))
+        assertThatThrownBy(() -> rewardService.update(1L, 1L, request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("추가할 수량");
         verify(projectRepository, times(1)).findByIdForStatusCheck(anyLong());
