@@ -105,6 +105,26 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public ProjectResponse cancel(Long projectId, Long requesterId, UserRole requesterRole) {
+        Project project = getProject(projectId);
+        validateOwnershipOrAdmin(project, requesterId, requesterRole);
+        project.cancel();
+        deactivateRewards(projectId);
+        return ProjectResponse.from(project);
+    }
+
+    @Recover
+    public ProjectResponse recoverCancelConflict(RuntimeException e, Long projectId, Long requesterId, UserRole requesterRole) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "취소 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
+        }
+        throw e;
+    }
+
+    @Override
     public List<ProjectResponse> findByCreator(Long creatorId) {
         return projectRepository.findByCreatorId(creatorId).stream()
                 .map(ProjectResponse::from)
@@ -216,6 +236,16 @@ public class ProjectServiceImpl implements ProjectService {
      */
     private void deactivateRewards(Long projectId) {
         rewardRepository.findByProjectId(projectId).forEach(Reward::deactivate);
+    }
+
+    /** board-service ProjectNotice.validateOwnership과 동일한 관례 — ADMIN이면 통과, 아니면 본인 확인. */
+    private void validateOwnershipOrAdmin(Project project, Long requesterId, UserRole requesterRole) {
+        if (requesterRole == UserRole.ADMIN) {
+            return;
+        }
+        if (!project.getCreatorId().equals(requesterId)) {
+            throw new IllegalArgumentException("본인이 등록한 프로젝트만 취소할 수 있습니다. projectId=" + project.getProjectId());
+        }
     }
 
     private Project getProject(Long projectId) {

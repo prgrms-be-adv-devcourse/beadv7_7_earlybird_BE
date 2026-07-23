@@ -26,6 +26,9 @@ public interface ProjectService {
     /** requesterId가 본인이 등록한 프로젝트가 아니면 거부한다. */
     void delete(Long projectId, Long requesterId);
 
+    /** 창작자(본인) 또는 관리자: 진행중이거나 이미 성공한 프로젝트를 자진 취소한다. */
+    ProjectResponse cancel(Long projectId, Long requesterId, UserRole requesterRole);
+
     List<ProjectResponse> findByCreator(Long creatorId);
 
     /**

@@ -237,6 +237,21 @@ public class Project {
         this.closedAt = LocalDateTime.now();
     }
 
+    /**
+     * 창작자 또는 관리자: 자진 취소. 진행중이거나 이미 목표를 달성한 상태에서만 가능하다 — 실패(FAILED)는
+     * 이미 자동으로 환불 파이프라인을 타므로 취소 대상이 아니고, 이미 취소된 것도 다시 취소할 수 없다.
+     * 목표를 달성한(SUCCEEDED) 뒤의 취소는 "성공은 했지만 창작자가 배송 등을 감당 못 하게 된" 경우를
+     * 위한 것으로, 정산(창작자 지급) 전까지만 허용한다 — Payment가 CANCELLED를 FAILED와 동일하게
+     * 환불 대상으로 조회해간다(내부 상태별 조회 API 참고).
+     */
+    public void cancel() {
+        if (this.status != ProjectStatus.IN_PROGRESS && this.status != ProjectStatus.SUCCEEDED) {
+            throw new IllegalStateException("진행중이거나 이미 성공한 상태에서만 취소할 수 있습니다. 현재 상태=" + this.status);
+        }
+        this.status = ProjectStatus.CANCELLED;
+        this.closedAt = LocalDateTime.now();
+    }
+
     private void requireStatus(ProjectStatus expected, String message) {
         if (this.status != expected) {
             throw new IllegalStateException(message + " 현재 상태=" + this.status);

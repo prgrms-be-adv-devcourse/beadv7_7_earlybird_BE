@@ -77,6 +77,14 @@ public class ProjectController {
         return ApiResponse.ok(null);
     }
 
+    /** 창작자(본인) 또는 관리자: 진행중이거나 이미 성공한 프로젝트를 자진 취소한다. */
+    @PostMapping("/{projectId}/cancel")
+    public ApiResponse<ProjectResponse> cancel(@PathVariable Long projectId,
+                                                @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                                                @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+        return ApiResponse.ok(projectService.cancel(projectId, requesterId, requesterRole));
+    }
+
     /** 심사 승인 (PENDING_REVIEW → IN_PROGRESS) */
     @PostMapping("/{projectId}/approve")
     public ApiResponse<ProjectResponse> approve(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
