@@ -42,7 +42,7 @@ class InternalUserControllerTest {
     }
 
 	@Test
-	@DisplayName("존재하지 않는 userId 조회는 404와 ENTITY_NOT_FOUND 코드를 반환한다")
+	@DisplayName("존재하지 않는 userId 조회는 404를 반환한다")
 	void getUser_notFound_404() throws Exception {
 		when(userService.getUser(999L))
 				.thenThrow(new EntityNotFoundException("존재하지 않는 유저입니다. userId=999"));
@@ -50,7 +50,7 @@ class InternalUserControllerTest {
 		mockMvc.perform(get("/internal/v1/users/999"))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.error.code").value("C003"))
+				.andExpect(jsonPath("$.error.message").value("존재하지 않는 유저입니다. userId=999"))
 				.andExpect(jsonPath("$.data").doesNotExist());
 	}
 }

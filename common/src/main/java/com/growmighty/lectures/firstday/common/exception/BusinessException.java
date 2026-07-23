@@ -1,19 +1,16 @@
 package com.growmighty.lectures.firstday.common.exception;
 
 import lombok.Getter;
+import lombok.NonNull;
+import org.springframework.http.HttpStatus;
 
 @Getter
 public class BusinessException extends RuntimeException {
 
-    private final ErrorCode errorCode;
+    private final HttpStatus status;
 
-    public BusinessException(ErrorCode errorCode) {
-        super(errorCode.getMessage());
-        this.errorCode = errorCode;
-    }
-
-    public BusinessException(ErrorCode errorCode, String message) {
+    public BusinessException(@NonNull HttpStatus status, String message) {
         super(message);
-        this.errorCode = errorCode;
+        this.status = status;
     }
 }

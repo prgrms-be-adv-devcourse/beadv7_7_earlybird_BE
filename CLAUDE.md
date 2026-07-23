@@ -15,7 +15,7 @@ Always `cd` into the relevant repo before running git or Gradle commands — the
 
 ## Main Project: beadv7_7_earlybird_BE
 
-Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle multi-module microservices. Root `build.gradle` registers plugin versions only (`apply false`); each module applies them itself. Lombok is provided to all modules; `common` shares exceptions (`BusinessException`, `EntityNotFoundException`, `ServiceUnavailableException`, `ErrorCode`, `GlobalExceptionHandler`), `BaseEntity` (JPA auditing — created/updated timestamps), and `ApiResponse` + `ApiResponseWrappingAdvice` (a `@ControllerAdvice` that auto-wraps controller return values, so controllers just return plain DTOs, not `ApiResponse` themselves).
+Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle multi-module microservices. Root `build.gradle` registers plugin versions only (`apply false`); each module applies them itself. Lombok is provided to all modules; `common` shares exceptions (`BusinessException`, `EntityNotFoundException`, `ServiceUnavailableException`, `GlobalExceptionHandler`), `BaseEntity` (JPA auditing — created/updated timestamps), and `ApiResponse` + `ApiResponseWrappingAdvice` (a `@ControllerAdvice` that auto-wraps controller return values, so controllers just return plain DTOs, not `ApiResponse` themselves).
 
 ### Modules and ports
 
