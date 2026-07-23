@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.project.project.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
@@ -27,7 +26,7 @@ public class ProjectInternalController {
     private final ProjectService projectService;
 
     @GetMapping
-    public ApiResponse<List<ProjectResponse>> findByStatus(@RequestParam ProjectStatus status) {
-        return ApiResponse.ok(projectService.findByStatus(status));
+    public List<ProjectResponse> findByStatus(@RequestParam ProjectStatus status) {
+        return projectService.findByStatus(status);
     }
 }

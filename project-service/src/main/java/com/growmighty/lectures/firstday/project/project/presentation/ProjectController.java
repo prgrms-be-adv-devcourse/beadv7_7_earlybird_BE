@@ -2,7 +2,6 @@ package com.growmighty.lectures.firstday.project.project.presentation;
 
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectCreateRequest;
@@ -35,79 +34,79 @@ public class ProjectController {
 
     /** BACKER는 프로젝트를 등록할 수 없다 — CREATOR로 전환(users/me/creator)한 사용자 또는 ADMIN만 가능. */
     @PostMapping
-    public ApiResponse<ProjectResponse> create(@RequestHeader(JwtHeaders.USER_ID) Long creatorId,
-                                                @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                                @Valid @RequestBody ProjectCreateRequest request) {
+    public ProjectResponse create(@RequestHeader(JwtHeaders.USER_ID) Long creatorId,
+                                   @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+                                   @Valid @RequestBody ProjectCreateRequest request) {
         requireCreatorOrAdmin(requesterRole);
-        return ApiResponse.ok(projectService.create(creatorId, request));
+        return projectService.create(creatorId, request);
     }
 
     /** ADMIN이면 심사 대기/반려 프로젝트도 함께 조회된다. */
     @GetMapping
-    public ApiResponse<List<ProjectResponse>> findAll(
+    public List<ProjectResponse> findAll(
             @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) ProjectStatus status,
             @RequestParam(required = false) ProjectSort sort) {
-        return ApiResponse.ok(projectService.findAll(keyword, categoryId, status, sort, requesterRole));
+        return projectService.findAll(keyword, categoryId, status, sort, requesterRole);
     }
 
     /** 내 프로젝트 목록. */
     @GetMapping("/me")
-    public ApiResponse<List<ProjectResponse>> findMyProjects(@RequestHeader(JwtHeaders.USER_ID) Long userId) {
-        return ApiResponse.ok(projectService.findByCreator(userId));
+    public List<ProjectResponse> findMyProjects(@RequestHeader(JwtHeaders.USER_ID) Long userId) {
+        return projectService.findByCreator(userId);
     }
 
     @GetMapping("/{projectId}")
-    public ApiResponse<ProjectResponse> findById(@PathVariable Long projectId) {
-        return ApiResponse.ok(projectService.findById(projectId));
+    public ProjectResponse findById(@PathVariable Long projectId) {
+        return projectService.findById(projectId);
     }
 
     @PatchMapping("/{projectId}")
-    public ApiResponse<ProjectResponse> update(@PathVariable Long projectId,
-                                                @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                                @RequestBody ProjectUpdateRequest request) {
-        return ApiResponse.ok(projectService.update(projectId, requesterId, request));
+    public ProjectResponse update(@PathVariable Long projectId,
+                                   @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                                   @RequestBody ProjectUpdateRequest request) {
+        return projectService.update(projectId, requesterId, request);
     }
 
     @DeleteMapping("/{projectId}")
-    public ApiResponse<Void> delete(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+    public Void delete(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         projectService.delete(projectId, requesterId);
-        return ApiResponse.ok(null);
+        return null;
     }
 
     /** 창작자(본인) 또는 관리자: 진행중이거나 이미 성공한 프로젝트를 자진 취소한다. */
     @PostMapping("/{projectId}/cancel")
-    public ApiResponse<ProjectResponse> cancel(@PathVariable Long projectId,
-                                                @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                                @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        return ApiResponse.ok(projectService.cancel(projectId, requesterId, requesterRole));
+    public ProjectResponse cancel(@PathVariable Long projectId,
+                                   @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                                   @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+        return projectService.cancel(projectId, requesterId, requesterRole);
     }
 
     /** 심사 승인 (PENDING_REVIEW → IN_PROGRESS) */
     @PostMapping("/{projectId}/approve")
-    public ApiResponse<ProjectResponse> approve(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                                 @PathVariable Long projectId) {
+    public ProjectResponse approve(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+                                    @PathVariable Long projectId) {
         requireAdmin(requesterRole);
-        return ApiResponse.ok(projectService.approve(projectId));
+        return projectService.approve(projectId);
     }
 
     /** 심사 반려 (PENDING_REVIEW → REJECTED) */
     @PostMapping("/{projectId}/reject")
-    public ApiResponse<ProjectResponse> reject(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                                @PathVariable Long projectId, @Valid @RequestBody ProjectRejectRequest request) {
+    public ProjectResponse reject(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+                                   @PathVariable Long projectId, @Valid @RequestBody ProjectRejectRequest request) {
         requireAdmin(requesterRole);
-        return ApiResponse.ok(projectService.reject(projectId, request));
+        return projectService.reject(projectId, request);
     }
 
     /** 마감일 연장 (기존 값보다 뒤로만 가능) — 창작자는 endAt을 직접 바꿀 수 없다, 관리자 전용 */
     @PatchMapping("/{projectId}/deadline")
-    public ApiResponse<ProjectResponse> extendDeadline(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                                        @PathVariable Long projectId,
-                                                        @Valid @RequestBody ProjectDeadlineExtendRequest request) {
+    public ProjectResponse extendDeadline(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+                                           @PathVariable Long projectId,
+                                           @Valid @RequestBody ProjectDeadlineExtendRequest request) {
         requireAdmin(requesterRole);
-        return ApiResponse.ok(projectService.extendDeadline(projectId, request));
+        return projectService.extendDeadline(projectId, request);
     }
 
     /**
@@ -116,18 +115,18 @@ public class ProjectController {
      * 테스트/운영 확인용으로 즉시 트리거하고 싶을 때 사용.
      */
     @PostMapping("/close-expired")
-    public ApiResponse<Void> closeExpiredProjects(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+    public Void closeExpiredProjects(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         requireAdmin(requesterRole);
         projectService.closeExpiredProjects();
-        return ApiResponse.ok(null);
+        return null;
     }
 
     /** 목표 금액을 이미 달성한 진행중 프로젝트를 마감일 전에 관리자가 조기 종료(성공 확정)한다. */
     @PostMapping("/{projectId}/close-early")
-    public ApiResponse<ProjectResponse> closeEarly(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                                    @PathVariable Long projectId) {
+    public ProjectResponse closeEarly(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+                                       @PathVariable Long projectId) {
         requireAdmin(requesterRole);
-        return ApiResponse.ok(projectService.closeEarly(projectId));
+        return projectService.closeEarly(projectId);
     }
 
     private void requireCreatorOrAdmin(UserRole requesterRole) {

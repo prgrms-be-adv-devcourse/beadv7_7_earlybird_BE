@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.project.reward.presentation;
 
-import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.StockChangeRequest;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import jakarta.validation.Valid;
@@ -24,14 +23,14 @@ public class RewardInternalController {
     private final RewardService rewardService;
 
     @PostMapping("/{rewardId}/decrease-stock")
-    public ApiResponse<Void> decreaseStock(@PathVariable Long rewardId, @Valid @RequestBody StockChangeRequest request) {
+    public Void decreaseStock(@PathVariable Long rewardId, @Valid @RequestBody StockChangeRequest request) {
         rewardService.decreaseStock(rewardId, request.quantity());
-        return ApiResponse.ok(null);
+        return null;
     }
 
     @PostMapping("/{rewardId}/restore-stock")
-    public ApiResponse<Void> restoreStock(@PathVariable Long rewardId, @Valid @RequestBody StockChangeRequest request) {
+    public Void restoreStock(@PathVariable Long rewardId, @Valid @RequestBody StockChangeRequest request) {
         rewardService.restoreStock(rewardId, request.quantity());
-        return ApiResponse.ok(null);
+        return null;
     }
 }
