@@ -1,9 +1,9 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
-import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
+import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
@@ -167,6 +167,11 @@ class PaymentServiceTest {
             return approvalToReturn != null
                 ? approvalToReturn
                 : new PgApproval(paymentKey, pgOrderId, amount);
+        }
+
+        @Override
+        public PgPayment getPayment(String paymentKey) {
+            throw new UnsupportedOperationException("이 테스트에서는 결제 조회를 사용하지 않습니다.");
         }
 
         @Override
