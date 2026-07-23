@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.presentation;
 
+import static com.growmighty.lectures.firstday.settlement.presentation.TestJwtTokens.adminBearerToken;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -28,6 +29,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -65,6 +67,7 @@ class ProjectSettlementErrorControllerTest {
         externalDataAdapter.respondWith(91L, 91L, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -73,7 +76,7 @@ class ProjectSettlementErrorControllerTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("S001"))
+                .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("창작자 지급 준비가 완료되지 않았습니다."));
     }
 
@@ -92,6 +95,7 @@ class ProjectSettlementErrorControllerTest {
         externalDataAdapter.respondWith(96L, creatorId, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -100,7 +104,7 @@ class ProjectSettlementErrorControllerTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("S001"))
+                .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("창작자 지급 준비가 완료되지 않았습니다."));
     }
 
@@ -112,6 +116,7 @@ class ProjectSettlementErrorControllerTest {
         externalDataAdapter.respondWith(92L, creatorId, List.of());
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -120,7 +125,7 @@ class ProjectSettlementErrorControllerTest {
                                 """))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("S002"))
+                .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("최종 유효 결제 금액을 확인할 수 없습니다."));
     }
 
@@ -134,6 +139,7 @@ class ProjectSettlementErrorControllerTest {
         );
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -142,7 +148,7 @@ class ProjectSettlementErrorControllerTest {
                                 """))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("S002"))
+                .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("최종 유효 결제 금액을 확인할 수 없습니다."))
                 .andExpect(content().string(not(containsString("payment adapter secret"))));
     }
@@ -153,6 +159,7 @@ class ProjectSettlementErrorControllerTest {
         externalDataAdapter.failTargetReadWith(new IllegalStateException("project adapter secret"));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -161,7 +168,7 @@ class ProjectSettlementErrorControllerTest {
                                 """))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("S003"))
+                .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("프로젝트 정산 대상 정보를 확인할 수 없습니다."))
                 .andExpect(content().string(not(containsString("project adapter secret"))));
     }
@@ -183,6 +190,7 @@ class ProjectSettlementErrorControllerTest {
         externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -191,7 +199,7 @@ class ProjectSettlementErrorControllerTest {
                                 """))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("S500"))
+                .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("프로젝트 정산 데이터가 일치하지 않습니다."))
                 .andExpect(content().string(not(containsString("지급 의무가 존재하지 않습니다"))));
     }
@@ -242,6 +250,7 @@ class ProjectSettlementErrorControllerTest {
         externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
+                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -250,7 +259,7 @@ class ProjectSettlementErrorControllerTest {
                                 """))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("S500"))
+                .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("프로젝트 정산 데이터가 일치하지 않습니다."))
                 .andExpect(content().string(not(containsString("창작자 지급액이 공제 후 금액과 일치하지 않습니다"))));
     }

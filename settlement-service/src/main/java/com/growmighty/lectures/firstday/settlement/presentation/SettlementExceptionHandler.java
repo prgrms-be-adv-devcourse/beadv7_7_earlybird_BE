@@ -27,11 +27,7 @@ public class SettlementExceptionHandler {
             log.warn("[{}] {}", errorCode.getCode(), exception.getMessage(), exception);
         }
 
-        ApiResponse.ApiError error = new ApiResponse.ApiError(
-                errorCode.getCode(),
-                errorCode.getMessage(),
-                null
-        );
+        ApiResponse.ApiError error = CommonApiErrorAdapter.withoutCode(errorCode.getMessage());
         return ResponseEntity.status(status).body(ApiResponse.fail(error));
     }
 
