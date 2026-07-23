@@ -151,6 +151,22 @@ public XxxResponse getMe(@RequestHeader(JwtHeaders.USER_ID) Long userId) { ... }
 `.pathMatchers(HttpMethod.POST, "/projects").hasRole("CREATOR")` 같은 규칙을 추가할 수는 있지만, 이건
 project-service 의 API 설계를 게이트웨이가 대신 결정하는 셈이라 도입 전에 해당 서비스 오너와 맞춰야 한다.
 
+**정리 — role/ownership 체크는 어디서 하나**
+
+- **역할 단위로 라우트 전체를 막는 경우**(예: `/admin/**` 는 ADMIN만) → 게이트웨이의 `hasRole(...)`
+  라우트 규칙으로 끝낸다. 다운스트림 서비스에 같은 체크를 중복으로 만들지 않는다.
+- **그 이상**(같은 경로라도 메서드마다 역할이 다르거나, "역할은 맞는데 이 리소스의 주인이 맞는가" 같은
+  소유권 판단) → 게이트웨이는 리소스 소유권을 알 수 없으므로 각 서비스가 헤더로 받은 `X-User-Id`/
+  `X-User-Role` 값을 그대로 비즈니스 로직에 넘겨 판단한다. 다운스트림 서비스에 새 Spring Security 설정을
+  만들 필요는 없다 — 컨트롤러에서 `@RequestHeader` 로 값을 꺼내 도메인 메서드에 그대로 넘기고, 거기서
+  검증 후 실패하면 `BusinessException` 을 던지는 정도로 충분하다.
+
+  참고 구현: `board-service` 의 `ProjectNotice.validateOwnership(requesterId, requesterRole)`
+  (`board-service/src/main/java/.../notice/domain/ProjectNotice.java`) — ADMIN 이면 통과, 아니면
+  `requesterId` 가 소유자와 일치하는지 확인한다. `NoticeController` 가 `@RequestHeader(JwtHeaders.USER_ID)` /
+  `@RequestHeader(JwtHeaders.USER_ROLE) UserRole` 로 받은 값을 서비스 → 도메인까지 그대로 전달하는 흐름을
+  다른 서비스(order/cart/payment/project/settlement/notification)에도 그대로 복사해서 쓰면 된다.
+
 **왜 안전한가**: 게이트웨이의 `UserHeaderForwardingFilter` 가 인바운드 요청의 `X-User-Id`/`X-User-Role` 을
 **항상 먼저 제거한 뒤**, JWT 검증에 성공한 경우에만 검증된 값으로 다시 채운다. 클라이언트가 이 헤더를
 직접 보내도 게이트웨이를 통과하는 순간 사라진다.
