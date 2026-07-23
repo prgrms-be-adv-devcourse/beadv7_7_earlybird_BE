@@ -231,7 +231,7 @@ class SecurityConfigTest {
     private String issueToken(Instant issuedAt, Instant expiresAt, UserRole role) {
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject("1")
-                .claim("role", role.getRoleName())
+                .claim("role", role.getCode())
                 .issuedAt(issuedAt)
                 .expiresAt(expiresAt)
                 .build();

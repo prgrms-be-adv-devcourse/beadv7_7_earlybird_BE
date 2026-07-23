@@ -42,7 +42,7 @@ class JwtTokenProviderTest {
         Jwt jwt = decoder.decode(token);
 
         assertThat(jwt.getSubject()).isEqualTo("1");
-        assertThat(jwt.getClaimAsString(JwtHeaders.ROLE_CLAIM)).isEqualTo(UserRole.BACKER.getRoleName());
+        assertThat(jwt.getClaimAsString(JwtHeaders.ROLE_CLAIM)).isEqualTo(UserRole.BACKER.getCode());
     }
 
     @Test
@@ -51,8 +51,8 @@ class JwtTokenProviderTest {
         Jwt creatorToken = decoder.decode(tokenProvider.issueAccessToken(2L, UserRole.CREATOR));
         Jwt adminToken = decoder.decode(tokenProvider.issueAccessToken(3L, UserRole.ADMIN));
 
-        assertThat(creatorToken.getClaimAsString(JwtHeaders.ROLE_CLAIM)).isEqualTo(UserRole.CREATOR.getRoleName());
-        assertThat(adminToken.getClaimAsString(JwtHeaders.ROLE_CLAIM)).isEqualTo(UserRole.ADMIN.getRoleName());
+        assertThat(creatorToken.getClaimAsString(JwtHeaders.ROLE_CLAIM)).isEqualTo(UserRole.CREATOR.getCode());
+        assertThat(adminToken.getClaimAsString(JwtHeaders.ROLE_CLAIM)).isEqualTo(UserRole.ADMIN.getCode());
     }
 
     @Test
