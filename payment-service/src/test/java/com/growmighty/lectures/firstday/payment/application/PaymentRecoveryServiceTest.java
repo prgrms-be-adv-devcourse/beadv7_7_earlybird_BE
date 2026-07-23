@@ -87,6 +87,17 @@ class PaymentRecoveryServiceTest {
         verify(paymentConfirmationService, never()).failConfirmation(PAYMENT_ID);
     }
 
+    @Test
+    void 토스_결제가_취소되었으면_결제를_실패_처리한다() {
+        when(paymentConfirmationService.getRecoveryTarget(PAYMENT_ID)).thenReturn(recoveryTarget());
+        when(paymentGateway.getPayment(PAYMENT_KEY))
+            .thenReturn(pgPayment(PaymentGateway.PgPaymentStatus.CANCELLED));
+
+        paymentRecoveryService.recover(PAYMENT_ID);
+
+        verify(paymentConfirmationService).failConfirmation(PAYMENT_ID);
+    }
+
     private PaymentRecoveryTarget recoveryTarget() {
         return new PaymentRecoveryTarget(PAYMENT_ID, PAYMENT_KEY);
     }
