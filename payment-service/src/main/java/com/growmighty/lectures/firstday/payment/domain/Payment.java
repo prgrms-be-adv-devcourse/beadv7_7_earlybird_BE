@@ -86,6 +86,7 @@ public class Payment extends BaseEntity {
 
         validatePaymentKey(paymentKey);
 
+        this.paymentKey = paymentKey;
         this.status = PaymentStatus.CONFIRMING;
         confirmingAt = LocalDateTime.now();
     }
