@@ -12,8 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 서비스 간 내부 API — Settlement가 정산 대상(SUCCEEDED), Payment가 환불 대상(FAILED/CANCELLED)
- * 프로젝트 목록을 조회할 때 각자 호출한다.
+ * 서비스 간 내부 API — Settlement가 정산 대상(SUCCEEDED)과 환불 대상(FAILED/CANCELLED) 프로젝트
+ * 목록을 모두 조회할 때 호출한다. Payment는 프로젝트 상태 조회 없이 orderId 기준 단건 PG 취소·환불만
+ * 담당하므로 이 API를 호출하지 않는다.
  * Gateway를 거치지 않는 내부망 전용 경로다 — 팀 컨벤션에 따라 /internal/v1 프리픽스를 사용한다.
  * 관리자용 GET /api/v1/admin/projects?status=X 와 기능은 같지만, 그건 사람(ADMIN JWT) 전용이라
  * 서비스 간 호출에는 이 경로를 따로 둔다.
