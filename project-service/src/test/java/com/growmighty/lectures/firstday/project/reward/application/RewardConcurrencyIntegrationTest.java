@@ -6,14 +6,11 @@ import com.growmighty.lectures.firstday.project.reward.application.exception.Con
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
+import com.growmighty.lectures.firstday.project.support.MySqlIntegrationTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,13 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 쏟아붓고, 끝난 뒤 "성공한 연산 수만큼만 정확히 반영됐는지"를 최종 DB 상태로 검증한다.
  * lost update가 하나라도 있었다면 이 수식이 어긋난다.
  */
-@Testcontainers
 @SpringBootTest
-class RewardConcurrencyIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class RewardConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private RewardService rewardService;
