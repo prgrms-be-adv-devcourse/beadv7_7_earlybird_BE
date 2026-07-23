@@ -11,6 +11,6 @@ public interface OrderFeignClient {
     @PutMapping("/internal/v1/orders/{orderId}/payment-status")
     void updatePaymentStatus(
         @PathVariable Long orderId,
-        @RequestBody OrderPaymentStatusRequest request
+        @RequestBody OrderStatusRequest request
     );
 }

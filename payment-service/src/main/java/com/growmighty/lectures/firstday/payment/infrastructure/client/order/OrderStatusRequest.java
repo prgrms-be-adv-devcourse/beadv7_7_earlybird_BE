@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.payment.infrastructure.client.order;
 
-public record OrderPaymentStatusRequest(
+public record OrderStatusRequest(
     String status
 ) {
 }
