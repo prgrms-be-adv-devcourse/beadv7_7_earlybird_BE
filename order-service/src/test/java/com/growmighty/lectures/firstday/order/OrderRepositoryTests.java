@@ -19,6 +19,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,13 +52,15 @@ class OrderRepositoryTests {
 
         List<OrderItem> items = new ArrayList<>();
         items.add(OrderItem.create("원목 4인용 식탁", BigDecimal.valueOf(179000), projectId, rewardId, 1));
-        Order order = Order.create(userId, items, "김하나한", "010-0000-0000", "서울시 강남구", "06236");
+        UUID orderId = UUID.randomUUID();
+        Order order = Order.create(orderId, userId, items, "김하나한", "010-0000-0000", "서울시 강남구", "06236");
 
         Order saved = orderRepository.save(order);
         entityManager.flush();
         entityManager.clear();
 
         Order found = orderRepository.findById(saved.getId()).orElseThrow();
+        assertThat(saved.getId()).isEqualTo(orderId);
         assertThat(found.getId()).isEqualTo(saved.getId());
         assertThat(found.getItems()).hasSize(1);
         OrderItem foundItem = found.getItems().get(0);
@@ -69,14 +72,14 @@ class OrderRepositoryTests {
     }
 
     @Test
-    @DisplayName("projectId exists query returns whether at least one matching order item exists")
+    @DisplayName("project에 완료된 order 이력 존재 유무 리턴")
     void existsByProjectId() {
         Long existingProjectId = 100L;
         Long otherProjectId = 200L;
 
         List<OrderItem> items = new ArrayList<>();
         items.add(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), existingProjectId, 10L, 1));
-        Order order = Order.create(1L, items, "Receiver", "010-0000-0000", "Seoul", "06236");
+        Order order = Order.create(UUID.randomUUID(), 1L, items, "Receiver", "010-0000-0000", "Seoul", "06236");
 
         orderRepository.save(order);
         entityManager.flush();

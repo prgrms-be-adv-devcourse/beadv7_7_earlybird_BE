@@ -1,7 +1,18 @@
 package com.growmighty.lectures.firstday.order.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import jakarta.persistence.*;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -9,6 +20,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "orders")
@@ -16,17 +28,16 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
     private static final Money FREE_SHIPPING_THRESHOLD = Money.from(BigDecimal.valueOf(50_000));
-
     private static final Money BASE_SHIPPING_FEE = Money.from(BigDecimal.valueOf(3_000));
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID id;
 
     @Column(nullable = false)
     private Long userId;
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.PERSIST)
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
     private final List<OrderItem> items = new ArrayList<>();
 
@@ -49,7 +60,6 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private OrderStatus status;
 
-    /** 배송지 스냅샷 — 주소록 없이 주문 시 직접 입력한 값을 그대로 보관한다. */
     @Column(nullable = false)
     private String receiverName;
 
@@ -62,10 +72,14 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private String zipCode;
 
-    private Order(Long userId, List<OrderItem> items,
+    private Order(UUID id, Long userId, List<OrderItem> items,
                   String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
+        if (id == null) {
+            throw new IllegalArgumentException("orderId is required.");
+        }
         validateItems(items);
         validateShippingInfo(receiverName, receiverPhone, shippingAddress, zipCode);
+        this.id = id;
         items.forEach(this::addOrderItem);
         this.userId = userId;
         this.receiverName = receiverName;
@@ -76,14 +90,14 @@ public class Order extends BaseEntity {
         recalculateAmounts();
     }
 
-    public static Order create(Long userId, List<OrderItem> items,
+    public static Order create(UUID id, Long userId, List<OrderItem> items,
                                String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        return new Order(userId, items, receiverName, receiverPhone, shippingAddress, zipCode);
+        return new Order(id, userId, items, receiverName, receiverPhone, shippingAddress, zipCode);
     }
 
     private void validateItems(List<OrderItem> items) {
         if (items == null || items.isEmpty()) {
-            throw new IllegalStateException("주문할 프로젝트이 없습니다.");
+            throw new IllegalStateException("Order must contain at least one item.");
         }
     }
 
@@ -92,7 +106,7 @@ public class Order extends BaseEntity {
                 || receiverPhone == null || receiverPhone.isBlank()
                 || shippingAddress == null || shippingAddress.isBlank()
                 || zipCode == null || zipCode.isBlank()) {
-            throw new IllegalArgumentException("배송지 정보는 비어 있을 수 없습니다.");
+            throw new IllegalArgumentException("Shipping information is required.");
         }
     }
 
@@ -125,19 +139,39 @@ public class Order extends BaseEntity {
         return items.plus(calculateShippingFee(items));
     }
 
-    public void completePayment(Long paymentId) {
-        if (this.status != OrderStatus.CREATED) {
-            throw new IllegalStateException("결제 가능한 상태가 아닙니다. 현재 상태: " + this.status);
+    public void markStockReservationFailed() {
+        changeStatus(OrderStatus.CREATED, OrderStatus.STOCK_FAILED);
+    }
+
+    public void markPaymentRequested() {
+        changeStatus(OrderStatus.CREATED, OrderStatus.PAYMENT_REQUEST);
+    }
+
+    public void markPaymentProcessing() {
+        changeStatus(OrderStatus.PAYMENT_REQUEST, OrderStatus.PAYMENT_PROCESSING);
+    }
+
+    public void markPaymentFailed() {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_FAILED);
+        }
+        this.status = OrderStatus.PAYMENT_FAILED;
+    }
+
+    public void markPaid(Long paymentId) {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAID);
         }
         this.status = OrderStatus.PAID;
         this.paymentId = paymentId;
     }
 
     public void cancel() {
-        if (this.status == OrderStatus.CANCELLED) {
-            throw new IllegalStateException("이미 취소된 주문입니다.");
-        }
-        this.status = OrderStatus.CANCELLED;
+        changeStatus(OrderStatus.PAID, OrderStatus.CANCELLED);
+    }
+
+    public boolean isCancelled() {
+        return this.status == OrderStatus.CANCELLED;
     }
 
     public void changeItemPrice(Long orderItemId, BigDecimal newPrice) {
@@ -154,6 +188,13 @@ public class Order extends BaseEntity {
         return items.stream()
                 .filter(e -> e.getId().equals(orderItemId))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("주문에 없는 항목입니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Order item not found."));
+    }
+
+    private void changeStatus(OrderStatus expectedStatus, OrderStatus nextStatus) {
+        if (this.status != expectedStatus) {
+            throw new InvalidOrderStatusException(this.status, nextStatus);
+        }
+        this.status = nextStatus;
     }
 }

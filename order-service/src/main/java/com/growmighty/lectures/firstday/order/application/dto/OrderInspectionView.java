@@ -6,9 +6,10 @@ import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 public record OrderInspectionView(
-        Long orderId,
+        UUID orderId,
         Long userId,
         OrderStatus orderStatus,
         BigDecimal itemsAmount,

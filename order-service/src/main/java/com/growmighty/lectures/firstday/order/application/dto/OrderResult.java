@@ -4,9 +4,10 @@ import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record OrderResult(
-        Long id,
+        UUID id,
         OrderStatus status,
         BigDecimal itemsAmount,
         BigDecimal shippingFee,
