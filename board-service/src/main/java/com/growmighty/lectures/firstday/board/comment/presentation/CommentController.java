@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.board.comment.presentation;
 import com.growmighty.lectures.firstday.board.comment.application.CommentService;
 import com.growmighty.lectures.firstday.board.comment.presentation.dto.CommentRequest;
 import com.growmighty.lectures.firstday.board.comment.presentation.dto.CommentResponse;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,8 +35,9 @@ public class CommentController {
     }
 
     @DeleteMapping("/comments/{commentId}")
-    public Void delete(@PathVariable Long commentId) {
-        commentService.delete(commentId);
+    public Void delete(@PathVariable Long commentId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                        @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+        commentService.delete(commentId, requesterId, requesterRole);
         return null;
     }
 }

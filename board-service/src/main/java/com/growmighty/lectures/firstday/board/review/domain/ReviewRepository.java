@@ -8,7 +8,5 @@ public interface ReviewRepository {
 
     Optional<Review> findById(Long id);
 
-    List<Review> findByProjectId(Long projectId);
-
-    void delete(Review review);
+    List<Review> findVisibleByProjectId(Long projectId);
 }

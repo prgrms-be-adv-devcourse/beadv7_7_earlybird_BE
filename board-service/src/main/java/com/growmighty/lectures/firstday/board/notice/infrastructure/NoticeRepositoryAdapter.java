@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.board.notice.infrastructure;
 
 import com.growmighty.lectures.firstday.board.notice.domain.ProjectNotice;
+import com.growmighty.lectures.firstday.board.notice.domain.ProjectNoticeStatus;
 import com.growmighty.lectures.firstday.board.notice.domain.NoticeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -24,7 +25,7 @@ public class NoticeRepositoryAdapter implements NoticeRepository {
     }
 
     @Override
-    public List<ProjectNotice> findByProjectId(Long projectId) {
-        return jpaRepository.findByProjectId(projectId);
+    public List<ProjectNotice> findVisibleByProjectId(Long projectId) {
+        return jpaRepository.findByProjectIdAndStatusNotOrderByCreatedAtDesc(projectId, ProjectNoticeStatus.DELETED);
     }
 }

@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.board.review.infrastructure;
 
 import com.growmighty.lectures.firstday.board.review.domain.Review;
 import com.growmighty.lectures.firstday.board.review.domain.ReviewRepository;
+import com.growmighty.lectures.firstday.board.review.domain.ReviewStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -24,12 +25,7 @@ public class ReviewRepositoryAdapter implements ReviewRepository {
     }
 
     @Override
-    public List<Review> findByProjectId(Long projectId) {
-        return jpaRepository.findByProjectId(projectId);
-    }
-
-    @Override
-    public void delete(Review review) {
-        jpaRepository.delete(review);
+    public List<Review> findVisibleByProjectId(Long projectId) {
+        return jpaRepository.findByProjectIdAndStatusNotOrderByCreatedAtDesc(projectId, ReviewStatus.DELETED);
     }
 }

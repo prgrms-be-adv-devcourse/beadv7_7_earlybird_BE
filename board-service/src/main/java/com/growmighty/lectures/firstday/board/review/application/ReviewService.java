@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.board.review.application;
 
 import com.growmighty.lectures.firstday.board.review.domain.Review;
 import com.growmighty.lectures.firstday.board.review.domain.ReviewRepository;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,13 +25,13 @@ public class ReviewService {
     @Transactional(readOnly = true)
     public List<Review> getByProject(Long projectId) {
         // TODO(팀): 평점 통계(평균/분포) 응답 추가
-        return reviewRepository.findByProjectId(projectId);
+        return reviewRepository.findVisibleByProjectId(projectId);
     }
 
     @Transactional
-    public void delete(Long reviewId) {
+    public void delete(Long reviewId, Long requesterId, UserRole requesterRole) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 리뷰입니다. reviewId=" + reviewId));
-        reviewRepository.delete(review);
+        review.delete(requesterId, requesterRole);
     }
 }
