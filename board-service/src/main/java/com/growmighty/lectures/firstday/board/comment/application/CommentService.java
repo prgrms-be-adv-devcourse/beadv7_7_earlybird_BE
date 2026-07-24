@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.board.comment.application;
 import com.growmighty.lectures.firstday.board.comment.domain.Comment;
 import com.growmighty.lectures.firstday.board.comment.domain.CommentRepository;
 import com.growmighty.lectures.firstday.board.comment.domain.CommentTargetType;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,14 +30,13 @@ public class CommentService {
 
     @Transactional(readOnly = true)
     public List<Comment> getByProject(Long projectId) {
-        return commentRepository.findByTargetTypeAndTargetId(CommentTargetType.PROJECT, projectId);
+        return commentRepository.findVisibleByTargetTypeAndTargetId(CommentTargetType.PROJECT, projectId);
     }
 
     @Transactional
-    public void delete(Long commentId) {
-        // TODO(팀): 본인(또는 관리자)만 삭제 가능 — 인증 도입 후 검증
+    public void delete(Long commentId, Long requesterId, UserRole requesterRole) {
         Comment comment = commentRepository.findById(commentId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 의견입니다. commentId=" + commentId));
-        commentRepository.delete(comment);
+        comment.delete(requesterId, requesterRole);
     }
 }
