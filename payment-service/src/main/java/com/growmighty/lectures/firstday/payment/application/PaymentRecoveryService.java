@@ -1,14 +1,18 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
+import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 public class PaymentRecoveryService {
     private final PaymentConfirmationService paymentConfirmationService;
     private final PaymentGateway paymentGateway;
+    private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     public void recover(Long paymentId) {
         PaymentRecoveryTarget target = paymentConfirmationService.getRecoveryTarget(paymentId);
@@ -27,10 +31,11 @@ public class PaymentRecoveryService {
 
             case FAILED, EXPIRED, CANCELLED -> paymentConfirmationService.failConfirmation(target.paymentId());
 
-            case PENDING -> {
-                // Toss 처리가 아직 끝나지 않았거나, 로컬 상태와 맞지 않는 경우
-                // CONFIRMING 상태를 유지하고 이후 다시 조회
-            }
+            case PENDING -> paymentConfirmationService.failConfirmationIfExpired(
+                target.paymentId(),
+                LocalDateTime.now(),
+                paymentRecoveryProperties.maximumConfirmingDuration()
+            );
         }
     }
 }
