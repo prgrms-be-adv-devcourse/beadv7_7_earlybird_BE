@@ -119,11 +119,10 @@ public class PaymentConfirmationService {
     ) {
         Payment payment = findPayment(paymentId);
 
-        if (!payment.isConfirmingExpired(now, maximumConfirmingDuration)) {
+        if (!payment.failIfConfirmingExpired(now, maximumConfirmingDuration)) {
             return;
         }
 
-        payment.fail();
         paymentRepository.save(payment);
     }
 

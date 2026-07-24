@@ -152,12 +152,21 @@ public class Payment extends BaseEntity {
         return this.status == PaymentStatus.CONFIRMING;
     }
 
-    public boolean isConfirmingExpired(LocalDateTime now, Duration maximumConfirmingDuration) {
+    private boolean isConfirmingExpired(LocalDateTime now, Duration maximumConfirmingDuration) {
         if (!isConfirming()) {
             return false;
         }
 
         LocalDateTime expiredAt = confirmingAt.plus(maximumConfirmingDuration);
         return !now.isBefore(expiredAt);
+    }
+
+    public boolean failIfConfirmingExpired(LocalDateTime now, Duration maximumConfirmingDuration) {
+        if (!isConfirmingExpired(now, maximumConfirmingDuration)) {
+            return false;
+        }
+        this.status = PaymentStatus.FAILED;
+        this.confirmingAt = null;
+        return true;
     }
 }
