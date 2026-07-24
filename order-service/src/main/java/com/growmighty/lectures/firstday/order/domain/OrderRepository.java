@@ -2,13 +2,14 @@ package com.growmighty.lectures.firstday.order.domain;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface OrderRepository {
     Order save(Order order);
 
-    Optional<Order> findById(Long id);
+    Optional<Order> findById(UUID id);
 
-    Optional<Order> findByIdWithItems(Long id);
+    Optional<Order> findByIdWithItems(UUID id);
 
     boolean existsByProjectId(Long projectId);
 

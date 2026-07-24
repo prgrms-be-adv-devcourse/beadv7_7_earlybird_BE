@@ -7,23 +7,33 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 public record PlaceOrderRequest(
+        @NotNull UUID orderId,
         @NotNull Long userId,
         @NotEmpty @Valid List<OrderItemRequest> requests,
         @NotNull String receiverName,
         @NotNull String receiverPhone,
         @NotNull String shippingAddress,
-        @NotNull String zipCode
+        @NotNull String zipCode,
+        @NotNull BigDecimal expectedItemsAmount,
+        @NotNull BigDecimal expectedTotalAmount
 ) {
-    public record OrderItemRequest(@NotNull Long rewardId, @NotNull @Positive Integer quantity) {
+    public record OrderItemRequest(
+            @NotNull Long rewardId,
+            @NotNull @Positive Integer quantity,
+            @NotNull BigDecimal expectedUnitPrice
+    ) {
     }
 
     public PlaceOrderCommand toCommand() {
         List<OrderLine> lines = requests.stream()
-                .map(r -> new OrderLine(r.rewardId(), r.quantity()))
+                .map(r -> new OrderLine(r.rewardId(), r.quantity(), r.expectedUnitPrice()))
                 .toList();
-        return new PlaceOrderCommand(userId, lines, receiverName, receiverPhone, shippingAddress, zipCode);
+        return new PlaceOrderCommand(orderId, userId, lines, receiverName, receiverPhone, shippingAddress, zipCode,
+                expectedItemsAmount, expectedTotalAmount);
     }
 }

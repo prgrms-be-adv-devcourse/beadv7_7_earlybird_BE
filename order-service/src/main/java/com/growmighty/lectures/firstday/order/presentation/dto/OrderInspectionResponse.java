@@ -4,9 +4,10 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderInspectionVie
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 public record OrderInspectionResponse(
-        Long orderId,
+        UUID orderId,
         Long userId,
         String orderStatus,
         BigDecimal itemsAmount,

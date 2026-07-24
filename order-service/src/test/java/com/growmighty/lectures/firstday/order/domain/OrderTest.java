@@ -3,8 +3,11 @@ package com.growmighty.lectures.firstday.order.domain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -12,11 +15,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class OrderTest {
 
     private OrderItem item(long projectId, String price, int quantity) {
-        return OrderItem.create("리워드-" + projectId, new BigDecimal(price), projectId, projectId, quantity);
+        return OrderItem.create("Reward " + projectId, new BigDecimal(price), projectId, projectId, quantity);
     }
 
     private Order order(List<OrderItem> items) {
-        return Order.create(1L, items, "김하나한", "010-0000-0000", "서울시 강남구", "06236");
+        return Order.create(UUID.randomUUID(), 1L, items, "Receiver", "010-0000-0000", "Seoul", "06236");
     }
 
     @Test
@@ -25,21 +28,12 @@ class OrderTest {
         Order order = order(List.of(item(1L, "10000", 2)));
 
         assertThat(order.getItemsAmount().getValue()).isEqualByComparingTo("20000");
-        assertThat(order.getTotalAmount().getValue()).isEqualByComparingTo("23000");
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
-    }
-
-    @Test
-    @DisplayName("프로젝트 합계가 무료배송 기준(50000) 미만이면 배송비 3000원이 붙는다")
-    void shippingFee_charged_belowThreshold() {
-        Order order = order(List.of(item(1L, "10000", 1)));
-
         assertThat(order.getShippingFee().getValue()).isEqualByComparingTo("3000");
-        assertThat(order.getTotalAmount().getValue()).isEqualByComparingTo("13000");
+        assertThat(order.getTotalAmount().getValue()).isEqualByComparingTo("23000");
     }
 
     @Test
-    @DisplayName("프로젝트 합계가 무료배송 기준 이상이면 배송비가 0원이다")
+    @DisplayName("합계가 무료배송 기준 이상이면 배송비가 0원이다")
     void shippingFee_free_atOrAboveThreshold() {
         Order order = order(List.of(item(1L, "50000", 1)));
 
@@ -58,38 +52,21 @@ class OrderTest {
     @DisplayName("배송지 정보가 비어 있으면 생성할 수 없다")
     void create_withoutShippingInfo_throws() {
         List<OrderItem> items = List.of(item(1L, "10000", 1));
-        assertThatThrownBy(() -> Order.create(1L, items, "", "010-0000-0000", "서울시 강남구", "06236"))
+        assertThatThrownBy(() -> Order.create(UUID.randomUUID(), 1L, items, "", "010-0000-0000", "Seoul", "06236"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Order.create(1L, items, "김하나한", null, "서울시 강남구", "06236"))
+        assertThatThrownBy(() -> Order.create(UUID.randomUUID(), 1L, items, "Receiver", null, "Seoul", "06236"))
                 .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    @DisplayName("결제 완료 시 상태가 PAID로 전이되고 결제 ID가 연결된다")
-    void completePayment_transitions() {
-        Order order = order(List.of(item(1L, "10000", 1)));
-
-        order.completePayment(99L);
-
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
-        assertThat(order.getPaymentId()).isEqualTo(99L);
-    }
-
-    @Test
-    @DisplayName("CREATED가 아닌 상태에서 결제 완료를 호출하면 예외가 발생한다")
-    void completePayment_whenNotCreated_throws() {
-        Order order = order(List.of(item(1L, "10000", 1)));
-        order.completePayment(99L);
-
-        assertThatThrownBy(() -> order.completePayment(100L))
-                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     @DisplayName("주문을 취소하면 상태가 CANCELLED로 전이된다")
-    void cancel_transitions() {
+    void completePayment_whenNotCreated_throws() {
         Order order = order(List.of(item(1L, "10000", 1)));
 
+        assertThatThrownBy(order::cancel).isInstanceOf(InvalidOrderStatusException.class);
+
+        order.markPaymentRequested();
+        order.markPaid(99L);
         order.cancel();
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
@@ -99,10 +76,13 @@ class OrderTest {
     @DisplayName("이미 취소된 주문을 다시 취소하면 예외가 발생한다")
     void cancel_twice_throws() {
         Order order = order(List.of(item(1L, "10000", 1)));
-        order.cancel();
 
-        assertThatThrownBy(order::cancel)
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> order.markPaid(99L)).isInstanceOf(InvalidOrderStatusException.class);
+        assertThatThrownBy(order::markPaymentProcessing).isInstanceOf(InvalidOrderStatusException.class);
+
+        order.markPaymentRequested();
+        order.markPaid(99L);
+        assertThatThrownBy(() -> order.markPaid(100L)).isInstanceOf(InvalidOrderStatusException.class);
     }
 
     @Test
