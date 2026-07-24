@@ -38,3 +38,7 @@ out/
 
 ### Claude Code ###
 .claude/
+
+### Docker ###
+.env
+infrastructure/.env
