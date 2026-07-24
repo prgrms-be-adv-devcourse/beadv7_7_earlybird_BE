@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.payment.presentation;
 
-import com.growmighty.lectures.firstday.payment.application.PaymentConfirmationService;
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
+import com.growmighty.lectures.firstday.payment.application.PaymentReconciliationService;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossWebhookPayment;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossWebhookRequest;
 import org.junit.jupiter.api.Test;
@@ -17,8 +17,8 @@ class TossWebhookControllerTest {
     @Test
     void 웹훅의_paymentKey로_Toss_결제를_조회하고_정합화를_요청한다() {
         PaymentGateway paymentGateway = mock(PaymentGateway.class);
-        PaymentConfirmationService paymentConfirmationService = mock(PaymentConfirmationService.class);
-        TossWebhookController controller = new TossWebhookController(paymentGateway, paymentConfirmationService);
+        PaymentReconciliationService paymentReconciliationService = mock(PaymentReconciliationService.class);
+        TossWebhookController controller = new TossWebhookController(paymentGateway, paymentReconciliationService);
         PaymentGateway.PgPayment pgPayment = new PaymentGateway.PgPayment(
             PAYMENT_KEY,
             "pg-order-id",
@@ -30,6 +30,6 @@ class TossWebhookControllerTest {
         controller.receive(new TossWebhookRequest("PAYMENT_STATUS_CHANGED", new TossWebhookPayment(PAYMENT_KEY)));
 
         verify(paymentGateway).getPayment(PAYMENT_KEY);
-        verify(paymentConfirmationService).reconcile(pgPayment);
+        verify(paymentReconciliationService).reconcile(pgPayment);
     }
 }

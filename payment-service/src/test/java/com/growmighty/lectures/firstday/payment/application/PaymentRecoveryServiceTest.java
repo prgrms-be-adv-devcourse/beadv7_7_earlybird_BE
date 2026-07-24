@@ -25,6 +25,9 @@ class PaymentRecoveryServiceTest {
     @Mock
     private PaymentGateway paymentGateway;
 
+    @Mock
+    private PaymentReconciliationService paymentReconciliationService;
+
     @InjectMocks
     private PaymentRecoveryService paymentRecoveryService;
 
@@ -36,7 +39,7 @@ class PaymentRecoveryServiceTest {
 
         paymentRecoveryService.recover(PAYMENT_ID);
 
-        verify(paymentConfirmationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.COMPLETED));
+        verify(paymentReconciliationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.COMPLETED));
     }
 
     @Test
@@ -47,7 +50,7 @@ class PaymentRecoveryServiceTest {
 
         paymentRecoveryService.recover(PAYMENT_ID);
 
-        verify(paymentConfirmationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.FAILED));
+        verify(paymentReconciliationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.FAILED));
     }
 
     @Test
@@ -58,7 +61,7 @@ class PaymentRecoveryServiceTest {
 
         paymentRecoveryService.recover(PAYMENT_ID);
 
-        verify(paymentConfirmationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.EXPIRED));
+        verify(paymentReconciliationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.EXPIRED));
     }
 
     @Test
@@ -69,7 +72,7 @@ class PaymentRecoveryServiceTest {
 
         paymentRecoveryService.recover(PAYMENT_ID);
 
-        verify(paymentConfirmationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.PENDING));
+        verify(paymentReconciliationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.PENDING));
     }
 
     @Test
@@ -80,7 +83,7 @@ class PaymentRecoveryServiceTest {
 
         paymentRecoveryService.recover(PAYMENT_ID);
 
-        verify(paymentConfirmationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.CANCELLED));
+        verify(paymentReconciliationService).reconcile(pgPayment(PaymentGateway.PgPaymentStatus.CANCELLED));
     }
 
     private PaymentRecoveryTarget recoveryTarget() {

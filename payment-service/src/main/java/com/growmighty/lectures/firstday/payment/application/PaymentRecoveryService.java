@@ -8,12 +8,13 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class PaymentRecoveryService {
     private final PaymentConfirmationService paymentConfirmationService;
+    private final PaymentReconciliationService paymentReconciliationService;
     private final PaymentGateway paymentGateway;
 
     public void recover(Long paymentId) {
         PaymentRecoveryTarget target = paymentConfirmationService.getRecoveryTarget(paymentId);
         PaymentGateway.PgPayment pgPayment = paymentGateway.getPayment(target.paymentKey());
 
-        paymentConfirmationService.reconcile(pgPayment);
+        paymentReconciliationService.reconcile(pgPayment);
     }
 }
