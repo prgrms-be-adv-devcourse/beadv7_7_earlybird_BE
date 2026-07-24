@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
+import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ import java.time.LocalDateTime;
 public class PaymentConfirmationService {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     /**
      * PG 승인 전에 결제를 CONFIRMING 상태로 선점,
@@ -124,6 +126,32 @@ public class PaymentConfirmationService {
         }
 
         paymentRepository.save(payment);
+    }
+
+    @Transactional
+    public void reconcile(PaymentGateway.PgPayment pgPayment) {
+        Payment payment = paymentRepository.findByPaymentKey(pgPayment.paymentKey())
+            .orElseThrow(() -> new EntityNotFoundException("paymentKey 에 해당하는 결제가 없습니다. paymentKey = " + pgPayment.paymentKey()));
+
+        switch (pgPayment.status()) {
+            case  COMPLETED -> completeConfirmation(
+                payment.getPaymentId(),
+                payment.getPaymentKey(),
+                new PaymentGateway.PgApproval(
+                    pgPayment.paymentKey(),
+                    pgPayment.pgOrderId(),
+                    pgPayment.amount()
+                )
+            );
+
+            case FAILED , EXPIRED , CANCELLED -> failConfirmation(payment.getPaymentId());
+
+            case PENDING -> failConfirmationIfExpired(
+                payment.getPaymentId(),
+                LocalDateTime.now(),
+                paymentRecoveryProperties.maximumConfirmingDuration()
+            );
+        }
     }
 
     private Payment findPayment(Long paymentId) {
