@@ -1,10 +1,11 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
-import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
+import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -39,7 +41,10 @@ class PaymentServiceTest {
         paymentService = new PaymentService(
             paymentRepository,
             paymentGateway,
-            new PaymentConfirmationService(paymentRepository),
+            new PaymentConfirmationService(
+                paymentRepository,
+                new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10))
+            ),
             orderStatusPort
         );
     }
@@ -245,6 +250,7 @@ class PaymentServiceTest {
         private final Map<Long, Payment> paymentsById = new HashMap<>();
         private final Map<Long, Payment> paymentsByOrderId = new HashMap<>();
         private final Map<String, Payment> paymentsByPgOrderId = new HashMap<>();
+        private final Map<String, Payment> paymentsByPaymentKey = new HashMap<>();
 
         @Override
         public Payment save(Payment payment) {
@@ -255,6 +261,9 @@ class PaymentServiceTest {
             paymentsById.put(payment.getPaymentId(), payment);
             paymentsByOrderId.put(payment.getOrderId(), payment);
             paymentsByPgOrderId.put(payment.getPgOrderId(), payment);
+            if (payment.getPaymentKey() != null) {
+                paymentsByPaymentKey.put(payment.getPaymentKey(), payment);
+            }
             return payment;
         }
 
@@ -271,6 +280,11 @@ class PaymentServiceTest {
         @Override
         public Optional<Payment> findByPgOrderId(String pgOrderId) {
             return Optional.ofNullable(paymentsByPgOrderId.get(pgOrderId));
+        }
+
+        @Override
+        public Optional<Payment> findByPaymentKey(String paymentKey) {
+            return Optional.ofNullable(paymentsByPaymentKey.get(paymentKey));
         }
 
         @Override

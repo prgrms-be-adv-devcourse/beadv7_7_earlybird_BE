@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/internal/v1/payments/toss")
+@RequestMapping("/api/v1/payments/toss")
 public class TossWebhookController {
     private final PaymentGateway paymentGateway;
     private final PaymentConfirmationService paymentConfirmationService;
