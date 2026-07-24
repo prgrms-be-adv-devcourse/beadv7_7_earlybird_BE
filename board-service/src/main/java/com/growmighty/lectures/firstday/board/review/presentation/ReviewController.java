@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.board.review.presentation;
 import com.growmighty.lectures.firstday.board.review.application.ReviewService;
 import com.growmighty.lectures.firstday.board.review.presentation.dto.ReviewRequest;
 import com.growmighty.lectures.firstday.board.review.presentation.dto.ReviewResponse;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,8 +28,9 @@ public class ReviewController {
     }
 
     @DeleteMapping("/reviews/{reviewId}")
-    public Void delete(@PathVariable Long reviewId) {
-        reviewService.delete(reviewId);
+    public Void delete(@PathVariable Long reviewId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+                        @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+        reviewService.delete(reviewId, requesterId, requesterRole);
         return null;
     }
 }
