@@ -25,9 +25,9 @@ public class PaymentRecoveryService {
                 )
             );
 
-            case FAILED, EXPIRED -> paymentConfirmationService.failConfirmation(target.paymentId());
+            case FAILED, EXPIRED, CANCELLED -> paymentConfirmationService.failConfirmation(target.paymentId());
 
-            case PENDING, CANCELLED -> {
+            case PENDING -> {
                 // Toss 처리가 아직 끝나지 않았거나, 로컬 상태와 맞지 않는 경우
                 // CONFIRMING 상태를 유지하고 이후 다시 조회
             }

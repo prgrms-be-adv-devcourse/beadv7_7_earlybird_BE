@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.payment.domain;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface PaymentRepository {
@@ -10,5 +12,7 @@ public interface PaymentRepository {
     Optional<Payment> findByPgOrderId(String pgOrderId);
 
     Optional<Payment> findByOrderId(Long orderId);
+
+    List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit);
 
 }

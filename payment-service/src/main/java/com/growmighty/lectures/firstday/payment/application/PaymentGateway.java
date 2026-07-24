@@ -21,19 +21,29 @@ public interface PaymentGateway {
 
     }
 
-    /**
-     *  Toss DONE       → COMPLETED
-     *   Toss ABORTED   → FAILED
-     *   Toss EXPIRED   → EXPIRED
-     *   Toss CANCELED  → CANCELLED
-     *   그 외           → PENDING
-     */
-
     enum PgPaymentStatus {
         COMPLETED,
         FAILED,
         EXPIRED,
         CANCELLED,
-        PENDING
+        PENDING;
+
+        /**
+         * Toss 결제 상태를 Payment 내부 상태 표현으로 변환한다.
+         * 알 수 없거나 비어 있는 상태는 결제 처리 중으로 간주한다.
+         */
+        public static PgPaymentStatus fromTossStatus(String status) {
+            if (status == null) {
+                return PENDING;
+            }
+
+            return switch (status) {
+                case "DONE" -> COMPLETED;
+                case "ABORTED" -> FAILED;
+                case "EXPIRED" -> EXPIRED;
+                case "CANCELED" -> CANCELLED;
+                default -> PENDING;
+            };
+        }
     }
 }

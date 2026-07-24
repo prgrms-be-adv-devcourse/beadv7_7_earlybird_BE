@@ -79,7 +79,7 @@ public class TossPaymentGateway implements PaymentGateway {
                 response.paymentKey(),
                 response.orderId(),
                 response.totalAmount(),
-                toPgPaymentStatus(response.status())
+                PgPaymentStatus.fromTossStatus(response.status())
             );
         } catch (RestClientResponseException e) {
             throw toTossPaymentException(e);
@@ -90,24 +90,6 @@ public class TossPaymentGateway implements PaymentGateway {
                 "토스 결제 서버에 연결할 수 없습니다."
             );
         }
-    }
-
-    /**
-     * Toss 결제 상태를 Payment 내부 상태 표현으로 변환한다.
-     */
-
-    private PgPaymentStatus toPgPaymentStatus(String status) {
-        if (status == null) {
-            return PgPaymentStatus.PENDING;
-        }
-
-        return switch (status) {
-            case "DONE" -> PgPaymentStatus.COMPLETED;
-            case "ABORTED" -> PgPaymentStatus.FAILED;
-            case "EXPIRED" -> PgPaymentStatus.EXPIRED;
-            case "CANCELED" -> PgPaymentStatus.CANCELLED;
-            default -> PgPaymentStatus.PENDING;
-        };
     }
 
     @Override

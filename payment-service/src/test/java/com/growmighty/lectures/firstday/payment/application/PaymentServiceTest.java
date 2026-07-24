@@ -13,9 +13,8 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -223,6 +222,17 @@ class PaymentServiceTest {
         @Override
         public Optional<Payment> findByPgOrderId(String pgOrderId) {
             return Optional.ofNullable(paymentsByPgOrderId.get(pgOrderId));
+        }
+
+        @Override
+        public List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit) {
+            return paymentsById.values().stream()
+                .filter(Payment::isConfirming)
+                .filter(payment -> payment.getConfirmingAt().isBefore(cutoff))
+                .sorted(Comparator.comparing(Payment::getConfirmingAt))
+                .limit(limit)
+                .map(Payment::getPaymentId)
+                .toList();
         }
 
         private int size() {

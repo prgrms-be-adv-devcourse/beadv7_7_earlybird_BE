@@ -96,9 +96,7 @@ public class PaymentConfirmationService {
 
         return new PaymentRecoveryTarget(
             payment.getPaymentId(),
-            payment.getPaymentKey(),
-            payment.getPgOrderId(),
-            payment.getAmount()
+            payment.getPaymentKey()
         );
     }
 
