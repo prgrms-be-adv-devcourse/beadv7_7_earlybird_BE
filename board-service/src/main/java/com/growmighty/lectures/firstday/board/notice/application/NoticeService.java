@@ -17,8 +17,8 @@ public class NoticeService {
 
     // TODO(팀): 공지 등록 시 후원자에게 알림 이벤트 발행 (NoticePublished → notification-service)
     @Transactional
-    public ProjectNotice register(Long projectId, Long authorId, String title, String content) {
-        return noticeRepository.save(ProjectNotice.create(projectId, authorId, title, content));
+    public ProjectNotice register(Long projectId, Long authorId, String authorName, String title, String content) {
+        return noticeRepository.save(ProjectNotice.create(projectId, authorId, authorName, title, content));
     }
 
     @Transactional(readOnly = true)

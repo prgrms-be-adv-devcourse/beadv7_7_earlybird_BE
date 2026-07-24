@@ -16,6 +16,8 @@ class CommentTest {
     private static final Long AUTHOR_ID = 1L;
     private static final Long OTHER_AUTHOR_ID = 2L;
     private static final Long ADMIN_ID = 99L;
+    private static final String AUTHOR_NAME = "작성자";
+    private static final String OTHER_AUTHOR_NAME = "다른작성자";
     private static final String CONTENT = "댓글 내용";
 
     @Nested
@@ -25,11 +27,12 @@ class CommentTest {
         @Test
         @DisplayName("정상 값으로 생성하면 필드가 채워지고 ACTIVE 상태로 시작하며 parentId는 없다")
         void create_success() {
-            Comment comment = Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, CONTENT);
+            Comment comment = Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, CONTENT);
 
             assertThat(comment.getTargetType()).isEqualTo(TARGET_TYPE);
             assertThat(comment.getTargetId()).isEqualTo(TARGET_ID);
             assertThat(comment.getAuthorId()).isEqualTo(AUTHOR_ID);
+            assertThat(comment.getAuthorName()).isEqualTo(AUTHOR_NAME);
             assertThat(comment.getContent()).isEqualTo(CONTENT);
             assertThat(comment.getStatus()).isEqualTo(CommentStatus.ACTIVE);
             assertThat(comment.getParentId()).isNull();
@@ -38,35 +41,49 @@ class CommentTest {
         @Test
         @DisplayName("targetType이 없으면 생성할 수 없다")
         void create_withoutTargetType_throws() {
-            assertThatThrownBy(() -> Comment.create(null, TARGET_ID, AUTHOR_ID, CONTENT))
+            assertThatThrownBy(() -> Comment.create(null, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("targetId가 없으면 생성할 수 없다")
         void create_withoutTargetId_throws() {
-            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, null, AUTHOR_ID, CONTENT))
+            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, null, AUTHOR_ID, AUTHOR_NAME, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("authorId가 없으면 생성할 수 없다")
         void create_withoutAuthorId_throws() {
-            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, null, CONTENT))
+            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, null, AUTHOR_NAME, CONTENT))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("authorName이 없으면 생성할 수 없다")
+        void create_withoutAuthorName_throws() {
+            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, null, CONTENT))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("authorName이 공백이면 생성할 수 없다")
+        void create_blankAuthorName_throws() {
+            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "   ", CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("내용이 없으면 생성할 수 없다")
         void create_withoutContent_throws() {
-            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, null))
+            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, null))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("내용이 공백이면 생성할 수 없다")
         void create_blankContent_throws() {
-            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "   "))
+            assertThatThrownBy(() -> Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "   "))
                 .isInstanceOf(IllegalArgumentException.class);
         }
     }
@@ -81,12 +98,13 @@ class CommentTest {
             Comment parent = comment();
             ReflectionTestUtils.setField(parent, "id", 1L);
 
-            Comment reply = Comment.reply(parent, OTHER_AUTHOR_ID, "답글 내용");
+            Comment reply = Comment.reply(parent, OTHER_AUTHOR_ID, OTHER_AUTHOR_NAME, "답글 내용");
 
             assertThat(reply.getTargetType()).isEqualTo(parent.getTargetType());
             assertThat(reply.getTargetId()).isEqualTo(parent.getTargetId());
             assertThat(reply.getParentId()).isEqualTo(parent.getId());
             assertThat(reply.getAuthorId()).isEqualTo(OTHER_AUTHOR_ID);
+            assertThat(reply.getAuthorName()).isEqualTo(OTHER_AUTHOR_NAME);
             assertThat(reply.getStatus()).isEqualTo(CommentStatus.ACTIVE);
         }
 
@@ -95,9 +113,9 @@ class CommentTest {
         void reply_toReply_throws() {
             Comment parent = comment();
             ReflectionTestUtils.setField(parent, "id", 1L);
-            Comment reply = Comment.reply(parent, OTHER_AUTHOR_ID, "답글 내용");
+            Comment reply = Comment.reply(parent, OTHER_AUTHOR_ID, OTHER_AUTHOR_NAME, "답글 내용");
 
-            assertThatThrownBy(() -> Comment.reply(reply, AUTHOR_ID, "대대댓글 내용"))
+            assertThatThrownBy(() -> Comment.reply(reply, AUTHOR_ID, AUTHOR_NAME, "대대댓글 내용"))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -106,7 +124,16 @@ class CommentTest {
         void reply_withoutAuthorId_throws() {
             Comment parent = comment();
 
-            assertThatThrownBy(() -> Comment.reply(parent, null, "답글 내용"))
+            assertThatThrownBy(() -> Comment.reply(parent, null, OTHER_AUTHOR_NAME, "답글 내용"))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("답글도 authorName 없이는 달 수 없다")
+        void reply_withoutAuthorName_throws() {
+            Comment parent = comment();
+
+            assertThatThrownBy(() -> Comment.reply(parent, OTHER_AUTHOR_ID, null, "답글 내용"))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -115,7 +142,7 @@ class CommentTest {
         void reply_blankContent_throws() {
             Comment parent = comment();
 
-            assertThatThrownBy(() -> Comment.reply(parent, OTHER_AUTHOR_ID, "   "))
+            assertThatThrownBy(() -> Comment.reply(parent, OTHER_AUTHOR_ID, OTHER_AUTHOR_NAME, "   "))
                 .isInstanceOf(IllegalArgumentException.class);
         }
     }
@@ -237,6 +264,6 @@ class CommentTest {
     }
 
     private Comment comment() {
-        return Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, CONTENT);
+        return Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, CONTENT);
     }
 }

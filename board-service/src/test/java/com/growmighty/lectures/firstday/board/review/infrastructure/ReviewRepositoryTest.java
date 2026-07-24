@@ -45,12 +45,13 @@ class ReviewRepositoryTest {
     private static final Long OTHER_PROJECT_ID = 2L;
     private static final Long ORDER_ID = 1L;
     private static final Long AUTHOR_ID = 1L;
+    private static final String AUTHOR_NAME = "작성자";
     private static final BigDecimal RATING = BigDecimal.valueOf(4.5);
 
     @Test
     @DisplayName("리뷰를 저장하고 조회하면 감사 필드(createdAt/updatedAt)까지 채워져 있다")
     void saveAndFindById() {
-        Review review = Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "내용");
+        Review review = Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "내용");
 
         Review saved = reviewRepository.save(review);
         entityManager.flush();
@@ -67,7 +68,7 @@ class ReviewRepositoryTest {
     @Test
     @DisplayName("findById는 삭제된 리뷰도 그대로 반환한다 (update/delete가 '이미 삭제됨'과 '존재한 적 없음'을 구분하기 위해 의도적으로 필터링하지 않음)")
     void findByIdReturnsDeletedReview() {
-        Review review = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "내용"));
+        Review review = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "내용"));
         review.delete(AUTHOR_ID, UserRole.BACKER);
         entityManager.flush();
         entityManager.clear();
@@ -84,8 +85,8 @@ class ReviewRepositoryTest {
         @Test
         @DisplayName("삭제된 리뷰는 목록에서 제외한다")
         void excludesDeleted() {
-            Review visible = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "안 지워짐"));
-            Review deleted = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "지워짐"));
+            Review visible = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "안 지워짐"));
+            Review deleted = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "지워짐"));
             deleted.delete(AUTHOR_ID, UserRole.BACKER);
             entityManager.flush();
             entityManager.clear();
@@ -98,7 +99,7 @@ class ReviewRepositoryTest {
         @Test
         @DisplayName("수정된(MODIFIED) 리뷰는 목록에 그대로 남는다")
         void includesModified() {
-            Review review = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "내용"));
+            Review review = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "내용"));
             review.update(AUTHOR_ID, BigDecimal.valueOf(3.0), "수정된 내용");
             entityManager.flush();
             entityManager.clear();
@@ -112,8 +113,8 @@ class ReviewRepositoryTest {
         @Test
         @DisplayName("다른 프로젝트의 리뷰는 섞이지 않는다")
         void scopedToProject() {
-            reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "이 프로젝트"));
-            reviewRepository.save(Review.create(OTHER_PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "다른 프로젝트"));
+            reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "이 프로젝트"));
+            reviewRepository.save(Review.create(OTHER_PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "다른 프로젝트"));
             entityManager.flush();
             entityManager.clear();
 
@@ -125,10 +126,10 @@ class ReviewRepositoryTest {
         @Test
         @DisplayName("최신순(createdAt 내림차순)으로 정렬된다")
         void orderedByCreatedAtDesc() throws InterruptedException {
-            Review first = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "첫 번째"));
+            Review first = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "첫 번째"));
             // createdAt은 persist 시점의 LocalDateTime.now()라, 두 건이 같은 값을 갖지 않도록 간격을 둔다.
             Thread.sleep(10);
-            Review second = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, "두 번째"));
+            Review second = reviewRepository.save(Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, "두 번째"));
             entityManager.flush();
             entityManager.clear();
 

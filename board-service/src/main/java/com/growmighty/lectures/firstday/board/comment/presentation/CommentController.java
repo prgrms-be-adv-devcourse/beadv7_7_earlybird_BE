@@ -19,7 +19,7 @@ public class CommentController {
     @PostMapping("/projects/{projectId}/comments")
     public CommentResponse register(@PathVariable Long projectId, @RequestBody CommentRequest request) {
         return CommentResponse.from(
-            commentService.register(projectId, request.userId(), request.content()));
+            commentService.register(projectId, request.userId(), request.authorName(), request.content()));
     }
 
     @GetMapping("/projects/{projectId}/comments")
@@ -31,7 +31,7 @@ public class CommentController {
     @PostMapping("/comments/{commentId}/replies")
     public CommentResponse registerReply(@PathVariable Long commentId, @RequestBody CommentRequest request) {
         return CommentResponse.from(
-            commentService.registerReply(commentId, request.userId(), request.content()));
+            commentService.registerReply(commentId, request.userId(), request.authorName(), request.content()));
     }
 
     @DeleteMapping("/comments/{commentId}")

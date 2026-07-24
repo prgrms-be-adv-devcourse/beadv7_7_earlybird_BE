@@ -14,6 +14,7 @@ class ProjectNoticeTest {
     private static final Long AUTHOR_ID = 1L;
     private static final Long OTHER_AUTHOR_ID = 2L;
     private static final Long ADMIN_ID = 99L;
+    private static final String AUTHOR_NAME = "작성자";
     private static final String TITLE = "공지 제목";
     private static final String CONTENT = "공지 내용";
 
@@ -24,10 +25,11 @@ class ProjectNoticeTest {
         @Test
         @DisplayName("정상 값으로 생성하면 필드가 채워지고 ACTIVE 상태로 시작한다")
         void create_success() {
-            ProjectNotice notice = ProjectNotice.create(PROJECT_ID, AUTHOR_ID, TITLE, CONTENT);
+            ProjectNotice notice = ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, TITLE, CONTENT);
 
             assertThat(notice.getProjectId()).isEqualTo(PROJECT_ID);
             assertThat(notice.getAuthorId()).isEqualTo(AUTHOR_ID);
+            assertThat(notice.getAuthorName()).isEqualTo(AUTHOR_NAME);
             assertThat(notice.getTitle()).isEqualTo(TITLE);
             assertThat(notice.getContent()).isEqualTo(CONTENT);
             assertThat(notice.getStatus()).isEqualTo(ProjectNoticeStatus.ACTIVE);
@@ -37,28 +39,42 @@ class ProjectNoticeTest {
         @Test
         @DisplayName("projectId가 없으면 생성할 수 없다")
         void create_withoutProjectId_throws() {
-            assertThatThrownBy(() -> ProjectNotice.create(null, AUTHOR_ID, TITLE, CONTENT))
+            assertThatThrownBy(() -> ProjectNotice.create(null, AUTHOR_ID, AUTHOR_NAME, TITLE, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("authorId가 없으면 생성할 수 없다")
         void create_withoutAuthorId_throws() {
-            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, null, TITLE, CONTENT))
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, null, AUTHOR_NAME, TITLE, CONTENT))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("authorName이 없으면 생성할 수 없다")
+        void create_withoutAuthorName_throws() {
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, null, TITLE, CONTENT))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("authorName이 공백이면 생성할 수 없다")
+        void create_blankAuthorName_throws() {
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, "   ", TITLE, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("제목이 없으면 생성할 수 없다")
         void create_withoutTitle_throws() {
-            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, null, CONTENT))
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, null, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("제목이 공백이면 생성할 수 없다")
         void create_blankTitle_throws() {
-            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, "   ", CONTENT))
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, "   ", CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -67,7 +83,7 @@ class ProjectNoticeTest {
         void create_tooLongTitle_throws() {
             String tooLongTitle = "a".repeat(256);
 
-            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, tooLongTitle, CONTENT))
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, tooLongTitle, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
@@ -76,7 +92,7 @@ class ProjectNoticeTest {
         void create_exactly255Title_success() {
             String maxLengthTitle = "a".repeat(255);
 
-            ProjectNotice notice = ProjectNotice.create(PROJECT_ID, AUTHOR_ID, maxLengthTitle, CONTENT);
+            ProjectNotice notice = ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, maxLengthTitle, CONTENT);
 
             assertThat(notice.getTitle()).hasSize(255);
         }
@@ -84,14 +100,14 @@ class ProjectNoticeTest {
         @Test
         @DisplayName("내용이 없으면 생성할 수 없다")
         void create_withoutContent_throws() {
-            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, TITLE, null))
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, TITLE, null))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("내용이 공백이면 생성할 수 없다")
         void create_blankContent_throws() {
-            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, TITLE, "   "))
+            assertThatThrownBy(() -> ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, TITLE, "   "))
                 .isInstanceOf(IllegalArgumentException.class);
         }
     }
@@ -245,6 +261,6 @@ class ProjectNoticeTest {
     }
 
     private ProjectNotice notice() {
-        return ProjectNotice.create(PROJECT_ID, AUTHOR_ID, TITLE, CONTENT);
+        return ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, TITLE, CONTENT);
     }
 }

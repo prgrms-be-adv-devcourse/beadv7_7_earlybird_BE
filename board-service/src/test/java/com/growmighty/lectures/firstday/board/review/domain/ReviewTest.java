@@ -17,6 +17,7 @@ class ReviewTest {
     private static final Long AUTHOR_ID = 1L;
     private static final Long OTHER_AUTHOR_ID = 2L;
     private static final Long ADMIN_ID = 99L;
+    private static final String AUTHOR_NAME = "작성자";
     private static final BigDecimal RATING = new BigDecimal("4.5");
     private static final String CONTENT = "리워드가 만족스러웠어요";
 
@@ -27,11 +28,12 @@ class ReviewTest {
         @Test
         @DisplayName("정상 값으로 생성하면 필드가 채워지고 ACTIVE 상태로 시작한다")
         void create_success() {
-            Review review = Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, CONTENT);
+            Review review = Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, CONTENT);
 
             assertThat(review.getProjectId()).isEqualTo(PROJECT_ID);
             assertThat(review.getOrderId()).isEqualTo(ORDER_ID);
             assertThat(review.getAuthorId()).isEqualTo(AUTHOR_ID);
+            assertThat(review.getAuthorName()).isEqualTo(AUTHOR_NAME);
             assertThat(review.getRating().getValue()).isEqualByComparingTo(RATING);
             assertThat(review.getContent()).isEqualTo(CONTENT);
             assertThat(review.getStatus()).isEqualTo(ReviewStatus.ACTIVE);
@@ -40,49 +42,63 @@ class ReviewTest {
         @Test
         @DisplayName("projectId가 없으면 생성할 수 없다")
         void create_withoutProjectId_throws() {
-            assertThatThrownBy(() -> Review.create(null, ORDER_ID, AUTHOR_ID, RATING, CONTENT))
+            assertThatThrownBy(() -> Review.create(null, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("orderId가 없으면 생성할 수 없다")
         void create_withoutOrderId_throws() {
-            assertThatThrownBy(() -> Review.create(PROJECT_ID, null, AUTHOR_ID, RATING, CONTENT))
+            assertThatThrownBy(() -> Review.create(PROJECT_ID, null, AUTHOR_ID, AUTHOR_NAME, RATING, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("authorId가 없으면 생성할 수 없다")
         void create_withoutAuthorId_throws() {
-            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, null, RATING, CONTENT))
+            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, null, AUTHOR_NAME, RATING, CONTENT))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("authorName이 없으면 생성할 수 없다")
+        void create_withoutAuthorName_throws() {
+            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, null, RATING, CONTENT))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("authorName이 공백이면 생성할 수 없다")
+        void create_blankAuthorName_throws() {
+            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, "   ", RATING, CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("평점이 없으면 생성할 수 없다")
         void create_withoutRating_throws() {
-            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, null, CONTENT))
+            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, null, CONTENT))
                 .isInstanceOf(NullPointerException.class);
         }
 
         @Test
         @DisplayName("평점이 범위를 벗어나면 생성할 수 없다")
         void create_ratingOutOfRange_throws() {
-            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, new BigDecimal("5.5"), CONTENT))
+            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, new BigDecimal("5.5"), CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("평점이 소수점 둘째자리 이상이면 생성할 수 없다")
         void create_ratingTooPrecise_throws() {
-            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, new BigDecimal("4.53"), CONTENT))
+            assertThatThrownBy(() -> Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, new BigDecimal("4.53"), CONTENT))
                 .isInstanceOf(IllegalArgumentException.class);
         }
 
         @Test
         @DisplayName("내용이 없어도 별점만으로 생성할 수 있다")
         void create_withoutContent_success() {
-            Review review = Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, null);
+            Review review = Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, null);
 
             assertThat(review.getContent()).isNull();
         }
@@ -215,6 +231,6 @@ class ReviewTest {
     }
 
     private Review review() {
-        return Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, RATING, CONTENT);
+        return Review.create(PROJECT_ID, ORDER_ID, AUTHOR_ID, AUTHOR_NAME, RATING, CONTENT);
     }
 }
