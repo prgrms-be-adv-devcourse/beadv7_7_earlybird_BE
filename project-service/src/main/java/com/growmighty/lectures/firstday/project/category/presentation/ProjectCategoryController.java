@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryCreateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryUpdateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
+import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryTreeResponse;
 import com.growmighty.lectures.firstday.project.category.application.ProjectCategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +37,7 @@ public class ProjectCategoryController {
     }
 
     @GetMapping
-    public List<ProjectCategoryResponse> findAll() {
+    public List<ProjectCategoryTreeResponse> findAll() {
         return projectCategoryService.findAllAsTree();
     }
 
