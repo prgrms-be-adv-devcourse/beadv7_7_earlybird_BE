@@ -5,12 +5,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.growmighty.lectures.firstday.settlement.config.JpaAuditingConfig;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
+import com.growmighty.lectures.firstday.settlement.domain.PayoutAttemptStatus;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationRepository;
+import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutDestinationSnapshot;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.CreatorPayoutProfileRepositoryAdapter;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,13 +29,19 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create")
-@Import(JpaAuditingConfig.class)
+@Import({
+        JpaAuditingConfig.class,
+        CreatorPayoutProfileRepositoryAdapter.class,
+        PayoutObligationRepositoryAdapter.class,
+        ProjectSettlementRepositoryAdapter.class
+})
 class SettlementPersistenceTest {
 
     @Container
@@ -35,13 +49,13 @@ class SettlementPersistenceTest {
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
 
     @Autowired
-    private ProjectSettlementJpaRepository projectSettlementRepository;
+    private ProjectSettlementRepository projectSettlementRepository;
 
     @Autowired
-    private PayoutObligationJpaRepository payoutObligationRepository;
+    private PayoutObligationRepository payoutObligationRepository;
 
     @Autowired
-    private CreatorPayoutProfileJpaRepository creatorPayoutProfileRepository;
+    private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Autowired
     private EntityManager entityManager;
@@ -52,7 +66,6 @@ class SettlementPersistenceTest {
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 SettlementBreakdown.of(
                         Money.wons(100_000),
                         Money.wons(4_000),
@@ -65,12 +78,13 @@ class SettlementPersistenceTest {
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 0)
         );
-        projectSettlementRepository.save(settlement);
+        ProjectSettlement saved = projectSettlementRepository.save(settlement);
         entityManager.flush();
         entityManager.clear();
 
         ProjectSettlement restored = projectSettlementRepository.findByProjectId(1L).orElseThrow();
 
+        assertThat(saved.id()).isNotNull();
         assertThat(restored.creatorPayoutAmount()).isEqualTo(Money.wons(91_200));
     }
 
@@ -88,12 +102,14 @@ class SettlementPersistenceTest {
                 "idempotency-100-1",
                 LocalDateTime.of(2026, 8, 3, 9, 0)
         );
-        payoutObligationRepository.save(obligation);
+        PayoutObligation saved = payoutObligationRepository.save(obligation);
         entityManager.flush();
         entityManager.clear();
 
         PayoutObligation restored = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
 
+        assertThat(saved.id()).isNotNull();
+        assertThat(saved.attempts().getFirst().id()).isNotNull();
         assertThat(restored.attemptCount()).isEqualTo(1);
     }
 
@@ -112,7 +128,7 @@ class SettlementPersistenceTest {
         entityManager.flush();
         entityManager.clear();
 
-        CreatorPayoutProfile restored = creatorPayoutProfileRepository.findById(10L).orElseThrow();
+        CreatorPayoutProfile restored = creatorPayoutProfileRepository.findByCreatorId(10L).orElseThrow();
 
         assertThat(restored.canReceivePayout()).isTrue();
     }
@@ -124,9 +140,35 @@ class SettlementPersistenceTest {
         entityManager.flush();
         entityManager.clear();
 
-        CreatorPayoutProfile restored = creatorPayoutProfileRepository.findById(10L).orElseThrow();
+        CreatorPayoutProfile restored = creatorPayoutProfileRepository.findByCreatorId(10L).orElseThrow();
 
         assertThat(restored.canReceivePayout()).isFalse();
+    }
+
+    @Test
+    @DisplayName("기존 창작자 지급 프로필을 같은 JPA 엔티티에서 갱신한다")
+    void updatesManagedCreatorPayoutProfile() {
+        CreatorPayoutProfile saved = creatorPayoutProfileRepository.save(
+                CreatorPayoutProfile.awaitingRegistration(10L)
+        );
+        entityManager.clear();
+
+        CreatorPayoutProfile profile = creatorPayoutProfileRepository.findByCreatorId(10L).orElseThrow();
+        profile.completeRegistration(
+                "seller-10",
+                CreatorPayoutStatus.PAYOUT_READY,
+                "088",
+                "********1234",
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        );
+        CreatorPayoutProfile updated = creatorPayoutProfileRepository.save(profile);
+        entityManager.clear();
+
+        CreatorPayoutProfile restored = creatorPayoutProfileRepository.findByCreatorId(10L).orElseThrow();
+
+        assertThat(updated.version()).isGreaterThan(saved.version());
+        assertThat(restored.canReceivePayout()).isTrue();
+        assertThat(restored.tossSellerId()).isEqualTo("seller-10");
     }
 
     @Test
@@ -158,6 +200,89 @@ class SettlementPersistenceTest {
     }
 
     @Test
+    @DisplayName("저장된 지급 시도를 보존하면서 결과와 재시도를 갱신한다")
+    void updatesManagedPayoutObligationGraph() {
+        PayoutObligation obligation = PayoutObligation.schedule(
+                100L,
+                10L,
+                Money.wons(91_200),
+                LocalDate.of(2026, 8, 3)
+        );
+        obligation.startAttempt(
+                "ref-payout-100-1",
+                "idempotency-100-1",
+                LocalDateTime.of(2026, 8, 3, 9, 0)
+        );
+        PayoutObligation saved = payoutObligationRepository.save(obligation);
+        Long firstAttemptId = saved.attempts().getFirst().id();
+        entityManager.clear();
+
+        PayoutObligation failed = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+        failed.failAttempt(
+                failed.attempts().getFirst(),
+                "toss-payout-1",
+                "TEMPORARY_ERROR",
+                LocalDateTime.of(2026, 8, 3, 9, 1),
+                true
+        );
+        PayoutObligation retryWaiting = payoutObligationRepository.save(failed);
+
+        var retry = retryWaiting.startAttempt(
+                "ref-payout-100-2",
+                "idempotency-100-2",
+                LocalDateTime.of(2026, 8, 3, 9, 2)
+        );
+        retryWaiting.completeAttempt(
+                retry,
+                "toss-payout-2",
+                LocalDateTime.of(2026, 8, 3, 9, 3)
+        );
+        payoutObligationRepository.save(retryWaiting);
+        entityManager.clear();
+
+        PayoutObligation restored = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+
+        assertThat(restored.status()).isEqualTo(PayoutObligationStatus.COMPLETED);
+        assertThat(restored.attempts()).hasSize(2);
+        assertThat(restored.attempts().getFirst().id()).isEqualTo(firstAttemptId);
+        assertThat(restored.attempts().getFirst().status()).isEqualTo(PayoutAttemptStatus.FAILED);
+        assertThat(restored.attempts().get(1).id()).isNotNull();
+        assertThat(restored.successfulAttemptSequence()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("오래된 지급 의무 스냅샷의 저장을 거부한다")
+    void rejectsStalePayoutObligationVersion() {
+        PayoutObligation saved = payoutObligationRepository.save(PayoutObligation.schedule(
+                100L,
+                10L,
+                Money.wons(91_200),
+                LocalDate.of(2026, 8, 3)
+        ));
+        entityManager.clear();
+
+        PayoutObligation first = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+        PayoutObligation stale = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+
+        first.startAttempt(
+                "ref-payout-100-1",
+                "idempotency-100-1",
+                LocalDateTime.of(2026, 8, 3, 9, 0)
+        );
+        PayoutObligation updated = payoutObligationRepository.save(first);
+
+        stale.startAttempt(
+                "ref-payout-100-stale",
+                "idempotency-100-stale",
+                LocalDateTime.of(2026, 8, 3, 9, 1)
+        );
+
+        assertThat(updated.version()).isGreaterThan(saved.version());
+        assertThatThrownBy(() -> payoutObligationRepository.save(stale))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    }
+
+    @Test
     @DisplayName("같은 프로젝트의 정산을 두 번 저장할 수 없다")
     void rejectsDuplicateSettlementForSameProject() {
         SettlementBreakdown breakdown = SettlementBreakdown.of(
@@ -172,7 +297,6 @@ class SettlementPersistenceTest {
         ProjectSettlement first = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 breakdown,
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 0)
@@ -180,14 +304,13 @@ class SettlementPersistenceTest {
         ProjectSettlement duplicate = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 breakdown,
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 1)
         );
-        projectSettlementRepository.saveAndFlush(first);
+        projectSettlementRepository.save(first);
 
-        assertThatThrownBy(() -> projectSettlementRepository.saveAndFlush(duplicate))
+        assertThatThrownBy(() -> projectSettlementRepository.save(duplicate))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -205,7 +328,7 @@ class SettlementPersistenceTest {
                 "same-idempotency-key",
                 LocalDateTime.of(2026, 8, 3, 9, 0)
         );
-        payoutObligationRepository.saveAndFlush(first);
+        payoutObligationRepository.save(first);
 
         PayoutObligation second = PayoutObligation.schedule(
                 101L,
@@ -219,7 +342,7 @@ class SettlementPersistenceTest {
                 LocalDateTime.of(2026, 8, 3, 9, 1)
         );
 
-        assertThatThrownBy(() -> payoutObligationRepository.saveAndFlush(second))
+        assertThatThrownBy(() -> payoutObligationRepository.save(second))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 }

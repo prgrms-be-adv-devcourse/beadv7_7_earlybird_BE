@@ -1,18 +1,13 @@
 package com.growmighty.lectures.firstday.settlement.domain;
 
-import jakarta.persistence.Embeddable;
 import java.util.Objects;
 
-@Embeddable
-public class PayoutDestinationSnapshot {
+public final class PayoutDestinationSnapshot {
 
-    private Long creatorId;
-    private String tossSellerId;
-    private String bankCode;
-    private String maskedAccountNumber;
-
-    protected PayoutDestinationSnapshot() {
-    }
+    private final Long creatorId;
+    private final String tossSellerId;
+    private final String bankCode;
+    private final String maskedAccountNumber;
 
     private PayoutDestinationSnapshot(
             Long creatorId,
@@ -45,6 +40,22 @@ public class PayoutDestinationSnapshot {
             String maskedAccountNumber
     ) {
         return new PayoutDestinationSnapshot(creatorId, tossSellerId, bankCode, maskedAccountNumber);
+    }
+
+    public Long creatorId() {
+        return creatorId;
+    }
+
+    public String tossSellerId() {
+        return tossSellerId;
+    }
+
+    public String bankCode() {
+        return bankCode;
+    }
+
+    public String maskedAccountNumber() {
+        return maskedAccountNumber;
     }
 
     public boolean belongsTo(Long creatorId) {

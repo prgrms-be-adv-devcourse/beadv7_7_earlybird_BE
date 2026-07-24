@@ -1,44 +1,16 @@
 package com.growmighty.lectures.firstday.settlement.domain;
 
-import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.Embedded;
 import java.util.Objects;
 
-@Embeddable
-public class SettlementBreakdown {
+public final class SettlementBreakdown {
 
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "base_amount", nullable = false, precision = 19, scale = 0))
-    private Money baseAmount;
-
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "agency_fee_amount", nullable = false, precision = 19, scale = 0))
-    private Money paymentAndSettlementAgencyFeeAmount;
-
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "agency_fee_vat_amount", nullable = false, precision = 19, scale = 0))
-    private Money paymentAndSettlementAgencyFeeVatAmount;
-
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "platform_fee_amount", nullable = false, precision = 19, scale = 0))
-    private Money platformFeeAmount;
-
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "platform_fee_vat_amount", nullable = false, precision = 19, scale = 0))
-    private Money platformFeeVatAmount;
-
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "other_deduction_amount", nullable = false, precision = 19, scale = 0))
-    private Money otherDeductionAmount;
-
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "creator_payout_amount", nullable = false, precision = 19, scale = 0))
-    private Money creatorPayoutAmount;
-
-    protected SettlementBreakdown() {
-    }
+    private final Money baseAmount;
+    private final Money paymentAndSettlementAgencyFeeAmount;
+    private final Money paymentAndSettlementAgencyFeeVatAmount;
+    private final Money platformFeeAmount;
+    private final Money platformFeeVatAmount;
+    private final Money otherDeductionAmount;
+    private final Money creatorPayoutAmount;
 
     private SettlementBreakdown(
             Money baseAmount,
@@ -83,6 +55,30 @@ public class SettlementBreakdown {
                 otherDeductionAmount,
                 creatorPayoutAmount
         );
+    }
+
+    public Money baseAmount() {
+        return baseAmount;
+    }
+
+    public Money paymentAndSettlementAgencyFeeAmount() {
+        return paymentAndSettlementAgencyFeeAmount;
+    }
+
+    public Money paymentAndSettlementAgencyFeeVatAmount() {
+        return paymentAndSettlementAgencyFeeVatAmount;
+    }
+
+    public Money platformFeeAmount() {
+        return platformFeeAmount;
+    }
+
+    public Money platformFeeVatAmount() {
+        return platformFeeVatAmount;
+    }
+
+    public Money otherDeductionAmount() {
+        return otherDeductionAmount;
     }
 
     public Money creatorPayoutAmount() {
