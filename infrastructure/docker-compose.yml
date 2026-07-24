@@ -5,6 +5,17 @@ x-service-defaults: &service-defaults
     SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
   restart: unless-stopped
 
+# 모든 서비스가 동일한 루트 Dockerfile 을 MODULE 인자만 바꿔 쓴다 (repo 루트 참고).
+x-build-defaults: &build-defaults
+  context: ..
+  dockerfile: Dockerfile
+
+x-core-depends-on: &core-depends-on
+  config-server:
+    condition: service_healthy
+  discovery-server:
+    condition: service_healthy
+
 # 비즈니스 서비스/discovery-server 는 호스트에 ports 를 열지 않는다 — gateway-server(:8000) 가
 # 유일한 외부 진입점이어야 하고, 컨테이너 간 통신(gateway→service lb://, service→service Feign)은
 # ports 매핑 없이도 컴포즈 내부 네트워크 + Eureka 로 이미 동작한다. 호스트에 열어두면 게이트웨이를
@@ -13,10 +24,7 @@ x-service-defaults: &service-defaults
 # 개별 서비스를 디버깅할 때만 아래 ports 블록의 주석을 풀어 임시로 사용할 것.
 x-business-depends-on: &business-depends-on
   depends_on:
-    config-server:
-      condition: service_healthy
-    discovery-server:
-      condition: service_healthy
+    <<: *core-depends-on
     mysql:
       condition: service_healthy
 
@@ -69,8 +77,7 @@ services:
 
   config-server:
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: config-server
     container_name: earlybird-config-server
@@ -98,8 +105,7 @@ services:
 
   discovery-server:
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: discovery-server
     container_name: earlybird-discovery-server
@@ -117,24 +123,18 @@ services:
   gateway-server:
     <<: *service-defaults
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: gateway-server
     container_name: earlybird-gateway-server
     ports:
       - "8000:8000"
-    depends_on:
-      config-server:
-        condition: service_healthy
-      discovery-server:
-        condition: service_healthy
+    depends_on: *core-depends-on
 
   order-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: order-service
     container_name: earlybird-order-service
@@ -145,8 +145,7 @@ services:
   project-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: project-service
     container_name: earlybird-project-service
@@ -157,8 +156,7 @@ services:
   payment-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: payment-service
     container_name: earlybird-payment-service
@@ -169,8 +167,7 @@ services:
   user-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: user-service
     container_name: earlybird-user-service
@@ -181,8 +178,7 @@ services:
   cart-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: cart-service
     container_name: earlybird-cart-service
@@ -193,8 +189,7 @@ services:
   settlement-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: settlement-service
     container_name: earlybird-settlement-service
@@ -205,8 +200,7 @@ services:
   file-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: file-service
     container_name: earlybird-file-service
@@ -217,8 +211,7 @@ services:
   board-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: board-service
     container_name: earlybird-board-service
@@ -229,8 +222,7 @@ services:
   notification-service:
     <<: [*service-defaults, *business-depends-on]
     build:
-      context: ..
-      dockerfile: Dockerfile
+      <<: *build-defaults
       args:
         MODULE: notification-service
     container_name: earlybird-notification-service
