@@ -38,7 +38,7 @@ class ProjectCategoryServiceImplTest {
         ProjectCategoryCreateRequest request = new ProjectCategoryCreateRequest(null, "전자기기");
         when(projectCategoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        ProjectCategoryResponse response = service.create(request);
+        ProjectCategoryResponse response = service.createTransactional(request);
 
         assertThat(response.name()).isEqualTo("전자기기");
         assertThat(response.parentProjectCategoryId()).isNull();
@@ -51,7 +51,7 @@ class ProjectCategoryServiceImplTest {
         when(projectCategoryRepository.existsById(1L)).thenReturn(true);
         when(projectCategoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        ProjectCategoryResponse response = service.create(request);
+        ProjectCategoryResponse response = service.createTransactional(request);
 
         assertThat(response.parentProjectCategoryId()).isEqualTo(1L);
     }
@@ -62,7 +62,7 @@ class ProjectCategoryServiceImplTest {
         ProjectCategoryCreateRequest request = new ProjectCategoryCreateRequest(999L, "스마트기기");
         when(projectCategoryRepository.existsById(999L)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.create(request))
+        assertThatThrownBy(() -> service.createTransactional(request))
                 .isInstanceOf(EntityNotFoundException.class);
     }
 

@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.category.application;
 
+import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryCreateRequest;
@@ -60,6 +61,42 @@ class ProjectCategoryConcurrencyIntegrationTest extends MySqlIntegrationTestSupp
         assertThat(aIsParentOfB ^ bIsParentOfA)
                 .as("둘 중 하나만 부모-자식 관계가 되어야 하고, 서로가 서로의 부모인 순환은 생기면 안 된다")
                 .isTrue();
+    }
+
+    /**
+     * delete()가 treeLock 없이 동작하던 시절엔, "X를 부모로 지정하려는 update()"와 "X를 지우려는
+     * delete()"가 동시에 들어오면 서로 상대방의 커밋 전 상태를 보고 둘 다 통과할 수 있었다 —
+     * update()가 "X에 아직 자식이 없다"를 보고 통과하는 동안 delete()도 "X를 참조하는 자식이
+     * 아직 없다"를 보고 X를 지워버리면, update()가 나중에 커밋할 때 존재하지 않는 categoryId를
+     * 부모로 갖게 된다. 이제 셋 다 같은 treeLock으로 직렬화되므로, 어느 한쪽이 커밋된 뒤에야
+     * 다른 쪽이 그 최신 상태를 보고 실행돼 이런 경합이 생기지 않아야 한다.
+     */
+    @Test
+    @DisplayName("카테고리 삭제와 그 카테고리를 부모로 지정하려는 수정이 동시에 일어나도 존재하지 않는 부모를 가리키게 되지 않는다")
+    void deleteAndUpdate_concurrent_neverLeavesDanglingParent() throws InterruptedException {
+        Long targetId = createRoot("전자기기");
+        Long childId = createRoot("스마트기기");
+
+        List<Runnable> tasks = List.of(
+                () -> projectCategoryService.delete(targetId),
+                () -> projectCategoryService.update(childId,
+                        new ProjectCategoryUpdateRequest(targetId, "스마트기기")));
+
+        Throwable[] results = runAllConcurrently(tasks);
+
+        for (Throwable t : results) {
+            if (t != null) {
+                assertThat(t).isInstanceOfAny(EntityNotFoundException.class, IllegalStateException.class);
+            }
+        }
+
+        boolean targetStillExists = projectCategoryRepository.findById(targetId).isPresent();
+        ProjectCategory child = projectCategoryRepository.findById(childId).orElseThrow();
+        boolean childPointsAtTarget = targetId.equals(child.getParentProjectCategoryId());
+
+        assertThat(childPointsAtTarget && !targetStillExists)
+                .as("자식이 target을 부모로 가리키는데 target이 삭제돼 있으면 안 된다(dangling parent)")
+                .isFalse();
     }
 
     private Long createRoot(String name) {

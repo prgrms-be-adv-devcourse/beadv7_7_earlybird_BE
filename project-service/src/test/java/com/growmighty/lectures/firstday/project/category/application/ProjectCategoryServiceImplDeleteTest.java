@@ -39,7 +39,7 @@ class ProjectCategoryServiceImplDeleteTest {
     void delete_hasChildCategory_rejected() {
         when(projectCategoryRepository.existsByParentProjectCategoryId(1L)).thenReturn(true);
 
-        assertThatThrownBy(() -> projectCategoryService.delete(1L))
+        assertThatThrownBy(() -> projectCategoryService.deleteTransactional(1L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("하위 카테고리");
 
@@ -52,7 +52,7 @@ class ProjectCategoryServiceImplDeleteTest {
         when(projectCategoryRepository.existsByParentProjectCategoryId(1L)).thenReturn(false);
         when(projectRepository.existsByCategoryId(1L)).thenReturn(true);
 
-        assertThatThrownBy(() -> projectCategoryService.delete(1L))
+        assertThatThrownBy(() -> projectCategoryService.deleteTransactional(1L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("사용 중인 프로젝트");
 
@@ -65,7 +65,7 @@ class ProjectCategoryServiceImplDeleteTest {
         when(projectCategoryRepository.existsByParentProjectCategoryId(1L)).thenReturn(false);
         when(projectRepository.existsByCategoryId(1L)).thenReturn(false);
 
-        projectCategoryService.delete(1L);
+        projectCategoryService.deleteTransactional(1L);
 
         verify(projectCategoryRepository).delete(category);
     }
