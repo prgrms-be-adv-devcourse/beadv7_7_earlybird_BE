@@ -17,6 +17,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
 
     List<Project> findByCreatorId(Long creatorId);
 
+    /** 카테고리 삭제 전 참조무결성 체크(ProjectCategoryServiceImpl.delete()) 전용. */
+    boolean existsByCategoryId(Long categoryId);
+
     /** ProjectInternalController(서비스 간 내부 API) 전용 — role 없이 상태만으로 조회. */
     List<Project> findByStatus(ProjectStatus status);
 

@@ -54,4 +54,19 @@ class ProjectCategoryControllerTest {
 
         verify(projectCategoryService).update(1L, request);
     }
+
+    @Test
+    void delete_nonAdmin_rejected() {
+        assertThatThrownBy(() -> controller.delete(UserRole.CREATOR, 1L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("관리자만");
+        verifyNoInteractions(projectCategoryService);
+    }
+
+    @Test
+    void delete_admin_allowed() {
+        controller.delete(UserRole.ADMIN, 1L);
+
+        verify(projectCategoryService).delete(1L);
+    }
 }
