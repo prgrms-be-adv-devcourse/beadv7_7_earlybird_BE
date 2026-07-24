@@ -17,9 +17,9 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
 
     @Transactional
-    public Review register(Long projectId, Long orderId, Long authorId, BigDecimal rating, String content) {
+    public Review register(Long projectId, Long orderId, Long authorId, String authorName, BigDecimal rating, String content) {
         // TODO(팀): 리워드 수령 여부 검증 + 프로젝트당 1인 1리뷰 정책 결정
-        return reviewRepository.save(Review.create(projectId, orderId, authorId, rating, content));
+        return reviewRepository.save(Review.create(projectId, orderId, authorId, authorName, rating, content));
     }
 
     @Transactional(readOnly = true)

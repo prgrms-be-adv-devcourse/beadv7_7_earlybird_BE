@@ -45,11 +45,12 @@ class CommentRepositoryTest {
     private static final Long TARGET_ID = 1L;
     private static final Long OTHER_TARGET_ID = 2L;
     private static final Long AUTHOR_ID = 1L;
+    private static final String AUTHOR_NAME = "작성자";
 
     @Test
     @DisplayName("의견을 저장하고 조회하면 감사 필드(createdAt/updatedAt)까지 채워져 있다")
     void saveAndFindById() {
-        Comment comment = Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "내용");
+        Comment comment = Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "내용");
 
         Comment saved = commentRepository.save(comment);
         entityManager.flush();
@@ -66,7 +67,7 @@ class CommentRepositoryTest {
     @Test
     @DisplayName("findById는 삭제된 의견도 그대로 반환한다 (update/delete가 '이미 삭제됨'과 '존재한 적 없음'을 구분하기 위해 의도적으로 필터링하지 않음)")
     void findByIdReturnsDeletedComment() {
-        Comment comment = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "내용"));
+        Comment comment = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "내용"));
         comment.delete(AUTHOR_ID, UserRole.BACKER);
         entityManager.flush();
         entityManager.clear();
@@ -83,8 +84,8 @@ class CommentRepositoryTest {
         @Test
         @DisplayName("삭제된 의견은 목록에서 제외한다")
         void excludesDeleted() {
-            Comment visible = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "안 지워짐"));
-            Comment deleted = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "지워짐"));
+            Comment visible = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "안 지워짐"));
+            Comment deleted = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "지워짐"));
             deleted.delete(AUTHOR_ID, UserRole.BACKER);
             entityManager.flush();
             entityManager.clear();
@@ -97,7 +98,7 @@ class CommentRepositoryTest {
         @Test
         @DisplayName("수정된(MODIFIED) 의견은 목록에 그대로 남는다")
         void includesModified() {
-            Comment comment = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "내용"));
+            Comment comment = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "내용"));
             comment.update(AUTHOR_ID, "수정된 내용");
             entityManager.flush();
             entityManager.clear();
@@ -111,8 +112,8 @@ class CommentRepositoryTest {
         @Test
         @DisplayName("대댓글도 부모와 같은 target 목록에 포함된다 (평탄한 목록, 그룹핑은 표현 계층 몫)")
         void includesReplies() {
-            Comment parent = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "댓글"));
-            Comment reply = commentRepository.save(Comment.reply(parent, AUTHOR_ID, "대댓글"));
+            Comment parent = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "댓글"));
+            Comment reply = commentRepository.save(Comment.reply(parent, AUTHOR_ID, AUTHOR_NAME, "대댓글"));
             entityManager.flush();
             entityManager.clear();
 
@@ -124,8 +125,8 @@ class CommentRepositoryTest {
         @Test
         @DisplayName("다른 targetId의 의견은 섞이지 않는다")
         void scopedToTargetId() {
-            commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "이 대상"));
-            commentRepository.save(Comment.create(TARGET_TYPE, OTHER_TARGET_ID, AUTHOR_ID, "다른 대상"));
+            commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "이 대상"));
+            commentRepository.save(Comment.create(TARGET_TYPE, OTHER_TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "다른 대상"));
             entityManager.flush();
             entityManager.clear();
 
@@ -137,8 +138,8 @@ class CommentRepositoryTest {
         @Test
         @DisplayName("targetId가 같아도 targetType이 다르면 섞이지 않는다")
         void scopedToTargetType() {
-            commentRepository.save(Comment.create(CommentTargetType.PROJECT, TARGET_ID, AUTHOR_ID, "프로젝트 본문"));
-            commentRepository.save(Comment.create(CommentTargetType.PROJECT_NOTICE, TARGET_ID, AUTHOR_ID, "공지"));
+            commentRepository.save(Comment.create(CommentTargetType.PROJECT, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "프로젝트 본문"));
+            commentRepository.save(Comment.create(CommentTargetType.PROJECT_NOTICE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "공지"));
             entityManager.flush();
             entityManager.clear();
 
@@ -150,10 +151,10 @@ class CommentRepositoryTest {
         @Test
         @DisplayName("최신순(createdAt 내림차순)으로 정렬된다")
         void orderedByCreatedAtDesc() throws InterruptedException {
-            Comment first = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "첫 번째"));
+            Comment first = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "첫 번째"));
             // createdAt은 persist 시점의 LocalDateTime.now()라, 두 건이 같은 값을 갖지 않도록 간격을 둔다.
             Thread.sleep(10);
-            Comment second = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, "두 번째"));
+            Comment second = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "두 번째"));
             entityManager.flush();
             entityManager.clear();
 

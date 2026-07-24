@@ -30,6 +30,9 @@ public class Review extends BaseEntity {
     @Column(nullable = false)
     private Long authorId;
 
+    @Column(nullable = false)
+    private String authorName;
+
     @Embedded
     @AttributeOverride(name = "value", column = @Column(name = "rating", nullable = false))
     private Rating rating;
@@ -41,21 +44,23 @@ public class Review extends BaseEntity {
     @Column(nullable = false)
     private ReviewStatus status;
 
-    private Review(Long projectId, Long orderId, Long authorId, Rating rating, String content) {
+    private Review(Long projectId, Long orderId, Long authorId, String authorName, Rating rating, String content) {
         validateProjectId(projectId);
         validateOrderId(orderId);
         validateAuthorId(authorId);
+        validateAuthorName(authorName);
 
         this.projectId = projectId;
         this.orderId = orderId;
         this.authorId = authorId;
+        this.authorName = authorName;
         this.rating = rating;
         this.content = content;
         this.status = ReviewStatus.ACTIVE;
     }
 
-    public static Review create(Long projectId, Long orderId, Long authorId, BigDecimal rating, String content) {
-        return new Review(projectId, orderId, authorId, Rating.from(rating), content);
+    public static Review create(Long projectId, Long orderId, Long authorId, String authorName, BigDecimal rating, String content) {
+        return new Review(projectId, orderId, authorId, authorName, Rating.from(rating), content);
     }
 
     public void update(Long requesterId, BigDecimal newRating, String newContent) {
@@ -105,6 +110,12 @@ public class Review extends BaseEntity {
     private void validateAuthorId(Long requesterId) {
         if (requesterId == null) {
             throw new IllegalArgumentException("작성자 정보를 불러올 수 없습니다.");
+        }
+    }
+
+    private void validateAuthorName(String authorName) {
+        if (authorName == null || authorName.isBlank()) {
+            throw new IllegalArgumentException("작성자 이름은 필수입니다.");
         }
     }
 

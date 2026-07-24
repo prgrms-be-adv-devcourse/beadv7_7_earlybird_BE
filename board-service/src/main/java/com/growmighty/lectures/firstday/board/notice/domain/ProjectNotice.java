@@ -23,6 +23,9 @@ public class ProjectNotice extends BaseEntity {
     private Long authorId;
 
     @Column(nullable = false)
+    private String authorName;
+
+    @Column(nullable = false)
     private String title;
 
     @Lob
@@ -36,14 +39,16 @@ public class ProjectNotice extends BaseEntity {
     @Column(nullable = false)
     private ProjectNoticeStatus status;
 
-    private ProjectNotice(Long projectId, Long authorId, String title, String content) {
+    private ProjectNotice(Long projectId, Long authorId, String authorName, String title, String content) {
         validateProjectId(projectId);
         validateTitle(title);
         validateContent(content);
         validateAuthorId(authorId);
+        validateAuthorName(authorName);
 
         this.projectId = projectId;
         this.authorId = authorId;
+        this.authorName = authorName;
         this.title = title;
         this.content = content;
 
@@ -51,8 +56,8 @@ public class ProjectNotice extends BaseEntity {
         this.viewCount = 0L;
     }
 
-    public static ProjectNotice create(Long projectId, Long authorId, String title, String content) {
-        return new ProjectNotice(projectId, authorId, title, content);
+    public static ProjectNotice create(Long projectId, Long authorId, String authorName, String title, String content) {
+        return new ProjectNotice(projectId, authorId, authorName, title, content);
     }
 
     public void update(Long requesterId, UserRole requesterRole, String title, String content) {
@@ -113,6 +118,12 @@ public class ProjectNotice extends BaseEntity {
     private void validateAuthorId(Long requesterId) {
         if (requesterId == null) {
             throw new IllegalArgumentException("작성자 정보를 불러올 수 없습니다.");
+        }
+    }
+
+    private void validateAuthorName(String authorName) {
+        if (authorName == null || authorName.isBlank()) {
+            throw new IllegalArgumentException("작성자 이름은 필수입니다.");
         }
     }
 }

@@ -19,7 +19,8 @@ public class NoticeController {
     @PostMapping("/projects/{projectId}/notices")
     public NoticeResponse register(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
                                     @RequestBody NoticeRequest request) {
-        return NoticeResponse.from(noticeService.register(projectId, authorId, request.title(), request.content()));
+        return NoticeResponse.from(
+            noticeService.register(projectId, authorId, request.authorName(), request.title(), request.content()));
     }
 
     @GetMapping("/projects/{projectId}/notices")

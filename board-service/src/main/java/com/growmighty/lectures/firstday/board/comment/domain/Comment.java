@@ -27,6 +27,9 @@ public class Comment extends BaseEntity {
     @Column(nullable = false)
     private Long authorId;
 
+    @Column(nullable = false)
+    private String authorName;
+
     /** 답글(창작자 응대 포함)용 부모 댓글. 대댓글은 1단까지만 허용(답글에는 답글 불가). */
     private Long parentId;
 
@@ -37,27 +40,29 @@ public class Comment extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private CommentStatus status;
 
-    private Comment(CommentTargetType targetType, Long targetId, Long authorId, Long parentId, String content) {
+    private Comment(CommentTargetType targetType, Long targetId, Long authorId, String authorName, Long parentId, String content) {
         validateTargetType(targetType);
         validateTargetId(targetId);
         validateAuthorId(authorId);
+        validateAuthorName(authorName);
         validateContent(content);
 
         this.targetType = targetType;
         this.targetId = targetId;
         this.authorId = authorId;
+        this.authorName = authorName;
         this.parentId = parentId;
         this.content = content;
         this.status = CommentStatus.ACTIVE;
     }
 
-    public static Comment create(CommentTargetType targetType, Long targetId, Long authorId, String content) {
-        return new Comment(targetType, targetId, authorId, null, content);
+    public static Comment create(CommentTargetType targetType, Long targetId, Long authorId, String authorName, String content) {
+        return new Comment(targetType, targetId, authorId, authorName, null, content);
     }
 
-    public static Comment reply(Comment parent, Long authorId, String content) {
+    public static Comment reply(Comment parent, Long authorId, String authorName, String content) {
         parent.validateReplyable();
-        return new Comment(parent.targetType, parent.targetId, authorId, parent.id, content);
+        return new Comment(parent.targetType, parent.targetId, authorId, authorName, parent.id, content);
     }
 
     private void validateReplyable() {
@@ -120,6 +125,12 @@ public class Comment extends BaseEntity {
     private void validateAuthorId(Long authorId) {
         if (authorId == null) {
             throw new IllegalArgumentException("작성자 정보를 불러올 수 없습니다.");
+        }
+    }
+
+    private void validateAuthorName(String authorName) {
+        if (authorName == null || authorName.isBlank()) {
+            throw new IllegalArgumentException("작성자 이름은 필수입니다.");
         }
     }
 
