@@ -29,17 +29,31 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
     private final ObjectProvider<ProjectCategoryService> selfProvider;
 
     /**
-     * 부모 변경(순환참조 검증 포함)은 read-then-write라 동시에 두 카테고리가 서로를 부모로
-     * 설정하면(A→B, B→A) 둘 다 상대방의 커밋 전 상태를 보고 통과해버려 순환이 생길 수 있다.
-     * DB 락으로 막으면 ProjectServiceImpl.delete()류의 락 순서 역전 데드락과 같은 문제가
-     * 새로 생기므로, 카테고리 변경은 관리자 전용의 드문 작업이라는 점을 감안해 JVM 레벨로
-     * 직렬화한다(단일 인스턴스 전제 — 다중 인스턴스 확장 시 분산 락으로 교체 필요).
+     * create/update/delete는 전부 카테고리 트리(부모-자식 관계)를 read-then-write로 검증한다 —
+     * 예를 들어 동시에 두 카테고리가 서로를 부모로 설정하면(A→B, B→A) 둘 다 상대방의 커밋 전
+     * 상태를 보고 통과해버려 순환이 생길 수 있고, update()와 delete()가 같은 카테고리를
+     * 동시에 건드리면 방금 부모로 지정하려는 카테고리가 그 사이에 삭제돼 존재하지 않는
+     * categoryId를 가리키게 될 수도 있다(참조무결성 체크와 실제 삭제 사이의 TOCTOU).
+     * 세 메서드 다 이 트리 전체에 대해 서로 배타적으로 실행돼야 이런 경합을 막을 수 있어서
+     * 셋 다 같은 락으로 직렬화한다. 대안(DB 낙관적/비관적 락)도 가능하지만, 카테고리 변경은
+     * 관리자 전용의 드문 작업이라 JVM 레벨 직렬화로 충분하다고 판단했다(단일 인스턴스 전제
+     * — 다중 인스턴스로 확장하면 분산 락으로 교체 필요).
      */
     private final Object treeLock = new Object();
 
     @Override
-    @Transactional
+    // update()와 같은 이유로 트랜잭션 자체를 열지 않는다 — 아래 3개 메서드(create/update/delete)
+    // 전부 이 패턴을 따른다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ProjectCategoryResponse create(ProjectCategoryCreateRequest request) {
+        synchronized (treeLock) {
+            return selfProvider.getObject().createTransactional(request);
+        }
+    }
+
+    @Override
+    @Transactional
+    public ProjectCategoryResponse createTransactional(ProjectCategoryCreateRequest request) {
         validateParentExists(request.parentProjectCategoryId());
         ProjectCategory projectCategory = projectCategoryRepository.save(request.toEntity());
         return ProjectCategoryResponse.from(projectCategory);
@@ -94,11 +108,21 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
     /**
      * 하위 카테고리나 이 카테고리를 참조하는 프로젝트가 있으면 삭제를 거부한다 — FK가 없어서
      * 체크 없이 지우면 자식 카테고리는 트리에서 조용히 증발하고, 프로젝트는 존재하지 않는
-     * categoryId를 가리키게 된다.
+     * categoryId를 가리키게 된다. 이 체크와 실제 삭제 사이에 동시에 들어온 create()/update()가
+     * 끼어들 수 있어(TOCTOU) treeLock으로 그것들과 서로 배타적으로 실행되게 한다 — treeLock
+     * 필드 주석 참고.
      */
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void delete(Long projectCategoryId) {
+        synchronized (treeLock) {
+            selfProvider.getObject().deleteTransactional(projectCategoryId);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deleteTransactional(Long projectCategoryId) {
         ProjectCategory projectCategory = getProjectCategory(projectCategoryId);
         if (projectCategoryRepository.existsByParentProjectCategoryId(projectCategoryId)) {
             throw new IllegalStateException("하위 카테고리가 있어 삭제할 수 없습니다. 하위 카테고리를 먼저 삭제해주세요.");
