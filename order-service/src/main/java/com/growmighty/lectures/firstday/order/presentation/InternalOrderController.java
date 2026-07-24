@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -34,9 +36,15 @@ public class InternalOrderController {
         return OrderInspectionResponse.from(orderApiService.placeOrderInspection(request.orderId()));
     }
 
-    /** 후원 시 결제 검증용 정보 호출. TODO(예정): payment와 연동 — 인증 도입 후 검증, 상세 기능 추후 구현 예정 */
+    /** 해당 project의 order 존재 여부 리턴 */
     @GetMapping("/{projectId}/ordered-existence")
     public boolean hasOrderedReward(@PathVariable Long projectId) {
         return orderApiService.hasOrderedReward(projectId);
+    }
+
+    /** project의 order 금액 합계 리턴 */
+    @GetMapping("/{projectId}/funded-amount")
+    public Optional<BigDecimal> getFundedAmount(@PathVariable Long projectId) {
+        return orderApiService.getFundedAmount(projectId);
     }
 }
