@@ -100,8 +100,8 @@ class PaymentTest {
     }
 
     @Test
-    @DisplayName("CONFIRMING 결제는 최대 대기 시간 전에는 만료되지 않는다")
-    void isConfirmingExpired_beforeMaximumDuration_returnsFalse() {
+    @DisplayName("CONFIRMING 결제는 최대 대기 시간 전에는 실패 처리되지 않는다")
+    void failIfConfirmingExpired_beforeMaximumDuration_returnsFalse() {
         Payment payment = readyPayment();
         payment.startConfirming(PAYMENT_KEY);
         Duration maximumDuration = Duration.ofMinutes(10);
@@ -109,18 +109,22 @@ class PaymentTest {
             .plus(maximumDuration)
             .minusNanos(1);
 
-        assertThat(payment.isConfirmingExpired(beforeExpiration, maximumDuration)).isFalse();
+        assertThat(payment.failIfConfirmingExpired(beforeExpiration, maximumDuration)).isFalse();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
+        assertThat(payment.getConfirmingAt()).isNotNull();
     }
 
     @Test
-    @DisplayName("CONFIRMING 결제는 최대 대기 시간에 도달하면 만료된다")
-    void isConfirmingExpired_atMaximumDuration_returnsTrue() {
+    @DisplayName("CONFIRMING 결제는 최대 대기 시간에 도달하면 실패 처리된다")
+    void failIfConfirmingExpired_atMaximumDuration_transitionsToFailed() {
         Payment payment = readyPayment();
         payment.startConfirming(PAYMENT_KEY);
         Duration maximumDuration = Duration.ofMinutes(10);
         LocalDateTime expiration = payment.getConfirmingAt().plus(maximumDuration);
 
-        assertThat(payment.isConfirmingExpired(expiration, maximumDuration)).isTrue();
+        assertThat(payment.failIfConfirmingExpired(expiration, maximumDuration)).isTrue();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getConfirmingAt()).isNull();
     }
 
     private Payment readyPayment() {
