@@ -51,3 +51,4 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
     @Query("select p from Project p where p.projectId = :projectId")
     Optional<Project> findByIdForDelete(@Param("projectId") Long projectId);
 }
+
