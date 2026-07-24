@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryCreateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryUpdateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
+import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryTreeResponse;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import lombok.RequiredArgsConstructor;
@@ -41,11 +42,11 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
     public ProjectCategoryResponse create(ProjectCategoryCreateRequest request) {
         validateParentExists(request.parentProjectCategoryId());
         ProjectCategory projectCategory = projectCategoryRepository.save(request.toEntity());
-        return ProjectCategoryResponse.leaf(projectCategory);
+        return ProjectCategoryResponse.from(projectCategory);
     }
 
     @Override
-    public List<ProjectCategoryResponse> findAllAsTree() {
+    public List<ProjectCategoryTreeResponse> findAllAsTree() {
         List<ProjectCategory> projectCategories = projectCategoryRepository.findAll();
         Map<Long, List<ProjectCategory>> childrenByParentId = projectCategories.stream()
                 .filter(projectCategory -> !projectCategory.isRoot())
@@ -59,7 +60,7 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
 
     @Override
     public ProjectCategoryResponse findById(Long projectCategoryId) {
-        return ProjectCategoryResponse.leaf(getProjectCategory(projectCategoryId));
+        return ProjectCategoryResponse.from(getProjectCategory(projectCategoryId));
     }
 
     @Override
@@ -87,7 +88,7 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
             projectCategory.changeParent(request.parentProjectCategoryId());
         }
         projectCategory.rename(request.name());
-        return ProjectCategoryResponse.leaf(projectCategory);
+        return ProjectCategoryResponse.from(projectCategory);
     }
 
     /**
@@ -108,13 +109,13 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
         projectCategoryRepository.delete(projectCategory);
     }
 
-    private ProjectCategoryResponse toTree(ProjectCategory projectCategory, Map<Long, List<ProjectCategory>> childrenByParentId) {
-        List<ProjectCategoryResponse> children = childrenByParentId
+    private ProjectCategoryTreeResponse toTree(ProjectCategory projectCategory, Map<Long, List<ProjectCategory>> childrenByParentId) {
+        List<ProjectCategoryTreeResponse> children = childrenByParentId
                 .getOrDefault(projectCategory.getId(), List.of())
                 .stream()
                 .map(child -> toTree(child, childrenByParentId))
                 .toList();
-        return ProjectCategoryResponse.of(projectCategory, children);
+        return ProjectCategoryTreeResponse.of(projectCategory, children);
     }
 
     private ProjectCategory getProjectCategory(Long projectCategoryId) {
