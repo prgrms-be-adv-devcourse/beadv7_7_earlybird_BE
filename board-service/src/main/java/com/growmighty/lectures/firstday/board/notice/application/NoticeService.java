@@ -23,7 +23,7 @@ public class NoticeService {
 
     @Transactional(readOnly = true)
     public List<ProjectNotice> getByProject(Long projectId) {
-        return noticeRepository.findByProjectId(projectId);
+        return noticeRepository.findVisibleByProjectId(projectId);
     }
 
     @Transactional

@@ -8,5 +8,7 @@ public interface NoticeRepository {
 
     Optional<ProjectNotice> findById(Long id);
 
-    List<ProjectNotice> findByProjectId(Long projectId);
+    List<ProjectNotice> findVisibleByProjectId(Long projectId);
+
+
 }
