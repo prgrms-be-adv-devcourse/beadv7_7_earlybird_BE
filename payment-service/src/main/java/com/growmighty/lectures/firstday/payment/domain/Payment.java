@@ -7,6 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "payments")
@@ -15,11 +17,33 @@ import java.math.BigDecimal;
 public class Payment extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "id")
+    private Long paymentId;
 
     /** orderdb.orders.id (논리) — 일괄 환불 배치의 역추적 키. 주문당 결제 1건(멱등성). */
     @Column(name = "order_id", nullable = false, unique = true)
     private Long orderId;
+
+    @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
+    private String pgOrderId;
+
+    @Column(name = "payment_key", unique = true, length = 200)
+    private String paymentKey;
+
+    @Version
+    private Long version;
+
+    @Column(name = "approve_idempotency_key", nullable = false, unique = true, length = 64)
+    private String approveIdempotencyKey;
+
+    @Column(name = "confirming_At")
+    private LocalDateTime confirmingAt;
+
+    @Column(name = "confirmed_At")
+    private LocalDateTime confirmedAt;
+
+    @Column(name = "canceled_At")
+    private LocalDateTime canceledAt;
 
     @Column(nullable = false)
     private BigDecimal amount;
@@ -28,48 +52,75 @@ public class Payment extends BaseEntity {
     @Column(nullable = false)
     private PaymentStatus status;
 
-    @Column
-    private String pgTransactionId;
 
     private Payment(Long orderId, BigDecimal amount) {
+        validatePayment(orderId, amount);
+        this.orderId = orderId;
+        this.pgOrderId = generatePgOrderId(orderId);
+        this.amount = amount;
+        this.approveIdempotencyKey = UUID.randomUUID().toString();
+        this.status = PaymentStatus.READY;
+    }
+
+    private static void validatePayment(Long orderId, BigDecimal amount) {
         if (orderId == null) {
             throw new IllegalArgumentException("주문 식별자는 필수입니다.");
         }
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("결제 금액은 0원보다 커야 합니다. 입력값: " + amount);
         }
-        this.orderId = orderId;
-        this.amount = amount;
-        this.status = PaymentStatus.READY;
     }
 
     public static Payment ready(Long orderId, BigDecimal amount) {
         return new Payment(orderId, amount);
     }
 
-    public void approve(String pgTransactionId) {
-        if (this.status != PaymentStatus.READY) {
-            throw new IllegalStateException("승인 대기(READY) 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
+    private static String generatePgOrderId(Long orderId) {
+        return "order-" + orderId + "-" + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    public void startConfirming() {
+        if(this.status != PaymentStatus.READY) {
+            throw new IllegalStateException("READY 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
         }
-        this.pgTransactionId = pgTransactionId;
+        this.status = PaymentStatus.CONFIRMING;
+        confirmingAt = LocalDateTime.now();
+    }
+
+    public void confirm(String paymentKey) {
+        if (this.status != PaymentStatus.CONFIRMING) {
+            throw new IllegalStateException("CONFIRMING 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
+        }
+        if (paymentKey == null || paymentKey.isBlank()) {
+            throw new IllegalArgumentException("토스 paymentKey 는 필수입니다.");
+        }
+        this.paymentKey = paymentKey;
+        this.confirmedAt = LocalDateTime.now();
+        this.confirmingAt = null;
         this.status = PaymentStatus.PAID;
     }
 
     public void fail() {
-        if (this.status != PaymentStatus.READY) {
-            throw new IllegalStateException("승인 대기(READY) 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + this.status);
+        if (this.status != PaymentStatus.CONFIRMING) {
+            throw new IllegalStateException("CONFIRMING 상태에서만 실패 처리할 수 있습니다. 현재 상태: " + this.status);
         }
         this.status = PaymentStatus.FAILED;
+        this.confirmingAt = null;
     }
 
     public void cancel() {
         if (this.status != PaymentStatus.PAID) {
-            throw new IllegalStateException("결제 완료(PAID) 상태에서만 취소할 수 있습니다. 현재 상태: " + this.status);
+            throw new IllegalStateException("PAID 상태에서만 취소할 수 있습니다. 현재 상태: " + this.status);
         }
+        this.canceledAt = LocalDateTime.now();
         this.status = PaymentStatus.CANCELLED;
     }
 
     public boolean isPaid() {
         return this.status == PaymentStatus.PAID;
+    }
+
+    public boolean isConfirming() {
+        return this.status == PaymentStatus.CONFIRMING;
     }
 }

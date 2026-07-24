@@ -3,10 +3,15 @@ package com.growmighty.lectures.firstday.payment.application;
 import java.math.BigDecimal;
 
 public interface PaymentGateway {
-    PgApproval approve(BigDecimal amount);
+    PgApproval approve(
+        String paymentKey,
+        String pgOrderId,
+        BigDecimal amount,
+        String idempotencyKey
+    );
 
-    void cancel(String pgTransactionId);
+    void cancel(String paymentKey);
 
-    record PgApproval(String transactionId) {
+    record PgApproval(String paymentKey, String pgOrderId, BigDecimal amount) {
     }
 }

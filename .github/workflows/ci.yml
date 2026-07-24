@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [ main, develop ]
   push:
-    branches: [main]
+    branches: [ main, develop ]
 
 jobs:
   build:
@@ -20,4 +20,4 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Build & test
-        run: ./gradlew build
+        run: ./gradlew build --parallel

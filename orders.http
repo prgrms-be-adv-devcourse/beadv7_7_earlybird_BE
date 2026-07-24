@@ -55,6 +55,23 @@ Content-Type: application/json
   "password": "rawPassword1!"
 }
 
+### access token 재발급 (로그인 응답의 refreshToken 을 넣어 호출)
+POST http://localhost:8000/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "여기에 로그인 응답의 refreshToken 을 붙여넣는다"
+}
+
+### 로그아웃 (실제 폐기는 안 함 - 토큰 유효성만 검증 후 204, docs/3_JWT_AUTH.md 참고)
+POST http://localhost:8000/users/logout
+Authorization: Bearer 여기에 로그인 응답의 accessToken 을 붙여넣는다
+Content-Type: application/json
+
+{
+  "refreshToken": "여기에 로그인 응답의 refreshToken 을 붙여넣는다"
+}
+
 ### 프로젝트 등록 (DRAFT 상태로 생성)
 POST http://localhost:8000/projects
 Content-Type: application/json
@@ -77,11 +94,8 @@ POST http://localhost:8000/projects/5/submit
 ### 내 정보 조회 (TODO(팀): JWT 도입 후 userId 파라미터 제거)
 GET http://localhost:8000/users/me?userId=1
 
-### 심사 승인 (IN_REVIEW → OPEN) — TODO(팀): 관리자 전용 + Gateway /admin 라우팅 필요
-POST http://localhost:8000/admin/projects/5/approve
-
-### 심사 반려 (IN_REVIEW → REJECTED)
-POST http://localhost:8000/admin/projects/5/reject
+### 심사 승인/반려 — TODO(팀): 관리자 전용 인가 + Gateway 라우팅 경로 미확정이라 여기 요청 예시를 아직 못 둠
+### (project-service 오너가 최종 경로를 정하면 그때 추가)
 
 ### 리워드 등록
 POST http://localhost:8000/projects/1/rewards

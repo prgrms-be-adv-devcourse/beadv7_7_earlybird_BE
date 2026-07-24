@@ -3,9 +3,10 @@ package com.growmighty.lectures.firstday.order.presentation.dto;
 import com.growmighty.lectures.firstday.order.application.dto.OrderConsistencyView;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record OrderConsistencyResponse(
-        Long orderId,
+        UUID orderId,
         BigDecimal storedTotal,
         BigDecimal recalculatedTotal,
         boolean consistent

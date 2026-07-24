@@ -17,4 +17,8 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
+    // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 }

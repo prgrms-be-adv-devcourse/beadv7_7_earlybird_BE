@@ -4,12 +4,16 @@ plugins {
 
 dependencies {
     // GlobalExceptionHandler(@RestControllerAdvice)와 ApiResponse(Jackson)가 웹 스택을 쓴다.
-    // api: common을 쓰는 모듈에게도 이 의존성이 그대로 전파된다.
-    api 'org.springframework.boot:spring-boot-starter-webmvc'
-    // Bean Validation(@Valid, @NotNull 등). 마찬가지로 모든 서비스에 전파된다.
+    // implementation: 모든 기존 서비스 모듈이 이미 자기 build.gradle에 각자 선언하고 있어
+    // 전파가 필요 없다 — gateway-server(WebFlux, DB 없음)가 common에 의존해도
+    // webmvc/data-jpa를 함께 끌고 오지 않도록 여기서는 전파하지 않는다.
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // Bean Validation(@Valid, @NotNull 등). order-service 등 일부 서비스는 자기 build.gradle 에
+    // 직접 선언하지 않고 이 api 전파에 의존하고 있어 webmvc/data-jpa 와 달리 되돌릴 수 없다.
+    // (gateway-server 는 자기 build.gradle 에서 이 모듈을 명시적으로 exclude 하므로 영향 없다.)
     api 'org.springframework.boot:spring-boot-starter-validation'
     // BaseEntity(JPA Auditing)가 MappedSuperclass/AuditingEntityListener를 쓴다.
-    api 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }

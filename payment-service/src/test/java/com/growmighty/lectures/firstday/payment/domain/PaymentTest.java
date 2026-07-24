@@ -10,61 +10,92 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PaymentTest {
 
+    private static final Long ORDER_ID = 1L;
+    private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
+
     @Test
     @DisplayName("0 이하 금액으로는 결제를 생성할 수 없다")
     void ready_invalidAmount_throws() {
-        assertThatThrownBy(() -> Payment.ready(1L, BigDecimal.ZERO))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Payment.ready(ORDER_ID, BigDecimal.ZERO))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("주문 식별자 없이는 결제를 생성할 수 없다")
     void ready_withoutOrderId_throws() {
-        assertThatThrownBy(() -> Payment.ready(null, BigDecimal.valueOf(10000)))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Payment.ready(null, AMOUNT))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    @DisplayName("승인하면 PAID로 전이되고 거래번호가 저장된다")
-    void approve_transitions() {
-        Payment payment = Payment.ready(1L, BigDecimal.valueOf(10000));
+    @DisplayName("READY 결제를 만들면 PG 주문번호와 승인 재시도용 멱등키가 생성된다")
+    void ready_generatesPgOrderIdAndApproveIdempotencyKey() {
+        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
 
-        payment.approve("PG-1");
+        assertThat(payment.getPgOrderId()).startsWith("order-" + ORDER_ID + "-");
+        assertThat(payment.getPgOrderId()).hasSizeLessThanOrEqualTo(64);
+        assertThat(payment.getApproveIdempotencyKey()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("READY 결제는 승인 처리를 시작하면 CONFIRMING으로 전이된다")
+    void startConfirming_transitions() {
+        Payment payment = readyPayment();
+
+        payment.startConfirming();
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
+        assertThat(payment.isConfirming()).isTrue();
+        assertThat(payment.getConfirmingAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("CONFIRMING 상태에서 승인하면 PAID로 전이되고 paymentKey가 저장된다")
+    void confirm_transitions() {
+        Payment payment = readyPayment();
+        payment.startConfirming();
+
+        payment.confirm("payment-key-1");
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-        assertThat(payment.getPgTransactionId()).isEqualTo("PG-1");
+        assertThat(payment.getPaymentKey()).isEqualTo("payment-key-1");
         assertThat(payment.isPaid()).isTrue();
+        assertThat(payment.getConfirmingAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("READY 상태에서는 바로 승인할 수 없다")
+    void confirm_fromReady_throws() {
+        Payment payment = readyPayment();
+
+        assertThatThrownBy(() -> payment.confirm("payment-key-1"))
+            .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     @DisplayName("이미 승인된 결제를 다시 승인하면 예외가 발생한다")
-    void approve_twice_throws() {
-        Payment payment = Payment.ready(1L, BigDecimal.valueOf(10000));
-        payment.approve("PG-1");
+    void confirm_twice_throws() {
+        Payment payment = readyPayment();
+        payment.startConfirming();
+        payment.confirm("payment-key-1");
 
-        assertThatThrownBy(() -> payment.approve("PG-2"))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> payment.confirm("payment-key-1"))
+            .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
-    @DisplayName("결제 완료 상태에서만 취소할 수 있다")
-    void cancel_onlyFromPaid() {
-        Payment paid = Payment.ready(1L, BigDecimal.valueOf(10000));
-        paid.approve("PG-1");
-        paid.cancel();
-        assertThat(paid.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
-
-        Payment ready = Payment.ready(1L, BigDecimal.valueOf(10000));
-        assertThatThrownBy(ready::cancel).isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
-    @DisplayName("승인 대기 상태에서 실패 처리하면 FAILED로 전이된다")
+    @DisplayName("CONFIRMING 상태에서 실패 처리하면 FAILED로 전이된다")
     void fail_transitions() {
-        Payment payment = Payment.ready(1L, BigDecimal.valueOf(10000));
+        Payment payment = readyPayment();
+        payment.startConfirming();
 
         payment.fail();
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getConfirmingAt()).isNull();
+    }
+
+    private Payment readyPayment() {
+        return Payment.ready(ORDER_ID, AMOUNT);
     }
 }

@@ -8,7 +8,13 @@ import lombok.NoArgsConstructor;
 
 /** 장바구니 항목 — 후원은 리워드(후원 옵션) 단위로 이루어진다. 프로젝트 정보는 reward → project 경유 조회. */
 @Entity
-@Table(name = "cart_items")
+@Table(
+        name = "cart_items",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_cart_items_cart_id_reward_id",
+                columnNames = {"cart_id", "reward_id"}
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CartItem extends BaseEntity {

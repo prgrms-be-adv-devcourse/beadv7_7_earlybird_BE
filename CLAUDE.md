@@ -15,7 +15,7 @@ Always `cd` into the relevant repo before running git or Gradle commands — the
 
 ## Main Project: beadv7_7_earlybird_BE
 
-Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle multi-module microservices. Root `build.gradle` registers plugin versions only (`apply false`); each module applies them itself. Lombok is provided to all modules; `common` shares exceptions (`BusinessException`, `EntityNotFoundException`, `ServiceUnavailableException`, `ErrorCode`, `GlobalExceptionHandler`), `BaseEntity` (JPA auditing — created/updated timestamps), and `ApiResponse` + `ApiResponseWrappingAdvice` (a `@ControllerAdvice` that auto-wraps controller return values, so controllers just return plain DTOs, not `ApiResponse` themselves).
+Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle multi-module microservices. Root `build.gradle` registers plugin versions only (`apply false`); each module applies them itself. Lombok is provided to all modules; `common` shares exceptions (`BusinessException`, `EntityNotFoundException`, `ServiceUnavailableException`, `GlobalExceptionHandler`), `BaseEntity` (JPA auditing — created/updated timestamps), and `ApiResponse` + `ApiResponseWrappingAdvice` (a `@ControllerAdvice` that auto-wraps controller return values, so controllers just return plain DTOs, not `ApiResponse` themselves).
 
 ### Modules and ports
 
@@ -51,6 +51,12 @@ Each service follows the same layered layout under `com.growmighty.lectures.firs
 - `infrastructure/` — port implementations; `infrastructure/client/` contains the HTTP adapters that call other services: a declarative `@FeignClient` interface for the actual call, wrapped by a `*HttpClient` adapter (implements the port interface) that runs the call through a Resilience4j `CircuitBreakerFactory` with a fallback method
 
 Cross-domain references are by **ID, not object** — services never share entities or JPA relationships across domain boundaries; they call each other over HTTP through the port/adapter pair. This port-interface + HTTP-adapter separation is the core pattern the course builds up (monolith → module split → MSA), so preserve it when adding features. Design-background docs live under `docs/` (`1_LOCAL_DB_SETUP.md`, `2_CONFIG_SERVER_SETUP.md`, `ERD.md`).
+
+### Code convention: framework/library defaults over custom code
+
+Prefer an existing Spring (or other library) feature over writing a new class, annotation, or abstraction — across every layer, not just security: Bean Validation (`@Valid`/`@NotNull`/...) over hand-rolled checks, `BaseEntity`/JPA auditing over manual timestamp fields, `ResponseEntityExceptionHandler`/`@RestControllerAdvice` over ad-hoc try/catch-and-map, Resilience4j's `CircuitBreakerFactory` over a custom retry/fallback wrapper, Spring Security's `authorizeExchange`/`@PreAuthorize`/`JwtEncoder`/`oauth2-resource-server` over a custom filter or authorization annotation, and so on. This applies even when the default path costs more up front (e.g. a new dependency in a module that didn't have it, or a broader-reaching change like a shared `gateway-server` config instead of scattered per-service code) — that cost alone does not justify a custom implementation.
+
+Before writing any new class for a problem a framework/library commonly solves, name the specific built-in feature checked and ruled out, and why, before proposing custom code. Custom code is justified only for the part genuinely specific to this project that no existing feature covers (e.g. projecting JWT claims into `X-User-Id`/`X-User-Role` headers for downstream services that don't verify JWTs themselves — see `docs/3_JWT_AUTH.md`).
 
 ## Working Context
 

@@ -7,12 +7,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-public interface OrderJpaRepository extends JpaRepository<Order, Long> {
+public interface OrderJpaRepository extends JpaRepository<Order, UUID> {
     List<Order> findByUserId(Long userId);
 
     @Query("select distinct o from Order o left join fetch o.items where o.id = :id")
-    Optional<Order> findByIdWithItems(@Param("id") Long id);
+    Optional<Order> findByIdWithItems(@Param("id") UUID id);
 
     @Query("""
             select case when count(oi) > 0 then true else false end
