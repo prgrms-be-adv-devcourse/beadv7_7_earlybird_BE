@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
@@ -77,6 +78,54 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, BigDecimal.valueOf(9_999)))
             .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("CONFIRMING 결제는 prepare를 재요청할 수 없다")
+    void prepare_whenConfirming_throws() {
+        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        Payment payment = paymentRepository.findById(prepared.paymentId()).orElseThrow();
+        payment.startConfirming("payment-key-1");
+
+        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+            .isInstanceOf(PaymentConfirmationInProgressException.class);
+    }
+
+    @Test
+    @DisplayName("PAID 결제는 prepare를 재요청할 수 없다")
+    void prepare_whenPaid_throws() {
+        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        paymentService.confirm("payment-key-1", prepared.pgOrderId(), AMOUNT);
+
+        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("이미 결제가 완료된 주문입니다.");
+    }
+
+    @Test
+    @DisplayName("FAILED 결제는 재결제 처리 전까지 prepare를 재요청할 수 없다")
+    void prepare_whenFailed_throws() {
+        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        Payment payment = paymentRepository.findById(prepared.paymentId()).orElseThrow();
+        payment.startConfirming("payment-key-1");
+        payment.fail();
+
+        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("재결제 처리가 필요합니다.");
+    }
+
+    @Test
+    @DisplayName("CANCELLED 결제는 prepare를 재요청할 수 없다")
+    void prepare_whenCancelled_throws() {
+        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        paymentService.confirm("payment-key-1", prepared.pgOrderId(), AMOUNT);
+        Payment payment = paymentRepository.findById(prepared.paymentId()).orElseThrow();
+        payment.cancel();
+
+        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("취소된 결제입니다.");
     }
 
     @Test
