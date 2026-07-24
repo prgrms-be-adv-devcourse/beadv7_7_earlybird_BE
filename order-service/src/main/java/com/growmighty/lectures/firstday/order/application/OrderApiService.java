@@ -340,7 +340,7 @@ public class OrderApiService {
     }
 
     private void verifyOwner(Order order, Long userId) {
-        if (userId != null && !order.getUserId().equals(userId)) {
+        if (userId == null || !order.getUserId().equals(userId)) {
             throw new IllegalStateException("Order access denied. orderId=" + order.getId());
         }
     }
