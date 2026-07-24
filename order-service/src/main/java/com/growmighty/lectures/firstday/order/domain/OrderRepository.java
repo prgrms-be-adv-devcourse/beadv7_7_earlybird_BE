@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.order.domain;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,6 +13,8 @@ public interface OrderRepository {
     Optional<Order> findByIdWithItems(UUID id);
 
     boolean existsByProjectId(Long projectId);
+
+    Optional<BigDecimal> getFundedAmount(Long projectId);
 
     List<Order> findAll();
 

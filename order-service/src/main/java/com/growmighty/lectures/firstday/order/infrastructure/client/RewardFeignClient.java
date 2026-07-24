@@ -23,10 +23,10 @@ public interface RewardFeignClient extends RewardPort {
     @GetMapping("/api/v1/rewards/{rewardId}")
     ApiResponse<RewardApiData> fetchReward(@PathVariable("rewardId") Long rewardId);
 
-    @PostMapping("/internal/rewards/{rewardId}/decrease-stock")
+    @PostMapping("/internal/v1/rewards/{rewardId}/decrease-stock")
     void sendDecreaseStock(@PathVariable("rewardId") Long rewardId, @RequestBody StockChangeBody body);
 
-    @PostMapping("/internal/rewards/{rewardId}/restore-stock")
+    @PostMapping("/internal/v1/rewards/{rewardId}/restore-stock")
     void sendRestoreStock(@PathVariable("rewardId") Long rewardId, @RequestBody StockChangeBody body);
 
     // ── 포트 구현 (default 메서드 = 순수 자바, HTTP 프록시가 아니다) ──────

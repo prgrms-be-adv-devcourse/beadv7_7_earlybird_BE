@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,6 +35,9 @@ public class OrderRepositoryAdapter implements OrderRepository {
     public boolean existsByProjectId(Long projectId) {
         return jpaRepository.existsByProjectId(projectId);
     }
+
+    @Override
+    public Optional<BigDecimal> getFundedAmount(Long projectId) {return jpaRepository.getFundedAmount(projectId);}
 
     @Override
     public List<Order> findAll() {

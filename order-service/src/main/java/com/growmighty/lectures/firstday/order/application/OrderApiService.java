@@ -23,11 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * 주문 애플리케이션 서비스.
@@ -185,6 +181,11 @@ public class OrderApiService {
     @Transactional(readOnly = true)
     public boolean hasOrderedReward(Long projectId) {
         return orderRepository.existsByProjectId(projectId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<BigDecimal> getFundedAmount(Long projectId) {
+        return orderRepository.getFundedAmount(projectId);
     }
 
     // 실질 주문 생성

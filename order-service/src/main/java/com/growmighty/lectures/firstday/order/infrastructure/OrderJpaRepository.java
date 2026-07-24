@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,4 +22,11 @@ public interface OrderJpaRepository extends JpaRepository<Order, UUID> {
             where oi.projectId = :projectId
             """)
     boolean existsByProjectId(@Param("projectId") Long projectId);
+
+    @Query("""
+    select sum(oi.price * oi.quantity)
+    from OrderItem oi
+    where oi.projectId = :projectId
+    """)
+    Optional<BigDecimal> getFundedAmount(@Param("projectId") Long projectId);
 }
