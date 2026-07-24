@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -95,6 +97,30 @@ class PaymentTest {
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
         assertThat(payment.getConfirmingAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("CONFIRMING 결제는 최대 대기 시간 전에는 만료되지 않는다")
+    void isConfirmingExpired_beforeMaximumDuration_returnsFalse() {
+        Payment payment = readyPayment();
+        payment.startConfirming(PAYMENT_KEY);
+        Duration maximumDuration = Duration.ofMinutes(10);
+        LocalDateTime beforeExpiration = payment.getConfirmingAt()
+            .plus(maximumDuration)
+            .minusNanos(1);
+
+        assertThat(payment.isConfirmingExpired(beforeExpiration, maximumDuration)).isFalse();
+    }
+
+    @Test
+    @DisplayName("CONFIRMING 결제는 최대 대기 시간에 도달하면 만료된다")
+    void isConfirmingExpired_atMaximumDuration_returnsTrue() {
+        Payment payment = readyPayment();
+        payment.startConfirming(PAYMENT_KEY);
+        Duration maximumDuration = Duration.ofMinutes(10);
+        LocalDateTime expiration = payment.getConfirmingAt().plus(maximumDuration);
+
+        assertThat(payment.isConfirmingExpired(expiration, maximumDuration)).isTrue();
     }
 
     private Payment readyPayment() {

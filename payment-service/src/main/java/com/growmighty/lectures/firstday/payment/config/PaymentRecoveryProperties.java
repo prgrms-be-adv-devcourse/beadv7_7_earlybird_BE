@@ -18,6 +18,10 @@ public record PaymentRecoveryProperties(
 
     @DefaultValue("100")
     @Positive
-    Integer batchSize
+    Integer batchSize,
+
+    @DefaultValue("PT10M")
+    @DurationMin(seconds = 1)
+    Duration maximumConfirmingDuration
 ) {
 }
