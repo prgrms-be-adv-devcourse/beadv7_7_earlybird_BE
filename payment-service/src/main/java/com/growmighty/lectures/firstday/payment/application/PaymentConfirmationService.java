@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDateTime;
 
 /** 클래스 별도 생성 이유 : PaymentService 내부 메서드 끼리 호출하면 트랜잭션이 적용되지 않아서.
@@ -73,13 +72,11 @@ public class PaymentConfirmationService {
             throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
         }
 
-        if (!payment.getPgOrderId().equals(approval.pgOrderId())) {
-            throw new IllegalStateException("PG 주문번호가 일치하지 않습니다. expected = " + payment.getPgOrderId() + ", actual = " + approval.pgOrderId());
-        }
-
-        if (payment.getAmount().compareTo(approval.amount()) != 0) {
-            throw new IllegalStateException("PG 승인 금액이 일치하지 않습니다. expected = " + approval.amount() + ", actual = " + payment.getAmount());
-        }
+        payment.validateApproval(
+            approval.paymentKey(),
+            approval.pgOrderId(),
+            approval.amount()
+        );
 
         payment.confirm(approval.paymentKey());
 
@@ -105,52 +102,43 @@ public class PaymentConfirmationService {
     }
 
     @Transactional
-    public void failConfirmation(Long paymentId) {
-
-        Payment payment = findPayment(paymentId);
-
-        payment.fail();
-        paymentRepository.save(payment);
-    }
-
-    @Transactional
-    public void failConfirmationIfExpired(
-        Long paymentId,
-        LocalDateTime now,
-        Duration maximumConfirmingDuration
-    ) {
-        Payment payment = findPayment(paymentId);
-
-        if (!payment.failIfConfirmingExpired(now, maximumConfirmingDuration)) {
-            return;
-        }
-
-        paymentRepository.save(payment);
-    }
-
-    @Transactional
     public void reconcile(PaymentGateway.PgPayment pgPayment) {
         Payment payment = paymentRepository.findByPaymentKey(pgPayment.paymentKey())
             .orElseThrow(() -> new EntityNotFoundException("paymentKey 에 해당하는 결제가 없습니다. paymentKey = " + pgPayment.paymentKey()));
 
         switch (pgPayment.status()) {
-            case  COMPLETED -> completeConfirmation(
-                payment.getPaymentId(),
-                payment.getPaymentKey(),
-                new PaymentGateway.PgApproval(
+            case  COMPLETED -> {
+                PaymentGateway.PgApproval approval = new PaymentGateway.PgApproval(
                     pgPayment.paymentKey(),
                     pgPayment.pgOrderId(),
                     pgPayment.amount()
-                )
-            );
+                );
 
-            case FAILED , EXPIRED , CANCELLED -> failConfirmation(payment.getPaymentId());
+                payment.validateApproval(
+                    approval.paymentKey(),
+                    approval.pgOrderId(),
+                    approval.amount()
+                );
 
-            case PENDING -> failConfirmationIfExpired(
-                payment.getPaymentId(),
-                LocalDateTime.now(),
-                paymentRecoveryProperties.maximumConfirmingDuration()
-            );
+                if (payment.reconcileConfirmed(approval.paymentKey())) {
+                    paymentRepository.save(payment);
+                }
+            }
+
+            case FAILED , EXPIRED , CANCELLED -> {
+                if (payment.reconcileFailed()) {
+                    paymentRepository.save(payment);
+                }
+            }
+
+            case PENDING -> {
+                if (payment.failIfConfirmingExpired(
+                    LocalDateTime.now(),
+                    paymentRecoveryProperties.maximumConfirmingDuration()
+                )) {
+                    paymentRepository.save(payment);
+                }
+            }
         }
     }
 
