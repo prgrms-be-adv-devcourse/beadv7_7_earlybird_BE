@@ -6,4 +6,7 @@ dependencies {
     // 버전이 없어도 되는 이유: 루트의 Spring Cloud BOM(2025.1.2)이 채워준다.
     // "설정을 HTTP 로 서빙하는" 웹 서버 기능까지 이 스타터 하나에 전부 들어 있다.
     implementation 'org.springframework.cloud:spring-cloud-config-server'
+
+    // /actuator/health — Docker Compose 헬스체크가 git 저장소 상태와 무관하게 컨테이너 생존을 확인할 수 있게 한다.
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
 }

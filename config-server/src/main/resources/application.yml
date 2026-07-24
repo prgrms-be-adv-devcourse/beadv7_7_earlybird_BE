@@ -9,6 +9,8 @@ spring:
           # 저장소가 private 이라 인증이 필요하다: 환경변수 GIT_USERNAME(깃허브 계정)과
           # GIT_PERSONAL_ACCESS_TOKEN를 실행 환경(IntelliJ Run Configuration 등)에 설정할 것.
           # 로컬 파일로 되돌리려면 file://${user.home}/config-repo 로 바꾸면 된다.
+          # (docker-compose 로컬 테스트는 이 파일을 건드리지 않고 SPRING_PROFILES_ACTIVE=native 로
+          # application-native.yml 을 얹어서 로컬 파일시스템을 쓴다 — 팀 전체가 쓰는 이 기본값은 그대로.)
           uri: https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_config.git
           default-label: main
           username: ${GIT_USERNAME}

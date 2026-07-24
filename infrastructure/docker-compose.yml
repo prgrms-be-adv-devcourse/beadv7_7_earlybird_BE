@@ -1,3 +1,25 @@
+x-service-defaults: &service-defaults
+  environment:
+    SPRING_PROFILES_ACTIVE: docker
+    # 로컬 application.yml 의 config-server 주소(localhost)를 컨테이너 네트워크용으로 덮어쓴다.
+    SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+  restart: unless-stopped
+
+# 비즈니스 서비스/discovery-server 는 호스트에 ports 를 열지 않는다 — gateway-server(:8000) 가
+# 유일한 외부 진입점이어야 하고, 컨테이너 간 통신(gateway→service lb://, service→service Feign)은
+# ports 매핑 없이도 컴포즈 내부 네트워크 + Eureka 로 이미 동작한다. 호스트에 열어두면 게이트웨이를
+# 거치지 않고 누구나 개별 서비스(특히 /internal/** 같은 원래 외부에 안 드러나야 할 엔드포인트)를
+# 직접 두드릴 수 있어, gateway-server 를 단일 진입점으로 두는 설계 의도가 깨진다.
+# 개별 서비스를 디버깅할 때만 아래 ports 블록의 주석을 풀어 임시로 사용할 것.
+x-business-depends-on: &business-depends-on
+  depends_on:
+    config-server:
+      condition: service_healthy
+    discovery-server:
+      condition: service_healthy
+    mysql:
+      condition: service_healthy
+
 services:
   elasticsearch:
     build: ./elasticsearch          # 위 Dockerfile로 빌드 (nori 포함)
@@ -36,6 +58,185 @@ services:
       # 최초 기동 시 서비스별 데이터베이스 9개를 생성한다 (볼륨이 이미 있으면 실행되지 않음)
       - ./mysql/init:/docker-entrypoint-initdb.d
       - earlybird-mysql-data:/var/lib/mysql
+    healthcheck:
+      # -h 127.0.0.1 (TCP), 절대 localhost 로 바꾸지 말 것: "localhost" 는 유닉스 소켓으로 접속하는데,
+      # 첫 기동 시 초기화용 임시 서버가 --skip-networking 상태로 같은 소켓에 떠 있어 healthy 를
+      # 오조기 보고한다 (실제 서버가 뜨기 전에 의존 서비스들이 시작해버려 재시작 루프가 발생했음).
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  config-server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: config-server
+    container_name: earlybird-config-server
+    environment:
+      # 기본값은 native(로컬 파일시스템) — AWS 배포 시 .env 에서 CONFIG_SERVER_PROFILE=production 으로
+      # 바꾸면 application.yml 의 GitHub 원격 기본값을 쓴다 (application-production.yml 없음 = 원래 기본값).
+      - SPRING_PROFILES_ACTIVE=${CONFIG_SERVER_PROFILE:-native}
+      # beadv7_7_earlybird_config(private) 클론용 PAT — production 모드에서만 쓰인다.
+      - GIT_USERNAME=${GIT_USERNAME}
+      - GIT_PERSONAL_ACCESS_TOKEN=${GIT_PERSONAL_ACCESS_TOKEN}
+    volumes:
+      # native 프로파일 전용 — 파일시스템을 그대로 읽기만 하므로(git 체크아웃/리셋 없음) 실제 작업 중인
+      # config repo 를 직접 마운트해도 안전하다. 커밋 없이도 수정하면 바로 반영된다.
+      - ../../beadv7_7_earlybird_config:/config-repo:ro
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+    healthcheck:
+      # git 저장소 인증/조회까지 확인하는 실제 readiness 체크 (ConfigServerHealthIndicator).
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  discovery-server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: discovery-server
+    container_name: earlybird-discovery-server
+    # Eureka 대시보드를 브라우저로 직접 볼 때만 주석 해제.
+    # ports:
+    #   - "8761:8761"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  gateway-server:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: gateway-server
+    container_name: earlybird-gateway-server
+    ports:
+      - "8000:8000"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+
+  order-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: order-service
+    container_name: earlybird-order-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8080:8080"
+
+  project-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: project-service
+    container_name: earlybird-project-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8081:8081"
+
+  payment-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: payment-service
+    container_name: earlybird-payment-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8082:8082"
+
+  user-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: user-service
+    container_name: earlybird-user-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8083:8083"
+
+  cart-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: cart-service
+    container_name: earlybird-cart-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8085:8085"
+
+  settlement-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: settlement-service
+    container_name: earlybird-settlement-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8086:8086"
+
+  file-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: file-service
+    container_name: earlybird-file-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8087:8087"
+
+  board-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: board-service
+    container_name: earlybird-board-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8088:8088"
+
+  notification-service:
+    <<: [*service-defaults, *business-depends-on]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: notification-service
+    container_name: earlybird-notification-service
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8089:8089"
 
 volumes:
   earlybird-mysql-data:
