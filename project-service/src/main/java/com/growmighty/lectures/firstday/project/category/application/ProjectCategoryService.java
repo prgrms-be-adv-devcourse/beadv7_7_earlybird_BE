@@ -17,5 +17,8 @@ public interface ProjectCategoryService {
 
     ProjectCategoryResponse update(Long projectCategoryId, ProjectCategoryUpdateRequest request);
 
+    /** update()가 JVM 락을 잡은 채로 트랜잭션을 커밋까지 마치기 위해 호출하는 단위. 외부에서 직접 부를 일은 없다. */
+    ProjectCategoryResponse updateTransactional(Long projectCategoryId, ProjectCategoryUpdateRequest request);
+
     void delete(Long projectCategoryId);
 }

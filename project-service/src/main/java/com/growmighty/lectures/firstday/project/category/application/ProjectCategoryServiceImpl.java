@@ -7,7 +7,9 @@ import com.growmighty.lectures.firstday.project.category.presentation.dto.reques
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -21,6 +23,16 @@ import java.util.stream.Collectors;
 public class ProjectCategoryServiceImpl implements ProjectCategoryService {
 
     private final ProjectCategoryRepository projectCategoryRepository;
+    private final ObjectProvider<ProjectCategoryService> selfProvider;
+
+    /**
+     * 부모 변경(순환참조 검증 포함)은 read-then-write라 동시에 두 카테고리가 서로를 부모로
+     * 설정하면(A→B, B→A) 둘 다 상대방의 커밋 전 상태를 보고 통과해버려 순환이 생길 수 있다.
+     * DB 락으로 막으면 ProjectServiceImpl.delete()류의 락 순서 역전 데드락과 같은 문제가
+     * 새로 생기므로, 카테고리 변경은 관리자 전용의 드문 작업이라는 점을 감안해 JVM 레벨로
+     * 직렬화한다(단일 인스턴스 전제 — 다중 인스턴스 확장 시 분산 락으로 교체 필요).
+     */
+    private final Object treeLock = new Object();
 
     @Override
     @Transactional
@@ -49,8 +61,23 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
     }
 
     @Override
-    @Transactional
+    // 클래스 레벨 @Transactional(readOnly = true)를 그대로 물려받으면 안 된다 — 그러면 이
+    // 메서드가 먼저 읽기전용 트랜잭션을 열어버리고, updateTransactional()이 REQUIRED 전파로
+    // 그 트랜잭션에 합류해서 변경사항이 커밋 시 플러시 안 되고 조용히 사라진다.
+    // NOT_SUPPORTED로 트랜잭션 자체를 안 열어야 updateTransactional()이 자기 트랜잭션을 새로 연다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ProjectCategoryResponse update(Long projectCategoryId, ProjectCategoryUpdateRequest request) {
+        // synchronized 블록이 트랜잭션 커밋까지 감싸야 해서(그래야 다음 스레드가 항상 커밋된
+        // 최신 상태를 본다), self-invocation을 피해 selfProvider로 프록시를 거쳐 호출한다 —
+        // ProjectServiceImpl.closeExpiredProjects()와 같은 이유.
+        synchronized (treeLock) {
+            return selfProvider.getObject().updateTransactional(projectCategoryId, request);
+        }
+    }
+
+    @Override
+    @Transactional
+    public ProjectCategoryResponse updateTransactional(Long projectCategoryId, ProjectCategoryUpdateRequest request) {
         ProjectCategory projectCategory = getProjectCategory(projectCategoryId);
         if (!Objects.equals(projectCategory.getParentProjectCategoryId(), request.parentProjectCategoryId())) {
             validateParentExists(request.parentProjectCategoryId());
