@@ -6,6 +6,7 @@ import com.growmighty.lectures.firstday.project.category.presentation.dto.reques
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryUpdateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 public class ProjectCategoryServiceImpl implements ProjectCategoryService {
 
     private final ProjectCategoryRepository projectCategoryRepository;
+    private final ProjectRepository projectRepository;
     private final ObjectProvider<ProjectCategoryService> selfProvider;
 
     /**
@@ -88,10 +90,22 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
         return ProjectCategoryResponse.leaf(projectCategory);
     }
 
+    /**
+     * 하위 카테고리나 이 카테고리를 참조하는 프로젝트가 있으면 삭제를 거부한다 — FK가 없어서
+     * 체크 없이 지우면 자식 카테고리는 트리에서 조용히 증발하고, 프로젝트는 존재하지 않는
+     * categoryId를 가리키게 된다.
+     */
     @Override
     @Transactional
     public void delete(Long projectCategoryId) {
-        projectCategoryRepository.delete(getProjectCategory(projectCategoryId));
+        ProjectCategory projectCategory = getProjectCategory(projectCategoryId);
+        if (projectCategoryRepository.existsByParentProjectCategoryId(projectCategoryId)) {
+            throw new IllegalStateException("하위 카테고리가 있어 삭제할 수 없습니다. 하위 카테고리를 먼저 삭제해주세요.");
+        }
+        if (projectRepository.existsByCategoryId(projectCategoryId)) {
+            throw new IllegalStateException("이 카테고리를 사용 중인 프로젝트가 있어 삭제할 수 없습니다.");
+        }
+        projectCategoryRepository.delete(projectCategory);
     }
 
     private ProjectCategoryResponse toTree(ProjectCategory projectCategory, Map<Long, List<ProjectCategory>> childrenByParentId) {

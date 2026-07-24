@@ -8,6 +8,7 @@ import com.growmighty.lectures.firstday.project.category.presentation.dto.respon
 import com.growmighty.lectures.firstday.project.category.application.ProjectCategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,6 +55,15 @@ public class ProjectCategoryController {
                                            @Valid @RequestBody ProjectCategoryUpdateRequest request) {
         requireAdmin(requesterRole);
         return projectCategoryService.update(projectCategoryId, request);
+    }
+
+    /** 관리자 전용 — 하위 카테고리나 이 카테고리를 쓰는 프로젝트가 있으면 거부된다. */
+    @DeleteMapping("/{projectCategoryId}")
+    public Void delete(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+                        @PathVariable Long projectCategoryId) {
+        requireAdmin(requesterRole);
+        projectCategoryService.delete(projectCategoryId);
+        return null;
     }
 
     private void requireAdmin(UserRole requesterRole) {
