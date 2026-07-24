@@ -29,7 +29,7 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
         ProjectCategory projectCategory = projectCategoryRepository.save(request.toEntity());
         return ProjectCategoryResponse.leaf(projectCategory);
     }
-
+    // flat한 형태의 db데이터를 findAll로 한번에 불러와서 자식-부모로 트리구조를 만듬(N+1문제 방지)
     @Override
     public List<ProjectCategoryResponse> findAllAsTree() {
         List<ProjectCategory> projectCategories = projectCategoryRepository.findAll();
