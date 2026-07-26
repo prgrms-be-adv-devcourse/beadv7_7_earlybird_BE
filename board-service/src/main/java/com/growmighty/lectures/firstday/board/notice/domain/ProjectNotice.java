@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.OptimisticLock;
 
 @Entity
 @Table(name = "notices")
@@ -32,12 +33,18 @@ public class ProjectNotice extends BaseEntity {
     @Column(nullable = false)
     private String content;
 
+    /** 조회수 증가는 낙관적 락 검사에서 제외 — 잦은 조회가 제목/내용 수정의 @Version과 경합하지 않도록 */
+    @OptimisticLock(excluded = true)
     @Column(nullable = false)
     private Long viewCount;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ProjectNoticeStatus status;
+
+    /** 동시 수정/삭제 요청 사이의 낙관적 락 — 소프트 삭제 상태 전이 충돌 감지용 */
+    @Version
+    private Long version;
 
     private ProjectNotice(Long projectId, Long authorId, String authorName, String title, String content) {
         validateProjectId(projectId);
@@ -76,6 +83,10 @@ public class ProjectNotice extends BaseEntity {
         validateAuthorId(requesterId);
         validateOwnership(requesterId, requesterRole);
         this.status = ProjectNoticeStatus.DELETED;
+    }
+
+    public void increaseViewCount() {
+        this.viewCount++;
     }
 
     private void validateNotDeleted() {

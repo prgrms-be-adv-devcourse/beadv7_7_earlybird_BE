@@ -23,6 +23,10 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // ProjectNotice 낙관적 락(@Version) 충돌 시 재시도용. @Retryable은 spring-aspects(AOP)가 있어야 동작한다.
+    implementation 'org.springframework.retry:spring-retry'
+    implementation 'org.springframework:spring-aspects'
+
     // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
     // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
