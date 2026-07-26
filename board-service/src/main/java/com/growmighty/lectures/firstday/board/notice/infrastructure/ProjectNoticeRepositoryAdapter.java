@@ -2,7 +2,7 @@ package com.growmighty.lectures.firstday.board.notice.infrastructure;
 
 import com.growmighty.lectures.firstday.board.notice.domain.ProjectNotice;
 import com.growmighty.lectures.firstday.board.notice.domain.ProjectNoticeStatus;
-import com.growmighty.lectures.firstday.board.notice.domain.NoticeRepository;
+import com.growmighty.lectures.firstday.board.notice.domain.ProjectNoticeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -11,8 +11,8 @@ import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
-public class NoticeRepositoryAdapter implements NoticeRepository {
-    private final NoticeJpaRepository jpaRepository;
+public class ProjectNoticeRepositoryAdapter implements ProjectNoticeRepository {
+    private final ProjectNoticeJpaRepository jpaRepository;
 
     @Override
     public ProjectNotice save(ProjectNotice notice) {

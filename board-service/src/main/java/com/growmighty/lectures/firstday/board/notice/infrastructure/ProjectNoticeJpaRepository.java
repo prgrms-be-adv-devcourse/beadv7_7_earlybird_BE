@@ -6,6 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface NoticeJpaRepository extends JpaRepository<ProjectNotice, Long> {
+public interface ProjectNoticeJpaRepository extends JpaRepository<ProjectNotice, Long> {
     List<ProjectNotice> findByProjectIdAndStatusNotOrderByCreatedAtDesc(Long projectId, ProjectNoticeStatus status);
 }
