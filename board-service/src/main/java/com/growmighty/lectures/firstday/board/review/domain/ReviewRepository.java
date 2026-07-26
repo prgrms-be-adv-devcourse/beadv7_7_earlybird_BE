@@ -9,4 +9,7 @@ public interface ReviewRepository {
     Optional<Review> findById(Long id);
 
     List<Review> findVisibleByProjectId(Long projectId);
+
+    /** 1인 1리뷰 정책 확인용 — 삭제된 리뷰는 제외한다 (삭제 후 재작성 허용) */
+    boolean existsActiveByProjectIdAndAuthorId(Long projectId, Long authorId);
 }

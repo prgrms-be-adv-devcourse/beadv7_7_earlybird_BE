@@ -1,37 +1,99 @@
 package com.growmighty.lectures.firstday.board.review.application;
 
+import com.growmighty.lectures.firstday.board.application.port.OrderPort;
+import com.growmighty.lectures.firstday.board.application.port.UserPort;
+import com.growmighty.lectures.firstday.board.application.port.dto.PurchaseVerification;
+import com.growmighty.lectures.firstday.board.review.application.dto.DeleteReviewCommand;
+import com.growmighty.lectures.firstday.board.review.application.dto.RegisterReviewCommand;
+import com.growmighty.lectures.firstday.board.review.application.dto.ReviewResult;
+import com.growmighty.lectures.firstday.board.review.application.dto.UpdateReviewCommand;
+import com.growmighty.lectures.firstday.board.review.application.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.board.review.application.exception.DuplicateReviewException;
+import com.growmighty.lectures.firstday.board.review.application.exception.PurchaseNotVerifiedException;
 import com.growmighty.lectures.firstday.board.review.domain.Review;
 import com.growmighty.lectures.firstday.board.review.domain.ReviewRepository;
-import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class ReviewService {
     private final ReviewRepository reviewRepository;
+    private final UserPort userPort;
+    private final OrderPort orderPort;
 
     @Transactional
-    public Review register(Long projectId, Long orderId, Long authorId, String authorName, BigDecimal rating, String content) {
-        // TODO(팀): 리워드 수령 여부 검증 + 프로젝트당 1인 1리뷰 정책 결정
-        return reviewRepository.save(Review.create(projectId, orderId, authorId, authorName, rating, content));
+    public ReviewResult register(RegisterReviewCommand command) {
+        if (reviewRepository.existsActiveByProjectIdAndAuthorId(command.projectId(), command.authorId())) {
+            throw new DuplicateReviewException(
+                "이미 이 프로젝트에 리뷰를 작성했습니다. projectId=" + command.projectId() + ", authorId=" + command.authorId());
+        }
+
+        String authorName = userPort.getUser(command.authorId()).name();
+
+        PurchaseVerification verification = orderPort.verifyPurchase(command.authorId(), command.rewardId());
+        if (!verification.verified()) {
+            throw new PurchaseNotVerifiedException(
+                "구매가 확인되지 않아 리뷰를 작성할 수 없습니다. rewardId=" + command.rewardId());
+        }
+
+        Review review = reviewRepository.save(Review.create(command.projectId(), command.rewardId(), verification.rewardName(),
+            command.authorId(), authorName, command.rating(), command.content()));
+        return ReviewResult.from(review);
     }
 
     @Transactional(readOnly = true)
-    public List<Review> getByProject(Long projectId) {
+    public List<ReviewResult> getByProject(Long projectId) {
         // TODO(팀): 평점 통계(평균/분포) 응답 추가
-        return reviewRepository.findVisibleByProjectId(projectId);
+        return reviewRepository.findVisibleByProjectId(projectId).stream().map(ReviewResult::from).toList();
     }
 
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public void delete(Long reviewId, Long requesterId, UserRole requesterRole) {
-        Review review = reviewRepository.findById(reviewId)
+    public ReviewResult update(UpdateReviewCommand command) {
+        Review review = findReview(command.reviewId());
+        review.update(command.requesterId(), command.rating(), command.content());
+        return ReviewResult.from(review);
+    }
+
+    @Recover
+    public ReviewResult recoverUpdateConflict(ObjectOptimisticLockingFailureException e, UpdateReviewCommand command) {
+        throw new ConcurrentUpdateFailedException(
+            "리뷰 수정 중 동시 수정 충돌이 반복되어 실패했습니다. reviewId=" + command.reviewId());
+    }
+
+    @Recover
+    public ReviewResult recoverUpdateOther(RuntimeException e, UpdateReviewCommand command) {
+        throw e;
+    }
+
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public void delete(DeleteReviewCommand command) {
+        findReview(command.reviewId()).delete(command.requesterId(), command.requesterRole());
+    }
+
+    @Recover
+    public void recoverDeleteConflict(ObjectOptimisticLockingFailureException e, DeleteReviewCommand command) {
+        throw new ConcurrentUpdateFailedException(
+            "리뷰 삭제 중 동시 수정 충돌이 반복되어 실패했습니다. reviewId=" + command.reviewId());
+    }
+
+    @Recover
+    public void recoverDeleteOther(RuntimeException e, DeleteReviewCommand command) {
+        throw e;
+    }
+
+    private Review findReview(Long reviewId) {
+        return reviewRepository.findById(reviewId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 리뷰입니다. reviewId=" + reviewId));
-        review.delete(requesterId, requesterRole);
     }
 }

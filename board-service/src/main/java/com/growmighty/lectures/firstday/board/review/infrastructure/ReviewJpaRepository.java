@@ -8,4 +8,6 @@ import java.util.List;
 
 public interface ReviewJpaRepository extends JpaRepository<Review, Long> {
     List<Review> findByProjectIdAndStatusNotOrderByCreatedAtDesc(Long projectId, ReviewStatus status);
+
+    boolean existsByProjectIdAndAuthorIdAndStatusNot(Long projectId, Long authorId, ReviewStatus status);
 }
