@@ -23,6 +23,10 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // user-service 내부 API(getUser) 호출용 — Eureka 기반 선언형 HTTP 클라이언트 + 서킷브레이커
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+
     // ProjectNotice 낙관적 락(@Version) 충돌 시 재시도용. @Retryable은 spring-aspects(AOP)가 있어야 동작한다.
     implementation 'org.springframework.retry:spring-retry'
     implementation 'org.springframework:spring-aspects'
