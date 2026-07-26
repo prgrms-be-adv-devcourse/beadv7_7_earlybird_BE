@@ -24,7 +24,7 @@ public interface OrderJpaRepository extends JpaRepository<Order, UUID> {
     boolean existsByProjectId(@Param("projectId") Long projectId);
 
     @Query("""
-    select sum(oi.price * oi.quantity)
+    select sum(oi.price.value * oi.quantity)
     from OrderItem oi
     where oi.projectId = :projectId
     """)
