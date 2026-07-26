@@ -19,6 +19,7 @@ import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.CreatorPayoutProfileRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectSettlementRepository;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -58,7 +59,37 @@ class SettlementPersistenceTest {
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Autowired
+    private SpringDataProjectSettlementRepository springDataProjectSettlementRepository;
+
+    @Autowired
     private EntityManager entityManager;
+
+    @Test
+    @DisplayName("Settlement JPA Auditing이 common 감사 필드를 기록한다")
+    void recordsAuditTimestampsWithCommonJpaAuditing() {
+        projectSettlementRepository.save(ProjectSettlement.confirm(
+                1L,
+                10L,
+                SettlementBreakdown.of(
+                        Money.wons(100_000),
+                        Money.wons(4_000),
+                        Money.wons(400),
+                        Money.wons(4_000),
+                        Money.wons(400),
+                        Money.wons(0),
+                        Money.wons(91_200)
+                ),
+                PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        ));
+        entityManager.flush();
+        entityManager.clear();
+
+        var persisted = springDataProjectSettlementRepository.findByProjectId(1L).orElseThrow();
+
+        assertThat(persisted.getCreatedAt()).isNotNull();
+        assertThat(persisted.getUpdatedAt()).isNotNull();
+    }
 
     @Test
     @DisplayName("프로젝트 정산의 Money 값을 저장하고 다시 읽는다")
