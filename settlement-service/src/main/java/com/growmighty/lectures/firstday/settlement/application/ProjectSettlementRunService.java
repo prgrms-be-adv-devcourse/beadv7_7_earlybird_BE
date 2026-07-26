@@ -1,8 +1,13 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE;
+
+import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutSchedulePolicy;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -40,15 +45,43 @@ public final class ProjectSettlementRunService {
     }
 
     public ProjectSettlementRunResult run(RunProjectSettlementsCommand command) {
-        List<ProjectSettlementTarget> targets = projectSettlementTargetReader
-                .findSettlementTargets(command.settlementMonth());
+        List<ProjectSettlementTarget> targets;
+        try {
+            targets = projectSettlementTargetReader.findSettlementTargets(command.settlementMonth());
+        } catch (SettlementException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE, exception);
+        }
+        if (targets == null) {
+            throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
+        }
         List<ConfirmedProjectSettlement> confirmedSettlements = new ArrayList<>();
 
         for (ProjectSettlementTarget target : targets) {
+            if (target == null
+                    || target.projectId() == null || target.projectId() <= 0
+                    || target.creatorId() == null || target.creatorId() <= 0) {
+                throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
+            }
+            List<Money> paymentAmounts;
+            try {
+                paymentAmounts = finalEffectivePaymentAmountReader
+                        .findFinalEffectivePaymentAmounts(target.projectId());
+            } catch (SettlementException exception) {
+                throw exception;
+            } catch (RuntimeException exception) {
+                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
+            }
+            try {
+                paymentAmounts = List.copyOf(paymentAmounts);
+            } catch (NullPointerException exception) {
+                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+            }
             ConfirmProjectSettlementCommand confirmCommand = new ConfirmProjectSettlementCommand(
                     target.projectId(),
                     target.creatorId(),
-                    finalEffectivePaymentAmountReader.findFinalEffectivePaymentAmounts(target.projectId()),
+                    paymentAmounts,
                     command.scheduledDate(),
                     command.confirmedAt()
             );

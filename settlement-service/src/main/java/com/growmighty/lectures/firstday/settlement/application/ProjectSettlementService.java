@@ -1,13 +1,20 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PAYOUT_PROFILE_NOT_READY;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.SETTLEMENT_DATA_INCONSISTENT;
+
+import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
+import com.growmighty.lectures.firstday.settlement.domain.PayoutDestinationSnapshot;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementCalculationPolicy;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,12 +29,14 @@ public class ProjectSettlementService {
 
     @Transactional
     public ConfirmedProjectSettlement confirm(ConfirmProjectSettlementCommand command) {
-        ProjectSettlement existingSettlement = projectSettlementRepository.findByProjectId(command.projectId())
-                .orElse(null);
+        ProjectSettlement existingSettlement = executePersistenceOperation(
+                () -> projectSettlementRepository.findByProjectId(command.projectId()).orElse(null)
+        );
         if (existingSettlement != null) {
-            PayoutObligation existingPayoutObligation = payoutObligationRepository
-                    .findBySettlementId(existingSettlement.id())
-                    .orElseThrow(() -> new IllegalStateException("프로젝트 정산의 지급 의무가 존재하지 않습니다."));
+            PayoutObligation existingPayoutObligation = executePersistenceOperation(
+                    () -> payoutObligationRepository.findBySettlementId(existingSettlement.id())
+            )
+                    .orElseThrow(() -> new SettlementException(SETTLEMENT_DATA_INCONSISTENT));
             return new ConfirmedProjectSettlement(
                     existingSettlement.projectId(),
                     existingSettlement.creatorId(),
@@ -39,23 +48,40 @@ public class ProjectSettlementService {
             );
         }
 
-        CreatorPayoutProfile payoutProfile = creatorPayoutProfileRepository.findByCreatorId(command.creatorId())
-                .orElseThrow(() -> new IllegalStateException("창작자 지급 프로필이 존재하지 않습니다."));
-        SettlementBreakdown breakdown = SettlementCalculationPolicy.current()
-                .calculate(command.finalEffectivePaymentAmounts());
-        ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
+        CreatorPayoutProfile payoutProfile = executePersistenceOperation(
+                () -> creatorPayoutProfileRepository.findByCreatorId(command.creatorId())
+        )
+                .orElseThrow(() -> new SettlementException(PAYOUT_PROFILE_NOT_READY));
+        SettlementBreakdown breakdown;
+        try {
+            breakdown = SettlementCalculationPolicy.current()
+                    .calculate(command.finalEffectivePaymentAmounts());
+        } catch (IllegalArgumentException exception) {
+            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
+        }
+        if (!payoutProfile.canReceivePayout()) {
+            throw new SettlementException(PAYOUT_PROFILE_NOT_READY);
+        }
+        PayoutDestinationSnapshot destinationSnapshot = payoutProfile.snapshotDestination();
+        ProjectSettlement settlementToSave = ProjectSettlement.confirm(
                 command.projectId(),
                 command.creatorId(),
                 breakdown,
-                payoutProfile.snapshotDestination(),
+                destinationSnapshot,
                 command.confirmedAt()
-        ));
-        PayoutObligation payoutObligation = payoutObligationRepository.save(PayoutObligation.schedule(
+        );
+        ProjectSettlement settlement = executePersistenceOperation(
+                () -> projectSettlementRepository.save(settlementToSave)
+        );
+        PayoutObligation payoutObligationToSave = PayoutObligation.schedule(
                 settlement.id(),
                 settlement.creatorId(),
                 settlement.creatorPayoutAmount(),
                 command.scheduledDate()
-        ));
+        );
+        PayoutObligation payoutObligation = executePersistenceOperation(
+                () -> payoutObligationRepository.save(payoutObligationToSave)
+        );
 
         return new ConfirmedProjectSettlement(
                 settlement.projectId(),
@@ -66,5 +92,15 @@ public class ProjectSettlementService {
                 payoutObligation.status(),
                 payoutObligation.scheduledDate()
         );
+    }
+
+    private <T> T executePersistenceOperation(Supplier<T> operation) {
+        try {
+            return operation.get();
+        } catch (SettlementException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new SettlementException(SETTLEMENT_DATA_INCONSISTENT, exception);
+        }
     }
 }

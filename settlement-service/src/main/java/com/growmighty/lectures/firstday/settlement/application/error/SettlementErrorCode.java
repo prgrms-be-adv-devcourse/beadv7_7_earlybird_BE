@@ -1,0 +1,37 @@
+package com.growmighty.lectures.firstday.settlement.application.error;
+
+public enum SettlementErrorCode {
+
+    PAYOUT_PROFILE_NOT_READY(
+            "S001",
+            "창작자 지급 준비가 완료되지 않았습니다."
+    ),
+    FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE(
+            "S002",
+            "최종 유효 결제 금액을 확인할 수 없습니다."
+    ),
+    PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE(
+            "S003",
+            "프로젝트 정산 대상 정보를 확인할 수 없습니다."
+    ),
+    SETTLEMENT_DATA_INCONSISTENT(
+            "S500",
+            "프로젝트 정산 데이터가 일치하지 않습니다."
+    );
+
+    private final String code;
+    private final String message;
+
+    SettlementErrorCode(String code, String message) {
+        this.code = code;
+        this.message = message;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+}
