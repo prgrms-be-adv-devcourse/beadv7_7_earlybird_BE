@@ -8,4 +8,6 @@ import java.util.List;
 
 public interface ProjectNoticeJpaRepository extends JpaRepository<ProjectNotice, Long> {
     List<ProjectNotice> findByProjectIdAndStatusNotOrderByCreatedAtDesc(Long projectId, ProjectNoticeStatus status);
+
+    boolean existsByIdAndStatusNot(Long id, ProjectNoticeStatus status);
 }

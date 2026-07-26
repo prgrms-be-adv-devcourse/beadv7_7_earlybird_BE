@@ -190,4 +190,38 @@ class ReviewRepositoryTest {
             assertThat(reviewRepository.existsActiveByProjectIdAndAuthorId(PROJECT_ID, AUTHOR_ID)).isFalse();
         }
     }
+
+    @Nested
+    @DisplayName("existsVisibleById")
+    class ExistsVisibleById {
+
+        @Test
+        @DisplayName("존재하는 리뷰면 true다")
+        void trueWhenExists() {
+            Review review = reviewRepository.save(
+                Review.create(PROJECT_ID, REWARD_ID, REWARD_NAME, AUTHOR_ID, AUTHOR_NAME, RATING, "내용"));
+            entityManager.flush();
+            entityManager.clear();
+
+            assertThat(reviewRepository.existsVisibleById(review.getId())).isTrue();
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 id면 false다")
+        void falseWhenNotFound() {
+            assertThat(reviewRepository.existsVisibleById(999L)).isFalse();
+        }
+
+        @Test
+        @DisplayName("삭제된 리뷰는 false다 — 댓글 대상으로 취급하지 않는다")
+        void falseWhenDeleted() {
+            Review review = reviewRepository.save(
+                Review.create(PROJECT_ID, REWARD_ID, REWARD_NAME, AUTHOR_ID, AUTHOR_NAME, RATING, "내용"));
+            review.delete(AUTHOR_ID, UserRole.BACKER);
+            entityManager.flush();
+            entityManager.clear();
+
+            assertThat(reviewRepository.existsVisibleById(review.getId())).isFalse();
+        }
+    }
 }

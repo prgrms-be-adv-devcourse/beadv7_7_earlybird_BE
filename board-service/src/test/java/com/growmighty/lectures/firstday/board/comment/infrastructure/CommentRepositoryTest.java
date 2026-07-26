@@ -149,8 +149,8 @@ class CommentRepositoryTest {
         }
 
         @Test
-        @DisplayName("최신순(createdAt 내림차순)으로 정렬된다")
-        void orderedByCreatedAtDesc() throws InterruptedException {
+        @DisplayName("작성 순(createdAt 오름차순)으로 정렬된다 — 댓글 스레드는 위→아래로 읽는 대화이므로 notice/review 목록(최신순)과 다르다")
+        void orderedByCreatedAtAsc() throws InterruptedException {
             Comment first = commentRepository.save(Comment.create(TARGET_TYPE, TARGET_ID, AUTHOR_ID, AUTHOR_NAME, "첫 번째"));
             // createdAt은 persist 시점의 LocalDateTime.now()라, 두 건이 같은 값을 갖지 않도록 간격을 둔다.
             Thread.sleep(10);
@@ -161,7 +161,7 @@ class CommentRepositoryTest {
             List<Comment> result = commentRepository.findVisibleByTargetTypeAndTargetId(TARGET_TYPE, TARGET_ID);
 
             assertThat(result).extracting(Comment::getId)
-                .containsExactly(second.getId(), first.getId());
+                .containsExactly(first.getId(), second.getId());
         }
     }
 }
