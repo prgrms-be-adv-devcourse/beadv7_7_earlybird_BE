@@ -28,4 +28,9 @@ public class ReviewRepositoryAdapter implements ReviewRepository {
     public List<Review> findVisibleByProjectId(Long projectId) {
         return jpaRepository.findByProjectIdAndStatusNotOrderByCreatedAtDesc(projectId, ReviewStatus.DELETED);
     }
+
+    @Override
+    public boolean existsActiveByProjectIdAndAuthorId(Long projectId, Long authorId) {
+        return jpaRepository.existsByProjectIdAndAuthorIdAndStatusNot(projectId, authorId, ReviewStatus.DELETED);
+    }
 }
