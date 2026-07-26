@@ -23,7 +23,9 @@ public class OrderController {
 
     private final OrderApiService orderApiService;
 
-    /** 내 후원 내역. TODO(팀): JWT 도입 후 userId 파라미터 대신 토큰에서 추출 */
+    // TODO(예정): 권한 관련 설정
+
+    /** 내 후원 내역. */
     @GetMapping("/me")
     public List<OrderResponse> getMyOrders(@RequestParam Long userId) {
         return orderApiService.getOrdersByUser(userId).stream()
@@ -36,7 +38,7 @@ public class OrderController {
         return OrderResponse.from(orderApiService.placeOrder(request.toCommand()));
     }
 
-    /** 후원 상세. TODO(팀): 본인(또는 해당 창작자)만 조회 가능 — 인증 도입 후 검증 */
+    /** 후원 상세. */
     @GetMapping("/{orderId}")
     public OrderResponse getOrder(@PathVariable UUID orderId, @RequestParam(required = false) Long userId) {
         if (userId == null) {
