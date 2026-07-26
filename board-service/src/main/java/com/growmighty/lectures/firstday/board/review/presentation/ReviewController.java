@@ -4,8 +4,9 @@ import com.growmighty.lectures.firstday.board.review.application.ReviewService;
 import com.growmighty.lectures.firstday.board.review.application.dto.DeleteReviewCommand;
 import com.growmighty.lectures.firstday.board.review.application.dto.RegisterReviewCommand;
 import com.growmighty.lectures.firstday.board.review.application.dto.UpdateReviewCommand;
-import com.growmighty.lectures.firstday.board.review.presentation.dto.ReviewRequest;
+import com.growmighty.lectures.firstday.board.review.presentation.dto.RegisterReviewRequest;
 import com.growmighty.lectures.firstday.board.review.presentation.dto.ReviewResponse;
+import com.growmighty.lectures.firstday.board.review.presentation.dto.UpdateReviewRequest;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import jakarta.validation.Valid;
@@ -22,7 +23,7 @@ public class ReviewController {
 
     @PostMapping("/projects/{projectId}/reviews")
     public ReviewResponse register(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
-                                    @Valid @RequestBody ReviewRequest request) {
+                                    @Valid @RequestBody RegisterReviewRequest request) {
         return ReviewResponse.from(reviewService.register(
             new RegisterReviewCommand(projectId, request.rewardId(), authorId, request.rating(), request.content())));
     }
@@ -34,7 +35,7 @@ public class ReviewController {
 
     @PatchMapping("/projects/{projectId}/reviews/{reviewId}")
     public ReviewResponse update(@PathVariable Long reviewId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                  @Valid @RequestBody ReviewRequest request) {
+                                  @Valid @RequestBody UpdateReviewRequest request) {
         return ReviewResponse.from(reviewService.update(
             new UpdateReviewCommand(reviewId, requesterId, request.rating(), request.content())));
     }
