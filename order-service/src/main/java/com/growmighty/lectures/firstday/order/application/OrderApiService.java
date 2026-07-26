@@ -83,6 +83,8 @@ public class OrderApiService {
     // 주문 생성 요청
     public OrderResult placeOrder(PlaceOrderCommand command) {
         validateCommand(command);
+
+        // FIXME : 동일 요청 자체의 중복 가능성 -> 생성해서 넘어오는 방법 등등을 고려
         UUID orderId = resolveOrderId(command);
         if (orderRepository.findById(orderId).isPresent()) {
             log.info("duplicate order request returned existing order. orderId={}", orderId);
@@ -90,6 +92,20 @@ public class OrderApiService {
         }
 
         Order order = createPendingOrder(command, orderId);
+
+        /*
+          4. Project 서비스에 "재고 확보" 요청
+             - 재고 검증과 확보를 원자적으로 수행
+          4-1. 재고 확보 실패
+             - status = STOCK_FAILED
+             - 결제 호출하지 않음
+          4-2. 재고 확보 성공
+             - status = PAYMENT_REQUEST
+          */
+
+
+        // TODO(예정) : 타 도메인 연동 상세 작업 처리
+
         try {
             orderRepository.save(order);
         } catch (DataIntegrityViolationException e) {
