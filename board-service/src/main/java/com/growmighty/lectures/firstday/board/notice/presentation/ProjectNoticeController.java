@@ -29,7 +29,7 @@ public class ProjectNoticeController {
 
     @GetMapping("/projects/{projectId}/notices")
     public List<ProjectNoticeResponse> getByProject(@PathVariable Long projectId) {
-        return noticeService.getByProject(projectId).stream().map(ProjectNoticeResponse::from).toList();
+        return ProjectNoticeResponse.from(noticeService.getByProject(projectId));
     }
 
     // projectId는 프론트가 이미 같은 페이지 컨텍스트에서 들고 있는 값을 URL 구조상으로만 맞춘 것 — 별도 검증 없이 noticeId로 단건을 특정한다.

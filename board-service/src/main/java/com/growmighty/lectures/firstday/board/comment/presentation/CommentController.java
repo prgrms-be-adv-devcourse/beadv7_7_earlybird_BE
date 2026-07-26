@@ -31,7 +31,7 @@ public class CommentController {
 
     @GetMapping("/projects/{projectId}/comments")
     public List<CommentResponse> getByProject(@PathVariable Long projectId) {
-        return commentService.getByTarget(CommentTargetType.PROJECT, projectId).stream().map(CommentResponse::from).toList();
+        return CommentResponse.from(commentService.getByTarget(CommentTargetType.PROJECT, projectId));
     }
 
     @PostMapping("/projects/{projectId}/notices/{noticeId}/comments")
@@ -43,7 +43,7 @@ public class CommentController {
 
     @GetMapping("/projects/{projectId}/notices/{noticeId}/comments")
     public List<CommentResponse> getByNotice(@PathVariable Long noticeId) {
-        return commentService.getByTarget(CommentTargetType.PROJECT_NOTICE, noticeId).stream().map(CommentResponse::from).toList();
+        return CommentResponse.from(commentService.getByTarget(CommentTargetType.PROJECT_NOTICE, noticeId));
     }
 
     @PostMapping("/projects/{projectId}/reviews/{reviewId}/comments")
@@ -55,7 +55,7 @@ public class CommentController {
 
     @GetMapping("/projects/{projectId}/reviews/{reviewId}/comments")
     public List<CommentResponse> getByReview(@PathVariable Long reviewId) {
-        return commentService.getByTarget(CommentTargetType.REVIEW, reviewId).stream().map(CommentResponse::from).toList();
+        return CommentResponse.from(commentService.getByTarget(CommentTargetType.REVIEW, reviewId));
     }
 
     /** 답글 등록 (창작자 응대 포함) — 부모 댓글 기준으로 대상을 물려받는다 */
