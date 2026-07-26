@@ -8,6 +8,7 @@ import com.growmighty.lectures.firstday.board.notice.presentation.dto.ProjectNot
 import com.growmighty.lectures.firstday.board.notice.presentation.dto.ProjectNoticeResponse;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,9 +22,9 @@ public class ProjectNoticeController {
 
     @PostMapping("/projects/{projectId}/notices")
     public ProjectNoticeResponse register(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
-                                    @RequestBody ProjectNoticeRequest request) {
+                                    @Valid @RequestBody ProjectNoticeRequest request) {
         return ProjectNoticeResponse.from(
-            noticeService.register(new RegisterProjectNoticeCommand(projectId, authorId, request.authorName(), request.title(), request.content())));
+            noticeService.register(new RegisterProjectNoticeCommand(projectId, authorId, request.title(), request.content())));
     }
 
     @GetMapping("/projects/{projectId}/notices")
@@ -40,7 +41,7 @@ public class ProjectNoticeController {
     @PatchMapping("/projects/{projectId}/notices/{noticeId}")
     public ProjectNoticeResponse update(@PathVariable Long noticeId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                                   @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                  @RequestBody ProjectNoticeRequest request) {
+                                  @Valid @RequestBody ProjectNoticeRequest request) {
         return ProjectNoticeResponse.from(
             noticeService.update(new UpdateProjectNoticeCommand(noticeId, requesterId, requesterRole, request.title(), request.content())));
     }

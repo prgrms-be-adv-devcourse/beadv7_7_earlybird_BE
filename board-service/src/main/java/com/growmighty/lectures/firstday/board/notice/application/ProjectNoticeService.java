@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.board.notice.application;
 
+import com.growmighty.lectures.firstday.board.application.port.UserPort;
 import com.growmighty.lectures.firstday.board.notice.application.dto.DeleteProjectNoticeCommand;
 import com.growmighty.lectures.firstday.board.notice.application.dto.ProjectNoticeResult;
 import com.growmighty.lectures.firstday.board.notice.application.dto.RegisterProjectNoticeCommand;
@@ -22,12 +23,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProjectNoticeService {
     private final ProjectNoticeRepository noticeRepository;
+    private final UserPort userPort;
 
     // TODO(팀): 공지 등록 시 후원자에게 알림 이벤트 발행 (NoticePublished → notification-service)
     @Transactional
     public ProjectNoticeResult register(RegisterProjectNoticeCommand command) {
+        String authorName = userPort.getUser(command.authorId()).name();
         ProjectNotice notice = noticeRepository.save(
-            ProjectNotice.create(command.projectId(), command.authorId(), command.authorName(), command.title(), command.content()));
+            ProjectNotice.create(command.projectId(), command.authorId(), authorName, command.title(), command.content()));
         return ProjectNoticeResult.from(notice);
     }
 

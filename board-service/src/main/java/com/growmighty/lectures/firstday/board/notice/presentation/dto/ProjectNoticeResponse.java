@@ -4,9 +4,9 @@ import com.growmighty.lectures.firstday.board.notice.application.dto.ProjectNoti
 
 import java.time.LocalDateTime;
 
-public record ProjectNoticeResponse(Long id, Long projectId, String title, String content, Long viewCount, LocalDateTime createdAt) {
+public record ProjectNoticeResponse(Long id, Long projectId, String authorName, String title, String content, Long viewCount, LocalDateTime createdAt) {
     public static ProjectNoticeResponse from(ProjectNoticeResult result) {
-        return new ProjectNoticeResponse(result.id(), result.projectId(), result.title(),
+        return new ProjectNoticeResponse(result.id(), result.projectId(), result.authorName(), result.title(),
             result.content(), result.viewCount(), result.createdAt());
     }
 }
