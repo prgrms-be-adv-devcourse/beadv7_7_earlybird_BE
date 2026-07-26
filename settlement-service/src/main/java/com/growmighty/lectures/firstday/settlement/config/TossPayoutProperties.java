@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.config;
 
+import java.net.URI;
 import java.util.HexFormat;
 import java.util.regex.Pattern;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -8,14 +9,22 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public final class TossPayoutProperties {
 
     private static final String TEST_SECRET_KEY_PREFIX = "test_sk";
+    private static final URI DEFAULT_BASE_URL = URI.create("https://api.tosspayments.com");
     private static final Pattern SECURITY_KEY_PATTERN = Pattern.compile("[0-9a-fA-F]{64}");
 
     private final boolean enabled;
     private final String secretKey;
     private final byte[] securityKey;
+    private final URI baseUrl;
 
-    public TossPayoutProperties(boolean enabled, String secretKey, String securityKey) {
+    public TossPayoutProperties(
+            boolean enabled,
+            String secretKey,
+            String securityKey,
+            String baseUrl
+    ) {
         this.enabled = enabled;
+        this.baseUrl = validateBaseUrl(baseUrl);
 
         if (!enabled) {
             this.secretKey = null;
@@ -45,6 +54,23 @@ public final class TossPayoutProperties {
     public byte[] securityKeyBytes() {
         requireEnabled();
         return securityKey.clone();
+    }
+
+    public URI baseUrl() {
+        requireEnabled();
+        return baseUrl;
+    }
+
+    private static URI validateBaseUrl(String baseUrl) {
+        URI uri = baseUrl == null || baseUrl.isBlank()
+                ? DEFAULT_BASE_URL
+                : URI.create(baseUrl);
+        if (!uri.isAbsolute()
+                || !("http".equalsIgnoreCase(uri.getScheme())
+                || "https".equalsIgnoreCase(uri.getScheme()))) {
+            throw new IllegalArgumentException("토스 지급대행 기본 주소는 HTTP 또는 HTTPS 절대 URI여야 합니다.");
+        }
+        return uri;
     }
 
     private void requireEnabled() {

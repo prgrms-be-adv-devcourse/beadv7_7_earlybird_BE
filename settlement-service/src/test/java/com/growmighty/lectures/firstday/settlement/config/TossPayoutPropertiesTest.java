@@ -16,18 +16,20 @@ class TossPayoutPropertiesTest {
         TossPayoutProperties properties = new TossPayoutProperties(
                 true,
                 "test_sk_example",
-                SECURITY_KEY
+                SECURITY_KEY,
+                null
         );
 
         assertThat(properties.enabled()).isTrue();
         assertThat(properties.secretKey()).isEqualTo("test_sk_example");
         assertThat(properties.securityKeyBytes()).hasSize(32);
+        assertThat(properties.baseUrl().toString()).isEqualTo("https://api.tosspayments.com");
     }
 
     @Test
     @DisplayName("비활성화 상태에서는 자격 증명이 없어도 된다")
     void allowsMissingCredentialsWhenDisabled() {
-        TossPayoutProperties properties = new TossPayoutProperties(false, null, null);
+        TossPayoutProperties properties = new TossPayoutProperties(false, null, null, null);
 
         assertThat(properties.enabled()).isFalse();
         assertThatThrownBy(properties::secretKey)
@@ -40,7 +42,8 @@ class TossPayoutPropertiesTest {
         assertThatThrownBy(() -> new TossPayoutProperties(
                 true,
                 "live_sk_example",
-                SECURITY_KEY
+                SECURITY_KEY,
+                null
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("테스트 시크릿 키");
     }
@@ -51,7 +54,8 @@ class TossPayoutPropertiesTest {
         assertThatThrownBy(() -> new TossPayoutProperties(
                 true,
                 "test_sk_example",
-                "not-a-64-character-hex-key"
+                "not-a-64-character-hex-key",
+                null
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("64자리 16진수");
     }
@@ -62,12 +66,26 @@ class TossPayoutPropertiesTest {
         TossPayoutProperties properties = new TossPayoutProperties(
                 true,
                 "test_sk_example",
-                SECURITY_KEY
+                SECURITY_KEY,
+                null
         );
         byte[] firstRead = properties.securityKeyBytes();
 
         firstRead[0] = 0x7f;
 
         assertThat(properties.securityKeyBytes()[0]).isEqualTo((byte) 0x01);
+    }
+
+    @Test
+    @DisplayName("HTTP 대역 검증을 위해 토스 기본 주소를 외부 설정으로 교체할 수 있다")
+    void supportsCustomBaseUrl() {
+        TossPayoutProperties properties = new TossPayoutProperties(
+                true,
+                "test_sk_example",
+                SECURITY_KEY,
+                "http://localhost:18086"
+        );
+
+        assertThat(properties.baseUrl().toString()).isEqualTo("http://localhost:18086");
     }
 }
