@@ -28,4 +28,9 @@ public class ProjectNoticeRepositoryAdapter implements ProjectNoticeRepository {
     public List<ProjectNotice> findVisibleByProjectId(Long projectId) {
         return jpaRepository.findByProjectIdAndStatusNotOrderByCreatedAtDesc(projectId, ProjectNoticeStatus.DELETED);
     }
+
+    @Override
+    public boolean existsVisibleById(Long id) {
+        return jpaRepository.existsByIdAndStatusNot(id, ProjectNoticeStatus.DELETED);
+    }
 }

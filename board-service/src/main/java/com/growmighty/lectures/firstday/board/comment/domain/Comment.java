@@ -40,6 +40,10 @@ public class Comment extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private CommentStatus status;
 
+    /** 동시 수정/삭제 요청 사이의 낙관적 락 — 소프트 삭제 상태 전이 충돌 감지용 */
+    @Version
+    private Long version;
+
     private Comment(CommentTargetType targetType, Long targetId, Long authorId, String authorName, Long parentId, String content) {
         validateTargetType(targetType);
         validateTargetId(targetId);

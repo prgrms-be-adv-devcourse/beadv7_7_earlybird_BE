@@ -33,4 +33,9 @@ public class ReviewRepositoryAdapter implements ReviewRepository {
     public boolean existsActiveByProjectIdAndAuthorId(Long projectId, Long authorId) {
         return jpaRepository.existsByProjectIdAndAuthorIdAndStatusNot(projectId, authorId, ReviewStatus.DELETED);
     }
+
+    @Override
+    public boolean existsVisibleById(Long id) {
+        return jpaRepository.existsByIdAndStatusNot(id, ReviewStatus.DELETED);
+    }
 }

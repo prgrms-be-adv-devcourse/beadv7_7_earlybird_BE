@@ -136,4 +136,36 @@ class ProjectNoticeRepositoryTest {
                 .containsExactly(second.getId(), first.getId());
         }
     }
+
+    @Nested
+    @DisplayName("existsVisibleById")
+    class ExistsVisibleById {
+
+        @Test
+        @DisplayName("존재하는 공지면 true다")
+        void trueWhenExists() {
+            ProjectNotice notice = projectNoticeRepository.save(ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, "제목", "내용"));
+            entityManager.flush();
+            entityManager.clear();
+
+            assertThat(projectNoticeRepository.existsVisibleById(notice.getId())).isTrue();
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 id면 false다")
+        void falseWhenNotFound() {
+            assertThat(projectNoticeRepository.existsVisibleById(999L)).isFalse();
+        }
+
+        @Test
+        @DisplayName("삭제된 공지는 false다 — 댓글 대상으로 취급하지 않는다")
+        void falseWhenDeleted() {
+            ProjectNotice notice = projectNoticeRepository.save(ProjectNotice.create(PROJECT_ID, AUTHOR_ID, AUTHOR_NAME, "제목", "내용"));
+            notice.delete(AUTHOR_ID, UserRole.CREATOR);
+            entityManager.flush();
+            entityManager.clear();
+
+            assertThat(projectNoticeRepository.existsVisibleById(notice.getId())).isFalse();
+        }
+    }
 }

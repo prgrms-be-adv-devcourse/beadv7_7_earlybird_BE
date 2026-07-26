@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.board.comment.presentation.dto;
 
-import lombok.NonNull;
+import jakarta.validation.constraints.NotBlank;
 
-/** TODO(팀): 인증 도입 후 userId 는 토큰에서 추출하고 본문에서 제거. authorName은 user-service 연동 후 본문에서 제거 */
-public record CommentRequest(@NonNull Long userId, @NonNull String authorName, @NonNull String content) {
+/** register/registerReply/update가 공유 — 셋 다 필요로 하는 필드가 content 하나뿐이라 나눌 이유가 없다. */
+public record CommentRequest(@NotBlank String content) {
 }
