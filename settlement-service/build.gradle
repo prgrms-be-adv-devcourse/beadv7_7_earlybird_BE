@@ -26,3 +26,19 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 }
+
+tasks.named('test') {
+    useJUnitPlatform {
+        excludeTags 'toss-payout-smoke'
+    }
+}
+
+tasks.register('tossPayoutSmokeTest', Test) {
+    group = 'verification'
+    description = 'Runs the opt-in Toss Payments test-environment payout smoke test.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'toss-payout-smoke'
+    }
+}

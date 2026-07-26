@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.settlement.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.growmighty.lectures.firstday.settlement.application.port.PayoutGateway;
+import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -39,13 +40,20 @@ class TossPayoutClientConfigTest {
                         "settlement.toss-payout.enabled=true",
                         "settlement.toss-payout.secret-key=test_sk_example",
                         "settlement.toss-payout.security-key=" + SECURITY_KEY,
-                        "settlement.toss-payout.base-url=http://localhost:18086"
+                        "settlement.toss-payout.base-url=http://localhost:18086",
+                        "settlement.toss-payout.connect-timeout=250ms",
+                        "settlement.toss-payout.read-timeout=750ms"
                 )
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(PayoutGateway.class);
                     assertThat(context).getBean("tossPayoutRestClient")
                             .isInstanceOf(RestClient.class);
+                    TossPayoutProperties properties = context.getBean(
+                            TossPayoutProperties.class
+                    );
+                    assertThat(properties.connectTimeout()).isEqualTo(Duration.ofMillis(250));
+                    assertThat(properties.readTimeout()).isEqualTo(Duration.ofMillis(750));
                 });
     }
 }

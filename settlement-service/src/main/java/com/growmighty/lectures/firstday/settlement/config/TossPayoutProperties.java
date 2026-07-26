@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.config;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.regex.Pattern;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -10,21 +11,37 @@ public final class TossPayoutProperties {
 
     private static final String TEST_SECRET_KEY_PREFIX = "test_sk";
     private static final URI DEFAULT_BASE_URL = URI.create("https://api.tosspayments.com");
+    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(10);
     private static final Pattern SECURITY_KEY_PATTERN = Pattern.compile("[0-9a-fA-F]{64}");
 
     private final boolean enabled;
     private final String secretKey;
     private final byte[] securityKey;
     private final URI baseUrl;
+    private final Duration connectTimeout;
+    private final Duration readTimeout;
 
     public TossPayoutProperties(
             boolean enabled,
             String secretKey,
             String securityKey,
-            String baseUrl
+            String baseUrl,
+            Duration connectTimeout,
+            Duration readTimeout
     ) {
         this.enabled = enabled;
         this.baseUrl = validateBaseUrl(baseUrl);
+        this.connectTimeout = validateTimeout(
+                connectTimeout,
+                DEFAULT_CONNECT_TIMEOUT,
+                "연결 제한시간"
+        );
+        this.readTimeout = validateTimeout(
+                readTimeout,
+                DEFAULT_READ_TIMEOUT,
+                "응답 제한시간"
+        );
 
         if (!enabled) {
             this.secretKey = null;
@@ -61,6 +78,16 @@ public final class TossPayoutProperties {
         return baseUrl;
     }
 
+    public Duration connectTimeout() {
+        requireEnabled();
+        return connectTimeout;
+    }
+
+    public Duration readTimeout() {
+        requireEnabled();
+        return readTimeout;
+    }
+
     private static URI validateBaseUrl(String baseUrl) {
         URI uri = baseUrl == null || baseUrl.isBlank()
                 ? DEFAULT_BASE_URL
@@ -71,6 +98,18 @@ public final class TossPayoutProperties {
             throw new IllegalArgumentException("토스 지급대행 기본 주소는 HTTP 또는 HTTPS 절대 URI여야 합니다.");
         }
         return uri;
+    }
+
+    private static Duration validateTimeout(
+            Duration timeout,
+            Duration defaultTimeout,
+            String propertyName
+    ) {
+        Duration resolved = timeout == null ? defaultTimeout : timeout;
+        if (resolved.isZero() || resolved.isNegative()) {
+            throw new IllegalArgumentException("토스 지급대행 " + propertyName + "은 양수여야 합니다.");
+        }
+        return resolved;
     }
 
     private void requireEnabled() {
