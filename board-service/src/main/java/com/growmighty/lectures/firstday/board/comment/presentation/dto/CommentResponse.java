@@ -14,4 +14,8 @@ public record CommentResponse(
             result.parentId(), result.content(), result.createdAt(),
             result.replies().stream().map(CommentResponse::from).toList());
     }
+
+    public static List<CommentResponse> from(List<CommentResult> results) {
+        return results.stream().map(CommentResponse::from).toList();
+    }
 }

@@ -30,7 +30,7 @@ public class ReviewController {
 
     @GetMapping("/projects/{projectId}/reviews")
     public List<ReviewResponse> getByProject(@PathVariable Long projectId) {
-        return reviewService.getByProject(projectId).stream().map(ReviewResponse::from).toList();
+        return ReviewResponse.from(reviewService.getByProject(projectId));
     }
 
     @PatchMapping("/projects/{projectId}/reviews/{reviewId}")
