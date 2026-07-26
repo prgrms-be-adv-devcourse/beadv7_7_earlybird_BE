@@ -4,5 +4,5 @@ import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 
-public record ReviewRequest(@NotNull Long rewardId, @NotNull BigDecimal rating, String content) {
+public record UpdateReviewRequest(@NotNull BigDecimal rating, String content) {
 }
