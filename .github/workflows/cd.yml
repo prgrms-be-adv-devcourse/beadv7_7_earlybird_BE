@@ -14,8 +14,17 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          # drone-ssh kills the remote command after this long regardless of progress.
+          # Default is 10m, which isn't enough headroom for a full 11-image rebuild.
           command_timeout: '30m'
           script: |
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
             git pull
-            docker compose -f infrastructure/docker-compose.yml up -d --build
+            # Build one service at a time instead of a single `docker compose up -d --build`
+            # (which builds all 11 images in parallel via buildx bake). EC2 is a 2-vCPU box,
+            # so 11 concurrent Gradle builds thrash the CPU badly enough to make even sshd
+            # unresponsive - that's what caused the CD run to time out and the box to need
+            # a reboot. Sequential builds are slower in total, but each one actually finishes.
+            for svc in config-server discovery-server gateway-server order-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
+              docker compose -f infrastructure/docker-compose.yml up -d --build "$svc"
+            done
