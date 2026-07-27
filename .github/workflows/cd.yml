@@ -34,6 +34,6 @@ jobs:
             # -f infrastructure/docker-compose.prod.yml layers the AWS-only overrides (currently
             # just gateway-server's host port) on top of the shared base file - see that file
             # for why. Local dev never passes it, so nothing there is affected.
-            for svc in config-server discovery-server gateway-server order-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
+            for svc in config-server discovery-server gateway-server caddy order-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
               docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d --build "$svc"
             done
