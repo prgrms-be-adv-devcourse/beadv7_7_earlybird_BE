@@ -29,6 +29,12 @@ public class ProjectSettlementRepositoryAdapter implements ProjectSettlementRepo
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<ProjectSettlement> findById(Long id) {
+        return repository.findById(id).map(ProjectSettlementJpaEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<ProjectSettlement> findByProjectId(Long projectId) {
         return repository.findByProjectId(projectId).map(ProjectSettlementJpaEntity::toDomain);
     }

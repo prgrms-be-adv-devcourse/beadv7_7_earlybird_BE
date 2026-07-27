@@ -6,5 +6,7 @@ public interface ProjectSettlementRepository {
 
     ProjectSettlement save(ProjectSettlement settlement);
 
+    Optional<ProjectSettlement> findById(Long id);
+
     Optional<ProjectSettlement> findByProjectId(Long projectId);
 }
