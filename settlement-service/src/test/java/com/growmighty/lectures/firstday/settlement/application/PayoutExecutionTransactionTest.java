@@ -14,6 +14,7 @@ import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
@@ -51,7 +52,9 @@ class PayoutExecutionTransactionTest {
     void commitsAttemptBeforeExternalCall() {
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 501L,
+                "지급 트랜잭션 테스트 프로젝트",
                 601L,
+                SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(
                         Money.wons(100_000),
                         Money.wons(4_000),

@@ -15,6 +15,7 @@ import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -202,7 +203,9 @@ class PayoutExecutionServiceTest {
         return ProjectSettlement.restore(
                 SETTLEMENT_ID,
                 1L,
+                "지급 실행 테스트 프로젝트",
                 10L,
+                SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(
                         Money.wons(100_000),
                         Money.wons(4_000),

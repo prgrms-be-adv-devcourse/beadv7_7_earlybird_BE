@@ -101,6 +101,7 @@ public final class ProjectSettlementRunService {
             }
             ConfirmProjectSettlementCommand confirmCommand = new ConfirmProjectSettlementCommand(
                     target.projectId(),
+                    target.projectTitle(),
                     target.creatorId(),
                     paymentAmounts,
                     command.scheduledDate(),

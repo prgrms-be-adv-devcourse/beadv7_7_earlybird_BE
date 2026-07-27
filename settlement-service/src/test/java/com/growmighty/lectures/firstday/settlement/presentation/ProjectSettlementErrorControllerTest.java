@@ -176,7 +176,9 @@ class ProjectSettlementErrorControllerTest {
         creatorPayoutProfileRepository.save(payoutProfile);
         projectSettlementRepository.save(ProjectSettlement.confirm(
                 projectId,
+                "정산 정합성 테스트 프로젝트",
                 creatorId,
+                SettlementCalculationPolicy.current().feePolicySnapshot(),
                 SettlementCalculationPolicy.current().calculate(List.of(Money.wons(100_000))),
                 payoutProfile.snapshotDestination(),
                 LocalDateTime.of(2026, 7, 23, 10, 0)

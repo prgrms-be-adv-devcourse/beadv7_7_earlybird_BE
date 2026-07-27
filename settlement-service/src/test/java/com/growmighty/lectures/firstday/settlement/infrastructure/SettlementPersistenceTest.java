@@ -16,6 +16,7 @@ import com.growmighty.lectures.firstday.settlement.domain.PayoutDestinationSnaps
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.CreatorPayoutProfileRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
@@ -60,7 +61,9 @@ class SettlementPersistenceTest {
     void recordsAuditTimestampsWithCommonJpaAuditing() {
         projectSettlementRepository.save(ProjectSettlement.confirm(
                 1L,
+                "감사 필드 테스트 프로젝트",
                 10L,
+                SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(
                         Money.wons(100_000),
                         Money.wons(4_000),
@@ -83,11 +86,13 @@ class SettlementPersistenceTest {
     }
 
     @Test
-    @DisplayName("프로젝트 정산의 Money 값을 저장하고 다시 읽는다")
+    @DisplayName("프로젝트 정산의 금액과 확정 시점 원본을 저장하고 다시 읽는다")
     void persistsAndRestoresProjectSettlementMoney() {
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
+                "여름의 기록",
                 10L,
+                SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(
                         Money.wons(100_000),
                         Money.wons(4_000),
@@ -108,6 +113,8 @@ class SettlementPersistenceTest {
 
         assertThat(saved.id()).isNotNull();
         assertThat(restored.creatorPayoutAmount()).isEqualTo(Money.wons(91_200));
+        assertThat(restored.projectTitle()).isEqualTo("여름의 기록");
+        assertThat(restored.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
     }
 
     @Test
@@ -318,14 +325,18 @@ class SettlementPersistenceTest {
         );
         ProjectSettlement first = ProjectSettlement.confirm(
                 1L,
+                "첫 번째 프로젝트",
                 10L,
+                SettlementFeePolicySnapshot.current(),
                 breakdown,
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 0)
         );
         ProjectSettlement duplicate = ProjectSettlement.confirm(
                 1L,
+                "중복 프로젝트",
                 10L,
+                SettlementFeePolicySnapshot.current(),
                 breakdown,
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 1)

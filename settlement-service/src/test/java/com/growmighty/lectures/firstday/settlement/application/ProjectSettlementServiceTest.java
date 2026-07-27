@@ -7,6 +7,9 @@ import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRe
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,6 +29,9 @@ class ProjectSettlementServiceTest {
     @Autowired
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
+    @Autowired
+    private ProjectSettlementRepository projectSettlementRepository;
+
     @Test
     @DisplayName("검증된 프로젝트 입력으로 프로젝트 정산과 지급 의무를 확정한다")
     void confirmsProjectSettlementAndPayoutObligation() {
@@ -39,6 +45,7 @@ class ProjectSettlementServiceTest {
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 1L,
+                "여름의 기록",
                 10L,
                 List.of(Money.wons(10_015), Money.wons(20_240)),
                 LocalDate.of(2026, 8, 3),
@@ -46,6 +53,7 @@ class ProjectSettlementServiceTest {
         );
 
         ConfirmedProjectSettlement result = projectSettlementService.confirm(command);
+        ProjectSettlement settlement = projectSettlementRepository.findByProjectId(1L).orElseThrow();
 
         assertThat(result)
                 .extracting(
@@ -60,6 +68,8 @@ class ProjectSettlementServiceTest {
                     assertThat(values.get(2)).isEqualTo(Money.wons(27_595));
                     assertThat(values.get(3)).isEqualTo(PayoutObligationStatus.SCHEDULED);
                 });
+        assertThat(settlement.projectTitle()).isEqualTo("여름의 기록");
+        assertThat(settlement.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
     }
 
     @Test
@@ -75,6 +85,7 @@ class ProjectSettlementServiceTest {
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 2L,
+                "두 번째 프로젝트",
                 20L,
                 List.of(Money.wons(100_000)),
                 LocalDate.of(2026, 8, 3),

@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.settlement.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,11 @@ class SettlementCalculationPolicyTest {
                 Money.wons(20_240)
         ));
 
+        assertThat(policy.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.of(
+                new BigDecimal("0.04"),
+                new BigDecimal("0.04"),
+                new BigDecimal("0.10")
+        ));
         assertThat(breakdown)
                 .extracting(
                         SettlementBreakdown::baseAmount,
