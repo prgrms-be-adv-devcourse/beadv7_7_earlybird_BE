@@ -10,11 +10,12 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface PaymentJpaRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByPgOrderId(String pgOrderId);
 
-    Optional<Payment> findByOrderId(Long orderId);
+    Optional<Payment> findByOrderId(UUID orderId);
 
     @Query("""
         select payment.paymentId
