@@ -9,13 +9,14 @@ import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.YearMonth;
-import java.time.Clock;
 import java.time.ZoneOffset;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -81,6 +82,48 @@ class ProjectSettlementRunServiceTest {
         ProjectSettlementRunResult result = connectedRunService.run(command);
 
         assertThat(result.confirmedSettlements())
+                .extracting(ConfirmedProjectSettlement::creatorPayoutAmount)
+                .containsExactly(Money.wons(91_200));
+    }
+
+    @Test
+    @DisplayName("같은 월에 같은 프로젝트를 다시 조회해도 기존 프로젝트 정산을 유지한다")
+    void keepsExistingSettlementWhenMonthRunIsRepeated() {
+        long projectId = 103L;
+        long creatorId = 203L;
+        creatorPayoutProfileRepository.save(
+                payoutReadyProfile(creatorId, "seller-203", "********0203")
+        );
+        ProjectSettlementTargetReader targetReader = month -> List.of(
+                new ProjectSettlementTarget(projectId, "반복 실행 프로젝트", creatorId)
+        );
+        AtomicInteger paymentReads = new AtomicInteger();
+        FinalEffectivePaymentAmountReader paymentAmountReader = ignored ->
+                paymentReads.getAndIncrement() == 0
+                        ? List.of(Money.wons(100_000))
+                        : List.of(Money.wons(900_000));
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                targetReader,
+                paymentAmountReader,
+                projectSettlementService,
+                Clock.fixed(
+                        LocalDateTime.of(2026, 7, 23, 10, 0).toInstant(ZoneOffset.UTC),
+                        ZoneOffset.UTC
+                )
+        );
+        RunProjectSettlementsCommand command = new RunProjectSettlementsCommand(
+                YearMonth.of(2026, 7),
+                LocalDate.of(2026, 8, 3),
+                LocalDateTime.of(2026, 7, 23, 10, 0)
+        );
+
+        ProjectSettlementRunResult first = runService.run(command);
+        ProjectSettlementRunResult second = runService.run(command);
+
+        assertThat(paymentReads).hasValue(2);
+        assertThat(first.confirmedSettlements())
+                .containsExactlyElementsOf(second.confirmedSettlements());
+        assertThat(second.confirmedSettlements())
                 .extracting(ConfirmedProjectSettlement::creatorPayoutAmount)
                 .containsExactly(Money.wons(91_200));
     }

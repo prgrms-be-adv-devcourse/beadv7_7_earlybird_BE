@@ -9,9 +9,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(
-        name = "settlement.external-data.mode",
-        havingValue = "dummy",
-        matchIfMissing = true
+        name = "settlement.project-target.mode",
+        havingValue = "dummy"
 )
 public class DummyProjectSettlementTargetReader implements ProjectSettlementTargetReader {
 
