@@ -27,15 +27,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create")
 @Import({
         JpaAuditingConfig.class,
@@ -44,10 +39,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         ProjectSettlementRepositoryAdapter.class
 })
 class SettlementPersistenceTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
 
     @Autowired
     private ProjectSettlementRepository projectSettlementRepository;
