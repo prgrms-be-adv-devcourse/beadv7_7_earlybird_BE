@@ -28,8 +28,8 @@ public class Payment extends BaseEntity {
     private Long paymentId;
 
     /** orderdb.orders.id (논리) — 일괄 환불 배치의 역추적 키. 주문당 결제 1건(멱등성). */
-    @Column(name = "order_id", nullable = false, unique = true)
-    private Long orderId;
+    @Column(name = "order_id", nullable = false, unique = true, columnDefinition = "BINARY(16)")
+    private UUID orderId;
 
     @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
     private String pgOrderId;
@@ -60,7 +60,7 @@ public class Payment extends BaseEntity {
     private PaymentStatus status;
 
 
-    private Payment(Long orderId, BigDecimal amount) {
+    private Payment(UUID orderId, BigDecimal amount) {
         validatePayment(orderId, amount);
         this.orderId = orderId;
         this.pgOrderId = generatePgOrderId(orderId);
@@ -69,7 +69,7 @@ public class Payment extends BaseEntity {
         this.status = PaymentStatus.READY;
     }
 
-    private static void validatePayment(Long orderId, BigDecimal amount) {
+    private static void validatePayment(UUID orderId, BigDecimal amount) {
         if (orderId == null) {
             throw new IllegalArgumentException("주문 식별자는 필수입니다.");
         }
@@ -78,12 +78,12 @@ public class Payment extends BaseEntity {
         }
     }
 
-    public static Payment ready(Long orderId, BigDecimal amount) {
+    public static Payment ready(UUID orderId, BigDecimal amount) {
         return new Payment(orderId, amount);
     }
 
-    private static String generatePgOrderId(Long orderId) {
-        return "order-" + orderId + "-" + UUID.randomUUID().toString().replace("-", "");
+    private static String generatePgOrderId(UUID orderId) {
+        return orderId.toString().replace("-", "");
     }
 
     public void startConfirming(String paymentKey) {
