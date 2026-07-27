@@ -273,14 +273,14 @@ class ProjectSettlementErrorControllerTest {
         private RuntimeException targetReadFailure;
 
         void respondWith(Long projectId, Long creatorId, List<Money> paymentAmounts) {
-            this.target = new ProjectSettlementTarget(projectId, creatorId);
+            this.target = new ProjectSettlementTarget(projectId, "오류 검증 프로젝트", creatorId);
             this.paymentAmounts = List.copyOf(paymentAmounts);
             this.paymentReadFailure = null;
             this.targetReadFailure = null;
         }
 
         void failPaymentReadWith(Long projectId, Long creatorId, RuntimeException failure) {
-            this.target = new ProjectSettlementTarget(projectId, creatorId);
+            this.target = new ProjectSettlementTarget(projectId, "오류 검증 프로젝트", creatorId);
             this.paymentAmounts = List.of();
             this.paymentReadFailure = failure;
             this.targetReadFailure = null;
