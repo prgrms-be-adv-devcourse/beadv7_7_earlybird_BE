@@ -66,6 +66,7 @@ services:
       # 최초 기동 시 서비스별 데이터베이스 9개를 생성한다 (볼륨이 이미 있으면 실행되지 않음)
       - ./mysql/init:/docker-entrypoint-initdb.d
       - earlybird-mysql-data:/var/lib/mysql
+    restart: unless-stopped
     healthcheck:
       # -h 127.0.0.1 (TCP), 절대 localhost 로 바꾸지 말 것: "localhost" 는 유닉스 소켓으로 접속하는데,
       # 첫 기동 시 초기화용 임시 서버가 --skip-networking 상태로 같은 소켓에 떠 있어 healthy 를
