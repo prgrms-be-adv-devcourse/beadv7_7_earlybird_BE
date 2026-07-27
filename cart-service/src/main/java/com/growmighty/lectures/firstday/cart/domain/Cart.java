@@ -52,6 +52,15 @@ public class Cart extends BaseEntity {
         requireItem(rewardId).changeQuantity(newQuantity);
     }
 
+    public void setItemQuantity(Long rewardId, int quantity) {
+        CartItem existing = findItem(rewardId);
+        if (existing != null) {
+            existing.changeQuantity(quantity);
+            return;
+        }
+        addItem(rewardId, quantity);
+    }
+
     public int quantityOf(Long rewardId) {
         CartItem item = findItem(rewardId);
         return item == null ? 0 : item.getQuantity();

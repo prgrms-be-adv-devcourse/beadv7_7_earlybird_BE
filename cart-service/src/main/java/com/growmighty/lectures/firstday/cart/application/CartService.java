@@ -28,6 +28,8 @@ public class CartService {
     private final CartRepository cartRepository;
     private final RewardPort rewardPort;
 
+    // Todo(예정, 미정) : 정합성 검증 관련 추가
+
     @Transactional
     public CartView addItems(AddCartItemsCommand command) {
         validateProjectId(command.projectId());
@@ -39,6 +41,7 @@ public class CartService {
         Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(rewardIds(items));
 
         validateRewards(command.projectId(), items, rewards);
+        validateDistinctItemsLimit(cart, items);
         validateFinalQuantities(cart, items, rewards, true);
 
         items.forEach(item -> cart.addItem(item.rewardId(), item.quantity()));
@@ -46,20 +49,21 @@ public class CartService {
     }
 
     @Transactional
-    public CartView updateItemQuantities(UpdateCartItemQuantitiesCommand command) {
+    public CartView updateItems(UpdateCartItemQuantitiesCommand command) {
         validateProjectId(command.projectId());
         List<CartLineCommand> items = toCartLineCommands(
                 command.items(),
                 item -> new CartLineCommand(item.rewardId(), item.quantity()));
-        Cart cart = getCartEntity(command.userId());
+        Cart cart = cartRepository.findByUserId(command.userId())
+                .orElseGet(() -> Cart.create(command.userId()));
         Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(rewardIds(items));
 
         validateRewards(command.projectId(), items, rewards);
-        validateExistingItems(cart, items);
+        validateDistinctItemsLimit(cart, items);
         validateFinalQuantities(cart, items, rewards, false);
 
-        items.forEach(item -> cart.changeQuantity(item.rewardId(), item.quantity()));
-        return toView(cart);
+        items.forEach(item -> cart.setItemQuantity(item.rewardId(), item.quantity()));
+        return toView(cartRepository.save(cart));
     }
 
     @Transactional
@@ -126,14 +130,6 @@ public class CartService {
         }
     }
 
-    private void validateExistingItems(Cart cart, List<CartLineCommand> items) {
-        for (CartLineCommand item : items) {
-            if (!cart.containsReward(item.rewardId())) {
-                throw new IllegalArgumentException("Cart item not found. rewardId=" + item.rewardId());
-            }
-        }
-    }
-
     private void validateFinalQuantities(Cart cart, List<CartLineCommand> items,
                                          Map<Long, RewardSnapshot> rewards, boolean increment) {
         for (CartLineCommand item : items) {
@@ -146,6 +142,16 @@ public class CartService {
             if (reward.remainingQuantity() != null && finalQuantity > reward.remainingQuantity()) {
                 throw new IllegalStateException("Reward stock is insufficient. rewardId=" + item.rewardId());
             }
+        }
+    }
+
+    private void validateDistinctItemsLimit(Cart cart, List<CartLineCommand> items) {
+        long newItemCount = items.stream()
+                .filter(item -> !cart.containsReward(item.rewardId()))
+                .count();
+        if (cart.getItems().size() + newItemCount > Cart.MAX_DISTINCT_ITEMS) {
+            throw new IllegalStateException("Cart cannot contain more than " + Cart.MAX_DISTINCT_ITEMS
+                    + " distinct rewards.");
         }
     }
 
