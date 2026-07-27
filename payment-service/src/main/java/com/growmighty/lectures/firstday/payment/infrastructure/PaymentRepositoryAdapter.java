@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -32,7 +33,7 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
     }
 
     @Override
-    public Optional<Payment> findByOrderId(Long orderId) {
+    public Optional<Payment> findByOrderId(UUID orderId) {
         return jpaRepository.findByOrderId(orderId);
     }
 
