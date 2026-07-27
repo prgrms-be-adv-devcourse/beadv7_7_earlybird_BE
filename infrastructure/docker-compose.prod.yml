@@ -6,5 +6,8 @@
 # otherwise a one-line host-port change (the container's internal server.port stays 8000).
 services:
   gateway-server:
-    ports:
+    # Compose concatenates list fields like `ports` across -f files by default, so a plain
+    # override here would publish BOTH 8000:8000 (from the base file) and 80:8000 - not what
+    # we want. `!override` forces a full replace instead of merging.
+    ports: !override
       - "80:8000"
