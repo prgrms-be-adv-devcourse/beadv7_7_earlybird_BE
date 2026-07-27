@@ -21,6 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,7 +63,7 @@ class PaymentConfirmationServiceConcurrencyTest {
     @DisplayName("동시에 승인 선점을 요청해도 하나의 요청만 CONFIRMING 상태로 전이시킨다")
     void startConfirmation_allowsOnlyOneRequest() throws Exception {
         Payment payment = paymentRepository.save(Payment.ready(
-            1L,
+            UUID.fromString("11111111-1111-1111-1111-111111111111"),
             BigDecimal.valueOf(10_000)
         ));
 

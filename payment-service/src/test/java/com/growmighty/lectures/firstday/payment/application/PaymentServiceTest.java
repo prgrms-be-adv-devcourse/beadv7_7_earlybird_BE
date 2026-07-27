@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PaymentServiceTest {
 
-    private static final Long ORDER_ID = 1L;
+    private static final UUID ORDER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
 
     private InMemoryPaymentRepository paymentRepository;
@@ -58,7 +58,7 @@ class PaymentServiceTest {
 
         assertThat(result.status()).isEqualTo(PaymentStatus.READY);
         assertThat(result.pgOrderId()).isEqualTo(saved.getPgOrderId());
-        assertThat(result.pgOrderId()).startsWith("order-" + ORDER_ID + "-");
+        assertThat(result.pgOrderId()).isEqualTo(ORDER_ID.toString().replace("-", ""));
         assertThat(saved.getOrderId()).isEqualTo(ORDER_ID);
         assertThat(saved.getAmount()).isEqualByComparingTo(AMOUNT);
     }
@@ -233,12 +233,12 @@ class PaymentServiceTest {
     }
 
     private static final class RecordingOrderStatusPort implements OrderStatusPort {
-        private Long requestedOrderId;
+        private UUID requestedOrderId;
         private PaymentStatus requestedStatus;
         private int callCount;
 
         @Override
-        public void notifyStatus(Long orderId, PaymentStatus status) {
+        public void notifyStatus(UUID orderId, PaymentStatus status) {
             callCount++;
             requestedOrderId = orderId;
             requestedStatus = status;
@@ -248,7 +248,7 @@ class PaymentServiceTest {
     private static final class InMemoryPaymentRepository implements PaymentRepository {
         private final AtomicLong sequence = new AtomicLong();
         private final Map<Long, Payment> paymentsById = new HashMap<>();
-        private final Map<Long, Payment> paymentsByOrderId = new HashMap<>();
+        private final Map<UUID, Payment> paymentsByOrderId = new HashMap<>();
         private final Map<String, Payment> paymentsByPgOrderId = new HashMap<>();
         private final Map<String, Payment> paymentsByPaymentKey = new HashMap<>();
 
@@ -273,7 +273,7 @@ class PaymentServiceTest {
         }
 
         @Override
-        public Optional<Payment> findByOrderId(Long orderId) {
+        public Optional<Payment> findByOrderId(UUID orderId) {
             return Optional.ofNullable(paymentsByOrderId.get(orderId));
         }
 

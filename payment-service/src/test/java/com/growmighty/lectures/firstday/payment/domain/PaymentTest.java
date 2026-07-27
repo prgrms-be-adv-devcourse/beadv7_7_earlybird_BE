@@ -6,13 +6,14 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PaymentTest {
 
-    private static final Long ORDER_ID = 1L;
+    private static final UUID ORDER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key-1";
 
@@ -35,8 +36,7 @@ class PaymentTest {
     void ready_generatesPgOrderIdAndApproveIdempotencyKey() {
         Payment payment = Payment.ready(ORDER_ID, AMOUNT);
 
-        assertThat(payment.getPgOrderId()).startsWith("order-" + ORDER_ID + "-");
-        assertThat(payment.getPgOrderId()).hasSizeLessThanOrEqualTo(64);
+        assertThat(payment.getPgOrderId()).isEqualTo(ORDER_ID.toString().replace("-", ""));
         assertThat(payment.getApproveIdempotencyKey()).isNotBlank();
     }
 

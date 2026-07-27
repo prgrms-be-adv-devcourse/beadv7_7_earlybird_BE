@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -19,7 +20,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class PaymentConfirmationServiceReconcileTest {
 
-    private static final Long ORDER_ID = 1L;
+    private static final UUID ORDER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key";
 

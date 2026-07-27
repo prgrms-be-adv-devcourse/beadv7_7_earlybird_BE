@@ -5,6 +5,8 @@ import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 @RequiredArgsConstructor
 public class OrderHttpClient implements OrderStatusPort {
@@ -12,7 +14,7 @@ public class OrderHttpClient implements OrderStatusPort {
 
 
     @Override
-    public void notifyStatus(Long orderId, PaymentStatus status) {
+    public void notifyStatus(UUID orderId, PaymentStatus status) {
         orderFeignClient.updatePaymentStatus(
             orderId,
             new OrderStatusRequest(status.name())
