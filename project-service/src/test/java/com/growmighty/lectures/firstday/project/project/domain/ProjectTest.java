@@ -2,7 +2,6 @@ package com.growmighty.lectures.firstday.project.project.domain;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -176,9 +175,7 @@ class ProjectTest {
     @DisplayName("모금액이 목표 금액 이상이면 마감 시 성공으로 확정된다")
     void closeByDeadline_reachesGoal_succeeds() {
         Project project = publishedProject();
-        // fundedAmount는 아직 결제 이벤트로 채워주는 트리거가 없어(Project.java 필드 TODO 참고)
-        // 판정 로직만 독립적으로 검증하기 위해 리플렉션으로 직접 값을 넣는다.
-        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        project.updateFundedAmount(project.getGoalAmount());
 
         project.closeByDeadline();
 
@@ -190,7 +187,7 @@ class ProjectTest {
     @DisplayName("목표 금액을 이미 달성했으면 마감일 전에도 조기 종료해 성공으로 확정할 수 있다")
     void closeEarlyAsSucceeded_goalReached_succeeds() {
         Project project = publishedProject();
-        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        project.updateFundedAmount(project.getGoalAmount());
 
         project.closeEarlyAsSucceeded();
 
@@ -230,7 +227,7 @@ class ProjectTest {
     @DisplayName("이미 성공(SUCCEEDED)했어도 취소할 수 있다")
     void cancel_succeeded_succeeds() {
         Project project = publishedProject();
-        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        project.updateFundedAmount(project.getGoalAmount());
         project.closeEarlyAsSucceeded();
 
         project.cancel();
@@ -262,5 +259,24 @@ class ProjectTest {
         project.cancel();
 
         assertThatThrownBy(project::cancel).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("모금액을 절대값으로 덮어쓴다")
+    void updateFundedAmount_overwritesWithAbsoluteValue() {
+        Project project = project();
+        project.updateFundedAmount(BigDecimal.valueOf(500_000));
+        assertThat(project.getFundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(500_000));
+
+        project.updateFundedAmount(BigDecimal.valueOf(300_000));
+        assertThat(project.getFundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(300_000));
+    }
+
+    @Test
+    @DisplayName("음수 모금액으로는 갱신할 수 없다")
+    void updateFundedAmount_negative_throws() {
+        Project project = project();
+        assertThatThrownBy(() -> project.updateFundedAmount(BigDecimal.valueOf(-1)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

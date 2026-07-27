@@ -27,6 +27,7 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -136,6 +137,12 @@ public class ProjectServiceImpl implements ProjectService {
         return projectRepository.findByCreatorId(creatorId).stream()
                 .map(ProjectResponse::from)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void updateFundedAmount(Long projectId, BigDecimal fundedAmount) {
+        getProject(projectId).updateFundedAmount(fundedAmount);
     }
 
     @Override
