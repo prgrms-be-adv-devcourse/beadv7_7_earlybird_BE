@@ -4,9 +4,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record PaymentPrepareRequest(
-    @NotNull @Positive Long orderId,
+    @NotNull UUID orderId,
     @NotNull @Positive BigDecimal amount
     ) {
 }
