@@ -6,6 +6,7 @@ import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectCreateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -55,6 +56,13 @@ class ProjectControllerTest {
     void findAll_passesRequesterRoleThrough() {
         controller.findAll(UserRole.ADMIN, "keyword", 1L, ProjectStatus.PENDING_REVIEW, null);
         verify(projectService).findAll("keyword", 1L, ProjectStatus.PENDING_REVIEW, null, UserRole.ADMIN);
+    }
+
+    @Test
+    @DisplayName("X-User-Role 헤더가 없으면(비로그인) BACKER로 취급해 공개된 프로젝트만 조회한다")
+    void findAll_noRoleHeader_treatsAsBacker() {
+        controller.findAll(null, null, null, null, null);
+        verify(projectService).findAll(null, null, null, null, UserRole.BACKER);
     }
 
     @Test

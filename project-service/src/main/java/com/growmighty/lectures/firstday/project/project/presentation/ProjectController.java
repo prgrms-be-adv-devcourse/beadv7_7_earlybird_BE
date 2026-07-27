@@ -41,15 +41,20 @@ public class ProjectController {
         return projectService.create(creatorId, request);
     }
 
-    /** ADMIN이면 심사 대기/반려 프로젝트도 함께 조회된다. */
+    /**
+     * ADMIN이면 심사 대기/반려 프로젝트도 함께 조회된다. 비로그인 사용자도 볼 수 있는 공개
+     * API라 X-User-Role 헤더가 없을 수 있다 — 그 경우 BACKER(기본값)로 취급해 공개된
+     * 프로젝트만 보여준다.
+     */
     @GetMapping
     public List<ProjectResponse> findAll(
-            @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
+            @RequestHeader(value = JwtHeaders.USER_ROLE, required = false) UserRole requesterRole,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) ProjectStatus status,
             @RequestParam(required = false) ProjectSort sort) {
-        return projectService.findAll(keyword, categoryId, status, sort, requesterRole);
+        return projectService.findAll(keyword, categoryId, status, sort,
+                requesterRole != null ? requesterRole : UserRole.BACKER);
     }
 
     /** 내 프로젝트 목록. */
