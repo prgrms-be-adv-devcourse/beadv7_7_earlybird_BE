@@ -2,10 +2,10 @@ package com.growmighty.lectures.firstday.project.project.application;
 
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
-import com.growmighty.lectures.firstday.project.reward.domain.Reward;
-import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
+import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,12 +14,12 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -33,12 +33,15 @@ class ProjectServiceImplCancelTest {
 
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private final ProjectCategoryRepository projectCategoryRepository = mock(ProjectCategoryRepository.class);
-    private final RewardRepository rewardRepository = mock(RewardRepository.class);
+    private final RewardService rewardService = mock(RewardService.class);
+    private final OrderPort orderPort = mock(OrderPort.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<RewardService> rewardServiceProvider = mock(ObjectProvider.class);
 
     private final ProjectServiceImpl projectService =
-            new ProjectServiceImpl(projectRepository, projectCategoryRepository, rewardRepository, selfProvider);
+            new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort);
 
     private Project project;
 
@@ -48,7 +51,7 @@ class ProjectServiceImplCancelTest {
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project.approve();
         when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
-        when(rewardRepository.findByProjectId(1L)).thenReturn(List.of());
+        when(rewardServiceProvider.getObject()).thenReturn(rewardService);
     }
 
     @Test
@@ -76,13 +79,10 @@ class ProjectServiceImplCancelTest {
     }
 
     @Test
-    @DisplayName("취소되면 그 프로젝트의 리워드도 비활성화된다")
+    @DisplayName("취소되면 RewardService에 그 프로젝트의 리워드 비활성화를 위임한다")
     void cancel_deactivatesRewards() {
-        Reward reward = Reward.register(1L, "리워드", "설명", BigDecimal.TEN, 5);
-        when(rewardRepository.findByProjectId(1L)).thenReturn(List.of(reward));
-
         projectService.cancel(1L, OWNER_ID, UserRole.CREATOR);
 
-        assertThat(reward.isActive()).isFalse();
+        verify(rewardService).deactivateAllByProject(1L);
     }
 }

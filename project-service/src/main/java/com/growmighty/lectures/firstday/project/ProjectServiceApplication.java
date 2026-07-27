@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.project;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.core.Ordered;
 import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -15,8 +16,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 // 그래야 낙관적 락 충돌로 커밋이 실패해도 재시도마다 새 트랜잭션에서 엔티티를 다시 읽는다 (Reward.decreaseStock 참고).
 @EnableRetry(order = Ordered.LOWEST_PRECEDENCE - 1)
 @EnableScheduling
+@EnableFeignClients
 public class ProjectServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(ProjectServiceApplication.class, args);
     }
 }
+

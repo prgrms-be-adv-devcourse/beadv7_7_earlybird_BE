@@ -33,7 +33,8 @@ project/category/
 │   └── dto/
 │       ├── request/ProjectCategoryCreateRequest.java
 │       ├── request/ProjectCategoryUpdateRequest.java
-│       └── response/ProjectCategoryResponse.java
+│       ├── response/ProjectCategoryResponse.java (단건 조회/생성/수정)
+│       └── response/ProjectCategoryTreeResponse.java (findAllAsTree 전용)
 ├── application/
 │   ├── ProjectCategoryService.java        (interface)
 │   └── ProjectCategoryServiceImpl.java
@@ -55,7 +56,7 @@ project/category/
 전체 CRUD를 인터페이스에 정의했으나, **컨트롤러에는 요청받은 범위만 노출**(create/findAllAsTree/findById/update — delete는 서비스 로직은 있지만 컨트롤러에 노출 안 함, 아래 4.3 참고):
 
 - `create(ProjectCategoryCreateRequest)` — 부모 존재 검증(`parentCategoryId`가 있으면 `existsById`) 후 저장
-- `findAllAsTree()` — 전체 카테고리를 조회해 `parentCategoryId` 기준으로 그룹핑한 뒤, 루트(`parentCategoryId == null`)부터 재귀적으로 `ProjectCategoryResponse.children`을 채워 트리로 반환
+- `findAllAsTree()` — 전체 카테고리를 조회해 `parentCategoryId` 기준으로 그룹핑한 뒤, 루트(`parentCategoryId == null`)부터 재귀적으로 `ProjectCategoryTreeResponse.children`을 채워 트리로 반환. 단건 조회/생성/수정은 트리를 구성하지 않는 `ProjectCategoryResponse`(children 없음)를 대신 반환한다 — 예전엔 이 응답에도 `children`이 있었지만 항상 빈 배열이라 혼란만 줘서(2026-07-24) 트리 전용 타입으로 분리했다.
 - `findById(Long)` — 단건 조회, 없으면 `EntityNotFoundException`(common 모듈, → 404 `C003`)
 - `update(Long, ProjectCategoryUpdateRequest)` — 이름 변경 + 부모 변경. 부모가 바뀌는 경우에만 존재 검증 + **순환참조 검증**(`validateNotSelfOrDescendant`) 수행
 - `delete(Long)` — 구현은 되어 있으나 컨트롤러 미노출 (4.3 참고)

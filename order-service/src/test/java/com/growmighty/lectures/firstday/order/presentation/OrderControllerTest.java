@@ -4,10 +4,8 @@ import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.order.application.OrderApiService;
-import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;

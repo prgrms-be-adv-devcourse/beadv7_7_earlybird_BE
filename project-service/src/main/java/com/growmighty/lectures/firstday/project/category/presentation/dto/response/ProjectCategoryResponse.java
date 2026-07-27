@@ -2,19 +2,14 @@ package com.growmighty.lectures.firstday.project.category.presentation.dto.respo
 
 import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 
-import java.util.List;
-
+/** 단건 조회/생성/수정 응답. 트리 구조가 필요한 목록 조회는 ProjectCategoryTreeResponse를 쓴다. */
 public record ProjectCategoryResponse(
         Long id,
         Long parentProjectCategoryId,
-        String name,
-        List<ProjectCategoryResponse> children
+        String name
 ) {
-    public static ProjectCategoryResponse of(ProjectCategory projectCategory, List<ProjectCategoryResponse> children) {
-        return new ProjectCategoryResponse(projectCategory.getId(), projectCategory.getParentProjectCategoryId(), projectCategory.getName(), children);
-    }
-
-    public static ProjectCategoryResponse leaf(ProjectCategory projectCategory) {
-        return of(projectCategory, List.of());
+    public static ProjectCategoryResponse from(ProjectCategory projectCategory) {
+        return new ProjectCategoryResponse(
+                projectCategory.getId(), projectCategory.getParentProjectCategoryId(), projectCategory.getName());
     }
 }
