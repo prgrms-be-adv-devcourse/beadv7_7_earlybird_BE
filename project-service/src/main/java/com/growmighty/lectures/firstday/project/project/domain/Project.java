@@ -57,12 +57,13 @@ public class Project {
     @Column(nullable = false)
     private BigDecimal goalAmount;
 
-    // TODO(팀): 결제 성공 시 이 값을 실제로 채워주는 트리거가 아직 없다(order/payment-service
-    // 확인 결과 프로젝트 단위 누적 모금액 집계·통보 API 없음, 주문 1건당 totalAmount만 존재).
-    // order/payment-service와 "언제·어떻게 알려줄지" 별도로 맞춰야 하는 cross-service 이슈.
+    // updateFundedAmount()로 갱신된다 — order-service가 결제 확정/취소 시 push로 호출하거나
+    // (PUT /internal/v1/projects/{id}/funded-amount), project-service가 주기적으로 pull(OrderPort)해
+    // 검증한다. TODO(팀): order-service의 push 발신, pull 응답의 PAID 필터링은 아직 완료 안 됨.
     @Column(nullable = false)
     private BigDecimal fundedAmount;
 
+    // 실제 펀딩 시작 날짜-시간
     @Column(nullable = false)
     private LocalDateTime startAt;
 
@@ -86,6 +87,7 @@ public class Project {
 
     private LocalDateTime closedAt;
 
+    // 프로젝트 게시 날짜-시간
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -210,8 +212,18 @@ public class Project {
     }
 
     /**
+     * order-service가 알려주는(push) 또는 조회해온(pull) "현재 확정 총액"으로 덮어쓴다 — 증분이 아니라
+     * 절대값이라 같은 값으로 여러 번 호출해도 결과가 같다(멱등).
+     */
+    public void updateFundedAmount(BigDecimal fundedAmount) {
+        if (fundedAmount == null || fundedAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("모금액은 0 이상이어야 합니다. fundedAmount=" + fundedAmount);
+        }
+        this.fundedAmount = fundedAmount;
+    }
+
+    /**
      * 배치 전용: 마감시각이 지난 진행중 프로젝트를 모금액 기준으로 성공/실패 확정한다.
-     * fundedAmount가 아직 항상 0인 이유는 필드 선언부 TODO 참고.
      */
     public void closeByDeadline() {
         requireStatus(ProjectStatus.IN_PROGRESS, "마감 처리는 진행중 상태에서만 가능합니다.");

@@ -27,6 +27,7 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -136,6 +137,22 @@ public class ProjectServiceImpl implements ProjectService {
         return projectRepository.findByCreatorId(creatorId).stream()
                 .map(ProjectResponse::from)
                 .toList();
+    }
+
+    @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public void updateFundedAmount(Long projectId, BigDecimal fundedAmount) {
+        getProject(projectId).updateFundedAmount(fundedAmount);
+    }
+
+    @Recover
+    public void recoverUpdateFundedAmountConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "모금액 갱신 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
+        }
+        throw e;
     }
 
     @Override

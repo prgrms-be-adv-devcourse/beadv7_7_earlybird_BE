@@ -9,6 +9,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,6 +32,12 @@ public interface ProjectService {
     ProjectResponse cancel(Long projectId, Long requesterId, UserRole requesterRole);
 
     List<ProjectResponse> findByCreator(Long creatorId);
+
+    /**
+     * 서비스 간 내부 API 전용 — order-service가 결제 확정/취소 시 push로 호출하거나(절대값,
+     * 멱등), project-service가 주기적으로 pull(OrderPort)해 검증할 때 쓰는 갱신 경로.
+     */
+    void updateFundedAmount(Long projectId, BigDecimal fundedAmount);
 
     /**
      * 서비스 간 내부 API(ProjectInternalController) 전용 — role 개념이 없는 호출자(Settlement/Payment)를

@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -28,5 +30,20 @@ public class OrderHttpClient implements OrderPort {
         // 결제와 같은 이유로, 실패는 정직하게 503으로 알리고 삭제는 막는다(fail-closed).
         throw new ServiceUnavailableException(
             "주문 서비스가 일시적으로 응답하지 않아 삭제 가능 여부를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+    }
+
+    @Override
+    public BigDecimal getFundedAmount(Long projectId) {
+        return circuitBreakerFactory.create("order").run(
+            () -> orderFeignClient.getFundedAmount(projectId).data(),
+            this::getFundedAmountFallback);
+    }
+
+    private BigDecimal getFundedAmountFallback(Throwable cause) {
+        log.warn("모금액 확정 총액 조회 실패 → fallback 실행. 원인: {}", cause.toString());
+        // 이 호출은 push가 이미 반영해둔 값을 검증하는 pull이라, 실패했다고 0 등으로 잘못
+        // 덮어쓰면 안 된다 — 호출자가 이번 주기는 건너뛰도록 정직하게 503으로 알린다.
+        throw new ServiceUnavailableException(
+            "주문 서비스가 일시적으로 응답하지 않아 모금액을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.");
     }
 }
