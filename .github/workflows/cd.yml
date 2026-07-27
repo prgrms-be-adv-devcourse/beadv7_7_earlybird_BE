@@ -14,6 +14,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: '30m'
           script: |
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
             git pull
