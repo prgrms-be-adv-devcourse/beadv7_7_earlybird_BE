@@ -30,6 +30,10 @@ public record PlaceOrderRequest(
     }
 
     public PlaceOrderCommand toCommand() {
+        return toCommand(userId);
+    }
+
+    public PlaceOrderCommand toCommand(Long userId) {
         List<OrderLine> lines = requests.stream()
                 .map(r -> new OrderLine(r.rewardId(), r.quantity(), r.expectedUnitPrice()))
                 .toList();

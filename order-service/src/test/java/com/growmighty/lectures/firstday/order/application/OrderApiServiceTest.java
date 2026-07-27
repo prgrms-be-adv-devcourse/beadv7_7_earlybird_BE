@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.order.application;
 
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
@@ -64,7 +65,7 @@ class OrderApiServiceTest {
         stubReward();
         when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.success(99L, BigDecimal.valueOf(23000)));
 
-        OrderResult result = orderApiService.placeOrder(command(orderId));
+        OrderResult result = orderApiService.placeOrder(command(orderId), 1L);
 
         assertThat(result.id()).isEqualTo(orderId);
         assertThat(result.status()).isEqualTo(OrderStatus.PAID);
@@ -81,7 +82,7 @@ class OrderApiServiceTest {
         doThrow(new IllegalStateException("stock unavailable"))
                 .when(rewardPort).decreaseStock(10L, 2);
 
-        assertThatThrownBy(() -> orderApiService.placeOrder(command(orderId)))
+        assertThatThrownBy(() -> orderApiService.placeOrder(command(orderId), 1L))
                 .isInstanceOf(IllegalStateException.class);
 
         assertThat(orders.get(orderId).getStatus()).isEqualTo(OrderStatus.STOCK_FAILED);
@@ -96,7 +97,7 @@ class OrderApiServiceTest {
         stubReward();
         when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.failure(BigDecimal.valueOf(23000)));
 
-        OrderResult result = orderApiService.placeOrder(command(orderId));
+        OrderResult result = orderApiService.placeOrder(command(orderId), 1L);
 
         assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_FAILED);
         verify(rewardPort).restoreStock(10L, 2);
@@ -164,6 +165,44 @@ class OrderApiServiceTest {
         verify(rewardPort, never()).restoreStock(10L, 2);
     }
 
+    @Test
+    @DisplayName("다른 사용자의 주문 상세는 조회할 수 없다")
+    void getOrderInfo_otherUser_forbidden() {
+        UUID orderId = UUID.randomUUID();
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(paidOrder(orderId)));
+
+        assertThatThrownBy(() -> orderApiService.getOrderInfo(orderId, 2L))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 주문은 취소할 수 없다")
+    void cancelOrder_otherUser_forbidden() {
+        UUID orderId = UUID.randomUUID();
+        when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(paidOrder(orderId)));
+
+        assertThatThrownBy(() -> orderApiService.cancelOrder(orderId, 2L))
+                .isInstanceOf(BusinessException.class);
+
+        verifyNoInteractions(paymentPort);
+        verify(rewardPort, never()).restoreStock(10L, 2);
+    }
+
+    @Test
+    @DisplayName("주문 생성은 requesterId를 주문 소유자로 사용한다")
+    void placeOrder_usesRequesterIdAsOwner() {
+        UUID orderId = UUID.randomUUID();
+        stubRepository();
+        stubReward();
+        when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.success(99L, BigDecimal.valueOf(23000)));
+
+        OrderResult result = orderApiService.placeOrder(command(orderId, 999L), 1L);
+
+        assertThat(result.id()).isEqualTo(orderId);
+        assertThat(orders.get(orderId).getUserId()).isEqualTo(1L);
+        verify(paymentPort).pay(orderId, 1L, BigDecimal.valueOf(23000));
+    }
+
     private void stubRepository() {
         when(orderRepository.findById(any(UUID.class))).thenAnswer(invocation ->
                 Optional.ofNullable(orders.get(invocation.getArgument(0))));
@@ -180,7 +219,11 @@ class OrderApiServiceTest {
     }
 
     private PlaceOrderCommand command(UUID orderId) {
-        return new PlaceOrderCommand(orderId, 1L, List.of(new OrderLine(10L, 2, BigDecimal.valueOf(10_000))),
+        return command(orderId, 1L);
+    }
+
+    private PlaceOrderCommand command(UUID orderId, Long userId) {
+        return new PlaceOrderCommand(orderId, userId, List.of(new OrderLine(10L, 2, BigDecimal.valueOf(10_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
                 BigDecimal.valueOf(20_000), BigDecimal.valueOf(23_000));
     }
