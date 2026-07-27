@@ -2,7 +2,7 @@ package com.growmighty.lectures.firstday.project.reward.application;
 
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
-import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
@@ -16,10 +16,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -114,38 +110,6 @@ class RewardConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
     private Long reward(Long projectId, int totalQuantity) {
         Reward reward = Reward.register(projectId, "노트커버", "설명", BigDecimal.valueOf(10_000), totalQuantity);
         return rewardRepository.save(reward).getRewardId();
-    }
-
-    /**
-     * tasks를 CountDownLatch로 동시에 출발시키고, 각 task의 결과(성공=null, 실패=예외)를 원래
-     * 인덱스 그대로 담아 반환한다 — 구간별(관리자/크리에이터 vs 후원자) 성공 개수를 정확히 세려면
-     * 어느 태스크가 몇 번째였는지가 보존돼야 하기 때문에 필터링하지 않고 배열째로 돌려준다.
-     */
-    private Throwable[] runAllConcurrently(List<Runnable> tasks) throws InterruptedException {
-        int n = tasks.size();
-        ExecutorService pool = Executors.newFixedThreadPool(n);
-        CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(n);
-        Throwable[] results = new Throwable[n];
-        for (int i = 0; i < n; i++) {
-            int idx = i;
-            Runnable task = tasks.get(i);
-            pool.submit(() -> {
-                try {
-                    start.await();
-                    task.run();
-                } catch (Throwable t) {
-                    results[idx] = t;
-                } finally {
-                    done.countDown();
-                }
-            });
-        }
-        start.countDown();
-        boolean finished = done.await(30, TimeUnit.SECONDS);
-        pool.shutdown();
-        assertThat(finished).as("모든 스레드가 제한 시간 안에 끝나야 한다").isTrue();
-        return results;
     }
 
     private void assertNoUnexpectedFailures(Throwable[] results) {

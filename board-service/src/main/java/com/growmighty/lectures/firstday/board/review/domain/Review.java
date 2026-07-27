@@ -25,10 +25,16 @@ public class Review extends BaseEntity {
     private Long projectId;
 
     @Column(nullable = false)
-    private Long orderId;
+    private Long rewardId;
+
+    @Column(nullable = false)
+    private String rewardName;
 
     @Column(nullable = false)
     private Long authorId;
+
+    @Column(nullable = false)
+    private String authorName;
 
     @Embedded
     @AttributeOverride(name = "value", column = @Column(name = "rating", nullable = false))
@@ -41,21 +47,30 @@ public class Review extends BaseEntity {
     @Column(nullable = false)
     private ReviewStatus status;
 
-    private Review(Long projectId, Long orderId, Long authorId, Rating rating, String content) {
+    /** 동시 수정/삭제 요청 사이의 낙관적 락 — 소프트 삭제 상태 전이 충돌 감지용 */
+    @Version
+    private Long version;
+
+    private Review(Long projectId, Long rewardId, String rewardName, Long authorId, String authorName, Rating rating, String content) {
         validateProjectId(projectId);
-        validateOrderId(orderId);
+        validateRewardId(rewardId);
+        validateRewardName(rewardName);
         validateAuthorId(authorId);
+        validateAuthorName(authorName);
 
         this.projectId = projectId;
-        this.orderId = orderId;
+        this.rewardId = rewardId;
+        this.rewardName = rewardName;
         this.authorId = authorId;
+        this.authorName = authorName;
         this.rating = rating;
         this.content = content;
         this.status = ReviewStatus.ACTIVE;
     }
 
-    public static Review create(Long projectId, Long orderId, Long authorId, BigDecimal rating, String content) {
-        return new Review(projectId, orderId, authorId, Rating.from(rating), content);
+    public static Review create(Long projectId, Long rewardId, String rewardName, Long authorId, String authorName,
+                                 BigDecimal rating, String content) {
+        return new Review(projectId, rewardId, rewardName, authorId, authorName, Rating.from(rating), content);
     }
 
     public void update(Long requesterId, BigDecimal newRating, String newContent) {
@@ -108,9 +123,21 @@ public class Review extends BaseEntity {
         }
     }
 
-    private void validateOrderId(Long orderId) {
-        if (orderId == null) {
-            throw new IllegalArgumentException("주문 ID는 필수입니다.");
+    private void validateAuthorName(String authorName) {
+        if (authorName == null || authorName.isBlank()) {
+            throw new IllegalArgumentException("작성자 이름은 필수입니다.");
+        }
+    }
+
+    private void validateRewardId(Long rewardId) {
+        if (rewardId == null) {
+            throw new IllegalArgumentException("리워드 ID는 필수입니다.");
+        }
+    }
+
+    private void validateRewardName(String rewardName) {
+        if (rewardName == null || rewardName.isBlank()) {
+            throw new IllegalArgumentException("리워드 이름은 필수입니다.");
         }
     }
 }

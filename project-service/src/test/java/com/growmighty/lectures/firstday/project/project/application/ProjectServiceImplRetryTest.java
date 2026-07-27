@@ -1,14 +1,14 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
-import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
-import com.growmighty.lectures.firstday.project.reward.domain.Reward;
-import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
+import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +25,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,8 +59,8 @@ class ProjectServiceImplRetryTest {
         }
 
         @Bean
-        RewardRepository rewardRepository() {
-            return mock(RewardRepository.class);
+        RewardService rewardService() {
+            return mock(RewardService.class);
         }
 
         @SuppressWarnings("unchecked")
@@ -70,10 +69,24 @@ class ProjectServiceImplRetryTest {
             return mock(ObjectProvider.class);
         }
 
+        @SuppressWarnings("unchecked")
+        @Bean
+        ObjectProvider<RewardService> rewardServiceProvider(RewardService rewardService) {
+            ObjectProvider<RewardService> provider = mock(ObjectProvider.class);
+            when(provider.getObject()).thenReturn(rewardService);
+            return provider;
+        }
+
+        @Bean
+        OrderPort orderPort() {
+            return mock(OrderPort.class);
+        }
+
         @Bean
         ProjectService projectService(ProjectRepository projectRepository, ProjectCategoryRepository projectCategoryRepository,
-                                       RewardRepository rewardRepository, ObjectProvider<ProjectService> selfProvider) {
-            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, rewardRepository, selfProvider);
+                                       ObjectProvider<ProjectService> selfProvider, ObjectProvider<RewardService> rewardServiceProvider,
+                                       OrderPort orderPort) {
+            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort);
         }
     }
 
@@ -82,14 +95,13 @@ class ProjectServiceImplRetryTest {
     @Autowired
     private ProjectRepository projectRepository;
     @Autowired
-    private RewardRepository rewardRepository;
+    private RewardService rewardService;
 
     private Project project;
 
     @BeforeEach
     void setUp() {
-        reset(projectRepository, rewardRepository);
-        when(rewardRepository.findByProjectId(anyLong())).thenReturn(List.of());
+        reset(projectRepository, rewardService);
         project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project.approve();
@@ -208,27 +220,23 @@ class ProjectServiceImplRetryTest {
     }
 
     @Test
-    @DisplayName("closeProjectByDeadline: 마감 확정에 성공하면 그 프로젝트의 리워드도 비활성화된다")
+    @DisplayName("closeProjectByDeadline: 마감 확정에 성공하면 그 프로젝트의 리워드도 비활성화 요청이 간다")
     void closeProjectByDeadline_deactivatesRewards() {
         when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
-        Reward reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
-        when(rewardRepository.findByProjectId(1L)).thenReturn(List.of(reward));
 
         projectService.closeProjectByDeadline(1L);
 
-        assertThat(reward.isActive()).isFalse();
+        verify(rewardService).deactivateAllByProject(1L);
     }
 
     @Test
-    @DisplayName("closeEarly: 조기 마감에 성공하면 그 프로젝트의 리워드도 비활성화된다")
+    @DisplayName("closeEarly: 조기 마감에 성공하면 그 프로젝트의 리워드도 비활성화 요청이 간다")
     void closeEarly_deactivatesRewards() {
         ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
         when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
-        Reward reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
-        when(rewardRepository.findByProjectId(1L)).thenReturn(List.of(reward));
 
         projectService.closeEarly(1L);
 
-        assertThat(reward.isActive()).isFalse();
+        verify(rewardService).deactivateAllByProject(1L);
     }
 }

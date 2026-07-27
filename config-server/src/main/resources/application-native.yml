@@ -1,0 +1,11 @@
+# docker-compose 로컬 테스트 전용 (SPRING_PROFILES_ACTIVE=native).
+# "native" 는 spring-cloud-config-server 가 내장 지원하는 특수 프로파일 이름이다 — 활성화되면
+# git 백엔드 대신 로컬 파일시스템(NativeEnvironmentRepository)을 그대로 읽는다.
+# git checkout/reset 이 전혀 없어 커밋 안 한 변경사항도 바로 반영되고, 마운트된 워킹트리를
+# 건드릴 위험도 없다. AWS 배포 시에는 이 프로파일을 켜지 않으면 application.yml 의 GitHub 원격을 쓴다.
+spring:
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: file:///config-repo

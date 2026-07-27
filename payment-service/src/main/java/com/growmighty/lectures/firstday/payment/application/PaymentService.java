@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmat
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
+import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.NonNull;
@@ -23,6 +24,7 @@ public class PaymentService {
 
     // 결제 승인 상태 전이를 트랜잭션 단위로 처리하는 클래스
     private final PaymentConfirmationService  paymentConfirmationService;
+    private final OrderStatusPort  orderStatusPort;
 
     @Transactional
     public PaymentPreparationInfo prepare(
@@ -34,12 +36,30 @@ public class PaymentService {
                 boolean sameRequest = existingPayment.getAmount().compareTo(amount) == 0;
 
                 if (!sameRequest) {
-                    throw new IllegalStateException(
-                        "이미 준비된 결제의 정보와 요청 정보가 다릅니다. orderId=" + orderId
-                    );
+                    throw new IllegalStateException("이미 준비된 결제의 정보와 요청 정보가 다릅니다. orderId=" + orderId);
                 }
 
-                return PaymentPreparationInfo.from(existingPayment);
+                if (existingPayment.isReady()) {
+                    return PaymentPreparationInfo.from(existingPayment);
+                }
+
+                if (existingPayment.isConfirming()) {
+                    throw new PaymentConfirmationInProgressException(existingPayment.getPgOrderId());
+                }
+
+                if (existingPayment.isPaid()) {
+                    throw new IllegalStateException("이미 결제가 완료된 주문입니다. orderId=" + orderId);
+                }
+
+                if (existingPayment.isFailed()) {
+                    throw new IllegalStateException("실패한 결제입니다. 재결제 처리가 필요합니다. orderId=" + orderId);
+                }
+
+                if (existingPayment.isCancelled()) {
+                    throw new IllegalStateException("취소된 결제입니다. orderId=" + orderId);
+                }
+
+                throw new IllegalStateException("지원하지 않는 결제 상태입니다. status=" + existingPayment.getStatus());
             })
             .orElseGet(() -> {
                 Payment payment = Payment.ready(orderId, amount);
@@ -52,7 +72,7 @@ public class PaymentService {
 
         /** 중복 요청 승인 방지용 */
         try {
-            target = paymentConfirmationService.startConfirmation(pgOrderId, amount);
+            target = paymentConfirmationService.startConfirmation(paymentKey, pgOrderId, amount);
         } catch (OptimisticLockingFailureException e) {
             throw new PaymentConfirmationInProgressException(pgOrderId);
         }
@@ -64,11 +84,18 @@ public class PaymentService {
             target.idempotencyKey()
         );
 
-        return paymentConfirmationService.completeConfirmation(
+        PaymentInfo paymentInfo = paymentConfirmationService.completeConfirmation(
             target.paymentId(),
             paymentKey,
             approval
         );
+
+        orderStatusPort.notifyStatus(
+            paymentInfo.orderId(),
+            paymentInfo.status()
+        );
+
+        return paymentInfo;
     }
 
     @Transactional

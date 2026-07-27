@@ -1,11 +1,12 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectCreateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
-import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
+import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,12 +36,15 @@ class ProjectServiceImplOwnershipTest {
 
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private final ProjectCategoryRepository projectCategoryRepository = mock(ProjectCategoryRepository.class);
-    private final RewardRepository rewardRepository = mock(RewardRepository.class);
+    private final RewardService rewardService = mock(RewardService.class);
+    private final OrderPort orderPort = mock(OrderPort.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<RewardService> rewardServiceProvider = mock(ObjectProvider.class);
 
     private final ProjectServiceImpl projectService =
-            new ProjectServiceImpl(projectRepository, projectCategoryRepository, rewardRepository, selfProvider);
+            new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort);
 
     private Project project;
 
@@ -50,6 +54,8 @@ class ProjectServiceImplOwnershipTest {
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
         when(projectCategoryRepository.existsById(1L)).thenReturn(true);
+        when(rewardServiceProvider.getObject()).thenReturn(rewardService);
+        when(orderPort.hasOrderedReward(1L)).thenReturn(false);
     }
 
     @Test
@@ -89,7 +95,7 @@ class ProjectServiceImplOwnershipTest {
     void delete_byOwner_succeeds() {
         projectService.delete(1L, OWNER_ID);
 
-        verify(rewardRepository).deleteByProjectId(1L);
+        verify(rewardService).deleteAllByProject(1L);
         verify(projectRepository).delete(project);
     }
 
@@ -101,6 +107,6 @@ class ProjectServiceImplOwnershipTest {
                 .hasMessageContaining("본인이 등록한 프로젝트만");
 
         verify(projectRepository, never()).delete(any(Project.class));
-        verify(rewardRepository, never()).deleteByProjectId(any());
+        verify(rewardService, never()).deleteAllByProject(any());
     }
 }

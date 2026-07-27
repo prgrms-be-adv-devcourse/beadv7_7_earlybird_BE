@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossConfirmRequest;
-import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossConfirmResponse;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossErrorResponse;
+import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossPaymentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -30,13 +30,13 @@ public class TossPaymentGateway implements PaymentGateway {
     @Override
     public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
         try {
-            TossConfirmResponse response = tossRestClient.post()
+            TossPaymentResponse response = tossRestClient.post()
                 .uri("/v1/payments/confirm")
                 .header("Idempotency-key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new TossConfirmRequest(paymentKey, pgOrderId, amount))
                 .retrieve()
-                .body(TossConfirmResponse.class);
+                .body(TossPaymentResponse.class);
 
             if (response == null) {
                 throw new IllegalStateException("토스 승인 응답이 비어있습니다.");
@@ -61,6 +61,35 @@ public class TossPaymentGateway implements PaymentGateway {
             );
         }
 
+    }
+
+    @Override
+    public PgPayment getPayment(String paymentKey) {
+        try {
+            TossPaymentResponse response = tossRestClient.get()
+                .uri("/v1/payments/{paymentKey}", paymentKey)
+                .retrieve()
+                .body(TossPaymentResponse.class);
+
+            if (response == null) {
+                throw new IllegalStateException("토스 결제 조회 응답이 비어있습니다.");
+            }
+
+            return new PgPayment(
+                response.paymentKey(),
+                response.orderId(),
+                response.totalAmount(),
+                PgPaymentStatus.fromTossStatus(response.status())
+            );
+        } catch (RestClientResponseException e) {
+            throw toTossPaymentException(e);
+        } catch (ResourceAccessException e) {
+            throw new TossPaymentException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "TOSS_NETWORK_ERROR",
+                "토스 결제 서버에 연결할 수 없습니다."
+            );
+        }
     }
 
     @Override

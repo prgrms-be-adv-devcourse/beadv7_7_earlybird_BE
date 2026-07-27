@@ -54,6 +54,29 @@ class ProjectTest {
     }
 
     @Test
+    @DisplayName("마감일이 시작일로부터 정확히 3개월 이내면 등록할 수 있다")
+    void register_endAtExactlyThreeMonthsAfterStartAt_succeeds() {
+        LocalDateTime startAt = LocalDateTime.of(2026, 1, 27, 0, 0);
+        LocalDate endAt = LocalDate.of(2026, 4, 27);
+
+        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), startAt, endAt);
+
+        assertThat(project.getEndAt()).isEqualTo(endAt);
+    }
+
+    @Test
+    @DisplayName("마감일이 시작일로부터 3개월을 초과하면 등록할 수 없다")
+    void register_endAtExceedsThreeMonths_throws() {
+        LocalDateTime startAt = LocalDateTime.of(2026, 1, 27, 0, 0);
+        LocalDate endAt = LocalDate.of(2026, 4, 28);
+
+        assertThatThrownBy(() -> Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), startAt, endAt))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("승인하면 심사 대기에서 진행중으로 바뀌고, 대기 상태가 아니면 승인할 수 없다")
     void approve_pendingReviewToInProgress() {
         Project project = project();
@@ -152,6 +175,21 @@ class ProjectTest {
         assertThat(project.getEndAt()).isEqualTo(currentEndAt.plusDays(10));
 
         assertThatThrownBy(() -> project.extendDeadline(currentEndAt))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("마감일 연장도 시작일로부터 3개월을 초과할 수 없다")
+    void extendDeadline_beyondThreeMonthsFromStartAt_throws() {
+        LocalDateTime startAt = LocalDateTime.of(2026, 1, 27, 0, 0);
+        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), startAt, LocalDate.of(2026, 2, 1));
+        project.approve();
+
+        project.extendDeadline(LocalDate.of(2026, 4, 27));
+        assertThat(project.getEndAt()).isEqualTo(LocalDate.of(2026, 4, 27));
+
+        assertThatThrownBy(() -> project.extendDeadline(LocalDate.of(2026, 4, 28)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

@@ -1,0 +1,39 @@
+name: CD
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+jobs:
+  build:
+    name: deploy
+    runs-on: ubuntu-latest
+    # workflow_run fires for every CI run regardless of branch/outcome, so gate here:
+    # only deploy a main-branch CI run that actually passed. workflow_dispatch bypasses
+    # this entirely since it has no associated workflow_run event.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          # drone-ssh kills the remote command after this long regardless of progress.
+          # Default is 10m, which isn't enough headroom for a full 11-image rebuild.
+          command_timeout: '30m'
+          script: |
+            cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
+            git pull
+            # Build one service at a time instead of a single `docker compose up -d --build`
+            # (which builds all 11 images in parallel via buildx bake). EC2 is a 2-vCPU box,
+            # so 11 concurrent Gradle builds thrash the CPU badly enough to make even sshd
+            # unresponsive - that's what caused the CD run to time out and the box to need
+            # a reboot. Sequential builds are slower in total, but each one actually finishes.
+            # -f infrastructure/docker-compose.prod.yml layers the AWS-only overrides (currently
+            # just gateway-server's host port) on top of the shared base file - see that file
+            # for why. Local dev never passes it, so nothing there is affected.
+            for svc in config-server discovery-server gateway-server caddy order-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
+              docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d --build "$svc"
+            done

@@ -1,17 +1,16 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
-import com.growmighty.lectures.firstday.project.project.domain.Project;
-import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.project.application.ProjectService;
+import com.growmighty.lectures.firstday.project.project.application.ProjectStatusView;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardCreateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,8 +21,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Reward는 자기 creatorId가 없어 부모 프로젝트의 creatorId로 소유권을 검증한다 —
- * register/update/delete 전부 프로젝트 창작자가 아니면 거부하는지 확인한다.
+ * Reward는 자기 creatorId가 없어 부모 프로젝트의 creatorId(ProjectStatusView 경유)로
+ * 소유권을 검증한다 — register/update/delete 전부 프로젝트 창작자가 아니면 거부하는지 확인한다.
  */
 class RewardServiceImplOwnershipTest {
 
@@ -31,20 +30,20 @@ class RewardServiceImplOwnershipTest {
     private static final Long OTHER_USER_ID = 2L;
 
     private final RewardRepository rewardRepository = mock(RewardRepository.class);
-    private final ProjectRepository projectRepository = mock(ProjectRepository.class);
-    private final RewardServiceImpl rewardService = new RewardServiceImpl(rewardRepository, projectRepository);
+    private final ProjectService projectService = mock(ProjectService.class);
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<ProjectService> projectServiceProvider = mock(ObjectProvider.class);
+    private final RewardServiceImpl rewardService = new RewardServiceImpl(rewardRepository, projectServiceProvider);
 
-    private Project project;
     private Reward reward;
 
     @BeforeEach
     void setUp() {
-        project = Project.register(OWNER_ID, null, "title", 1L, "summary", "desc",
-                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
-        project.approve();
+        ProjectStatusView published = new ProjectStatusView(true, false, true, "IN_PROGRESS", OWNER_ID);
         reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
 
-        when(projectRepository.findByIdForStatusCheck(1L)).thenReturn(Optional.of(project));
+        when(projectServiceProvider.getObject()).thenReturn(projectService);
+        when(projectService.findStatusView(1L)).thenReturn(Optional.of(published));
         when(rewardRepository.findById(1L)).thenReturn(Optional.of(reward));
     }
 
@@ -87,10 +86,9 @@ class RewardServiceImplOwnershipTest {
 
     @Test
     void delete_byOwner_succeeds() {
-        // 하드 삭제는 공개 전 프로젝트에서만 허용된다 — setUp()의 project는 approve()된 상태라 별도로 준비.
-        Project unpublished = Project.register(OWNER_ID, null, "title", 1L, "summary", "desc",
-                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
-        when(projectRepository.findByIdForStatusCheck(1L)).thenReturn(Optional.of(unpublished));
+        // 하드 삭제는 공개 전 프로젝트에서만 허용된다 — setUp()의 published는 승인된 상태라 별도로 준비.
+        ProjectStatusView unpublished = new ProjectStatusView(false, false, false, "PENDING_REVIEW", OWNER_ID);
+        when(projectService.findStatusView(1L)).thenReturn(Optional.of(unpublished));
 
         rewardService.delete(1L, OWNER_ID);
 
