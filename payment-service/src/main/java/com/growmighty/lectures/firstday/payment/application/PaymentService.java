@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -28,7 +29,7 @@ public class PaymentService {
 
     @Transactional
     public PaymentPreparationInfo prepare(
-        @NonNull Long orderId,
+        @NonNull UUID orderId,
         @NonNull BigDecimal amount
     ) {
         return paymentRepository.findByOrderId(orderId)
