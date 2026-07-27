@@ -11,7 +11,13 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "payments")
+@Table(
+    name = "payments",
+    indexes = @Index(
+        name = "idx_payments_status_confirming_at",
+        columnList = "status, confirming_At"
+    )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Payment extends BaseEntity {
@@ -79,10 +85,14 @@ public class Payment extends BaseEntity {
         return "order-" + orderId + "-" + UUID.randomUUID().toString().replace("-", "");
     }
 
-    public void startConfirming() {
+    public void startConfirming(String paymentKey) {
         if(this.status != PaymentStatus.READY) {
             throw new IllegalStateException("READY 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
         }
+
+        validatePaymentKey(paymentKey);
+
+        this.paymentKey = paymentKey;
         this.status = PaymentStatus.CONFIRMING;
         confirmingAt = LocalDateTime.now();
     }
@@ -91,13 +101,18 @@ public class Payment extends BaseEntity {
         if (this.status != PaymentStatus.CONFIRMING) {
             throw new IllegalStateException("CONFIRMING 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
         }
-        if (paymentKey == null || paymentKey.isBlank()) {
-            throw new IllegalArgumentException("토스 paymentKey 는 필수입니다.");
+        if (!this.paymentKey.equals(paymentKey)) {
+            throw new IllegalStateException("승인 요청 paymentKey가 일치하지 않습니다.");
         }
-        this.paymentKey = paymentKey;
         this.confirmedAt = LocalDateTime.now();
         this.confirmingAt = null;
         this.status = PaymentStatus.PAID;
+    }
+
+    private static void validatePaymentKey(String paymentKey) {
+        if (paymentKey == null || paymentKey.isBlank()) {
+            throw new IllegalArgumentException("토스 paymentKey는 필수입니다.");
+        }
     }
 
     public void fail() {

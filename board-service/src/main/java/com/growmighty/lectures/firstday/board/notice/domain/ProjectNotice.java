@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.OptimisticLock;
 
 @Entity
 @Table(name = "notices")
@@ -23,12 +24,17 @@ public class ProjectNotice extends BaseEntity {
     private Long authorId;
 
     @Column(nullable = false)
+    private String authorName;
+
+    @Column(nullable = false)
     private String title;
 
     @Lob
     @Column(nullable = false)
     private String content;
 
+    /** 조회수 증가는 낙관적 락 검사에서 제외 — 잦은 조회가 제목/내용 수정의 @Version과 경합하지 않도록 */
+    @OptimisticLock(excluded = true)
     @Column(nullable = false)
     private Long viewCount;
 
@@ -36,14 +42,20 @@ public class ProjectNotice extends BaseEntity {
     @Column(nullable = false)
     private ProjectNoticeStatus status;
 
-    private ProjectNotice(Long projectId, Long authorId, String title, String content) {
+    /** 동시 수정/삭제 요청 사이의 낙관적 락 — 소프트 삭제 상태 전이 충돌 감지용 */
+    @Version
+    private Long version;
+
+    private ProjectNotice(Long projectId, Long authorId, String authorName, String title, String content) {
         validateProjectId(projectId);
         validateTitle(title);
         validateContent(content);
         validateAuthorId(authorId);
+        validateAuthorName(authorName);
 
         this.projectId = projectId;
         this.authorId = authorId;
+        this.authorName = authorName;
         this.title = title;
         this.content = content;
 
@@ -51,8 +63,8 @@ public class ProjectNotice extends BaseEntity {
         this.viewCount = 0L;
     }
 
-    public static ProjectNotice create(Long projectId, Long authorId, String title, String content) {
-        return new ProjectNotice(projectId, authorId, title, content);
+    public static ProjectNotice create(Long projectId, Long authorId, String authorName, String title, String content) {
+        return new ProjectNotice(projectId, authorId, authorName, title, content);
     }
 
     public void update(Long requesterId, UserRole requesterRole, String title, String content) {
@@ -71,6 +83,10 @@ public class ProjectNotice extends BaseEntity {
         validateAuthorId(requesterId);
         validateOwnership(requesterId, requesterRole);
         this.status = ProjectNoticeStatus.DELETED;
+    }
+
+    public void increaseViewCount() {
+        this.viewCount++;
     }
 
     private void validateNotDeleted() {
@@ -113,6 +129,12 @@ public class ProjectNotice extends BaseEntity {
     private void validateAuthorId(Long requesterId) {
         if (requesterId == null) {
             throw new IllegalArgumentException("작성자 정보를 불러올 수 없습니다.");
+        }
+    }
+
+    private void validateAuthorName(String authorName) {
+        if (authorName == null || authorName.isBlank()) {
+            throw new IllegalArgumentException("작성자 이름은 필수입니다.");
         }
     }
 }

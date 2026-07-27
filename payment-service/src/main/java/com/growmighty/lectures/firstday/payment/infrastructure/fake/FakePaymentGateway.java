@@ -123,6 +123,11 @@ public class FakePaymentGateway implements PaymentGateway {
     }
 
     @Override
+    public PgPayment getPayment(String paymentKey) {
+        throw new UnsupportedOperationException("Fake PG에서는 결제 조회를 지원하지 않습니다.");
+    }
+
+    @Override
     public void cancel(String paymentKey) {
         validatePaymentKey(paymentKey);
 

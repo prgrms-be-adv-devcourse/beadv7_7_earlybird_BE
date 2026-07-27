@@ -1,0 +1,13 @@
+package com.growmighty.lectures.firstday.board.notice.infrastructure;
+
+import com.growmighty.lectures.firstday.board.notice.domain.ProjectNotice;
+import com.growmighty.lectures.firstday.board.notice.domain.ProjectNoticeStatus;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface ProjectNoticeJpaRepository extends JpaRepository<ProjectNotice, Long> {
+    List<ProjectNotice> findByProjectIdAndStatusNotOrderByCreatedAtDesc(Long projectId, ProjectNoticeStatus status);
+
+    boolean existsByIdAndStatusNot(Long id, ProjectNoticeStatus status);
+}

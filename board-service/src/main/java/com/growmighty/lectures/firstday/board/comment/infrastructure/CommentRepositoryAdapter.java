@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.board.comment.infrastructure;
 
 import com.growmighty.lectures.firstday.board.comment.domain.Comment;
 import com.growmighty.lectures.firstday.board.comment.domain.CommentRepository;
+import com.growmighty.lectures.firstday.board.comment.domain.CommentStatus;
 import com.growmighty.lectures.firstday.board.comment.domain.CommentTargetType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -25,12 +26,7 @@ public class CommentRepositoryAdapter implements CommentRepository {
     }
 
     @Override
-    public List<Comment> findByTargetTypeAndTargetId(CommentTargetType targetType, Long targetId) {
-        return jpaRepository.findByTargetTypeAndTargetId(targetType, targetId);
-    }
-
-    @Override
-    public void delete(Comment comment) {
-        jpaRepository.delete(comment);
+    public List<Comment> findVisibleByTargetTypeAndTargetId(CommentTargetType targetType, Long targetId) {
+        return jpaRepository.findVisibleByTargetTypeAndTargetId(targetType, targetId, CommentStatus.DELETED);
     }
 }

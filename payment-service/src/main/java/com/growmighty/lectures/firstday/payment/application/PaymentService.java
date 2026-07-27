@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmat
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
+import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.NonNull;
@@ -23,6 +24,7 @@ public class PaymentService {
 
     // 결제 승인 상태 전이를 트랜잭션 단위로 처리하는 클래스
     private final PaymentConfirmationService  paymentConfirmationService;
+    private final OrderStatusPort  orderStatusPort;
 
     @Transactional
     public PaymentPreparationInfo prepare(
@@ -52,7 +54,7 @@ public class PaymentService {
 
         /** 중복 요청 승인 방지용 */
         try {
-            target = paymentConfirmationService.startConfirmation(pgOrderId, amount);
+            target = paymentConfirmationService.startConfirmation(paymentKey, pgOrderId, amount);
         } catch (OptimisticLockingFailureException e) {
             throw new PaymentConfirmationInProgressException(pgOrderId);
         }
@@ -64,11 +66,18 @@ public class PaymentService {
             target.idempotencyKey()
         );
 
-        return paymentConfirmationService.completeConfirmation(
+        PaymentInfo paymentInfo = paymentConfirmationService.completeConfirmation(
             target.paymentId(),
             paymentKey,
             approval
         );
+
+        orderStatusPort.notifyStatus(
+            paymentInfo.orderId(),
+            paymentInfo.status()
+        );
+
+        return paymentInfo;
     }
 
     @Transactional

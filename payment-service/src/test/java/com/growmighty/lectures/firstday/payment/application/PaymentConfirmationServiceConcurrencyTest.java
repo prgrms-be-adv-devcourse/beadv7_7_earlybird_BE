@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 @DataJpaTest(properties = {
-    "spring.jpa.hibernate.ddl-auto=create-drop",
+    "spring.jpa.hibernate.ddl-auto=create",
     "spring.cloud.config.enabled=false"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -38,6 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentConfirmationServiceConcurrencyTest {
+
+    private static final String PAYMENT_KEY = "payment-key-1";
 
     @Container
     @ServiceConnection
@@ -72,7 +74,11 @@ class PaymentConfirmationServiceConcurrencyTest {
             start.await();
 
             try {
-                paymentConfirmationService.startConfirmation(payment.getPgOrderId(), payment.getAmount());
+                paymentConfirmationService.startConfirmation(
+                    PAYMENT_KEY,
+                    payment.getPgOrderId(),
+                    payment.getAmount()
+                );
                 return true;
             } catch (RuntimeException ignored) {
                 return false;
