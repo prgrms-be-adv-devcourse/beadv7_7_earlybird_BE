@@ -93,7 +93,7 @@ erDiagram
         decimal goal_amount "목표 금액 - 달성/실패 판정 기준"
         datetime start_at
         datetime end_at
-        varchar status "DRAFT | IN_REVIEW | REJECTED | OPEN | CLOSED | GOAL_REACHED | GOAL_FAILED"
+        varchar status "PENDING_REVIEW | REJECTED | IN_PROGRESS | SUCCEEDED | FAILED | CANCELLED (2026-07-15 project-service 재작성 시 확정, WORK_LOG_Category_Project.md 3.1절)"
     }
     rewards {
         bigint id PK

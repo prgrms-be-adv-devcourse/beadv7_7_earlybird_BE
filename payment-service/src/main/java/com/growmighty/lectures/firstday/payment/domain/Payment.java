@@ -131,6 +131,18 @@ public class Payment extends BaseEntity {
         this.status = PaymentStatus.CANCELLED;
     }
 
+    public boolean isReady() {
+        return this.status == PaymentStatus.READY;
+    }
+
+    public boolean isFailed() {
+        return this.status == PaymentStatus.FAILED;
+    }
+
+    public boolean isCancelled() {
+        return this.status == PaymentStatus.CANCELLED;
+    }
+
     public boolean isPaid() {
         return this.status == PaymentStatus.PAID;
     }

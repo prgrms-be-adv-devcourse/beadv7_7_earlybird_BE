@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
-import com.growmighty.lectures.firstday.project.project.domain.Project;
-import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
-import com.growmighty.lectures.firstday.project.reward.application.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.project.application.ProjectService;
+import com.growmighty.lectures.firstday.project.project.application.ProjectStatusView;
+import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
@@ -10,6 +10,7 @@ import com.growmighty.lectures.firstday.project.reward.presentation.dto.response
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,8 +20,6 @@ import org.springframework.retry.annotation.EnableRetry;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,6 +40,9 @@ import static org.mockito.Mockito.when;
 @SpringJUnitConfig(RewardServiceImplRetryTest.RetryTestConfig.class)
 class RewardServiceImplRetryTest {
 
+    private static final ProjectStatusView PUBLISHED_OPEN_VIEW =
+            new ProjectStatusView(true, false, true, "IN_PROGRESS", 1L);
+
     @Configuration
     @EnableRetry(order = Ordered.LOWEST_PRECEDENCE - 1)
     static class RetryTestConfig {
@@ -50,13 +52,21 @@ class RewardServiceImplRetryTest {
         }
 
         @Bean
-        ProjectRepository projectRepository() {
-            return mock(ProjectRepository.class);
+        ProjectService projectService() {
+            return mock(ProjectService.class);
+        }
+
+        @SuppressWarnings("unchecked")
+        @Bean
+        ObjectProvider<ProjectService> projectServiceProvider(ProjectService projectService) {
+            ObjectProvider<ProjectService> provider = mock(ObjectProvider.class);
+            when(provider.getObject()).thenReturn(projectService);
+            return provider;
         }
 
         @Bean
-        RewardService rewardService(RewardRepository rewardRepository, ProjectRepository projectRepository) {
-            return new RewardServiceImpl(rewardRepository, projectRepository);
+        RewardService rewardService(RewardRepository rewardRepository, ObjectProvider<ProjectService> projectServiceProvider) {
+            return new RewardServiceImpl(rewardRepository, projectServiceProvider);
         }
     }
 
@@ -65,92 +75,88 @@ class RewardServiceImplRetryTest {
     @Autowired
     private RewardRepository rewardRepository;
     @Autowired
-    private ProjectRepository projectRepository;
+    private ProjectService projectService;
 
     private Reward reward;
-    private Project publishedProject;
 
     @BeforeEach
     void setUp() {
-        reset(rewardRepository, projectRepository);
+        reset(rewardRepository, projectService);
         reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
-        publishedProject = Project.register(1L, null, "title", 1L, "summary", "desc",
-                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
-        publishedProject.approve();
         when(rewardRepository.findById(anyLong())).thenReturn(Optional.of(reward));
     }
 
     @Test
     @DisplayName("decreaseQuantity: 락 충돌이 재시도 범위(3회) 안에서 풀리면 정상 반영된다")
     void decreaseQuantity_retriesUntilSuccess() {
-        when(projectRepository.findByIdForStatusCheck(anyLong()))
+        when(projectService.findStatusView(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L))
-                .thenReturn(Optional.of(publishedProject));
+                .thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
 
         RewardResponse response = rewardService.decreaseQuantity(1L, 2);
 
         assertThat(response.totalQuantity()).isEqualTo(8);
-        verify(projectRepository, times(3)).findByIdForStatusCheck(anyLong());
+        verify(projectService, times(3)).findStatusView(anyLong());
     }
 
     @Test
     @DisplayName("decreaseQuantity: 재시도를 다 소진하면 ConcurrentUpdateFailedException으로 변환된다")
     void decreaseQuantity_exhaustsRetries_throwsConcurrentUpdateFailed() {
-        when(projectRepository.findByIdForStatusCheck(anyLong()))
+        when(projectService.findStatusView(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L));
 
         assertThatThrownBy(() -> rewardService.decreaseQuantity(1L, 2))
                 .isInstanceOf(ConcurrentUpdateFailedException.class);
-        verify(projectRepository, times(3)).findByIdForStatusCheck(anyLong());
+        verify(projectService, times(3)).findStatusView(anyLong());
     }
 
     @Test
     @DisplayName("decreaseQuantity: 락 충돌이 아닌 검증 예외는 재시도 없이 원래 타입 그대로 전파된다")
     void decreaseQuantity_nonLockException_notMasked() {
-        when(projectRepository.findByIdForStatusCheck(anyLong())).thenReturn(Optional.of(publishedProject));
+        when(projectService.findStatusView(anyLong())).thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
 
         assertThatThrownBy(() -> rewardService.decreaseQuantity(1L, 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("1개 이상");
-        verify(projectRepository, times(1)).findByIdForStatusCheck(anyLong());
+        verify(projectService, times(1)).findStatusView(anyLong());
     }
 
     @Test
     @DisplayName("update: 공개 후 increaseQuantity 경로에서 락 충돌이 재시도 범위 안에서 풀리면 정상 반영된다")
     void update_increaseQuantity_retriesUntilSuccess() {
-        when(projectRepository.findByIdForStatusCheck(anyLong()))
+        when(projectService.findStatusView(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L))
-                .thenReturn(Optional.of(publishedProject));
+                .thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
         RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, 5);
 
         RewardResponse response = rewardService.update(1L, 1L, request);
 
         assertThat(response.totalQuantity()).isEqualTo(15);
-        verify(projectRepository, times(2)).findByIdForStatusCheck(anyLong());
+        verify(projectService, times(2)).findStatusView(anyLong());
     }
 
     @Test
     @DisplayName("update: 재시도를 다 소진하면 ConcurrentUpdateFailedException으로 변환된다")
     void update_exhaustsRetries_throwsConcurrentUpdateFailed() {
-        when(projectRepository.findByIdForStatusCheck(anyLong()))
+        when(projectService.findStatusView(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L));
         RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, 5);
 
         assertThatThrownBy(() -> rewardService.update(1L, 1L, request))
                 .isInstanceOf(ConcurrentUpdateFailedException.class);
-        verify(projectRepository, times(3)).findByIdForStatusCheck(anyLong());
+        verify(projectService, times(3)).findStatusView(anyLong());
     }
 
     @Test
     @DisplayName("update: 락 충돌이 아닌 검증 예외(increaseQuantity 누락)는 재시도 없이 원래 타입 그대로 전파된다")
     void update_nonLockException_notMasked() {
-        when(projectRepository.findByIdForStatusCheck(anyLong())).thenReturn(Optional.of(publishedProject));
+        when(projectService.findStatusView(anyLong())).thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
         RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, null);
 
         assertThatThrownBy(() -> rewardService.update(1L, 1L, request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("추가할 수량");
-        verify(projectRepository, times(1)).findByIdForStatusCheck(anyLong());
+        verify(projectService, times(1)).findStatusView(anyLong());
     }
 }
