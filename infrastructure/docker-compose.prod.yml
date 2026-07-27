@@ -1,13 +1,32 @@
 # AWS-only override, layered on top of docker-compose.yml via `-f docker-compose.yml -f docker-compose.prod.yml`.
 # Local dev never passes this file, so it keeps the default 8000:8000 mapping unchanged.
 #
-# Publishes the gateway on the host's port 80 instead of 8000 - the EC2 security group only
-# allows inbound 80/443/22, and remapping here avoids opening a non-standard port for what's
-# otherwise a one-line host-port change (the container's internal server.port stays 8000).
+# Caddy is now the sole external entry point (terminates TLS on 80/443, per the EC2 security
+# group). gateway-server no longer publishes anything to the host - same "only reach it through
+# the front door" rule docker-compose.yml already applies to every business service, now applied
+# to gateway-server too since Caddy is the new front door. Caddy still reaches it by service name
+# over the Compose network without any host port published.
 services:
   gateway-server:
     # Compose concatenates list fields like `ports` across -f files by default, so a plain
-    # override here would publish BOTH 8000:8000 (from the base file) and 80:8000 - not what
-    # we want. `!override` forces a full replace instead of merging.
-    ports: !override
-      - "80:8000"
+    # override here would publish BOTH 8000:8000 (from the base file) and whatever we add - not
+    # what we want. `!override` forces a full replace instead of merging.
+    ports: !override []
+
+  caddy:
+    image: caddy:2
+    container_name: earlybird-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - gateway-server
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
