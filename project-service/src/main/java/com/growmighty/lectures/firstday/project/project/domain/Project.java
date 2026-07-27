@@ -98,6 +98,9 @@ public class Project {
     @Version
     private Long version;
 
+    /** 토스페이먼츠 환불정책상 펀딩 기간(startAt~endAt)이 이 개월 수를 넘을 수 없다. */
+    private static final int MAX_FUNDING_PERIOD_MONTHS = 3;
+
     private Project(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
                      String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         validateGoalAmount(goalAmount);
@@ -268,6 +271,16 @@ public class Project {
     private void validatePeriod(LocalDateTime startAt, LocalDate endAt) {
         if (startAt == null || endAt == null || !endAt.atStartOfDay().isAfter(startAt)) {
             throw new IllegalArgumentException("마감일은 시작일 이후여야 합니다. startAt=" + startAt + ", endAt=" + endAt);
+        }
+        validateMaxDuration(startAt, endAt);
+    }
+
+    private void validateMaxDuration(LocalDateTime startAt, LocalDate endAt) {
+        LocalDate maxEndAt = startAt.toLocalDate().plusMonths(MAX_FUNDING_PERIOD_MONTHS);
+        if (endAt.isAfter(maxEndAt)) {
+            throw new IllegalArgumentException(
+                    "마감일은 시작일로부터 최대 " + MAX_FUNDING_PERIOD_MONTHS + "개월 이내여야 합니다. "
+                            + "시작일=" + startAt.toLocalDate() + ", 최대허용마감일=" + maxEndAt + ", 요청값=" + endAt);
         }
     }
 }
