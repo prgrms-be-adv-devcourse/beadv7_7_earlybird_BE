@@ -3,10 +3,11 @@ package com.growmighty.lectures.firstday.payment.presentation.dto;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 public record PaymentResponse(
         Long paymentId,
-        Long orderId,
+        UUID orderId,
         BigDecimal amount,
         String status
 ) {
