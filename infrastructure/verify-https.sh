@@ -19,11 +19,14 @@ else
 fi
 
 echo "2) HTTPS 인증서 체인 유효성 확인"
-# curl 은 기본적으로(-k 없이) 인증서 체인이 신뢰되지 않으면 접속 자체를 실패시킨다.
-if curl -sf -o /dev/null "https://${DOMAIN}/api/v1/projects"; then
+# curl 은 기본적으로(-k 없이) 인증서 체인이 신뢰되지 않으면 연결 자체를 실패시킨다(SSL 관련 종료 코드).
+# -f 를 쓰지 않는다 - 여기서는 TLS 계층 성공 여부만 확인하며, 라우팅된 서비스의 HTTP 응답 코드
+# (4xx/5xx 포함, 예: 인증 헤더 누락으로 인한 400)는 이 체크와 무관하다.
+if curl -s -o /dev/null "https://${DOMAIN}/"; then
   echo "   OK: TLS 핸드셰이크 성공, 인증서 체인 신뢰됨"
 else
-  echo "   FAIL: HTTPS 요청 실패 (인증서 문제 또는 gateway-server 응답 오류)"
+  curl_exit=$?
+  echo "   FAIL: HTTPS 연결 자체가 실패함 (curl 종료 코드: $curl_exit - 인증서/네트워크 문제)"
   FAIL=1
 fi
 
