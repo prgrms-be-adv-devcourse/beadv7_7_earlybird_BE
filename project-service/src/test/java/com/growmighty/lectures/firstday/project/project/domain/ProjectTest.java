@@ -179,6 +179,21 @@ class ProjectTest {
     }
 
     @Test
+    @DisplayName("마감일 연장도 시작일로부터 3개월을 초과할 수 없다")
+    void extendDeadline_beyondThreeMonthsFromStartAt_throws() {
+        LocalDateTime startAt = LocalDateTime.of(2026, 1, 27, 0, 0);
+        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), startAt, LocalDate.of(2026, 2, 1));
+        project.approve();
+
+        project.extendDeadline(LocalDate.of(2026, 4, 27));
+        assertThat(project.getEndAt()).isEqualTo(LocalDate.of(2026, 4, 27));
+
+        assertThatThrownBy(() -> project.extendDeadline(LocalDate.of(2026, 4, 28)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("배치 마감 처리는 진행중 상태에서만 가능하다")
     void closeByDeadline_notInProgress_throws() {
         Project project = project();

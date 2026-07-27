@@ -204,11 +204,12 @@ public class Project {
         }
     }
 
-    /** 관리자 전용: 마감일 연장만 허용 (과거로 당길 수 없음) */
+    /** 관리자 전용: 마감일 연장만 허용 (과거로 당길 수 없고, 시작일로부터 최대 개월 수도 넘을 수 없음) */
     public void extendDeadline(LocalDate newEndAt) {
         if (newEndAt == null || !newEndAt.isAfter(this.endAt)) {
             throw new IllegalArgumentException("마감일은 현재 마감일 이후로만 연장할 수 있습니다. 현재 마감일=" + this.endAt + ", 요청값=" + newEndAt);
         }
+        validateMaxDuration(this.startAt, newEndAt);
         this.endAt = newEndAt;
     }
 
