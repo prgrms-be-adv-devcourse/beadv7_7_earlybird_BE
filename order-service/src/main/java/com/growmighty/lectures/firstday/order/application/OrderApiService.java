@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderConsistencyVi
 import com.growmighty.lectures.firstday.order.application.dto.OrderInspectionView;
 import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
+import com.growmighty.lectures.firstday.order.application.dto.OrderVerificationResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort.RefundResult;
@@ -360,5 +361,12 @@ public class OrderApiService {
         if (userId == null || !order.getUserId().equals(userId)) {
             throw new IllegalStateException("Order access denied. orderId=" + order.getId());
         }
+    }
+
+    @Transactional(readOnly = true)
+    public OrderVerificationResult getOrderedVerification(Long userId, Long rewardId) {
+        return orderRepository.findPaidItem(userId, rewardId)
+                .map(orderItem -> OrderVerificationResult.verified(orderItem.getName()))
+                .orElseGet(OrderVerificationResult::unverified);
     }
 }

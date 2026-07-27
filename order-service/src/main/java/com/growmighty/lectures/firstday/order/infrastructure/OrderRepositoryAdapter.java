@@ -1,7 +1,9 @@
 package com.growmighty.lectures.firstday.order.infrastructure;
 
 import com.growmighty.lectures.firstday.order.domain.Order;
+import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
+import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
@@ -38,6 +40,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
 
     @Override
     public Optional<BigDecimal> getFundedAmount(Long projectId) {return jpaRepository.getFundedAmount(projectId);}
+
+    @Override
+    public Optional<OrderItem> findPaidItem(Long userId, Long rewardId) {
+        return jpaRepository.findPaidItem(userId, rewardId, OrderStatus.PAID);
+    }
 
     @Override
     public List<Order> findAll() {

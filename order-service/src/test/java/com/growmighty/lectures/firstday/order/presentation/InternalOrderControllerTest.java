@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.order.presentation;
 
 import com.growmighty.lectures.firstday.order.application.OrderApiService;
+import com.growmighty.lectures.firstday.order.application.dto.OrderVerificationResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,5 +57,23 @@ class InternalOrderControllerTest {
                 .andExpect(jsonPath("$.error").doesNotExist());
 
         verify(orderApiService).hasOrderedReward(200L);
+    }
+
+    @Test
+    @DisplayName("purchase verification returns verified flag and reward name")
+    void getOrderedVerification() throws Exception {
+        when(orderApiService.getOrderedVerification(1L, 10L))
+                .thenReturn(OrderVerificationResult.verified("Reward A"));
+
+        mockMvc.perform(get("/internal/v1/orders/purchase-verification")
+                        .param("userId", "1")
+                        .param("rewardId", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.verified").value(true))
+                .andExpect(jsonPath("$.data.rewardName").value("Reward A"))
+                .andExpect(jsonPath("$.error").doesNotExist());
+
+        verify(orderApiService).getOrderedVerification(1L, 10L);
     }
 }
