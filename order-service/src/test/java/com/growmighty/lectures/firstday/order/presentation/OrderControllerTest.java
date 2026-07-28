@@ -152,8 +152,8 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'requests[0].quantity')]").exists());
     }
 
-    private OrderResult result(UUID orderId, OrderStatus status) {
-        return new OrderResult(orderId, status, BigDecimal.valueOf(20_000), BigDecimal.valueOf(3_000),
-                BigDecimal.valueOf(23_000), "Receiver", "010-0000-0000", "Seoul", "06236");
-    }
+    // private OrderResult result(UUID orderId, OrderStatus status) {
+    //     return new OrderResult(orderId, status, BigDecimal.valueOf(20_000), BigDecimal.valueOf(3_000),
+    //             BigDecimal.valueOf(23_000), "Receiver", "010-0000-0000", "Seoul", "06236");
+    // }
 }
