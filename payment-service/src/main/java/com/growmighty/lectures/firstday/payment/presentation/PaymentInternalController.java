@@ -13,8 +13,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("internal/v1/payments")
@@ -33,7 +31,7 @@ public class PaymentInternalController {
     }
 
     @PostMapping("/orders/{orderId}/refund")
-    public PaymentRefundResponse refundResponse(@PathVariable UUID orderId, @Valid @RequestBody PaymentRefundRequest request) {
+    public PaymentRefundResponse refund(@PathVariable Long orderId, @Valid @RequestBody PaymentRefundRequest request) {
         Refund refund = refundService.refund(orderId, request.reason());
         return  PaymentRefundResponse.from(refund);
     }
