@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,6 +19,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
 
 /**
  * closeExpiredProjects()의 수동 트리거(POST /close-expired)와 자정 스케줄러가 겹쳐서 같은
@@ -32,11 +36,14 @@ class ProjectConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
     private ProjectService projectService;
     @Autowired
     private ProjectRepository projectRepository;
+    @MockitoBean
+    private OrderPort orderPort;
 
     @Test
     @DisplayName("같은 프로젝트에 closeProjectByDeadline을 동시에 여러 번 호출해도 정확히 한 번만 반영된다")
     void closeProjectByDeadline_concurrentCalls_appliesExactlyOnce() throws InterruptedException {
         Long projectId = publishedProject();
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         long versionBefore = projectRepository.findById(projectId).orElseThrow().getVersion();
 
         int threads = 10;
