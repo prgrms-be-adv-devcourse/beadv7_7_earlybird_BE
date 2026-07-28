@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 
+import java.math.BigDecimal;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -61,6 +62,37 @@ class OrderHttpClientTest {
         when(orderFeignClient.hasOrderedReward(1L)).thenThrow(new RuntimeException("connection refused"));
 
         assertThatThrownBy(() -> orderHttpClient.hasOrderedReward(1L))
+                .isInstanceOf(ServiceUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("모금액 조회가 성공하면 응답의 data를 그대로 반환한다")
+    void getFundedAmount_success() {
+        when(orderFeignClient.getFundedAmount(1L))
+                .thenReturn(ApiResponse.ok(BigDecimal.valueOf(500_000)));
+
+        BigDecimal result = orderHttpClient.getFundedAmount(1L);
+
+        assertThat(result).isEqualByComparingTo(BigDecimal.valueOf(500_000));
+    }
+
+    @Test
+    @DisplayName("아직 후원이 없는 프로젝트는 order-service가 data=null을 주고, 0원으로 처리한다")
+    void getFundedAmount_noOrders_returnsZero() {
+        when(orderFeignClient.getFundedAmount(1L))
+                .thenReturn(ApiResponse.ok(null));
+
+        BigDecimal result = orderHttpClient.getFundedAmount(1L);
+
+        assertThat(result).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("모금액 조회 호출이 실패하면 조용히 넘기지 않고 503으로 변환한다 (fail-closed)")
+    void getFundedAmount_failure_throwsServiceUnavailable() {
+        when(orderFeignClient.getFundedAmount(1L)).thenThrow(new RuntimeException("connection refused"));
+
+        assertThatThrownBy(() -> orderHttpClient.getFundedAmount(1L))
                 .isInstanceOf(ServiceUnavailableException.class);
     }
 }
