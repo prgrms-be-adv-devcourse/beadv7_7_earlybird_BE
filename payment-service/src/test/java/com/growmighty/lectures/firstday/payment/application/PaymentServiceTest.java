@@ -133,6 +133,9 @@ class PaymentServiceTest {
             .hasMessageContaining("취소된 결제입니다.");
     }
 
+    /**
+     * 아래 orderStatusPort 부분은 주석처리.
+     */
     @Test
     @DisplayName("confirm은 prepare에 저장된 금액과 멱등키로 승인하고 PAID 처리한다")
     void confirm_approvesUsingPreparedPayment() {
