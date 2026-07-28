@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
+import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,6 +97,8 @@ class ProjectServiceImplRetryTest {
     private ProjectRepository projectRepository;
     @Autowired
     private RewardService rewardService;
+    @Autowired
+    private OrderPort orderPort;
 
     private Project project;
 
@@ -148,7 +151,7 @@ class ProjectServiceImplRetryTest {
     @Test
     @DisplayName("closeEarly: 락 충돌이 재시도 범위 안에서 풀리면 정상 반영된다")
     void closeEarly_retriesUntilSuccess() {
-        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(project.getGoalAmount());
         when(projectRepository.findById(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Project.class, 1L))
                 .thenReturn(Optional.of(project));
@@ -174,6 +177,7 @@ class ProjectServiceImplRetryTest {
     @Test
     @DisplayName("closeEarly: 목표 미달 예외는 재시도 없이 원래 타입 그대로 전파된다")
     void closeEarly_belowGoal_notMasked() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
 
         assertThatThrownBy(() -> projectService.closeEarly(1L))
@@ -185,6 +189,7 @@ class ProjectServiceImplRetryTest {
     @Test
     @DisplayName("closeProjectByDeadline: 락 충돌이 재시도 범위 안에서 풀리면 정상 반영된다")
     void closeProjectByDeadline_retriesUntilSuccess() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         when(projectRepository.findById(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Project.class, 1L))
                 .thenReturn(Optional.of(project));
@@ -211,6 +216,7 @@ class ProjectServiceImplRetryTest {
     void closeProjectByDeadline_nonLockException_notMasked() {
         Project notInProgress = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         when(projectRepository.findById(anyLong())).thenReturn(Optional.of(notInProgress));
 
         assertThatThrownBy(() -> projectService.closeProjectByDeadline(1L))
@@ -222,6 +228,7 @@ class ProjectServiceImplRetryTest {
     @Test
     @DisplayName("closeProjectByDeadline: 마감 확정에 성공하면 그 프로젝트의 리워드도 비활성화 요청이 간다")
     void closeProjectByDeadline_deactivatesRewards() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
 
         projectService.closeProjectByDeadline(1L);
@@ -232,12 +239,58 @@ class ProjectServiceImplRetryTest {
     @Test
     @DisplayName("closeEarly: 조기 마감에 성공하면 그 프로젝트의 리워드도 비활성화 요청이 간다")
     void closeEarly_deactivatesRewards() {
-        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(project.getGoalAmount());
         when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
 
         projectService.closeEarly(1L);
 
         verify(rewardService).deactivateAllByProject(1L);
+    }
+
+    @Test
+    @DisplayName("closeProjectByDeadline: 캐시된(오래된) fundedAmount와 다르더라도 판정 직전 동기 조회 값을 기준으로 판정한다")
+    void closeProjectByDeadline_usesSyncPulledValueOverStaleCache() {
+        project.updateFundedAmount(BigDecimal.ZERO); // 스케줄러가 아직 못 돌린 오래된 캐시값이라고 가정
+        when(orderPort.getFundedAmount(1L)).thenReturn(project.getGoalAmount());
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        projectService.closeProjectByDeadline(1L);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.SUCCEEDED);
+    }
+
+    @Test
+    @DisplayName("closeProjectByDeadline: order-service 동기 조회가 실패하면 판정을 진행하지 않고 그대로 전파된다")
+    void closeProjectByDeadline_syncPullFails_notJudged() {
+        when(orderPort.getFundedAmount(1L)).thenThrow(new ServiceUnavailableException("주문 서비스 응답 없음"));
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> projectService.closeProjectByDeadline(1L))
+                .isInstanceOf(ServiceUnavailableException.class);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("closeEarly: 캐시된(오래된) fundedAmount와 다르더라도 판정 직전 동기 조회 값을 기준으로 판정한다")
+    void closeEarly_usesSyncPulledValueOverStaleCache() {
+        project.updateFundedAmount(BigDecimal.ZERO);
+        when(orderPort.getFundedAmount(1L)).thenReturn(project.getGoalAmount());
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        ProjectResponse response = projectService.closeEarly(1L);
+
+        assertThat(response.status()).isEqualTo(ProjectStatus.SUCCEEDED.name());
+    }
+
+    @Test
+    @DisplayName("closeEarly: order-service 동기 조회가 실패하면 판정을 진행하지 않고 그대로 전파된다")
+    void closeEarly_syncPullFails_notJudged() {
+        when(orderPort.getFundedAmount(1L)).thenThrow(new ServiceUnavailableException("주문 서비스 응답 없음"));
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> projectService.closeEarly(1L))
+                .isInstanceOf(ServiceUnavailableException.class);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
     }
 
     @Test

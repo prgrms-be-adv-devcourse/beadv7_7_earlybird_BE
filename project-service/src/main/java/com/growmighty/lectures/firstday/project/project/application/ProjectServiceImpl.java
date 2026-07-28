@@ -185,6 +185,7 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional
     public ProjectResponse closeEarly(Long projectId) {
         Project project = getProject(projectId);
+        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
         project.closeEarlyAsSucceeded();
         deactivateRewards(projectId);
         return ProjectResponse.from(project);
@@ -223,7 +224,9 @@ public class ProjectServiceImpl implements ProjectService {
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
     public void closeProjectByDeadline(Long projectId) {
-        getProject(projectId).closeByDeadline();
+        Project project = getProject(projectId);
+        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.closeByDeadline();
         deactivateRewards(projectId);
     }
 
