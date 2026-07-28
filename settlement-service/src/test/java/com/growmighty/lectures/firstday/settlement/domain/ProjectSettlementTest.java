@@ -24,7 +24,6 @@ class ProjectSettlementTest {
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 breakdown,
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
                 LocalDateTime.of(2026, 7, 22, 10, 0)
@@ -55,7 +54,6 @@ class ProjectSettlementTest {
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
                 10L,
-                "2026-07",
                 breakdown,
                 destination,
                 LocalDateTime.of(2026, 7, 22, 10, 0)

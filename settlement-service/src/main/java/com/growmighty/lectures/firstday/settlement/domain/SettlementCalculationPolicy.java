@@ -1,0 +1,62 @@
+package com.growmighty.lectures.firstday.settlement.domain;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.List;
+import java.util.Objects;
+
+public final class SettlementCalculationPolicy {
+
+    private static final BigDecimal PAYMENT_AND_SETTLEMENT_AGENCY_FEE_RATE = new BigDecimal("0.04");
+    private static final BigDecimal PLATFORM_FEE_RATE = new BigDecimal("0.04");
+    private static final BigDecimal VAT_RATE = new BigDecimal("0.10");
+
+    private SettlementCalculationPolicy() {
+    }
+
+    public static SettlementCalculationPolicy current() {
+        return new SettlementCalculationPolicy();
+    }
+
+    public SettlementBreakdown calculate(List<Money> finalEffectivePaymentAmounts) {
+        Objects.requireNonNull(finalEffectivePaymentAmounts, "최종 유효 결제 금액 목록은 필수입니다.");
+
+        Money baseAmount = Money.wons(finalEffectivePaymentAmounts.stream()
+                .map(Money::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        if (baseAmount.amount().signum() == 0) {
+            throw new IllegalArgumentException("프로젝트 정산 기준 금액은 0원보다 커야 합니다.");
+        }
+        Money paymentAndSettlementAgencyFeeAmount = Money.wons(finalEffectivePaymentAmounts.stream()
+                .map(Money::amount)
+                .map(amount -> applyRate(amount, PAYMENT_AND_SETTLEMENT_AGENCY_FEE_RATE))
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        Money paymentAndSettlementAgencyFeeVatAmount = Money.wons(applyRate(
+                paymentAndSettlementAgencyFeeAmount.amount(),
+                VAT_RATE
+        ));
+        Money platformFeeAmount = Money.wons(applyRate(baseAmount.amount(), PLATFORM_FEE_RATE));
+        Money platformFeeVatAmount = Money.wons(applyRate(platformFeeAmount.amount(), VAT_RATE));
+        Money otherDeductionAmount = Money.wons(0);
+        Money creatorPayoutAmount = baseAmount
+                .minus(paymentAndSettlementAgencyFeeAmount)
+                .minus(paymentAndSettlementAgencyFeeVatAmount)
+                .minus(platformFeeAmount)
+                .minus(platformFeeVatAmount)
+                .minus(otherDeductionAmount);
+
+        return SettlementBreakdown.of(
+                baseAmount,
+                paymentAndSettlementAgencyFeeAmount,
+                paymentAndSettlementAgencyFeeVatAmount,
+                platformFeeAmount,
+                platformFeeVatAmount,
+                otherDeductionAmount,
+                creatorPayoutAmount
+        );
+    }
+
+    private static BigDecimal applyRate(BigDecimal amount, BigDecimal rate) {
+        return amount.multiply(rate).setScale(0, RoundingMode.DOWN);
+    }
+}
