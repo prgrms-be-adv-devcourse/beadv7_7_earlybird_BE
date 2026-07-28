@@ -1,12 +1,10 @@
 package com.growmighty.lectures.firstday.order.infrastructure;
 
-import com.growmighty.lectures.firstday.order.domain.DuplicateOrderCreationException;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
@@ -26,11 +24,7 @@ public class OrderRepositoryAdapter implements OrderRepository {
 
     @Override
     public Order saveAndFlush(Order order) {
-        try {
-            return jpaRepository.saveAndFlush(order);
-        } catch (DataIntegrityViolationException e) {
-            throw new DuplicateOrderCreationException(order.getUserId(), order.getIdempotencyKey(), e);
-        }
+        return jpaRepository.saveAndFlush(order);
     }
 
     @Override
@@ -41,11 +35,6 @@ public class OrderRepositoryAdapter implements OrderRepository {
     @Override
     public Optional<Order> findByIdWithItems(Long id) {
         return jpaRepository.findByIdWithItems(id);
-    }
-
-    @Override
-    public Optional<Order> findByUserIdAndIdempotencyKey(Long userId, String idempotencyKey) {
-        return jpaRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
     }
 
     @Override

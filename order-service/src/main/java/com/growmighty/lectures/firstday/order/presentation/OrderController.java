@@ -17,7 +17,6 @@ import java.util.List;
 @RequiredArgsConstructor
 @RequestMapping("/orders")
 public class OrderController {
-    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
     private final OrderApiService orderApiService;
 
@@ -34,9 +33,9 @@ public class OrderController {
     }
 
     @PostMapping
-    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request, @RequestHeader(IDEMPOTENCY_KEY_HEADER) String idempotencyKey, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         validateBacker(requesterRole);
-        return OrderResponse.from(orderApiService.placeOrder(request.toCommand(requesterId, idempotencyKey), requesterId));
+        return OrderResponse.from(orderApiService.placeOrder(request.toCommand(requesterId), requesterId));
     }
 
     /** 후원 상세. */

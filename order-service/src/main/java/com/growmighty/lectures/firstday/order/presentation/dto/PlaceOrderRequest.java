@@ -27,15 +27,15 @@ public record PlaceOrderRequest(
     ) {
     }
 
-    public PlaceOrderCommand toCommand(String idempotencyKey) {
-        return toCommand(userId, idempotencyKey);
+    public PlaceOrderCommand toCommand() {
+        return toCommand(userId);
     }
 
-    public PlaceOrderCommand toCommand(Long userId, String idempotencyKey) {
+    public PlaceOrderCommand toCommand(Long userId) {
         List<OrderLine> lines = requests.stream()
                 .map(r -> new OrderLine(r.rewardId(), r.quantity(), r.expectedUnitPrice()))
                 .toList();
-        return new PlaceOrderCommand(idempotencyKey, userId, lines, receiverName, receiverPhone, shippingAddress, zipCode,
+        return new PlaceOrderCommand(userId, lines, receiverName, receiverPhone, shippingAddress, zipCode,
                 expectedItemsAmount, expectedTotalAmount);
     }
 }

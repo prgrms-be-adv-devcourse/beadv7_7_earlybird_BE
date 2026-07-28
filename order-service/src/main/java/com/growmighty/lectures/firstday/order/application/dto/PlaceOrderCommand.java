@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record PlaceOrderCommand(
-        String idempotencyKey,
         Long userId,
         List<OrderLine> lines,
         String receiverName,

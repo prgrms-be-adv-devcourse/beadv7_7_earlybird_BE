@@ -11,15 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(
-        name = "orders",
-        uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uk_orders_user_idempotency",
-                        columnNames = {"user_id", "idempotency_key"}
-                )
-        }
-)
+@Table(name = "orders")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
@@ -32,9 +24,6 @@ public class Order extends BaseEntity {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
-
-    @Column(name = "idempotency_key", nullable = false, updatable = false, length = 255)
-    private String idempotencyKey;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
@@ -71,13 +60,11 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private String zipCode;
 
-    private Order(Long id, Long userId, String idempotencyKey, List<OrderItem> items,
+    private Order(Long id, Long userId, List<OrderItem> items,
                   String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        validateIdempotencyKey(idempotencyKey);
         validateItems(items);
         validateShippingInfo(receiverName, receiverPhone, shippingAddress, zipCode);
         this.id = id;
-        this.idempotencyKey = idempotencyKey;
         items.forEach(this::addOrderItem);
         this.userId = userId;
         this.receiverName = receiverName;
@@ -88,15 +75,9 @@ public class Order extends BaseEntity {
         recalculateAmounts();
     }
 
-    public static Order create(Long id, Long userId, String idempotencyKey, List<OrderItem> items,
+    public static Order create(Long id, Long userId, List<OrderItem> items,
                                String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        return new Order(id, userId, idempotencyKey, items, receiverName, receiverPhone, shippingAddress, zipCode);
-    }
-
-    private void validateIdempotencyKey(String idempotencyKey) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new IllegalArgumentException("Idempotency key is required.");
-        }
+        return new Order(id, userId, items, receiverName, receiverPhone, shippingAddress, zipCode);
     }
 
     private void validateItems(List<OrderItem> items) {

@@ -13,7 +13,6 @@ import com.growmighty.lectures.firstday.order.application.port.PaymentPort.Refun
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
-import com.growmighty.lectures.firstday.order.domain.DuplicateOrderCreationException;
 import com.growmighty.lectures.firstday.order.domain.Money;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
@@ -85,20 +84,12 @@ public class OrderApiService {
     // 주문 생성 요청
     public OrderResult placeOrder(PlaceOrderCommand command, Long requesterId) {
         validateRequesterId(requesterId);
-        command = new PlaceOrderCommand(command.idempotencyKey(), requesterId, command.lines(),
+        command = new PlaceOrderCommand(requesterId, command.lines(),
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
                 command.expectedItemsAmount(), command.expectedTotalAmount());
         validateCommand(command);
 
         // FIXME : 동일 요청 자체의 중복 가능성 -> 생성해서 넘어오는 방법 등등을 고려
-        Optional<Order> existingOrder = orderRepository.findByUserIdAndIdempotencyKey(
-                command.userId(), command.idempotencyKey());
-        if (existingOrder.isPresent()) {
-            log.info("duplicate order request returned existing order. userId={}, idempotencyKey={}",
-                    command.userId(), command.idempotencyKey());
-            return OrderResult.from(existingOrder.get());
-        }
-
         Order order = createPendingOrder(command);
 
         /*
@@ -114,14 +105,7 @@ public class OrderApiService {
 
         // TODO(예정) : 타 도메인 연동 상세 작업 처리
 
-        try {
-            order = orderRepository.saveAndFlush(order);
-        } catch (DuplicateOrderCreationException e) {
-            log.info("duplicate order insert race detected. userId={}, idempotencyKey={}",
-                    e.getUserId(), e.getIdempotencyKey());
-            return OrderResult.from(orderRepository.findByUserIdAndIdempotencyKey(
-                    e.getUserId(), e.getIdempotencyKey()).orElseThrow());
-        }
+        order = orderRepository.saveAndFlush(order);
 
         try {
             reserveStock(order);
@@ -221,7 +205,7 @@ public class OrderApiService {
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
         }
 
-        Order order = Order.create(null, command.userId(), command.idempotencyKey(), orderItems,
+        Order order = Order.create(null, command.userId(), orderItems,
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
         validateAmounts(command, order);
         log.info("pending order created. orderId={}", order.getId());
@@ -255,9 +239,6 @@ public class OrderApiService {
 
     // 주문 형식 정합성 검사
     private void validateCommand(PlaceOrderCommand command) {
-        if (command.idempotencyKey() == null || command.idempotencyKey().isBlank()) {
-            throw new IllegalArgumentException("Idempotency key is required.");
-        }
         if (command.lines() == null || command.lines().isEmpty()) {
             throw new IllegalArgumentException("Order must contain at least one item.");
         }

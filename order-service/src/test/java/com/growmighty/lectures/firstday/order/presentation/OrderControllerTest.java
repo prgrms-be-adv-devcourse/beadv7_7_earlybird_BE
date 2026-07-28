@@ -44,7 +44,6 @@ class OrderControllerTest {
         when(orderApiService.placeOrder(any(PlaceOrderCommand.class), eq(1L))).thenReturn(result(orderId, OrderStatus.PAID));
 
         mockMvc.perform(post("/orders")
-                        .header("Idempotency-Key", "key-1")
                         .header(JwtHeaders.USER_ID, "1")
                         .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -140,7 +139,6 @@ class OrderControllerTest {
     @DisplayName("검증 오류 시 기본 오류 리턴")
     void placeOrder_validationFailure_400() throws Exception {
         mockMvc.perform(post("/orders")
-                        .header("Idempotency-Key", "key-1")
                         .header(JwtHeaders.USER_ID, "1")
                         .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
                         .contentType(MediaType.APPLICATION_JSON)

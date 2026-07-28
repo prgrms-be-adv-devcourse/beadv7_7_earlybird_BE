@@ -21,7 +21,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers
 // 내장 DB 가 아니면 Boot 가 ddl-auto 를 기본 none 으로 두므로, 테스트 스키마 생성을 명시한다.
@@ -49,7 +48,7 @@ class OrderRepositoryTests {
         Long userId = 1L;
         Long projectId = 100L;
         Long rewardId = 10L;
-        Order order = Order.create(null, userId, "key-1",
+        Order order = Order.create(null, userId,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(179000), projectId, rewardId, 1)),
                 "Receiver", "010-0000-0000", "Seoul", "06236");
 
@@ -63,7 +62,6 @@ class OrderRepositoryTests {
         assertThat(saved.getId()).isNotNull();
         assertThat(found.getId()).isEqualTo(saved.getId());
         assertThat(found.getId()).isInstanceOf(Long.class);
-        assertThat(found.getIdempotencyKey()).isEqualTo("key-1");
         assertThat(found.getItems()).hasSize(1);
         OrderItem foundItem = found.getItems().get(0);
         assertThat(foundItem.getQuantity()).isEqualTo(1);
@@ -80,7 +78,7 @@ class OrderRepositoryTests {
         Long existingProjectId = 100L;
         Long otherProjectId = 200L;
 
-        Order order = Order.create(null, 1L, "key-1",
+        Order order = Order.create(null, 1L,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), existingProjectId, 10L, 1)),
                 "Receiver", "010-0000-0000", "Seoul", "06236");
 
@@ -90,44 +88,5 @@ class OrderRepositoryTests {
 
         assertThat(orderRepository.existsByProjectId(existingProjectId)).isTrue();
         assertThat(orderRepository.existsByProjectId(otherProjectId)).isFalse();
-    }
-
-    @Disabled
-    @Test
-    @DisplayName("same user and idempotency key is unique")
-    void sameUserAndIdempotencyKey_unique() {
-        Order first = Order.create(null, 1L, "same-key",
-                List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 100L, 10L, 1)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
-        Order duplicate = Order.create(null, 1L, "same-key",
-                List.of(OrderItem.create("Reward B", BigDecimal.valueOf(10_000), 100L, 11L, 1)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
-
-        orderRepository.save(first);
-        entityManager.flush();
-
-        assertThatThrownBy(() -> {
-            orderRepository.save(duplicate);
-            entityManager.flush();
-        }).isInstanceOf(RuntimeException.class);
-    }
-
-    @Disabled
-    @Test
-    @DisplayName("different users can reuse idempotency key")
-    void differentUsersCanReuseIdempotencyKey() {
-        Order first = Order.create(null, 1L, "same-key",
-                List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 100L, 10L, 1)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
-        Order second = Order.create(null, 2L, "same-key",
-                List.of(OrderItem.create("Reward B", BigDecimal.valueOf(10_000), 100L, 11L, 1)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
-
-        orderRepository.save(first);
-        orderRepository.save(second);
-        entityManager.flush();
-
-        assertThat(orderRepository.findByUserIdAndIdempotencyKey(1L, "same-key")).isPresent();
-        assertThat(orderRepository.findByUserIdAndIdempotencyKey(2L, "same-key")).isPresent();
     }
 }

@@ -13,8 +13,6 @@ public interface OrderRepository {
 
     Optional<Order> findByIdWithItems(Long id);
 
-    Optional<Order> findByUserIdAndIdempotencyKey(Long userId, String idempotencyKey);
-
     boolean existsByProjectId(Long projectId);
 
     Optional<BigDecimal> getFundedAmount(Long projectId);
