@@ -34,6 +34,7 @@ public class SettlementExceptionHandler {
     private HttpStatus statusOf(SettlementErrorCode errorCode) {
         return switch (errorCode) {
             case PAYOUT_PROFILE_NOT_READY -> HttpStatus.CONFLICT;
+            case PROJECT_SETTLEMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE,
                     PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
             case SETTLEMENT_DATA_INCONSISTENT -> HttpStatus.INTERNAL_SERVER_ERROR;

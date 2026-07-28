@@ -7,15 +7,18 @@ import java.util.Objects;
 
 public final class SettlementCalculationPolicy {
 
-    private static final BigDecimal PAYMENT_AND_SETTLEMENT_AGENCY_FEE_RATE = new BigDecimal("0.04");
-    private static final BigDecimal PLATFORM_FEE_RATE = new BigDecimal("0.04");
-    private static final BigDecimal VAT_RATE = new BigDecimal("0.10");
+    private final SettlementFeePolicySnapshot feePolicySnapshot;
 
-    private SettlementCalculationPolicy() {
+    private SettlementCalculationPolicy(SettlementFeePolicySnapshot feePolicySnapshot) {
+        this.feePolicySnapshot = feePolicySnapshot;
     }
 
     public static SettlementCalculationPolicy current() {
-        return new SettlementCalculationPolicy();
+        return new SettlementCalculationPolicy(SettlementFeePolicySnapshot.current());
+    }
+
+    public SettlementFeePolicySnapshot feePolicySnapshot() {
+        return feePolicySnapshot;
     }
 
     public SettlementBreakdown calculate(List<Money> finalEffectivePaymentAmounts) {
@@ -29,14 +32,20 @@ public final class SettlementCalculationPolicy {
         }
         Money paymentAndSettlementAgencyFeeAmount = Money.wons(finalEffectivePaymentAmounts.stream()
                 .map(Money::amount)
-                .map(amount -> applyRate(amount, PAYMENT_AND_SETTLEMENT_AGENCY_FEE_RATE))
+                .map(amount -> applyRate(amount, feePolicySnapshot.paymentAndSettlementAgencyFeeRate()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
         Money paymentAndSettlementAgencyFeeVatAmount = Money.wons(applyRate(
                 paymentAndSettlementAgencyFeeAmount.amount(),
-                VAT_RATE
+                feePolicySnapshot.vatRate()
         ));
-        Money platformFeeAmount = Money.wons(applyRate(baseAmount.amount(), PLATFORM_FEE_RATE));
-        Money platformFeeVatAmount = Money.wons(applyRate(platformFeeAmount.amount(), VAT_RATE));
+        Money platformFeeAmount = Money.wons(applyRate(
+                baseAmount.amount(),
+                feePolicySnapshot.platformFeeRate()
+        ));
+        Money platformFeeVatAmount = Money.wons(applyRate(
+                platformFeeAmount.amount(),
+                feePolicySnapshot.vatRate()
+        ));
         Money otherDeductionAmount = Money.wons(0);
         Money creatorPayoutAmount = baseAmount
                 .minus(paymentAndSettlementAgencyFeeAmount)

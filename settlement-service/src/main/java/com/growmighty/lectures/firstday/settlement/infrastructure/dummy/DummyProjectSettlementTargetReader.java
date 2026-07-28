@@ -9,17 +9,21 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(
-        name = "settlement.external-data.mode",
-        havingValue = "dummy",
-        matchIfMissing = true
+        name = "settlement.project-target.mode",
+        havingValue = "dummy"
 )
 public class DummyProjectSettlementTargetReader implements ProjectSettlementTargetReader {
 
     static final long DUMMY_PROJECT_ID = 9_000_001L;
+    static final String DUMMY_PROJECT_TITLE = "더미 프로젝트";
     static final long DUMMY_CREATOR_ID = 9_000_001L;
 
     @Override
     public List<ProjectSettlementTarget> findSettlementTargets(YearMonth settlementMonth) {
-        return List.of(new ProjectSettlementTarget(DUMMY_PROJECT_ID, DUMMY_CREATOR_ID));
+        return List.of(new ProjectSettlementTarget(
+                DUMMY_PROJECT_ID,
+                DUMMY_PROJECT_TITLE,
+                DUMMY_CREATOR_ID
+        ));
     }
 }

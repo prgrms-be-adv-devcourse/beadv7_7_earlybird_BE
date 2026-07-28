@@ -14,6 +14,7 @@ import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
@@ -21,16 +22,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers
 @SpringBootTest(properties = {
         "settlement.toss-payout.enabled=true",
         "settlement.toss-payout.secret-key=test_sk_example",
@@ -38,10 +34,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 })
 @Import(PayoutExecutionTransactionTest.GatewayTestConfig.class)
 class PayoutExecutionTransactionTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
 
     @Autowired
     private PayoutExecutor payoutExecutor;
@@ -60,7 +52,9 @@ class PayoutExecutionTransactionTest {
     void commitsAttemptBeforeExternalCall() {
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 501L,
+                "지급 트랜잭션 테스트 프로젝트",
                 601L,
+                SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(
                         Money.wons(100_000),
                         Money.wons(4_000),

@@ -17,6 +17,12 @@ final class TestJwtTokens {
     private static final JwtEncoder JWT_ENCODER = new NimbusJwtEncoder(new ImmutableSecret<>(
             new SecretKeySpec(Base64.getDecoder().decode(TEST_JWT_SECRET), "HmacSHA256")
     ));
+    private static final JwtEncoder INVALID_SIGNATURE_JWT_ENCODER = new NimbusJwtEncoder(new ImmutableSecret<>(
+            new SecretKeySpec(
+                    Base64.getDecoder().decode("B196b/7T15tWsckvVi3uwbzkfgbxZnvVYHTQ5kl+6nQ="),
+                    "HmacSHA256"
+            )
+    ));
 
     private TestJwtTokens() {
     }
@@ -26,24 +32,49 @@ final class TestJwtTokens {
     }
 
     static String bearerToken(String role) {
+        return bearerToken("1", role);
+    }
+
+    static String bearerToken(String subject, String role) {
         Instant now = Instant.now();
-        return bearerToken(role, now, now.plusSeconds(3600));
+        return bearerToken(subject, role, now, now.plusSeconds(3600));
     }
 
     static String expiredBearerToken(String role) {
         Instant now = Instant.now();
-        return bearerToken(role, now.minusSeconds(7200), now.minusSeconds(3600));
+        return bearerToken("1", role, now.minusSeconds(7200), now.minusSeconds(3600));
     }
 
-    private static String bearerToken(String role, Instant issuedAt, Instant expiresAt) {
+    static String invalidSignatureBearerToken(String subject, String role) {
+        Instant now = Instant.now();
+        return bearerToken(
+                INVALID_SIGNATURE_JWT_ENCODER,
+                subject,
+                role,
+                now,
+                now.plusSeconds(3600)
+        );
+    }
+
+    private static String bearerToken(String subject, String role, Instant issuedAt, Instant expiresAt) {
+        return bearerToken(JWT_ENCODER, subject, role, issuedAt, expiresAt);
+    }
+
+    private static String bearerToken(
+            JwtEncoder encoder,
+            String subject,
+            String role,
+            Instant issuedAt,
+            Instant expiresAt
+    ) {
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .subject("1")
+                .subject(subject)
                 .claim("role", role)
                 .issuedAt(issuedAt)
                 .expiresAt(expiresAt)
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
-        String token = JWT_ENCODER.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+        String token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
         return "Bearer " + token;
     }
 }
