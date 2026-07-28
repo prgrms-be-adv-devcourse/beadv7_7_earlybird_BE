@@ -25,8 +25,8 @@ public interface OrderJpaRepository extends JpaRepository<Order, UUID> {
 
     @Query("""
         select sum(oi.price.value * oi.quantity)
-        from OrderItem oi
-        where oi.projectId = :projectId
+        from OrderItem oi join oi.order o
+        where oi.projectId = :projectId and o.status = com.growmighty.lectures.firstday.order.domain.OrderStatus.PAID
         """)
     Optional<BigDecimal> getFundedAmount(@Param("projectId") Long projectId);
 }
