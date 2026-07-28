@@ -9,9 +9,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.math.BigDecimal;
-import java.util.Optional;
-
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,8 +33,7 @@ class InternalOrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value(true))
-                .andExpect(jsonPath("$.data.success").doesNotExist())
-                .andExpect(jsonPath("$.data.data").doesNotExist())
+                .andExpect(jsonPath("$.data.projectId").doesNotExist())
                 .andExpect(jsonPath("$.error").doesNotExist());
 
         verify(orderApiService).hasOrderedReward(100L);
@@ -52,8 +48,6 @@ class InternalOrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value(false))
-                .andExpect(jsonPath("$.data.success").doesNotExist())
-                .andExpect(jsonPath("$.data.data").doesNotExist())
                 .andExpect(jsonPath("$.error").doesNotExist());
 
         verify(orderApiService).hasOrderedReward(200L);
