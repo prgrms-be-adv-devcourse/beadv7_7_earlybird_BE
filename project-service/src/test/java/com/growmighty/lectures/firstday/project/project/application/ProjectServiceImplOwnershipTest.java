@@ -10,6 +10,7 @@ import com.growmighty.lectures.firstday.project.reward.application.RewardService
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -53,6 +55,7 @@ class ProjectServiceImplOwnershipTest {
         project = Project.register(OWNER_ID, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
+        when(projectRepository.findByIdForDelete(1L)).thenReturn(Optional.of(project));
         when(projectCategoryRepository.existsById(1L)).thenReturn(true);
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         when(orderPort.hasOrderedReward(1L)).thenReturn(false);
@@ -91,12 +94,14 @@ class ProjectServiceImplOwnershipTest {
     }
 
     @Test
-    @DisplayName("본인 프로젝트는 삭제할 수 있다")
+    @DisplayName("본인 프로젝트는 삭제할 수 있다 — 리워드를 먼저 지우고 프로젝트를 나중에 지운다")
     void delete_byOwner_succeeds() {
         projectService.delete(1L, OWNER_ID);
 
-        verify(rewardService).deleteAllByProject(1L);
-        verify(projectRepository).delete(project);
+        // 순서가 중요하다 — 반대로 바뀌면(Project 먼저 삭제) FK 없는 Reward가 고아로 남는다.
+        InOrder order = inOrder(rewardService, projectRepository);
+        order.verify(rewardService).deleteAllByProject(1L);
+        order.verify(projectRepository).delete(project);
     }
 
     @Test
