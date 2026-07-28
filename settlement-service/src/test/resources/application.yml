@@ -27,6 +27,9 @@ eureka:
   client:
     enabled: false
 
+jwt:
+  secret: A196b/7T15tWsckvVi3uwbzkfgbxZnvVYHTQ5kl+6nQ=
+
 settlement:
   batch:
     chunk-size: 1000

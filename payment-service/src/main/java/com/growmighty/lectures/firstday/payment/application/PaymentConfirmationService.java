@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
+import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 /** 클래스 별도 생성 이유 : PaymentService 내부 메서드 끼리 호출하면 트랜잭션이 적용되지 않아서.
  *  결제 승인 상태 전이를 트랜잭션 단위로 처리하는 클래스
@@ -24,6 +25,7 @@ import java.time.LocalDateTime;
 public class PaymentConfirmationService {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     /**
      * PG 승인 전에 결제를 CONFIRMING 상태로 선점,
@@ -71,13 +73,11 @@ public class PaymentConfirmationService {
             throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
         }
 
-        if (!payment.getPgOrderId().equals(approval.pgOrderId())) {
-            throw new IllegalStateException("PG 주문번호가 일치하지 않습니다. expected = " + payment.getPgOrderId() + ", actual = " + approval.pgOrderId());
-        }
-
-        if (payment.getAmount().compareTo(approval.amount()) != 0) {
-            throw new IllegalStateException("PG 승인 금액이 일치하지 않습니다. expected = " + approval.amount() + ", actual = " + payment.getAmount());
-        }
+        payment.validateApproval(
+            approval.paymentKey(),
+            approval.pgOrderId(),
+            approval.amount()
+        );
 
         payment.confirm(approval.paymentKey());
 
@@ -103,27 +103,42 @@ public class PaymentConfirmationService {
     }
 
     @Transactional
-    public void failConfirmation(Long paymentId) {
+    public Optional<PaymentInfo> reconcile(PaymentGateway.PgPayment pgPayment) {
+        Payment payment = paymentRepository.findByPaymentKey(pgPayment.paymentKey())
+            .orElseThrow(() -> new EntityNotFoundException("paymentKey 에 해당하는 결제가 없습니다. paymentKey = " + pgPayment.paymentKey()));
 
-        Payment payment = findPayment(paymentId);
+        switch (pgPayment.status()) {
+            case  COMPLETED -> {
+                payment.validateApproval(
+                    pgPayment.paymentKey(),
+                    pgPayment.pgOrderId(),
+                    pgPayment.amount()
+                );
 
-        payment.fail();
-        paymentRepository.save(payment);
-    }
+                if (payment.reconcileConfirmed(pgPayment.paymentKey())) {
+                    paymentRepository.save(payment);
+                }
 
-    @Transactional
-    public void failConfirmationIfExpired(
-        Long paymentId,
-        LocalDateTime now,
-        Duration maximumConfirmingDuration
-    ) {
-        Payment payment = findPayment(paymentId);
+                return Optional.of(PaymentInfo.from(payment));
+            }
 
-        if (!payment.failIfConfirmingExpired(now, maximumConfirmingDuration)) {
-            return;
+            case FAILED , EXPIRED , CANCELLED -> {
+                if (payment.reconcileFailed()) {
+                    paymentRepository.save(payment);
+                }
+            }
+
+            case PENDING -> {
+                if (payment.failIfConfirmingExpired(
+                    LocalDateTime.now(),
+                    paymentRecoveryProperties.maximumConfirmingDuration()
+                )) {
+                    paymentRepository.save(payment);
+                }
+            }
         }
 
-        paymentRepository.save(payment);
+        return  Optional.empty();
     }
 
     private Payment findPayment(Long paymentId) {
