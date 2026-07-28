@@ -50,7 +50,7 @@ class ProjectServiceImplDeleteTest {
 
         project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
-        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
+        when(projectRepository.findByIdForDelete(1L)).thenReturn(Optional.of(project));
     }
 
     @Test

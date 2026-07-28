@@ -1,10 +1,11 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
-import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
+import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -39,7 +41,10 @@ class PaymentServiceTest {
         paymentService = new PaymentService(
             paymentRepository,
             paymentGateway,
-            new PaymentConfirmationService(paymentRepository),
+            new PaymentConfirmationService(
+                paymentRepository,
+                new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10))
+            ),
             orderStatusPort
         );
     }
@@ -128,6 +133,9 @@ class PaymentServiceTest {
             .hasMessageContaining("취소된 결제입니다.");
     }
 
+    /**
+     * 아래 orderStatusPort 부분은 주석처리.
+     */
     @Test
     @DisplayName("confirm은 prepare에 저장된 금액과 멱등키로 승인하고 PAID 처리한다")
     void confirm_approvesUsingPreparedPayment() {
@@ -144,9 +152,10 @@ class PaymentServiceTest {
         assertThat(paymentGateway.requestedAmount).isEqualByComparingTo(AMOUNT);
         assertThat(paymentGateway.requestedIdempotencyKey)
             .isEqualTo(saved.getApproveIdempotencyKey());
-        assertThat(orderStatusPort.callCount).isEqualTo(1);
-        assertThat(orderStatusPort.requestedOrderId).isEqualTo(ORDER_ID);
-        assertThat(orderStatusPort.requestedStatus).isEqualTo(PaymentStatus.PAID);
+        // TODO: Order 상태 통보가 임시 비활성화된 동안 검증하지 않는다.
+        // assertThat(orderStatusPort.callCount).isEqualTo(1);
+        // assertThat(orderStatusPort.requestedOrderId).isEqualTo(ORDER_ID);
+        // assertThat(orderStatusPort.requestedStatus).isEqualTo(PaymentStatus.PAID);
     }
 
     @Test
@@ -245,6 +254,7 @@ class PaymentServiceTest {
         private final Map<Long, Payment> paymentsById = new HashMap<>();
         private final Map<Long, Payment> paymentsByOrderId = new HashMap<>();
         private final Map<String, Payment> paymentsByPgOrderId = new HashMap<>();
+        private final Map<String, Payment> paymentsByPaymentKey = new HashMap<>();
 
         @Override
         public Payment save(Payment payment) {
@@ -255,6 +265,9 @@ class PaymentServiceTest {
             paymentsById.put(payment.getPaymentId(), payment);
             paymentsByOrderId.put(payment.getOrderId(), payment);
             paymentsByPgOrderId.put(payment.getPgOrderId(), payment);
+            if (payment.getPaymentKey() != null) {
+                paymentsByPaymentKey.put(payment.getPaymentKey(), payment);
+            }
             return payment;
         }
 
@@ -271,6 +284,11 @@ class PaymentServiceTest {
         @Override
         public Optional<Payment> findByPgOrderId(String pgOrderId) {
             return Optional.ofNullable(paymentsByPgOrderId.get(pgOrderId));
+        }
+
+        @Override
+        public Optional<Payment> findByPaymentKey(String paymentKey) {
+            return Optional.ofNullable(paymentsByPaymentKey.get(paymentKey));
         }
 
         @Override
