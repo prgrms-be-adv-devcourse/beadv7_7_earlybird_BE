@@ -101,10 +101,16 @@ public class ProjectServiceImpl implements ProjectService {
         return ProjectResponse.from(project);
     }
 
+    /**
+     * 락 순서 역전 데드락 방지를 위해 getProject()(무락 조회) 대신
+     * projectRepository.findByIdForDelete()(배타 락)로 Project를 맨 먼저 선점한다 —
+     * ProjectRepository.findByIdForDelete() 주석 참고.
+     */
     @Override
     @Transactional
     public void delete(Long projectId, Long requesterId) {
-        Project project = getProject(projectId);
+        Project project = projectRepository.findByIdForDelete(projectId)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
         validateOwnership(project, requesterId);
         if (orderPort.hasOrderedReward(projectId)) {
             throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
