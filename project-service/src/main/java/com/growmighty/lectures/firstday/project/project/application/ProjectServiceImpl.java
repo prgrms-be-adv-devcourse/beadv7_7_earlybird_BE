@@ -27,6 +27,7 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -233,6 +234,41 @@ public class ProjectServiceImpl implements ProjectService {
                 "프로젝트 마감 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
         }
         throw e;
+    }
+
+    @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public void updateFundedAmount(Long projectId, BigDecimal fundedAmount) {
+        getProject(projectId).updateFundedAmount(fundedAmount);
+    }
+
+    @Recover
+    public void recoverUpdateFundedAmountConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "모금액 갱신 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
+        }
+        throw e;
+    }
+
+    /**
+     * closeExpiredProjects()와 같은 이유로 한 트랜잭션으로 묶지 않는다 — 프로젝트 하나의 pull 실패나
+     * 락 충돌이 같은 배치 실행의 나머지 프로젝트까지 막으면 안 된다. selfProvider로 프록시를 거쳐
+     * updateFundedAmount() 한 건마다 독립된 트랜잭션 + 재시도를 갖게 한다.
+     */
+    @Override
+    public void reconcileFundedAmounts() {
+        List<Project> inProgress = projectRepository.findByStatus(ProjectStatus.IN_PROGRESS);
+        ProjectService self = selfProvider.getObject();
+        for (Project project : inProgress) {
+            try {
+                BigDecimal fundedAmount = orderPort.getFundedAmount(project.getProjectId());
+                self.updateFundedAmount(project.getProjectId(), fundedAmount);
+            } catch (RuntimeException e) {
+                log.warn("모금액 보정 실패. projectId={}", project.getProjectId(), e);
+            }
+        }
     }
 
     /**

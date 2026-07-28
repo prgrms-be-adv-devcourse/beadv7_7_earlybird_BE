@@ -239,4 +239,40 @@ class ProjectServiceImplRetryTest {
 
         verify(rewardService).deactivateAllByProject(1L);
     }
+
+    @Test
+    @DisplayName("updateFundedAmount: 락 충돌이 재시도 범위(3회) 안에서 풀리면 정상 반영된다")
+    void updateFundedAmount_retriesUntilSuccess() {
+        when(projectRepository.findById(anyLong()))
+                .thenThrow(new ObjectOptimisticLockingFailureException(Project.class, 1L))
+                .thenThrow(new ObjectOptimisticLockingFailureException(Project.class, 1L))
+                .thenReturn(Optional.of(project));
+
+        projectService.updateFundedAmount(1L, BigDecimal.valueOf(300_000));
+
+        assertThat(project.getFundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(300_000));
+        verify(projectRepository, times(3)).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("updateFundedAmount: 재시도를 다 소진하면 ConcurrentUpdateFailedException으로 변환된다")
+    void updateFundedAmount_exhaustsRetries_throwsConcurrentUpdateFailed() {
+        when(projectRepository.findById(anyLong()))
+                .thenThrow(new ObjectOptimisticLockingFailureException(Project.class, 1L));
+
+        assertThatThrownBy(() -> projectService.updateFundedAmount(1L, BigDecimal.valueOf(300_000)))
+                .isInstanceOf(ConcurrentUpdateFailedException.class);
+        verify(projectRepository, times(3)).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("updateFundedAmount: 락 충돌이 아닌 검증 예외(음수)는 재시도 없이 원래 타입 그대로 전파된다")
+    void updateFundedAmount_negativeAmount_notMasked() {
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> projectService.updateFundedAmount(1L, BigDecimal.valueOf(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("모금액은 0 이상");
+        verify(projectRepository, times(1)).findById(anyLong());
+    }
 }
