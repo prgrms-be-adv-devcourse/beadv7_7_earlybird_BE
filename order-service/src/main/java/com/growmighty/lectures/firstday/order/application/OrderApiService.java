@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.order.application;
 
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.order.application.dto.OrderConsistencyView;
 import com.growmighty.lectures.firstday.order.application.dto.OrderInspectionView;
@@ -20,6 +21,7 @@ import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -82,14 +84,20 @@ public class OrderApiService {
 
 
     // 주문 생성 요청
-    public OrderResult placeOrder(PlaceOrderCommand command) {
+    public OrderResult placeOrder(PlaceOrderCommand command, Long requesterId) {
+        validateRequesterId(requesterId);
+        command = new PlaceOrderCommand(command.orderId(), requesterId, command.lines(),
+                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
+                command.expectedItemsAmount(), command.expectedTotalAmount());
         validateCommand(command);
 
         // FIXME : 동일 요청 자체의 중복 가능성 -> 생성해서 넘어오는 방법 등등을 고려
         UUID orderId = resolveOrderId(command);
         if (orderRepository.findById(orderId).isPresent()) {
             log.info("duplicate order request returned existing order. orderId={}", orderId);
-            return OrderResult.from(orderRepository.findById(orderId).orElseThrow());
+            Order existingOrder = orderRepository.findById(orderId).orElseThrow();
+            verifyOwner(existingOrder, requesterId);
+            return OrderResult.from(existingOrder);
         }
 
         Order order = createPendingOrder(command, orderId);
@@ -138,9 +146,10 @@ public class OrderApiService {
     }
 
     // 주문 취소
-    public OrderResult cancelOrder(UUID orderId, Long userId) {
+    public OrderResult cancelOrder(UUID orderId, Long requesterId) {
+        validateRequesterId(requesterId);
         Order order = getOrderWithItems(orderId);
-        verifyOwner(order, userId);
+        verifyOwner(order, requesterId);
         if (order.isCancelled()) {
             throw new IllegalStateException("Order is already cancelled. orderId=" + orderId);
         }
@@ -165,14 +174,10 @@ public class OrderApiService {
     }
 
     @Transactional(readOnly = true)
-    public OrderResult getOrderInfo(UUID orderId) {
-        return OrderResult.from(getOrder(orderId));
-    }
-
-    @Transactional(readOnly = true)
-    public OrderResult getOrderInfo(UUID orderId, Long userId) {
+    public OrderResult getOrderInfo(UUID orderId, Long requesterId) {
+        validateRequesterId(requesterId);
         Order order = getOrder(orderId);
-        verifyOwner(order, userId);
+        verifyOwner(order, requesterId);
         return OrderResult.from(order);
     }
 
@@ -359,7 +364,13 @@ public class OrderApiService {
 
     private void verifyOwner(Order order, Long userId) {
         if (userId == null || !order.getUserId().equals(userId)) {
-            throw new IllegalStateException("Order access denied. orderId=" + order.getId());
+            throw new BusinessException(HttpStatus.FORBIDDEN, "Order access denied. orderId=" + order.getId());
+        }
+    }
+
+    private void validateRequesterId(Long requesterId) {
+        if (requesterId == null) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "Order access denied.");
         }
     }
 
