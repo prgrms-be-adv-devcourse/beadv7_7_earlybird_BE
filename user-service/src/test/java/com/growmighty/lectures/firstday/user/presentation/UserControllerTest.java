@@ -151,40 +151,28 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/me/password 는 필수 필드가 빈 값이면 400 을 반환한다")
-    void changePassword_withBlankFields_returns400() throws Exception {
-        mockMvc.perform(patch("/api/v1/users/me/password")
-                        .header("X-User-Id", "1")
+    @DisplayName("PATCH /api/v1/users/me 는 newPassword 가 없으면 400 을 반환한다")
+    void updateMe_withoutNewPassword_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"\",\"newPassword\":\"\"}"))
+                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\",\"currentPassword\":\"rawPassword1!\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/me/password 는 현재 비밀번호가 틀리면 400 을 반환한다")
-    void changePassword_withWrongCurrentPassword_returns400() throws Exception {
+    @DisplayName("PATCH /api/v1/users/me 는 현재 비밀번호가 틀리면 400 을 반환한다")
+    void updateMe_withWrongCurrentPassword_returns400() throws Exception {
         doThrow(new IllegalArgumentException("현재 비밀번호가 올바르지 않습니다."))
-                .when(userService).changePassword(any());
+                .when(userService).updateProfile(any());
 
-        mockMvc.perform(patch("/api/v1/users/me/password")
-                        .header("X-User-Id", "1")
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"wrongPassword1!\",\"newPassword\":\"newPassword1!\"}"))
+                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\",\"currentPassword\":\"wrongPassword1!\",\"newPassword\":\"newPassword1!\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
-    }
-
-    @Test
-    @DisplayName("PATCH /api/v1/users/me/password 는 정상 요청이면 204 를 반환한다")
-    void changePassword_withValidRequest_returnsNoContent() throws Exception {
-        mockMvc.perform(patch("/api/v1/users/me/password")
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"rawPassword1!\",\"newPassword\":\"newPassword1!\"}"))
-                .andExpect(status().isNoContent());
-
-        verify(userService).changePassword(any());
     }
 
     @Test
@@ -229,13 +217,24 @@ class UserControllerTest {
         mockMvc.perform(patch("/api/v1/users/me")
                         .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"\",\"phoneNumber\":\"\"}"))
+                        .content("{\"name\":\"\",\"phoneNumber\":\"\",\"currentPassword\":\"\",\"newPassword\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/me 는 이름과 전화번호를 수정하고 갱신된 정보를 반환한다")
+    @DisplayName("PATCH /api/v1/users/me 는 newPassword 가 4자 미만이면 400 을 반환한다")
+    void updateMe_withShortNewPassword_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\",\"currentPassword\":\"rawPassword1!\",\"newPassword\":\"abc\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/me 는 이름, 전화번호, 비밀번호를 함께 수정하고 갱신된 정보를 반환한다")
     void updateMe_withValidFields_returnsUpdatedUser() throws Exception {
         UserInfo updated = new UserInfo(1L, "hanahan@example.com", "새이름", "010-1111-2222", UserRole.BACKER);
         when(userService.updateProfile(any())).thenReturn(updated);
@@ -243,9 +242,11 @@ class UserControllerTest {
         mockMvc.perform(patch("/api/v1/users/me")
                         .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\"}"))
+                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\",\"currentPassword\":\"rawPassword1!\",\"newPassword\":\"newPassword1!\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("새이름"))
                 .andExpect(jsonPath("$.data.phoneNumber").value("010-1111-2222"));
+
+        verify(userService).updateProfile(any());
     }
 }
