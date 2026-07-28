@@ -76,9 +76,9 @@ public class FundedAmountReconciliationScheduler {
 ## 테스트
 
 - `ProjectTest`: `updateFundedAmount()` 정상/음수 거부 (PR #100 원본 케이스 복구)
-- `ProjectServiceImplFundedAmountTest`: 정상 갱신, 낙관적 락 충돌 시 재시도/복구 (PR #100 원본 케이스 복구)
+- `ProjectServiceImplRetryTest`: `updateFundedAmount()` 정상 갱신, 낙관적 락 충돌 시 재시도/복구 (PR #100 원본 케이스 복구)
 - `OrderHttpClientTest`: 정상 조회, `null` 응답 → `ZERO` 치환, 서킷브레이커 open 시 `ServiceUnavailableException` (신규 케이스 추가)
-- `FundedAmountReconciliationScheduler`/`ProjectServiceImpl.reconcileFundedAmounts()`: 여러 프로젝트 중 하나가 실패해도 나머지는 갱신되는지 (신규)
+- `ProjectServiceImplReconciliationTest`: 여러 프로젝트 중 하나가 실패해도 나머지는 갱신되는지 (신규)
 - `closeProjectByDeadline`/`closeEarly`: 판정 직전 동기 조회 값이 캐시된 값과 다르면 그 최신 값 기준으로 성공/실패가 갈리는지, order-service 조회 실패 시 판정 자체가 일어나지 않는지 (신규)
 
 ## 외부 의존성
