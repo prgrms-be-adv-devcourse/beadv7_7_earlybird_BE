@@ -149,9 +149,10 @@ class PaymentServiceTest {
         assertThat(paymentGateway.requestedAmount).isEqualByComparingTo(AMOUNT);
         assertThat(paymentGateway.requestedIdempotencyKey)
             .isEqualTo(saved.getApproveIdempotencyKey());
-        assertThat(orderStatusPort.callCount).isEqualTo(1);
-        assertThat(orderStatusPort.requestedOrderId).isEqualTo(ORDER_ID);
-        assertThat(orderStatusPort.requestedStatus).isEqualTo(PaymentStatus.PAID);
+        // TODO: Order 상태 통보가 임시 비활성화된 동안 검증하지 않는다.
+        // assertThat(orderStatusPort.callCount).isEqualTo(1);
+        // assertThat(orderStatusPort.requestedOrderId).isEqualTo(ORDER_ID);
+        // assertThat(orderStatusPort.requestedStatus).isEqualTo(PaymentStatus.PAID);
     }
 
     @Test
