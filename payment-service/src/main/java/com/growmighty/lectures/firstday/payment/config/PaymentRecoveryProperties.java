@@ -24,4 +24,11 @@ public record PaymentRecoveryProperties(
     @DurationMin(seconds = 1)
     Duration maximumConfirmingDuration
 ) {
+    public PaymentRecoveryProperties {
+        if (maximumConfirmingDuration.compareTo(confirmationTimeOut) < 0) {
+            throw new IllegalArgumentException(
+                "maximumConfirmingDuration은 confirmationTimeOut보다 크거나 같아야 합니다."
+            );
+        }
+    }
 }
