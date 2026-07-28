@@ -194,6 +194,30 @@ class ProjectTest {
     }
 
     @Test
+    @DisplayName("모금액을 0 이상의 값으로 갱신할 수 있다")
+    void updateFundedAmount_valid_updates() {
+        Project project = project();
+        project.updateFundedAmount(BigDecimal.valueOf(500_000));
+        assertThat(project.getFundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(500_000));
+    }
+
+    @Test
+    @DisplayName("모금액을 음수로 갱신할 수 없다")
+    void updateFundedAmount_negative_throws() {
+        Project project = project();
+        assertThatThrownBy(() -> project.updateFundedAmount(BigDecimal.valueOf(-1)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("모금액을 null로 갱신할 수 없다")
+    void updateFundedAmount_null_throws() {
+        Project project = project();
+        assertThatThrownBy(() -> project.updateFundedAmount(null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("배치 마감 처리는 진행중 상태에서만 가능하다")
     void closeByDeadline_notInProgress_throws() {
         Project project = project();
