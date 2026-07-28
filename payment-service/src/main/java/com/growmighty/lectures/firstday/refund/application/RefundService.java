@@ -11,8 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-
 @Service
 @RequiredArgsConstructor
 public class RefundService {
@@ -21,7 +19,7 @@ public class RefundService {
     private final RefundGateway refundGateway;
 
     @Transactional
-    public Refund refund(UUID orderId, RefundReason reason) {
+    public Refund refund(Long orderId, RefundReason reason) {
         Payment payment = paymentRepository.findByOrderId(orderId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. orderId=" + orderId));
 

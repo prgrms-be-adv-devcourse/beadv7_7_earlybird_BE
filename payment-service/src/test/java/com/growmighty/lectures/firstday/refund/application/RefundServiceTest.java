@@ -17,7 +17,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,8 +27,7 @@ import static org.mockito.Mockito.*;
 class RefundServiceTest {
 
     private static final Long PAYMENT_ID = 1L;
-    private static final UUID ORDER_ID =
-        UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final Long ORDER_ID = 1L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key";
 
