@@ -3,6 +3,10 @@ x-service-defaults: &service-defaults
     SPRING_PROFILES_ACTIVE: docker
     # 로컬 application.yml 의 config-server 주소(localhost)를 컨테이너 네트워크용으로 덮어쓴다.
     SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+  # logging.file.name(config repo)이 이미 spring.application.name으로 파일명을 구분해주므로,
+  # 모든 서비스가 같은 호스트 디렉터리를 공유해도 로그 파일끼리 덮어쓰지 않는다.
+  volumes:
+    - ./logs:/app/logs
   restart: unless-stopped
 
 # 모든 서비스가 동일한 루트 Dockerfile 을 MODULE 인자만 바꿔 쓴다 (repo 루트 참고).
@@ -93,6 +97,7 @@ services:
       # native 프로파일 전용 — 파일시스템을 그대로 읽기만 하므로(git 체크아웃/리셋 없음) 실제 작업 중인
       # config repo 를 직접 마운트해도 안전하다. 커밋 없이도 수정하면 바로 반영된다.
       - ../../beadv7_7_earlybird_config:/config-repo:ro
+      - ./logs:/app/logs
     ports:
       - "8888:8888"
     restart: unless-stopped
@@ -110,6 +115,8 @@ services:
       args:
         MODULE: discovery-server
     container_name: earlybird-discovery-server
+    volumes:
+      - ./logs:/app/logs
     # Eureka 대시보드를 브라우저로 직접 볼 때만 주석 해제.
     # ports:
     #   - "8761:8761"
