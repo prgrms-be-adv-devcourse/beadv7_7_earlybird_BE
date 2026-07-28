@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -149,5 +150,23 @@ public class Payment extends BaseEntity {
 
     public boolean isConfirming() {
         return this.status == PaymentStatus.CONFIRMING;
+    }
+
+    private boolean isConfirmingExpired(LocalDateTime now, Duration maximumConfirmingDuration) {
+        if (!isConfirming()) {
+            return false;
+        }
+
+        LocalDateTime expiredAt = confirmingAt.plus(maximumConfirmingDuration);
+        return !now.isBefore(expiredAt);
+    }
+
+    public boolean failIfConfirmingExpired(LocalDateTime now, Duration maximumConfirmingDuration) {
+        if (!isConfirmingExpired(now, maximumConfirmingDuration)) {
+            return false;
+        }
+        this.status = PaymentStatus.FAILED;
+        this.confirmingAt = null;
+        return true;
     }
 }
