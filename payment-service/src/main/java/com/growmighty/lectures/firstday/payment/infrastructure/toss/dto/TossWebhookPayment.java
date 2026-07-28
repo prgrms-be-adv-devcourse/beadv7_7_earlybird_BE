@@ -1,6 +1,8 @@
 package com.growmighty.lectures.firstday.payment.infrastructure.toss.dto;
 
+import jakarta.validation.constraints.NotBlank;
+
 public record TossWebhookPayment(
-    String paymentKey
+    @NotBlank String paymentKey
 ) {
 }

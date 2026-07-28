@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.payment.presentation;
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
 import com.growmighty.lectures.firstday.payment.application.PaymentReconciliationService;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossWebhookRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,7 +18,7 @@ public class TossWebhookController {
     private final PaymentReconciliationService paymentReconciliationService;
 
     @PostMapping("/webhook")
-    public void receive(@RequestBody TossWebhookRequest request) {
+    public void receive(@Valid @RequestBody TossWebhookRequest request) {
         String paymentKey = request.data().paymentKey();
 
         PaymentGateway.PgPayment pgPayment = paymentGateway.getPayment(paymentKey);
