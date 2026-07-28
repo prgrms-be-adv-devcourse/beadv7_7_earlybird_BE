@@ -277,6 +277,16 @@ class PayoutExecutionServiceTest {
                     ? Optional.of(settlement)
                     : Optional.empty();
         }
+
+        @Override
+        public List<ProjectSettlement> findAllByCreatorIdOrderByConfirmedAtDescIdDesc(Long creatorId) {
+            return settlement.creatorId().equals(creatorId) ? List.of(settlement) : List.of();
+        }
+
+        @Override
+        public List<ProjectSettlement> findAllByOrderByConfirmedAtDescIdDesc() {
+            return List.of(settlement);
+        }
     }
 
     private static final class RecordingPayoutGateway implements PayoutGateway {
