@@ -1,17 +1,18 @@
 package com.growmighty.lectures.firstday.order.infrastructure;
 
+import com.growmighty.lectures.firstday.order.domain.DuplicateOrderCreationException;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -24,13 +25,27 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
-    public Optional<Order> findById(UUID id) {
+    public Order saveAndFlush(Order order) {
+        try {
+            return jpaRepository.saveAndFlush(order);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateOrderCreationException(order.getUserId(), order.getIdempotencyKey(), e);
+        }
+    }
+
+    @Override
+    public Optional<Order> findById(Long id) {
         return jpaRepository.findById(id);
     }
 
     @Override
-    public Optional<Order> findByIdWithItems(UUID id) {
+    public Optional<Order> findByIdWithItems(Long id) {
         return jpaRepository.findByIdWithItems(id);
+    }
+
+    @Override
+    public Optional<Order> findByUserIdAndIdempotencyKey(Long userId, String idempotencyKey) {
+        return jpaRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
     }
 
     @Override

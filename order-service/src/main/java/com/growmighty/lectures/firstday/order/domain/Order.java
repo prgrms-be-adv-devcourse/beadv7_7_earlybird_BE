@@ -1,18 +1,7 @@
 package com.growmighty.lectures.firstday.order.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embedded;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderBy;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,10 +9,17 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Entity
-@Table(name = "orders")
+@Table(
+        name = "orders",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_orders_user_idempotency",
+                        columnNames = {"user_id", "idempotency_key"}
+                )
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
@@ -31,11 +27,14 @@ public class Order extends BaseEntity {
     private static final Money BASE_SHIPPING_FEE = Money.from(BigDecimal.valueOf(3_000));
 
     @Id
-    @Column(columnDefinition = "BINARY(16)")
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    @Column(name = "idempotency_key", nullable = false, updatable = false, length = 255)
+    private String idempotencyKey;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
@@ -72,14 +71,13 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private String zipCode;
 
-    private Order(UUID id, Long userId, List<OrderItem> items,
+    private Order(Long id, Long userId, String idempotencyKey, List<OrderItem> items,
                   String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        if (id == null) {
-            throw new IllegalArgumentException("orderId is required.");
-        }
+        validateIdempotencyKey(idempotencyKey);
         validateItems(items);
         validateShippingInfo(receiverName, receiverPhone, shippingAddress, zipCode);
         this.id = id;
+        this.idempotencyKey = idempotencyKey;
         items.forEach(this::addOrderItem);
         this.userId = userId;
         this.receiverName = receiverName;
@@ -90,9 +88,15 @@ public class Order extends BaseEntity {
         recalculateAmounts();
     }
 
-    public static Order create(UUID id, Long userId, List<OrderItem> items,
+    public static Order create(Long id, Long userId, String idempotencyKey, List<OrderItem> items,
                                String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        return new Order(id, userId, items, receiverName, receiverPhone, shippingAddress, zipCode);
+        return new Order(id, userId, idempotencyKey, items, receiverName, receiverPhone, shippingAddress, zipCode);
+    }
+
+    private void validateIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("Idempotency key is required.");
+        }
     }
 
     private void validateItems(List<OrderItem> items) {

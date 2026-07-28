@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.order.application.OrderApiService;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,7 +18,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -26,8 +26,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import org.junit.jupiter.api.Disabled;
 
 @WebMvcTest(OrderController.class)
 class OrderControllerTest {
@@ -42,19 +40,20 @@ class OrderControllerTest {
     @Test
     @DisplayName("정상 응답 테스트")
     void placeOrder_success() throws Exception {
-        UUID orderId = UUID.randomUUID();
+        Long orderId = 1L;
         when(orderApiService.placeOrder(any(PlaceOrderCommand.class), eq(1L))).thenReturn(result(orderId, OrderStatus.PAID));
 
         mockMvc.perform(post("/orders")
+                        .header("Idempotency-Key", "key-1")
                         .header(JwtHeaders.USER_ID, "1")
                         .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"orderId":"%s","userId":1,"requests":[{"rewardId":1,"quantity":1,"expectedUnitPrice":20000}],"receiverName":"Receiver","receiverPhone":"010-0000-0000","shippingAddress":"Seoul","zipCode":"06236","expectedItemsAmount":20000,"expectedTotalAmount":23000}
-                                """.formatted(orderId)))
+                                {"userId":1,"requests":[{"rewardId":1,"quantity":1,"expectedUnitPrice":20000}],"receiverName":"Receiver","receiverPhone":"010-0000-0000","shippingAddress":"Seoul","zipCode":"06236","expectedItemsAmount":20000,"expectedTotalAmount":23000}
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.id").value(orderId.toString()))
+                .andExpect(jsonPath("$.data.id").value(orderId))
                 .andExpect(jsonPath("$.data.status").value("PAID"));
     }
 
@@ -62,7 +61,7 @@ class OrderControllerTest {
     @Test
     @DisplayName("본인 order 내역")
     void getMyOrders_success() throws Exception {
-        UUID orderId = UUID.randomUUID();
+        Long orderId = 1L;
         when(orderApiService.getOrdersByUser(1L)).thenReturn(List.of(result(orderId, OrderStatus.PAID)));
 
         mockMvc.perform(get("/orders/me")
@@ -71,14 +70,14 @@ class OrderControllerTest {
                         .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[0].id").value(orderId.toString()));
+                .andExpect(jsonPath("$.data[0].id").value(orderId));
     }
 
     @Disabled
     @Test
     @DisplayName("후원 상세 조회")
     void getOrder_success() throws Exception {
-        UUID orderId = UUID.randomUUID();
+        Long orderId = 1L;
         when(orderApiService.getOrderInfo(orderId, 1L)).thenReturn(result(orderId, OrderStatus.PAID));
 
         mockMvc.perform(get("/orders/{orderId}", orderId)
@@ -86,14 +85,14 @@ class OrderControllerTest {
                         .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.id").value(orderId.toString()));
+                .andExpect(jsonPath("$.data.id").value(orderId));
     }
 
     @Disabled
     @Test
     @DisplayName("오더 Id 없는 것 404")
     void inspectOrder_notFound_404() throws Exception {
-        UUID orderId = UUID.randomUUID();
+        Long orderId = 1L;
         when(orderApiService.getOrderInfo(orderId, 1L))
                 .thenThrow(new EntityNotFoundException("Order not found. orderId=" + orderId));
 
@@ -109,7 +108,7 @@ class OrderControllerTest {
     @Test
     @DisplayName("중복 취소 시 오류 리턴")
     void cancelOrder_conflict_409() throws Exception {
-        UUID orderId = UUID.randomUUID();
+        Long orderId = 1L;
         when(orderApiService.cancelOrder(orderId, 1L))
                 .thenThrow(new IllegalStateException("Order is already cancelled. orderId=" + orderId));
 
@@ -141,6 +140,7 @@ class OrderControllerTest {
     @DisplayName("검증 오류 시 기본 오류 리턴")
     void placeOrder_validationFailure_400() throws Exception {
         mockMvc.perform(post("/orders")
+                        .header("Idempotency-Key", "key-1")
                         .header(JwtHeaders.USER_ID, "1")
                         .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -153,7 +153,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'requests[0].quantity')]").exists());
     }
 
-    private OrderResult result(UUID orderId, OrderStatus status) {
+    private OrderResult result(Long orderId, OrderStatus status) {
         return new OrderResult(orderId, status, BigDecimal.valueOf(20_000), BigDecimal.valueOf(3_000),
                 BigDecimal.valueOf(23_000), "Receiver", "010-0000-0000", "Seoul", "06236");
     }

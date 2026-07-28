@@ -12,12 +12,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/orders")
 public class OrderController {
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
     private final OrderApiService orderApiService;
 
@@ -34,14 +34,14 @@ public class OrderController {
     }
 
     @PostMapping
-    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request, @RequestHeader(IDEMPOTENCY_KEY_HEADER) String idempotencyKey, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         validateBacker(requesterRole);
-        return OrderResponse.from(orderApiService.placeOrder(request.toCommand(requesterId), requesterId));
+        return OrderResponse.from(orderApiService.placeOrder(request.toCommand(requesterId, idempotencyKey), requesterId));
     }
 
     /** 후원 상세. */
     @GetMapping("/{orderId}")
-    public OrderResponse getOrder(@PathVariable UUID orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+    public OrderResponse getOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         validateBacker(requesterRole);
         validateRequesterIfPresent(userId, requesterId);
         return OrderResponse.from(orderApiService.getOrderInfo(orderId, requesterId));
@@ -49,7 +49,7 @@ public class OrderController {
 
     /** 후원 취소 */
     @PostMapping("/{orderId}/cancel")
-    public OrderResponse cancelOrder(@PathVariable UUID orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+    public OrderResponse cancelOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         validateBacker(requesterRole);
         validateRequesterIfPresent(userId, requesterId);
         return OrderResponse.from(orderApiService.cancelOrder(orderId, requesterId));

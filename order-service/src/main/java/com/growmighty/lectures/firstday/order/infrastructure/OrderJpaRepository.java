@@ -10,13 +10,14 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
-public interface OrderJpaRepository extends JpaRepository<Order, UUID> {
+public interface OrderJpaRepository extends JpaRepository<Order, Long> {
     List<Order> findByUserId(Long userId);
 
+    Optional<Order> findByUserIdAndIdempotencyKey(Long userId, String idempotencyKey);
+
     @Query("select distinct o from Order o left join fetch o.items where o.id = :id")
-    Optional<Order> findByIdWithItems(@Param("id") UUID id);
+    Optional<Order> findByIdWithItems(@Param("id") Long id);
 
     @Query("""
             select case when count(oi) > 0 then true else false end
@@ -26,10 +27,10 @@ public interface OrderJpaRepository extends JpaRepository<Order, UUID> {
     boolean existsByProjectId(@Param("projectId") Long projectId);
 
     @Query("""
-    select sum(oi.price.value * oi.quantity)
-    from OrderItem oi
-    where oi.projectId = :projectId
-    """)
+        select sum(oi.price.value * oi.quantity)
+        from OrderItem oi join oi.order o
+        where oi.projectId = :projectId and o.status = com.growmighty.lectures.firstday.order.domain.OrderStatus.PAID
+        """)
     Optional<BigDecimal> getFundedAmount(@Param("projectId") Long projectId);
 
     @Query("""

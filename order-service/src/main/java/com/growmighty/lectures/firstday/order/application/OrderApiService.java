@@ -13,6 +13,7 @@ import com.growmighty.lectures.firstday.order.application.port.PaymentPort.Refun
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
+import com.growmighty.lectures.firstday.order.domain.DuplicateOrderCreationException;
 import com.growmighty.lectures.firstday.order.domain.Money;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
@@ -20,7 +21,6 @@ import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,9 +47,8 @@ public class OrderApiService {
 
     /**
      * 1. 주문 생성 요청 수신
-     *    - 중복 요청 검증용 UUID 생성
      * 2. 주문 정합성 검증
-          - 주문 생성 시 UUID 기반 중복 검사를 실시하지만 그 이후 단계에서도 필요 시 검증 추가
+          - 중복 생성 방지
      * 3. 주문 생성
      *    - OrderItem 스냅샷 저장
      *    - status = CREATED
@@ -86,21 +85,21 @@ public class OrderApiService {
     // 주문 생성 요청
     public OrderResult placeOrder(PlaceOrderCommand command, Long requesterId) {
         validateRequesterId(requesterId);
-        command = new PlaceOrderCommand(command.orderId(), requesterId, command.lines(),
+        command = new PlaceOrderCommand(command.idempotencyKey(), requesterId, command.lines(),
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
                 command.expectedItemsAmount(), command.expectedTotalAmount());
         validateCommand(command);
 
         // FIXME : 동일 요청 자체의 중복 가능성 -> 생성해서 넘어오는 방법 등등을 고려
-        UUID orderId = resolveOrderId(command);
-        if (orderRepository.findById(orderId).isPresent()) {
-            log.info("duplicate order request returned existing order. orderId={}", orderId);
-            Order existingOrder = orderRepository.findById(orderId).orElseThrow();
-            verifyOwner(existingOrder, requesterId);
-            return OrderResult.from(existingOrder);
+        Optional<Order> existingOrder = orderRepository.findByUserIdAndIdempotencyKey(
+                command.userId(), command.idempotencyKey());
+        if (existingOrder.isPresent()) {
+            log.info("duplicate order request returned existing order. userId={}, idempotencyKey={}",
+                    command.userId(), command.idempotencyKey());
+            return OrderResult.from(existingOrder.get());
         }
 
-        Order order = createPendingOrder(command, orderId);
+        Order order = createPendingOrder(command);
 
         /*
           4. Project 서비스에 "재고 확보" 요청
@@ -116,10 +115,12 @@ public class OrderApiService {
         // TODO(예정) : 타 도메인 연동 상세 작업 처리
 
         try {
-            orderRepository.save(order);
-        } catch (DataIntegrityViolationException e) {
-            log.info("duplicate order insert race detected. orderId={}", orderId);
-            return OrderResult.from(orderRepository.findById(orderId).orElseThrow());
+            order = orderRepository.saveAndFlush(order);
+        } catch (DuplicateOrderCreationException e) {
+            log.info("duplicate order insert race detected. userId={}, idempotencyKey={}",
+                    e.getUserId(), e.getIdempotencyKey());
+            return OrderResult.from(orderRepository.findByUserIdAndIdempotencyKey(
+                    e.getUserId(), e.getIdempotencyKey()).orElseThrow());
         }
 
         try {
@@ -139,14 +140,14 @@ public class OrderApiService {
     }
 
     // 결제 결과에 대한 처리
-    public OrderResult applyPaymentResult(UUID orderId, PaymentResult paymentResult) {
+    public OrderResult applyPaymentResult(Long orderId, PaymentResult paymentResult) {
         Order order = getOrderWithItems(orderId);
         applyPaymentResult(order, paymentResult);
         return OrderResult.from(orderRepository.save(order));
     }
 
     // 주문 취소
-    public OrderResult cancelOrder(UUID orderId, Long requesterId) {
+    public OrderResult cancelOrder(Long orderId, Long requesterId) {
         validateRequesterId(requesterId);
         Order order = getOrderWithItems(orderId);
         verifyOwner(order, requesterId);
@@ -174,7 +175,7 @@ public class OrderApiService {
     }
 
     @Transactional(readOnly = true)
-    public OrderResult getOrderInfo(UUID orderId, Long requesterId) {
+    public OrderResult getOrderInfo(Long orderId, Long requesterId) {
         validateRequesterId(requesterId);
         Order order = getOrder(orderId);
         verifyOwner(order, requesterId);
@@ -182,7 +183,7 @@ public class OrderApiService {
     }
 
     @Transactional(readOnly = true)
-    public OrderConsistencyView inspectOrder(UUID orderId) {
+    public OrderConsistencyView inspectOrder(Long orderId) {
         Order order = getOrder(orderId);
         Money storedTotal = order.getTotalAmount();
         Money recalculatedTotal = order.recalculatedTotal();
@@ -194,7 +195,7 @@ public class OrderApiService {
     }
 
     @Transactional(readOnly = true)
-    public OrderInspectionView placeOrderInspection(UUID orderId) {
+    public OrderInspectionView placeOrderInspection(Long orderId) {
         Order order = orderRepository.findByIdWithItems(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
         return OrderInspectionView.from(order);
@@ -211,7 +212,7 @@ public class OrderApiService {
     }
 
     // 실질 주문 생성
-    private Order createPendingOrder(PlaceOrderCommand command, UUID orderId) {
+    private Order createPendingOrder(PlaceOrderCommand command) {
         List<OrderItem> orderItems = new ArrayList<>();
         for (OrderLine line : command.lines()) {
             RewardSnapshot reward = rewardPort.getReward(line.rewardId());
@@ -220,7 +221,7 @@ public class OrderApiService {
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
         }
 
-        Order order = Order.create(orderId, command.userId(), orderItems,
+        Order order = Order.create(null, command.userId(), command.idempotencyKey(), orderItems,
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
         validateAmounts(command, order);
         log.info("pending order created. orderId={}", order.getId());
@@ -254,6 +255,9 @@ public class OrderApiService {
 
     // 주문 형식 정합성 검사
     private void validateCommand(PlaceOrderCommand command) {
+        if (command.idempotencyKey() == null || command.idempotencyKey().isBlank()) {
+            throw new IllegalArgumentException("Idempotency key is required.");
+        }
         if (command.lines() == null || command.lines().isEmpty()) {
             throw new IllegalArgumentException("Order must contain at least one item.");
         }
@@ -295,13 +299,6 @@ public class OrderApiService {
         if (expected == null || expected.compareTo(actual) != 0) {
             throw new IllegalArgumentException("Invalid order amount. field=" + fieldName);
         }
-    }
-
-    private UUID resolveOrderId(PlaceOrderCommand command) {
-        if (command.orderId() != null) {
-            return command.orderId();
-        }
-        return UUID.randomUUID();
     }
 
     private List<Long> rewardIds(Order order) {
@@ -352,12 +349,12 @@ public class OrderApiService {
         log.info("temporary project cancellation policy allowed. orderId={}, projectIds={}", order.getId(), projectIds(order));
     }
 
-    private Order getOrder(UUID orderId) {
+    private Order getOrder(Long orderId) {
         return orderRepository.findById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
     }
 
-    private Order getOrderWithItems(UUID orderId) {
+    private Order getOrderWithItems(Long orderId) {
         return orderRepository.findByIdWithItems(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
     }
