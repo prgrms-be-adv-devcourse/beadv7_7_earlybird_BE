@@ -38,11 +38,6 @@
 - 클라이언트가 두 헤더를 위조해도 검증된 값으로 덮어써짐 ([`authenticatedRequest_stripsSpoofedHeaderBeforeSettingVerifiedValue`](../../gateway-server/src/test/java/com/growmighty/lectures/firstday/gateway/security/UserHeaderForwardingFilterTest.java#L46))
 - 인증 정보 없는 공개 경로 요청은 위조 헤더만 제거된 채 그대로 진행 ([`unauthenticatedRequest_stripsHeadersAndContinuesChain`](../../gateway-server/src/test/java/com/growmighty/lectures/firstday/gateway/security/UserHeaderForwardingFilterTest.java#L67))
 
-## 설계 결정과 트레이드오프
-
-- **권한 검사 위치: 게이트웨이 중앙집중 vs 서비스별 개별 검사** — 라우트별 `hasRole`/`hasAnyRole` 규칙을 게이트웨이 한 곳([`SecurityConfig.filterChain`](../../gateway-server/src/main/java/com/growmighty/lectures/firstday/gateway/config/SecurityConfig.java#L36))에 모아 관리·감사하기 쉽게 했다. 대신 각 서비스는 "게이트웨이를 반드시 거친다"는 것을 신뢰해야 하므로, 그 경로를 우회하는 `/internal/**`은 별도로 Eureka 내부망에서만 열어 둔다.
-- **다운스트림에 사용자 정보 전달: 커스텀 헤더 변환 vs 각 서비스가 JWT 재검증** — 게이트웨이가 검증한 뒤 `X-User-Id`/`X-User-Role` 헤더로 변환해 넘기는 방식([`UserHeaderForwardingFilter`](../../gateway-server/src/main/java/com/growmighty/lectures/firstday/gateway/security/UserHeaderForwardingFilter.java))을 선택. 내부 서비스는 JWT 검증 로직·시크릿을 몰라도 되지만, 클라이언트가 헤더를 위조해 직접 보낼 위험이 생기므로 들어오는 헤더를 항상 먼저 제거하고 검증된 값으로만 다시 채우는 방어 코드가 필요했다.
-
 ## 참고
 
 - 실행: `./gradlew :gateway-server:test --parallel`
