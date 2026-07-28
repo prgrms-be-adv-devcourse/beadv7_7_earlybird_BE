@@ -12,4 +12,6 @@ public interface ProjectSettlementRepository {
     Optional<ProjectSettlement> findByProjectId(Long projectId);
 
     List<ProjectSettlement> findAllByCreatorIdOrderByConfirmedAtDescIdDesc(Long creatorId);
+
+    List<ProjectSettlement> findAllByOrderByConfirmedAtDescIdDesc();
 }

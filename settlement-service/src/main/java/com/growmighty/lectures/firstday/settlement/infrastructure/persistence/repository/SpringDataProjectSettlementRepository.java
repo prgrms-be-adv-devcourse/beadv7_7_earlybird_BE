@@ -11,4 +11,6 @@ public interface SpringDataProjectSettlementRepository
     Optional<ProjectSettlementJpaEntity> findByProjectId(Long projectId);
 
     List<ProjectSettlementJpaEntity> findAllByCreatorIdOrderByConfirmedAtDescIdDesc(Long creatorId);
+
+    List<ProjectSettlementJpaEntity> findAllByOrderByConfirmedAtDescIdDesc();
 }

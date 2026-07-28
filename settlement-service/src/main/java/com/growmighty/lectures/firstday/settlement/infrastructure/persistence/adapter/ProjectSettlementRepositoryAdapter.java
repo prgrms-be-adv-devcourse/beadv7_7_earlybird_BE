@@ -47,4 +47,12 @@ public class ProjectSettlementRepositoryAdapter implements ProjectSettlementRepo
                 .map(ProjectSettlementJpaEntity::toDomain)
                 .toList();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectSettlement> findAllByOrderByConfirmedAtDescIdDesc() {
+        return repository.findAllByOrderByConfirmedAtDescIdDesc().stream()
+                .map(ProjectSettlementJpaEntity::toDomain)
+                .toList();
+    }
 }
