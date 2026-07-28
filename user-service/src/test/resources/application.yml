@@ -1,0 +1,31 @@
+# 테스트 전용 설정 — @SpringBootTest 통합 테스트는 config-server 없이 독립 실행돼야 한다.
+# (test/resources 의 application.yml 이 main 의 것을 덮어쓰므로 여기서 자립적으로 채운다.)
+spring:
+  application:
+    name: user-service
+  profiles:
+    active: test # UserDataInitializer(@Profile("!test"))의 buyer/seller 시드 데이터를 끈다.
+  cloud:
+    config:
+      # 테스트에선 config-server 에 접속하지 않는다.
+      enabled: false
+      import-check:
+        enabled: false
+  # datasource 는 각 테스트의 Testcontainers MySQL(@ServiceConnection)이 공급한다.
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        format_sql: true
+
+# 테스트에선 Eureka 등록/조회를 시도하지 않는다 (명부 서버가 떠 있지 않음).
+eureka:
+  client:
+    enabled: false
+
+# JWT 서명 키 — 운영 값(config-server)과 무관한 테스트 전용 값.
+jwt:
+  secret: dGVzdC1zaWduaW5nLWtleS1hdC1sZWFzdC0yNTYtYml0cy1sb25nIQ==
+  access-token-expiration-seconds: 3600
+  refresh-token-expiration-seconds: 1209600
