@@ -28,4 +28,6 @@ public interface PaymentJpaRepository extends JpaRepository<Payment, Long> {
         @Param("cutoff") LocalDateTime cutoff,
         Pageable pageable
     );
+
+    Optional<Payment> findByPaymentKey(String paymentKey);
 }

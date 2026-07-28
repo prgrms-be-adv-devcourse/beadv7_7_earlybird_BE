@@ -31,7 +31,6 @@ public class CartController {
     public CartResponse getCart(@PathVariable Long userId,
                                 @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                                 @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateBacker(requesterRole);
         validateRequester(userId, requesterId);
         return CartResponse.from(cartService.getCart(requesterId));
     }
@@ -41,7 +40,6 @@ public class CartController {
                                  @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                                  @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
                                  @RequestBody AddCartItemsRequest request) {
-        validateBacker(requesterRole);
         validateRequester(userId, requesterId);
         return CartResponse.from(cartService.addItems(request.toCommand(requesterId)));
     }
@@ -51,7 +49,6 @@ public class CartController {
                                     @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                                     @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
                                     @RequestBody UpdateCartItemsRequest request) {
-        validateBacker(requesterRole);
         validateRequester(userId, requesterId);
         return CartResponse.from(cartService.updateItems(request.toCommand(requesterId)));
     }
@@ -61,7 +58,6 @@ public class CartController {
                                    @PathVariable Long rewardId,
                                    @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                                    @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateBacker(requesterRole);
         validateRequester(userId, requesterId);
         return CartResponse.from(cartService.removeItem(requesterId, rewardId));
     }
@@ -70,16 +66,9 @@ public class CartController {
     public Void clear(@PathVariable Long userId,
                       @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                       @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateBacker(requesterRole);
         validateRequester(userId, requesterId);
         cartService.clear(requesterId);
         return null;
-    }
-
-    private void validateBacker(UserRole requesterRole) {
-        if (requesterRole != UserRole.BACKER) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "Only backers can access cart APIs.");
-        }
     }
 
     private void validateRequester(Long userId, Long requesterId) {

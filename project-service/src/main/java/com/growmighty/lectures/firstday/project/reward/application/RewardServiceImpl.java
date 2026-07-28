@@ -254,3 +254,4 @@ public class RewardServiceImpl implements RewardService {
         return projectServiceProvider.getObject().findStatusView(projectId);
     }
 }
+

@@ -1,82 +1,58 @@
 package com.growmighty.lectures.firstday.settlement.domain;
 
-import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embedded;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
-import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-@Entity
-@Table(
-        name = "payout_obligations",
-        uniqueConstraints = @UniqueConstraint(name = "uk_payout_obligation_settlement_id", columnNames = "settlement_id")
-)
-public class PayoutObligation extends BaseEntity {
+public final class PayoutObligation {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "settlement_id", nullable = false, updatable = false)
-    private Long settlementId;
-
-    @Column(name = "creator_id", nullable = false, updatable = false)
-    private Long creatorId;
-
-    @Embedded
-    @AttributeOverride(name = "amount", column = @Column(name = "payout_amount", nullable = false, precision = 19, scale = 0))
-    private Money amount;
-
-    @Column(name = "scheduled_date", nullable = false)
-    private LocalDate scheduledDate;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 50)
+    private final Long id;
+    private final Long settlementId;
+    private final Long creatorId;
+    private final Money amount;
+    private final LocalDate scheduledDate;
     private PayoutObligationStatus status;
-
-    @OneToMany(mappedBy = "payoutObligation", cascade = CascadeType.ALL)
-    private List<PayoutAttempt> attempts = new ArrayList<>();
-
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "successful_attempt_id", unique = true)
+    private final List<PayoutAttempt> attempts;
     private PayoutAttempt successfulAttempt;
+    private final Long version;
 
-    @Version
-    private Long version;
-
-    protected PayoutObligation() {
-    }
-
-    private PayoutObligation(Long settlementId, Long creatorId, Money amount, LocalDate scheduledDate) {
+    private PayoutObligation(
+            Long id,
+            Long settlementId,
+            Long creatorId,
+            Money amount,
+            LocalDate scheduledDate,
+            PayoutObligationStatus status,
+            List<PayoutAttempt> attempts,
+            Integer successfulAttemptSequence,
+            Long version
+    ) {
+        if (id != null && id <= 0) {
+            throw new IllegalArgumentException("지급 의무 식별자는 양수여야 합니다.");
+        }
         if (settlementId == null || settlementId <= 0) {
             throw new IllegalArgumentException("프로젝트 정산 식별자는 양수여야 합니다.");
         }
         if (creatorId == null || creatorId <= 0) {
             throw new IllegalArgumentException("창작자 식별자는 양수여야 합니다.");
         }
+        this.id = id;
         this.settlementId = settlementId;
         this.creatorId = creatorId;
         this.amount = Objects.requireNonNull(amount, "지급 금액은 필수입니다.");
         this.scheduledDate = Objects.requireNonNull(scheduledDate, "지급 예정일은 필수입니다.");
-        this.status = PayoutObligationStatus.SCHEDULED;
+        this.status = Objects.requireNonNull(status, "지급 의무 상태는 필수입니다.");
+        this.attempts = new ArrayList<>(Objects.requireNonNull(attempts, "지급 시도 목록은 필수입니다."));
+        this.version = version;
+
+        if (successfulAttemptSequence != null) {
+            this.successfulAttempt = this.attempts.stream()
+                    .filter(attempt -> attempt.sequence() == successfulAttemptSequence)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("성공한 지급 시도가 지급 시도 목록에 없습니다."));
+        }
     }
 
     public static PayoutObligation schedule(
@@ -85,7 +61,41 @@ public class PayoutObligation extends BaseEntity {
             Money amount,
             LocalDate scheduledDate
     ) {
-        return new PayoutObligation(settlementId, creatorId, amount, scheduledDate);
+        return new PayoutObligation(
+                null,
+                settlementId,
+                creatorId,
+                amount,
+                scheduledDate,
+                PayoutObligationStatus.SCHEDULED,
+                List.of(),
+                null,
+                null
+        );
+    }
+
+    public static PayoutObligation restore(
+            Long id,
+            Long settlementId,
+            Long creatorId,
+            Money amount,
+            LocalDate scheduledDate,
+            PayoutObligationStatus status,
+            List<PayoutAttempt> attempts,
+            Integer successfulAttemptSequence,
+            Long version
+    ) {
+        return new PayoutObligation(
+                Objects.requireNonNull(id, "지급 의무 식별자는 필수입니다."),
+                settlementId,
+                creatorId,
+                amount,
+                scheduledDate,
+                status,
+                attempts,
+                successfulAttemptSequence,
+                version
+        );
     }
 
     public PayoutAttempt startAttempt(
@@ -97,7 +107,6 @@ public class PayoutObligation extends BaseEntity {
             throw new IllegalStateException("현재 상태에서는 지급 시도를 시작할 수 없습니다: " + status);
         }
         PayoutAttempt attempt = PayoutAttempt.requested(
-                this,
                 attempts.size() + 1,
                 refPayoutId,
                 idempotencyKey,
@@ -144,6 +153,42 @@ public class PayoutObligation extends BaseEntity {
             throw new IllegalStateException("현재 지급 의무에 처리 중인 지급 시도가 아닙니다.");
         }
         attempt.markUnknown();
+    }
+
+    public Long id() {
+        return id;
+    }
+
+    public Long settlementId() {
+        return settlementId;
+    }
+
+    public Long creatorId() {
+        return creatorId;
+    }
+
+    public Money amount() {
+        return amount;
+    }
+
+    public LocalDate scheduledDate() {
+        return scheduledDate;
+    }
+
+    public PayoutObligationStatus status() {
+        return status;
+    }
+
+    public List<PayoutAttempt> attempts() {
+        return List.copyOf(attempts);
+    }
+
+    public Integer successfulAttemptSequence() {
+        return successfulAttempt == null ? null : successfulAttempt.sequence();
+    }
+
+    public Long version() {
+        return version;
     }
 
     public int attemptCount() {
