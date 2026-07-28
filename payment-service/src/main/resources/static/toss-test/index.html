@@ -23,12 +23,8 @@
 
   <form id="payment-form">
     <label>
-      테스트 클라이언트 키
-      <input id="client-key" required value="test_ck_DLJOpm5QrlB72oq9YPMQ3PNdxbWn" autocomplete="off">
-    </label>
-    <label>
       내부 주문 ID
-      <input id="internal-order-id" required type="number" min="1" value="1">
+      <input id="internal-order-id" required type="number" min="1" value="1" autocomplete="off">
     </label>
     <label>
       사용자 ID
@@ -47,7 +43,7 @@
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
 
-      const clientKey = document.getElementById('client-key').value.trim();
+      const clientKey = 'test_ck_DLJOpm5QrlB72oq9YPMQ3PNdxbWn';
       const internalOrderId = Number(document.getElementById('internal-order-id').value);
       const userId = Number(document.getElementById('user-id').value);
       const amount = Number(document.getElementById('amount').value);

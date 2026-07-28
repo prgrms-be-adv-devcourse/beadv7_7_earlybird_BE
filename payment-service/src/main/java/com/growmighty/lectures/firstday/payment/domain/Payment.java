@@ -169,4 +169,55 @@ public class Payment extends BaseEntity {
         this.confirmingAt = null;
         return true;
     }
+
+    public boolean reconcileConfirmed(String paymentKey) {
+        if (isPaid()) {
+            return false;
+        }
+
+        if (!isConfirming() && !isFailed()) {
+            throw new IllegalStateException("CONFIRMING 또는 FAILED 상태의 결제만 승인 정합화할 수 있습니다. status = " + this.status);
+        }
+
+        if(!this.paymentKey.equals(paymentKey)) {
+            throw new IllegalStateException("승인 요청 paymentKey가 일치하지 않습니다.");
+        }
+
+        this.confirmedAt = LocalDateTime.now();
+        this.confirmingAt = null;
+        this.status = PaymentStatus.PAID;
+        return true;
+    }
+
+    public boolean reconcileFailed() {
+        if (isFailed()) {
+            return false;
+        }
+
+        if (!isConfirming()) {
+            return false;
+        }
+
+        this.status = PaymentStatus.FAILED;
+        this.confirmingAt = null;
+        return true;
+    }
+
+    public void validateApproval(
+        String approvedPaymentKey,
+        String approvedPgOrderId,
+        BigDecimal approvedAmount
+    ) {
+        if (!this.paymentKey.equals(approvedPaymentKey)) {
+            throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
+        }
+
+        if (!this.pgOrderId.equals(approvedPgOrderId)) {
+            throw new IllegalStateException("PG 주문번호가 일치하지 않습니다.");
+        }
+
+        if (this.amount.compareTo(approvedAmount) != 0) {
+            throw new IllegalStateException("PG 승인 금액이 일치하지 않습니다.");
+        }
+    }
 }
