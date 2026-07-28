@@ -664,6 +664,248 @@ git commit -m "Feat: 모금액 1분 주기 pull 보정 스케줄러 추가"
 
 ---
 
+### Task 6: 판정 순간(`closeByDeadline`/`closeEarly`)에는 캐시 대신 동기 pull로 최신값을 확인한다
+
+**Files:**
+- Modify: `project-service/src/main/java/com/growmighty/lectures/firstday/project/project/application/ProjectServiceImpl.java`
+- Modify: `project-service/src/test/java/com/growmighty/lectures/firstday/project/project/application/ProjectServiceImplRetryTest.java`
+
+**Interfaces:**
+- Consumes: `OrderPort.getFundedAmount(Long): BigDecimal`(Task 3), `Project.updateFundedAmount(BigDecimal)`(Task 2). 반드시 Task 3, Task 4 완료(같은 파일) 이후에 진행한다.
+- Produces 변경 없음 — `closeProjectByDeadline`/`closeEarly`의 기존 시그니처는 그대로다.
+
+**왜 필요한가:** `FundedAmountReconciliationScheduler`(Task 5)는 1분 주기라 `Project.fundedAmount`가 최대 1분까지 오래된 값일 수 있다. 프로젝트 성공/실패를 최종 확정하는 순간(자동 마감 배치 `closeProjectByDeadline`, 관리자 조기 종료 `closeEarly`)만큼은 그 오차를 허용하지 않는다 — 판정 직전에 order-service를 한 번 더 동기 조회해 그 값으로 덮어쓴 뒤 판정한다.
+
+**중요 — 이 변경은 같은 파일의 기존 테스트 6개를 깨뜨린다:** `orderPort`는 Mockito mock이라 스텁하지 않으면 `getFundedAmount(...)`가 `null`을 반환하고, `Project.updateFundedAmount(null)`은 `IllegalArgumentException`을 던진다. `closeEarly`/`closeProjectByDeadline`을 호출하는 기존 테스트 중 `orderPort.getFundedAmount`를 스텁하지 않는 6개가 전부 이 예외로 실패하게 된다(재시도 소진 테스트 2개는 `findById`가 항상 예외를 던져 `orderPort`까지 도달하지 않으므로 영향 없음). 아래 Step 2에서 그 6개를 정확히 어떻게 고쳐야 하는지 전부 명시한다 — TDD RED 확인 시 이 6개가 실제로 깨지는 것까지 함께 확인한다.
+
+- [ ] **Step 1: `ProjectServiceImpl.java`의 `closeProjectByDeadline`/`closeEarly`를 수정한다**
+
+```java
+    @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public ProjectResponse closeEarly(Long projectId) {
+        Project project = getProject(projectId);
+        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.closeEarlyAsSucceeded();
+        deactivateRewards(projectId);
+        return ProjectResponse.from(project);
+    }
+```
+(기존에는 `project.closeEarlyAsSucceeded();` 앞에 동기 pull 줄이 없었다 — `Project project = getProject(projectId);` 다음 줄로 `project.updateFundedAmount(orderPort.getFundedAmount(projectId));`를 추가.)
+
+```java
+    @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public void closeProjectByDeadline(Long projectId) {
+        Project project = getProject(projectId);
+        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.closeByDeadline();
+        deactivateRewards(projectId);
+    }
+```
+(기존에는 `getProject(projectId).closeByDeadline();` 한 줄이었다 — 지역변수로 바꾸고 그 사이에 동기 pull 줄을 추가.)
+
+- [ ] **Step 2: 기존 테스트 6개에 `orderPort.getFundedAmount` 스텁을 추가한다**
+
+`ProjectServiceImplRetryTest.java`에서 아래 6개 테스트를 정확히 이렇게 바꾼다 (전부 `import static org.mockito.Mockito.anyLong;`은 이미 있음):
+
+`closeEarly_retriesUntilSuccess` — 기존:
+```java
+    void closeEarly_retriesUntilSuccess() {
+        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        when(projectRepository.findById(anyLong()))
+```
+→
+```java
+    void closeEarly_retriesUntilSuccess() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(project.getGoalAmount());
+        when(projectRepository.findById(anyLong()))
+```
+
+`closeEarly_belowGoal_notMasked` — 기존:
+```java
+    void closeEarly_belowGoal_notMasked() {
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> projectService.closeEarly(1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("목표 금액을 아직 달성하지 못해");
+```
+→
+```java
+    void closeEarly_belowGoal_notMasked() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> projectService.closeEarly(1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("목표 금액을 아직 달성하지 못해");
+```
+
+`closeEarly_deactivatesRewards` — 기존:
+```java
+    void closeEarly_deactivatesRewards() {
+        ReflectionTestUtils.setField(project, "fundedAmount", project.getGoalAmount());
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        projectService.closeEarly(1L);
+```
+→
+```java
+    void closeEarly_deactivatesRewards() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(project.getGoalAmount());
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        projectService.closeEarly(1L);
+```
+
+`closeProjectByDeadline_retriesUntilSuccess` — 기존:
+```java
+    void closeProjectByDeadline_retriesUntilSuccess() {
+        when(projectRepository.findById(anyLong()))
+                .thenThrow(new ObjectOptimisticLockingFailureException(Project.class, 1L))
+                .thenReturn(Optional.of(project));
+
+        projectService.closeProjectByDeadline(1L);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.FAILED);
+```
+→
+```java
+    void closeProjectByDeadline_retriesUntilSuccess() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+        when(projectRepository.findById(anyLong()))
+                .thenThrow(new ObjectOptimisticLockingFailureException(Project.class, 1L))
+                .thenReturn(Optional.of(project));
+
+        projectService.closeProjectByDeadline(1L);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.FAILED);
+```
+
+`closeProjectByDeadline_nonLockException_notMasked` — 기존:
+```java
+    void closeProjectByDeadline_nonLockException_notMasked() {
+        Project notInProgress = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(notInProgress));
+```
+→
+```java
+    void closeProjectByDeadline_nonLockException_notMasked() {
+        Project notInProgress = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(notInProgress));
+```
+
+`closeProjectByDeadline_deactivatesRewards` — 기존:
+```java
+    void closeProjectByDeadline_deactivatesRewards() {
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        projectService.closeProjectByDeadline(1L);
+```
+→
+```java
+    void closeProjectByDeadline_deactivatesRewards() {
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        projectService.closeProjectByDeadline(1L);
+```
+
+(`closeEarly_exhaustsRetries_throwsConcurrentUpdateFailed`와 `closeProjectByDeadline_exhaustsRetries_throwsConcurrentUpdateFailed`는 `findById`가 항상 예외를 던져 `orderPort`에 도달하지 않으므로 손대지 않는다.)
+
+- [ ] **Step 3: 위 6개를 고치기 전에 먼저 실행해 실제로 깨지는지 확인한다(RED)**
+
+Step 1을 적용한 직후, Step 2를 적용하기 **전**에 실행:
+
+Run: `./gradlew :project-service:test --tests "ProjectServiceImplRetryTest"`
+Expected: FAIL — 6개 테스트가 `IllegalArgumentException`(모금액은 0 이상이어야 합니다) 관련 실패로 깨짐
+
+- [ ] **Step 4: Step 2의 수정을 적용하고, 새 테스트 4개를 추가한다**
+
+파일 상단 import에 `ServiceUnavailableException`을 추가한다 (`ConcurrentUpdateFailedException` import 바로 위):
+
+```java
+import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
+import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
+```
+
+파일 마지막 테스트(`closeEarly_deactivatesRewards`) 다음, 클래스 닫는 `}` 앞에 추가:
+
+```java
+
+    @Test
+    @DisplayName("closeProjectByDeadline: 캐시된(오래된) fundedAmount와 다르더라도 판정 직전 동기 조회 값을 기준으로 판정한다")
+    void closeProjectByDeadline_usesSyncPulledValueOverStaleCache() {
+        project.updateFundedAmount(BigDecimal.ZERO); // 스케줄러가 아직 못 돌린 오래된 캐시값이라고 가정
+        when(orderPort.getFundedAmount(1L)).thenReturn(project.getGoalAmount());
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        projectService.closeProjectByDeadline(1L);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.SUCCEEDED);
+    }
+
+    @Test
+    @DisplayName("closeProjectByDeadline: order-service 동기 조회가 실패하면 판정을 진행하지 않고 그대로 전파된다")
+    void closeProjectByDeadline_syncPullFails_notJudged() {
+        when(orderPort.getFundedAmount(1L)).thenThrow(new ServiceUnavailableException("주문 서비스 응답 없음"));
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> projectService.closeProjectByDeadline(1L))
+                .isInstanceOf(ServiceUnavailableException.class);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("closeEarly: 캐시된(오래된) fundedAmount와 다르더라도 판정 직전 동기 조회 값을 기준으로 판정한다")
+    void closeEarly_usesSyncPulledValueOverStaleCache() {
+        project.updateFundedAmount(BigDecimal.ZERO);
+        when(orderPort.getFundedAmount(1L)).thenReturn(project.getGoalAmount());
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        ProjectResponse response = projectService.closeEarly(1L);
+
+        assertThat(response.status()).isEqualTo(ProjectStatus.SUCCEEDED.name());
+    }
+
+    @Test
+    @DisplayName("closeEarly: order-service 동기 조회가 실패하면 판정을 진행하지 않고 그대로 전파된다")
+    void closeEarly_syncPullFails_notJudged() {
+        when(orderPort.getFundedAmount(1L)).thenThrow(new ServiceUnavailableException("주문 서비스 응답 없음"));
+        when(projectRepository.findById(anyLong())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> projectService.closeEarly(1L))
+                .isInstanceOf(ServiceUnavailableException.class);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+    }
+```
+
+- [ ] **Step 5: 전체 통과를 확인한다(GREEN)**
+
+Run: `./gradlew :project-service:test --tests "ProjectServiceImplRetryTest"`
+Expected: PASS (기존 13개 + 신규 4개 = 17개 전부)
+
+- [ ] **Step 6: 모듈 전체 테스트로 회귀가 없는지 확인한다**
+
+Run: `./gradlew :project-service:build`
+Expected: BUILD SUCCESSFUL (Docker/MySQL Testcontainers 필요)
+
+- [ ] **Step 7: 커밋**
+
+```bash
+git add project-service/src/main/java/com/growmighty/lectures/firstday/project/project/application/ProjectServiceImpl.java \
+        project-service/src/test/java/com/growmighty/lectures/firstday/project/project/application/ProjectServiceImplRetryTest.java
+git commit -m "Feat: 성공/실패 판정 직전 order-service 동기 pull로 최신 모금액 확인"
+```
+
+---
+
 ## Self-Review 결과
 
 **스펙 커버리지:**

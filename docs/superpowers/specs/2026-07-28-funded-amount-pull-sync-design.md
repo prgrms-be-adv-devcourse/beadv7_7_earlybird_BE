@@ -18,6 +18,7 @@
 - 방식은 **pull(주기 조회)만** 사용한다. push 계약은 이미 합의됐지만 order-service가 발신 코드를 아직 안 만들어서, 지금 수신 엔드포인트만 만들면 아무도 호출하지 않는 데드코드가 된다. pull만으로도 목표 요구사항(1분 이내 일치)을 지금 당장, 독립적으로 충족·검증할 수 있다.
 - 아직 후원이 하나도 없는 프로젝트는 order-service가 조회 결과 없음(빈 값)을 돌려준다 — 이 경우 0원으로 처리한다.
 - order-service 호출이 실패해도(서비스 다운 등) 다른 프로젝트의 갱신에 영향을 주면 안 된다.
+- **성공/실패를 최종 판정하는 순간(`closeByDeadline` 자동 배치, `closeEarly` 관리자 조기 종료)에는 최대 1분까지 오래됐을 수 있는 캐시된 `fundedAmount`를 쓰지 않는다.** 판정 직전에 order-service를 한 번 더 동기(sync) 조회해 그 값으로 덮어쓴 뒤 판정한다 — 주기적 pull(1분 배치)은 평상시 조회 응답용 캐시를 최신으로 유지하는 용도이고, 실제 돈이 걸린 판정 순간만큼은 그 캐시를 신뢰하지 않는다.
 
 ## 아키텍처
 
@@ -41,6 +42,7 @@
 
 `project-service/.../project/application/ProjectService.java`, `ProjectServiceImpl.java`
 - `void updateFundedAmount(Long projectId, BigDecimal fundedAmount)` — `@Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))` + `@Recover`로 낙관적 락 충돌을 `ConcurrentUpdateFailedException`(409)으로 변환. `cancel`/`extendDeadline`/`closeEarlyAsSucceeded`/`closeByDeadline`과 같은 패턴.
+- 기존 `closeProjectByDeadline(Long projectId)`와 `closeEarly(Long projectId)`를 수정한다 — 각각 `project.closeByDeadline()`/`project.closeEarlyAsSucceeded()`를 호출하기 **직전**에 `project.updateFundedAmount(orderPort.getFundedAmount(projectId))`를 동기 호출한다. order-service 조회가 실패하면(fail-closed) 판정 자체를 하지 않고 `ServiceUnavailableException`이 그대로 전파된다 — `closeProjectByDeadline`은 이미 `closeExpiredProjects()`의 프로젝트별 try/catch가 감싸고 있어(로그 남기고 다음날 배치에서 재시도) 새 처리가 필요 없고, `closeEarly`는 관리자 API 호출자에게 503으로 그대로 전달된다.
 
 **신규 추가**
 
@@ -69,6 +71,7 @@ public class FundedAmountReconciliationScheduler {
 - order-service 응답 없음/타임아웃: 해당 프로젝트만 스킵, 다음 1분 주기에 재시도. 기존 값 유지(0으로 덮어쓰지 않음).
 - 무후원 프로젝트(`Optional.empty()` → `null`): `BigDecimal.ZERO`로 정상 처리 (에러 아님).
 - 낙관적 락 충돌(다른 mutator와 동시 수정): 최대 3회 재시도 후에도 실패하면 `ConcurrentUpdateFailedException` — 스케줄러 루프에서는 이것도 다른 예외와 동일하게 WARN 로그 후 다음 프로젝트로 계속.
+- 판정 순간(`closeProjectByDeadline`/`closeEarly`)의 order-service 동기 조회 실패: 판정을 진행하지 않고 `ServiceUnavailableException` 그대로 전파(위 컴포넌트 변경 항목 참고).
 
 ## 테스트
 
@@ -76,6 +79,7 @@ public class FundedAmountReconciliationScheduler {
 - `ProjectServiceImplFundedAmountTest`: 정상 갱신, 낙관적 락 충돌 시 재시도/복구 (PR #100 원본 케이스 복구)
 - `OrderHttpClientTest`: 정상 조회, `null` 응답 → `ZERO` 치환, 서킷브레이커 open 시 `ServiceUnavailableException` (신규 케이스 추가)
 - `FundedAmountReconciliationScheduler`/`ProjectServiceImpl.reconcileFundedAmounts()`: 여러 프로젝트 중 하나가 실패해도 나머지는 갱신되는지 (신규)
+- `closeProjectByDeadline`/`closeEarly`: 판정 직전 동기 조회 값이 캐시된 값과 다르면 그 최신 값 기준으로 성공/실패가 갈리는지, order-service 조회 실패 시 판정 자체가 일어나지 않는지 (신규)
 
 ## 외부 의존성
 
