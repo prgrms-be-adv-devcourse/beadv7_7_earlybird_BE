@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class PayoutObligation {
 
@@ -132,6 +133,15 @@ public final class PayoutObligation {
         status = retryable ? PayoutObligationStatus.RETRY_WAITING : PayoutObligationStatus.ACTION_REQUIRED;
     }
 
+    public void acknowledgeAttempt(
+            PayoutAttempt attempt,
+            String tossPayoutId,
+            PayoutAttemptStatus acknowledgedStatus
+    ) {
+        requireProcessingAttempt(attempt);
+        attempt.acknowledge(tossPayoutId, acknowledgedStatus);
+    }
+
     public void completeAttempt(
             PayoutAttempt attempt,
             String tossPayoutId,
@@ -149,10 +159,22 @@ public final class PayoutObligation {
     }
 
     public void markAttemptUnknown(PayoutAttempt attempt) {
-        if (status != PayoutObligationStatus.PROCESSING || !attempts.contains(attempt)) {
-            throw new IllegalStateException("현재 지급 의무에 처리 중인 지급 시도가 아닙니다.");
-        }
-        attempt.markUnknown();
+        markAttemptUnknown(attempt, null);
+    }
+
+    public void markAttemptUnknown(PayoutAttempt attempt, String errorCode) {
+        requireProcessingAttempt(attempt);
+        attempt.markUnknown(errorCode);
+    }
+
+    public void cancelAttempt(
+            PayoutAttempt attempt,
+            String tossPayoutId,
+            LocalDateTime completedAt
+    ) {
+        requireProcessingAttempt(attempt);
+        attempt.cancel(tossPayoutId, completedAt);
+        status = PayoutObligationStatus.ACTION_REQUIRED;
     }
 
     public Long id() {
@@ -195,7 +217,20 @@ public final class PayoutObligation {
         return attempts.size();
     }
 
+    public Optional<PayoutAttempt> latestAttempt() {
+        if (attempts.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(attempts.getLast());
+    }
+
     public boolean isCompleted() {
         return status == PayoutObligationStatus.COMPLETED;
+    }
+
+    private void requireProcessingAttempt(PayoutAttempt attempt) {
+        if (status != PayoutObligationStatus.PROCESSING || !attempts.contains(attempt)) {
+            throw new IllegalStateException("현재 지급 의무에 처리 중인 지급 시도가 아닙니다.");
+        }
     }
 }

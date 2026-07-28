@@ -36,6 +36,12 @@ public class PayoutObligationRepositoryAdapter implements PayoutObligationReposi
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<PayoutObligation> findById(Long id) {
+        return repository.findAggregateById(id).map(PayoutObligationJpaEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<PayoutObligation> findBySettlementId(Long settlementId) {
         return repository.findBySettlementId(settlementId).map(PayoutObligationJpaEntity::toDomain);
     }
