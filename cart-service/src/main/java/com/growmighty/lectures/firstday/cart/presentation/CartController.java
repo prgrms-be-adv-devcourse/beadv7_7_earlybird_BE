@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class CartController {
     private final CartService cartService;
 
+    // TODO(예정): 권한 관련 설정, cart -> order 성공 시 해당 reward들 비우는 부분 추가
+
     @GetMapping
     public CartResponse getCart(@PathVariable Long userId) {
         return CartResponse.from(cartService.getCart(userId));
@@ -31,8 +33,8 @@ public class CartController {
     }
 
     @PatchMapping("/items")
-    public CartResponse updateItemQuantities(@PathVariable Long userId, @RequestBody UpdateCartItemsRequest request) {
-        return CartResponse.from(cartService.updateItemQuantities(request.toCommand(userId)));
+    public CartResponse updateItems(@PathVariable Long userId, @RequestBody UpdateCartItemsRequest request) {
+        return CartResponse.from(cartService.updateItems(request.toCommand(userId)));
     }
 
     @DeleteMapping("/items/{rewardId}")

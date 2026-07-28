@@ -130,7 +130,7 @@ class CartTest {
     }
 
     @Test
-    @DisplayName("POST 요청에 담긴 여러 종류의 리워드 중 하나라도 유효하지 않을 시 전체 거부")
+    @DisplayName("POST 요청에 담긴 여러 종류의 리워드 중 하나라도 유효하지 않을 시 전체 거부, 정책상 변경 가능")
     void addItems_doesNotApplyAnyMutationWhenInvalid() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
         CartService cartService = new CartService(cartRepository, rewards());
@@ -158,11 +158,11 @@ class CartTest {
 
     @Test
     @DisplayName("PATCH 단일 리워드 수량 변경")
-    void updateItemQuantities_updatesOneItem() {
+    void updateItems_updatesOneItem() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        CartView cart = cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(101L, 3)));
+        CartView cart = cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 3)));
 
         assertThat(cart.items()).extracting(CartView.Line::rewardId, CartView.Line::quantity)
                 .containsExactly(tuple(101L, 3));
@@ -170,11 +170,11 @@ class CartTest {
 
     @Test
     @DisplayName("PATCH 여러 종류 리워드 수량 변경")
-    void updateItemQuantities_updatesMultipleItems() {
+    void updateItems_updatesMultipleItems() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2, 102L, 1));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        CartView cart = cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(101L, 3), updateItem(102L, 5)));
+        CartView cart = cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 3), updateItem(102L, 5)));
 
         assertThat(cart.items()).extracting(CartView.Line::rewardId, CartView.Line::quantity)
                 .containsExactlyInAnyOrder(tuple(101L, 3), tuple(102L, 5));
@@ -182,11 +182,11 @@ class CartTest {
 
     @Test
     @DisplayName("PATCH 수량을 추가하는 방식이 아니라 교체하는 방식, 추후 변경 가능성 있음")
-    void updateItemQuantities_setsExactQuantity() {
+    void updateItems_setsExactQuantity() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        CartView cart = cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(101L, 5)));
+        CartView cart = cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 5)));
 
         assertThat(cart.items()).extracting(CartView.Line::rewardId, CartView.Line::quantity)
                 .containsExactly(tuple(101L, 5));
@@ -194,45 +194,58 @@ class CartTest {
 
     @Test
     @DisplayName("PATCH 유효하지 않은 cartItem 요청에 대해 거절")
-    void updateItemQuantities_rejectsMissingCartItem() {
+    void updateItems_addsMissingCartItem() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        assertThatThrownBy(() -> cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(102L, 5))))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Cart item not found");
+        CartView cart = cartService.updateItems(updateCommand(1L, 10L, updateItem(102L, 5)));
+
+        assertThat(cart.items()).extracting(CartView.Line::rewardId, CartView.Line::quantity)
+                .containsExactlyInAnyOrder(tuple(101L, 2), tuple(102L, 5));
+    }
+
+    @Test
+    @DisplayName("PATCH 기존 항목과 신규 항목 동시에 요청")
+    void updateItems_updatesExistingAndAddsMissingCartItem() {
+        InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
+        CartService cartService = new CartService(cartRepository, rewards());
+
+        CartView cart = cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 4), updateItem(102L, 5)));
+
+        assertThat(cart.items()).extracting(CartView.Line::rewardId, CartView.Line::quantity)
+                .containsExactlyInAnyOrder(tuple(101L, 4), tuple(102L, 5));
     }
 
     @Test
     @DisplayName("PATCH 한 요청에 중복 리워드 Id 있을 시 거절")
-    void updateItemQuantities_rejectsDuplicateRewardIds() {
+    void updateItems_rejectsDuplicateRewardIds() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        assertThatThrownBy(() -> cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(101L, 3), updateItem(101L, 4))))
+        assertThatThrownBy(() -> cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 3), updateItem(101L, 4))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Duplicate");
     }
 
     @Test
     @DisplayName("PATCH 유효하지 않은 수량에 대해 거절")
-    void updateItemQuantities_rejectsInvalidFinalQuantity() {
+    void updateItems_rejectsInvalidFinalQuantity() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        assertThatThrownBy(() -> cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(101L, 0))))
+        assertThatThrownBy(() -> cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 0))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("positive");
     }
 
     @Test
-    @DisplayName("PATCH 여러 리워드에 대한 작업 요청 시 하나라도 무효일 경우 거절")
-    void updateItemQuantities_doesNotApplyAnyMutationWhenInvalid() {
+    @DisplayName("PATCH 여러 리워드에 대한 작업 요청 시 하나라도 무효일 경우 거절, 정책상 변경 가능")
+    void updateItems_doesNotApplyAnyMutationWhenInvalid() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2, 102L, 1));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        assertThatThrownBy(() -> cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(101L, 3), updateItem(103L, 3))))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 3), updateItem(103L, 3))))
+                .isInstanceOf(IllegalStateException.class);
 
         assertThat(cartService.getCart(1L).items())
                 .extracting(CartView.Line::rewardId, CartView.Line::quantity)
@@ -241,11 +254,11 @@ class CartTest {
 
     @Test
     @DisplayName("PATCH 수량 감소 시 0은 거절")
-    void updateItemQuantities_zeroDoesNotDeleteCartItem() {
+    void updateItems_zeroDoesNotDeleteCartItem() {
         InMemoryCartRepository cartRepository = repositoryWithCart(1L, Map.of(101L, 2));
         CartService cartService = new CartService(cartRepository, rewards());
 
-        assertThatThrownBy(() -> cartService.updateItemQuantities(updateCommand(1L, 10L, updateItem(101L, 0))))
+        assertThatThrownBy(() -> cartService.updateItems(updateCommand(1L, 10L, updateItem(101L, 0))))
                 .isInstanceOf(IllegalArgumentException.class);
 
         assertThat(cartService.getCart(1L).items()).hasSize(1);
@@ -366,6 +379,19 @@ class CartTest {
 
         cart.removeItem(10L);
         assertThat(cart.getItems()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Domain setItemQuantity updates existing rewards and adds missing rewards")
+    void setItemQuantity_updatesExistingAndAddsMissingReward() {
+        Cart cart = Cart.create(1L);
+        cart.addItem(10L, 2);
+
+        cart.setItemQuantity(10L, 5);
+        cart.setItemQuantity(20L, 3);
+
+        assertThat(cart.getItems()).extracting(CartItem::getRewardId, CartItem::getQuantity)
+                .containsExactlyInAnyOrder(tuple(10L, 5), tuple(20L, 3));
     }
 
     @Test

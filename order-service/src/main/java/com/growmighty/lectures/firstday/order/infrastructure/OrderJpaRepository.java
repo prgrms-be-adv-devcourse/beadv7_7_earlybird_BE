@@ -1,6 +1,8 @@
 package com.growmighty.lectures.firstday.order.infrastructure;
 
 import com.growmighty.lectures.firstday.order.domain.Order;
+import com.growmighty.lectures.firstday.order.domain.OrderItem;
+import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -29,4 +31,16 @@ public interface OrderJpaRepository extends JpaRepository<Order, UUID> {
         where oi.projectId = :projectId and o.status = com.growmighty.lectures.firstday.order.domain.OrderStatus.PAID
         """)
     Optional<BigDecimal> getFundedAmount(@Param("projectId") Long projectId);
+
+    @Query("""
+        select oi from OrderItem oi
+        join oi.order o
+        where o.userId = :userId
+          and oi.rewardId = :rewardId
+          and o.status = :status
+        """)
+    Optional<OrderItem> findPaidItem(
+            @Param("userId") Long userId,
+            @Param("rewardId") Long rewardId,
+            @Param("status") OrderStatus status);
 }

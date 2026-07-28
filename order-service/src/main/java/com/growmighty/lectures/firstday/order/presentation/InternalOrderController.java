@@ -4,14 +4,10 @@ import com.growmighty.lectures.firstday.order.application.OrderApiService;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderConsistencyResponse;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderInspectionRequest;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderInspectionResponse;
+import com.growmighty.lectures.firstday.order.presentation.dto.OrderVerification;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -46,5 +42,11 @@ public class InternalOrderController {
     @GetMapping("/{projectId}/funded-amount")
     public Optional<BigDecimal> getFundedAmount(@PathVariable Long projectId) {
         return orderApiService.getFundedAmount(projectId);
+    }
+
+    /** 해당 project의 order 존재 여부 리턴 */
+    @GetMapping("/purchase-verification")
+    public OrderVerification getOrderedVerification(@RequestParam Long userId, @RequestParam Long rewardId) {
+        return OrderVerification.from(orderApiService.getOrderedVerification(userId, rewardId));
     }
 }
