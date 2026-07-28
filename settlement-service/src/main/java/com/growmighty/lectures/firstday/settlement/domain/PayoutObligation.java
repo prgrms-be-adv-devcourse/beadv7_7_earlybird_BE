@@ -224,6 +224,10 @@ public final class PayoutObligation {
         return Optional.of(attempts.getLast());
     }
 
+    public Optional<PayoutAttempt> successfulAttempt() {
+        return Optional.ofNullable(successfulAttempt);
+    }
+
     public boolean isCompleted() {
         return status == PayoutObligationStatus.COMPLETED;
     }

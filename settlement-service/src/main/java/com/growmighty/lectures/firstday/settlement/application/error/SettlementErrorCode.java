@@ -14,6 +14,10 @@ public enum SettlementErrorCode {
             "S003",
             "프로젝트 정산 대상 정보를 확인할 수 없습니다."
     ),
+    PROJECT_SETTLEMENT_NOT_FOUND(
+            "S004",
+            "프로젝트 정산 내역을 찾을 수 없습니다."
+    ),
     SETTLEMENT_DATA_INCONSISTENT(
             "S500",
             "프로젝트 정산 데이터가 일치하지 않습니다."
