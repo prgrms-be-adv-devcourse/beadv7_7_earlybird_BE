@@ -33,7 +33,8 @@ class PaymentRecoveryBatchServiceTest {
     void setUp() {
         PaymentRecoveryProperties properties = new PaymentRecoveryProperties(
             Duration.ofMinutes(3),
-            BATCH_SIZE
+            BATCH_SIZE,
+            Duration.ofMinutes(10)
         );
 
         paymentRecoveryBatchService = new PaymentRecoveryBatchService(

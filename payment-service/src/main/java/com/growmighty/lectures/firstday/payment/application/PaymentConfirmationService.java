@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
 
 /** 클래스 별도 생성 이유 : PaymentService 내부 메서드 끼리 호출하면 트랜잭션이 적용되지 않아서.
  *  결제 승인 상태 전이를 트랜잭션 단위로 처리하는 클래스
@@ -106,6 +108,21 @@ public class PaymentConfirmationService {
         Payment payment = findPayment(paymentId);
 
         payment.fail();
+        paymentRepository.save(payment);
+    }
+
+    @Transactional
+    public void failConfirmationIfExpired(
+        Long paymentId,
+        LocalDateTime now,
+        Duration maximumConfirmingDuration
+    ) {
+        Payment payment = findPayment(paymentId);
+
+        if (!payment.failIfConfirmingExpired(now, maximumConfirmingDuration)) {
+            return;
+        }
+
         paymentRepository.save(payment);
     }
 

@@ -7,7 +7,6 @@ import com.growmighty.lectures.firstday.order.application.OrderApiService;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
