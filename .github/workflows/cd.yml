@@ -19,16 +19,20 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           # fetch-depth 1 (the default) only fetches the checked-out commit itself, with no
-          # parent - paths-filter's default push-event comparison (HEAD^ vs HEAD) needs the
+          # parent - the paths-filter step below diffs against head_sha~1, which needs that
           # parent commit to exist locally.
           fetch-depth: 2
 
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          # No `base` given -> paths-filter defaults to comparing against HEAD^. On this repo
-          # each CD run corresponds to one push to main (normally one PR merge commit), so
-          # HEAD^ vs HEAD is exactly the diff that CI just validated.
+          # workflow_run events carry no `before` SHA, so without an explicit `base` paths-filter
+          # falls back to diffing just the last commit via a plain `git log -n 1` - which returns
+          # zero changed files for merge commits (git won't pick a parent to diff against on its
+          # own), silently breaking on ordinary PR-merge pushes to main. head_sha~1 (first parent)
+          # is well-defined for both merge and non-merge commits and is what CI actually validated.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          base: ${{ github.event.workflow_run.head_sha || github.sha }}~1
           filters: |
             shared:
               - 'common/**'
