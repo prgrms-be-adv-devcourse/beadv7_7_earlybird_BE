@@ -5,12 +5,13 @@ import com.growmighty.lectures.firstday.payment.application.PaymentService;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentPrepareRequest;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentPrepareResponse;
+import com.growmighty.lectures.firstday.refund.Presentation.dto.PaymentRefundRequest;
+import com.growmighty.lectures.firstday.refund.Presentation.dto.PaymentRefundResponse;
+import com.growmighty.lectures.firstday.refund.application.RefundService;
+import com.growmighty.lectures.firstday.refund.domain.Refund;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PaymentInternalController {
 
     private final PaymentService paymentService;
+    private final RefundService refundService;
 
     @PostMapping("/prepare")
     public PaymentPrepareResponse prepare(@Valid @RequestBody PaymentPrepareRequest request) {
@@ -26,5 +28,11 @@ public class PaymentInternalController {
             request.amount()
         );
         return PaymentPrepareResponse.from(payment);
+    }
+
+    @PostMapping("/orders/{orderId}/refund")
+    public PaymentRefundResponse refund(@PathVariable Long orderId, @Valid @RequestBody PaymentRefundRequest request) {
+        Refund refund = refundService.refund(orderId, request.reason());
+        return  PaymentRefundResponse.from(refund);
     }
 }

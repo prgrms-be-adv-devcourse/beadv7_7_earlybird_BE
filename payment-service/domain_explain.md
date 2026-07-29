@@ -256,3 +256,30 @@ Toss 웹훅 또는 복구 배치
 - `confirmingAt` 이후 3분이 지나면 Toss 상태 조회 대상에 포함한다.
 - Toss 조회 결과가 계속 `PENDING`이고 `confirmingAt` 이후 10분이 지나면 `FAILED`로 전이한다.
 - 배치 실행 주기, 복구 조회 시작 시간, 최종 대기 시간을 설정 파일에 명시하고 각 값의 역할을 분리한다.
+
+## 15. Order 서비스 환불 연동 계약
+
+주문 취소는 Order 서비스가 시작하고, Payment 서비스는 결제 취소(전액 환불)만 처리한다. 따라서 Payment 서비스가 환불 완료 후 Order 서비스에 별도로 취소 상태를 통보하지 않는다. Order 서비스가 Payment 서비스의 환불 성공 응답을 받은 뒤 주문을 `CANCELLED`로 전이하고 재고 복구 등 주문 후속 처리를 수행한다.
+
+내부 환불 API는 다음 계약으로 추가한다.
+
+```text
+POST /internal/v1/payments/orders/{orderId}/refund
+
+PathVariable
+  - orderId: UUID
+
+Request body
+  - reason: USER_CANCEL | GOAL_FAILED
+
+Response body
+  - refundId
+  - paymentId
+  - amount
+  - status: COMPLETED
+```
+
+- Order 서비스는 주문 소유권, 현재 주문 상태, 취소 가능 여부를 먼저 검증한 뒤 이 API를 호출한다.
+- 환불 금액은 Order 서비스가 전달하지 않는다. Payment 서비스가 저장된 `Payment.amount`를 사용해 전액 환불하므로, 요청 금액 위변조를 막을 수 있다.
+- Payment 서비스는 해당 주문의 `PAID` 결제만 환불한다. Toss 취소 성공 후 `Refund`를 `COMPLETED`, `Payment`를 `CANCELLED`로 변경하고 성공 응답을 반환한다.
+- Payment 서비스가 실패 응답을 반환하면 Order 서비스는 주문 취소·재고 복구를 수행하지 않는다. 현재 범위는 해피 케이스이며, 네트워크 오류 후 환불 결과 재조회·재시도 정책은 후속 작업으로 다룬다.
