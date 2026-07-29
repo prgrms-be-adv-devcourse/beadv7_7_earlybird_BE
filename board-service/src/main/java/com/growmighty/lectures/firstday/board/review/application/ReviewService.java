@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.board.review.application;
 
-import com.growmighty.lectures.firstday.board.application.port.OrderPort;
-import com.growmighty.lectures.firstday.board.application.port.UserPort;
-import com.growmighty.lectures.firstday.board.application.port.dto.PurchaseVerification;
+import com.growmighty.lectures.firstday.board.feign.port.OrderPort;
+import com.growmighty.lectures.firstday.board.feign.port.UserPort;
+import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
 import com.growmighty.lectures.firstday.board.review.application.dto.DeleteReviewCommand;
 import com.growmighty.lectures.firstday.board.review.application.dto.RegisterReviewCommand;
 import com.growmighty.lectures.firstday.board.review.application.dto.ReviewResult;

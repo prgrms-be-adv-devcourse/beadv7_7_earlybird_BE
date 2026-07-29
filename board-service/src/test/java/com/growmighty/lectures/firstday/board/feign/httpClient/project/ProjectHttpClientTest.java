@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.project;
+package com.growmighty.lectures.firstday.board.feign.httpClient.project;
 
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import feign.FeignException;

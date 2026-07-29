@@ -1,8 +1,8 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.order;
+package com.growmighty.lectures.firstday.board.feign.httpClient.order;
 
-import com.growmighty.lectures.firstday.board.application.port.OrderPort;
-import com.growmighty.lectures.firstday.board.application.port.dto.PurchaseVerification;
-import com.growmighty.lectures.firstday.board.infrastructure.client.order.dto.OrderPurchaseVerificationApiData;
+import com.growmighty.lectures.firstday.board.feign.port.OrderPort;
+import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
+import com.growmighty.lectures.firstday.board.feign.httpClient.order.dto.OrderPurchaseVerificationApiData;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

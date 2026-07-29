@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.board.notice.application;
 
-import com.growmighty.lectures.firstday.board.application.port.UserPort;
+import com.growmighty.lectures.firstday.board.feign.port.UserPort;
 import com.growmighty.lectures.firstday.board.notice.application.dto.DeleteProjectNoticeCommand;
 import com.growmighty.lectures.firstday.board.notice.application.dto.ProjectNoticeResult;
 import com.growmighty.lectures.firstday.board.notice.application.dto.RegisterProjectNoticeCommand;

@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.project;
+package com.growmighty.lectures.firstday.board.feign.httpClient.project;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
