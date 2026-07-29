@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.order.presentation;
 
-import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.order.application.OrderApiService;
@@ -24,8 +23,7 @@ public class OrderController {
 
     /** 내 후원 내역. */
     @GetMapping("/me")
-    public List<OrderResponse> getMyOrders(@RequestParam Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateBacker(requesterRole);
+    public List<OrderResponse> getMyOrders(@RequestParam Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequester(userId, requesterId);
         return orderApiService.getOrdersByUser(requesterId).stream()
                 .map(OrderResponse::from)
@@ -33,31 +31,22 @@ public class OrderController {
     }
 
     @PostMapping
-    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateBacker(requesterRole);
+    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         return OrderResponse.from(orderApiService.placeOrder(request.toCommand(requesterId), requesterId));
     }
 
     /** 후원 상세. */
     @GetMapping("/{orderId}")
-    public OrderResponse getOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateBacker(requesterRole);
+    public OrderResponse getOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequesterIfPresent(userId, requesterId);
         return OrderResponse.from(orderApiService.getOrderInfo(orderId, requesterId));
     }
 
     /** 후원 취소 */
     @PostMapping("/{orderId}/cancel")
-    public OrderResponse cancelOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId, @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateBacker(requesterRole);
+    public OrderResponse cancelOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequesterIfPresent(userId, requesterId);
         return OrderResponse.from(orderApiService.cancelOrder(orderId, requesterId));
-    }
-
-    private void validateBacker(UserRole requesterRole) {
-        if (requesterRole != UserRole.BACKER) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "Only backers can access order APIs.");
-        }
     }
 
     private void validateRequester(Long userId, Long requesterId) {
