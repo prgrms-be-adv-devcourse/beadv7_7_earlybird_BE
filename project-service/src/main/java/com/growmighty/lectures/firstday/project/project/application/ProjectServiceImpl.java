@@ -26,8 +26,10 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -196,6 +198,7 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional
     public ProjectResponse closeEarly(Long projectId) {
         Project project = getProject(projectId);
+        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
         project.closeEarlyAsSucceeded();
         deactivateRewards(projectId);
         return ProjectResponse.from(project);
@@ -215,8 +218,14 @@ public class ProjectServiceImpl implements ProjectService {
      * 영속성 컨텍스트를 재사용해 엔티티를 새로 못 읽어오고, try/catch도 flush가 커밋 시점까지
      * 미뤄져서 실제로는 격리가 안 된다. 그래서 조회만 하고, 실제 처리는 프로젝트 하나당
      * closeProjectByDeadline() 호출로 위임해 각자 독립된 트랜잭션 + 재시도를 갖게 한다.
+     *
+     * NOT_SUPPORTED로 이 메서드 자체는 트랜잭션을 열지 않는다 — 애노테이션을 안 달면 클래스 레벨
+     * @Transactional(readOnly=true)를 그대로 상속해서, self.closeProjectByDeadline()이 새 트랜잭션을
+     * 여는 대신 그 readOnly 트랜잭션에 합류해버린다(REQUIRED 기본값). 그러면 Hibernate가 그 세션에서
+     * 로드한 엔티티를 dirty-checking 대상에서 빼버려서, status 변경이 예외 없이 조용히 커밋 안 된다.
      */
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void closeExpiredProjects() {
         List<Project> expired = projectRepository.findByStatusAndEndAtLessThan(ProjectStatus.IN_PROGRESS, LocalDate.now());
         ProjectService self = selfProvider.getObject();
@@ -234,7 +243,9 @@ public class ProjectServiceImpl implements ProjectService {
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
     public void closeProjectByDeadline(Long projectId) {
-        getProject(projectId).closeByDeadline();
+        Project project = getProject(projectId);
+        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.closeByDeadline();
         deactivateRewards(projectId);
     }
 
@@ -245,6 +256,45 @@ public class ProjectServiceImpl implements ProjectService {
                 "프로젝트 마감 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
         }
         throw e;
+    }
+
+    @Override
+    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
+    @Transactional
+    public void updateFundedAmount(Long projectId, BigDecimal fundedAmount) {
+        getProject(projectId).updateFundedAmount(fundedAmount);
+    }
+
+    @Recover
+    public void recoverUpdateFundedAmountConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
+        if (e instanceof ObjectOptimisticLockingFailureException) {
+            throw new ConcurrentUpdateFailedException(
+                "모금액 갱신 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
+        }
+        throw e;
+    }
+
+    /**
+     * closeExpiredProjects()와 같은 이유로 한 트랜잭션으로 묶지 않는다 — 프로젝트 하나의 pull 실패나
+     * 락 충돌이 같은 배치 실행의 나머지 프로젝트까지 막으면 안 된다. selfProvider로 프록시를 거쳐
+     * updateFundedAmount() 한 건마다 독립된 트랜잭션 + 재시도를 갖게 한다.
+     *
+     * closeExpiredProjects()와 같은 이유로 NOT_SUPPORTED — 안 그러면 클래스 레벨 readOnly 트랜잭션에
+     * self.updateFundedAmount()가 합류해서 fundedAmount 갱신이 조용히 커밋되지 않는다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void reconcileFundedAmounts() {
+        List<Project> inProgress = projectRepository.findByStatus(ProjectStatus.IN_PROGRESS);
+        ProjectService self = selfProvider.getObject();
+        for (Project project : inProgress) {
+            try {
+                BigDecimal fundedAmount = orderPort.getFundedAmount(project.getProjectId());
+                self.updateFundedAmount(project.getProjectId(), fundedAmount);
+            } catch (RuntimeException e) {
+                log.warn("모금액 보정 실패. projectId={}", project.getProjectId(), e);
+            }
+        }
     }
 
     /**

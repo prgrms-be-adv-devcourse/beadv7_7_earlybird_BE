@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.math.BigDecimal;
+
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -62,6 +64,16 @@ public interface ProjectService {
 
     /** closeExpiredProjects()가 프로젝트 하나씩 재시도 가능하도록 호출하는 단위. 외부에서 직접 부를 일은 없다. */
     void closeProjectByDeadline(Long projectId);
+
+    /**
+     * 내부용: order-service에서 pull 조회해온 절대값(누적 총액)으로 한 프로젝트의 fundedAmount를
+     * 덮어쓴다. 멱등. FundedAmountReconciliationScheduler가 프로젝트 하나씩 재시도 가능하도록
+     * 호출하는 단위 — 외부에서 직접 부를 일은 없다.
+     */
+    void updateFundedAmount(Long projectId, BigDecimal fundedAmount);
+
+    /** 배치 전용: IN_PROGRESS 프로젝트마다 order-service의 현재 확정 누적 총액을 pull해 보정한다. */
+    void reconcileFundedAmounts();
 
     // ── reward 도메인이 호출하는 API (project-service 내부, 도메인 간) ──────
     /**

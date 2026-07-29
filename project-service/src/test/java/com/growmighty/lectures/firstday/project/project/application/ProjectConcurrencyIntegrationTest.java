@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
@@ -9,6 +10,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,6 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
 
 /**
  * closeExpiredProjects()의 수동 트리거(POST /close-expired)와 자정 스케줄러가 겹쳐서 같은
@@ -32,11 +38,14 @@ class ProjectConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
     private ProjectService projectService;
     @Autowired
     private ProjectRepository projectRepository;
+    @MockitoBean
+    private OrderPort orderPort;
 
     @Test
     @DisplayName("같은 프로젝트에 closeProjectByDeadline을 동시에 여러 번 호출해도 정확히 한 번만 반영된다")
     void closeProjectByDeadline_concurrentCalls_appliesExactlyOnce() throws InterruptedException {
         Long projectId = publishedProject();
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         long versionBefore = projectRepository.findById(projectId).orElseThrow().getVersion();
 
         int threads = 10;
@@ -65,11 +74,46 @@ class ProjectConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
                 .isEqualTo(versionBefore + 1);
     }
 
+    @Test
+    @DisplayName("closeExpiredProjects()로 호출해도(자정 스케줄러/수동 트리거 진입점) status 변경이 실제 DB에 반영된다")
+    void closeExpiredProjects_viaEntryPoint_persistsStatusChange() {
+        Long projectId = expiredProject();
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+
+        projectService.closeExpiredProjects();
+
+        Project fresh = projectRepository.findById(projectId).orElseThrow();
+        assertThat(fresh.getStatus()).isEqualTo(ProjectStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("reconcileFundedAmounts()로 호출해도(1분 스케줄러 진입점) fundedAmount 변경이 실제 DB에 반영된다")
+    void reconcileFundedAmounts_viaEntryPoint_persistsFundedAmount() {
+        Long projectId = publishedProject();
+        when(orderPort.getFundedAmount(projectId)).thenReturn(BigDecimal.valueOf(300_000));
+
+        projectService.reconcileFundedAmounts();
+
+        Project fresh = projectRepository.findById(projectId).orElseThrow();
+        assertThat(fresh.getFundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(300_000));
+    }
+
     private Long publishedProject() {
         Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project = projectRepository.save(project);
         project.approve();
+        project = projectRepository.save(project);
+        return project.getProjectId();
+    }
+
+    private Long expiredProject() {
+        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        project = projectRepository.save(project);
+        project.approve();
+        project = projectRepository.save(project);
+        ReflectionTestUtils.setField(project, "endAt", LocalDate.now().minusDays(1));
         project = projectRepository.save(project);
         return project.getProjectId();
     }
