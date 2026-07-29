@@ -3,15 +3,14 @@ package com.growmighty.lectures.firstday.order.application.port;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 public interface PaymentPort {
 
-    PaymentResult pay(UUID orderId, Long userId, BigDecimal amount);
+    PaymentResult pay(Long orderId, Long userId, BigDecimal amount);
 
-    RefundResult refund(UUID orderId, BigDecimal amount);
+    RefundResult refund(Long orderId, BigDecimal amount);
 
-    PaymentResult getPaymentResult(UUID orderId);
+    PaymentResult getPaymentResult(Long orderId);
 
     record RefundResult(
             PaymentResult.Status status,

@@ -11,7 +11,6 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -24,12 +23,17 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
-    public Optional<Order> findById(UUID id) {
+    public Order saveAndFlush(Order order) {
+        return jpaRepository.saveAndFlush(order);
+    }
+
+    @Override
+    public Optional<Order> findById(Long id) {
         return jpaRepository.findById(id);
     }
 
     @Override
-    public Optional<Order> findByIdWithItems(UUID id) {
+    public Optional<Order> findByIdWithItems(Long id) {
         return jpaRepository.findByIdWithItems(id);
     }
 

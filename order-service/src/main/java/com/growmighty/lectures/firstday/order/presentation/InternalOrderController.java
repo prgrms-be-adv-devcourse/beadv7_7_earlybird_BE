@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.Optional;
-import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -22,7 +21,7 @@ public class InternalOrderController {
 
     /** 후원 시 결제 검증용 정보 호출. TODO(예정): payment와 연동 — 인증 도입 후 검증, 상세 기능 추후 구현 예정 */
     @GetMapping("/{orderId}/inspect")
-    public OrderConsistencyResponse inspectOrder(@PathVariable UUID orderId) {
+    public OrderConsistencyResponse inspectOrder(@PathVariable Long orderId) {
         return OrderConsistencyResponse.from(orderApiService.inspectOrder(orderId));
     }
 

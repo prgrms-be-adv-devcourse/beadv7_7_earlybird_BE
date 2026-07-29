@@ -3,10 +3,9 @@ package com.growmighty.lectures.firstday.order.presentation.dto;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 public record OrderResponse(
-        UUID id,
+        Long id,
         String status,
         BigDecimal itemsAmount,
         BigDecimal shippingFee,

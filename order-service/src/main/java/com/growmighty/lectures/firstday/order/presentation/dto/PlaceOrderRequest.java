@@ -9,10 +9,8 @@ import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.UUID;
 
 public record PlaceOrderRequest(
-        @NotNull UUID orderId,
         @NotNull Long userId,
         @NotEmpty @Valid List<OrderItemRequest> requests,
         @NotNull String receiverName,
@@ -37,7 +35,7 @@ public record PlaceOrderRequest(
         List<OrderLine> lines = requests.stream()
                 .map(r -> new OrderLine(r.rewardId(), r.quantity(), r.expectedUnitPrice()))
                 .toList();
-        return new PlaceOrderCommand(orderId, userId, lines, receiverName, receiverPhone, shippingAddress, zipCode,
+        return new PlaceOrderCommand(userId, lines, receiverName, receiverPhone, shippingAddress, zipCode,
                 expectedItemsAmount, expectedTotalAmount);
     }
 }
