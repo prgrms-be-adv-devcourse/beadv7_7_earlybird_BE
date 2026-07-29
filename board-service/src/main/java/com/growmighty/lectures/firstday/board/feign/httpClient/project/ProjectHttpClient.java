@@ -38,4 +38,20 @@ public class ProjectHttpClient implements ProjectPort {
         log.warn("프로젝트 존재 확인 실패. projectId={}, 원인={}", projectId, cause.toString());
         throw new ServiceUnavailableException("프로젝트 정보를 확인할 수 없어 요청을 처리할 수 없습니다. projectId=" + projectId);
     }
+
+    @Override
+    public Long getCreatorUserId(Long projectId) {
+        return circuitBreakerFactory.create("project").run(
+            () -> fetchCreator(projectId),
+            cause -> failHardCreator(projectId, cause));
+    }
+
+    private Long fetchCreator(Long projectId) {
+        return projectFeignClient.getCreator(projectId).data().creatorId();
+    }
+
+    private Long failHardCreator(Long projectId, Throwable cause) {
+        log.warn("프로젝트 제작자 조회 실패. projectId={}, 원인={}", projectId, cause.toString());
+        throw new ServiceUnavailableException("프로젝트 제작자 정보를 확인할 수 없어 요청을 처리할 수 없습니다. projectId=" + projectId);
+    }
 }

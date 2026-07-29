@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.board.review.application;
 
+import com.growmighty.lectures.firstday.board.event.ReviewCreatedEvent;
+import com.growmighty.lectures.firstday.board.event.port.DomainEventPublisher;
 import com.growmighty.lectures.firstday.board.feign.port.OrderPort;
 import com.growmighty.lectures.firstday.board.feign.port.UserPort;
 import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -37,16 +40,18 @@ class ReviewServiceTest {
     private UserPort userPort;
     @Mock
     private OrderPort orderPort;
+    @Mock
+    private DomainEventPublisher domainEventPublisher;
 
     private ReviewService reviewService;
 
     @BeforeEach
     void setUp() {
-        reviewService = new ReviewService(reviewRepository, userPort, orderPort);
+        reviewService = new ReviewService(reviewRepository, userPort, orderPort, domainEventPublisher);
     }
 
     @Test
-    @DisplayName("검증을 통과하면 authorName/rewardName을 채워 등록한다")
+    @DisplayName("검증을 통과하면 authorName/rewardName을 채워 등록하고 ReviewCreatedEvent를 발행한다")
     void register_success() {
         when(reviewRepository.existsActiveByProjectIdAndAuthorId(10L, 1L)).thenReturn(false);
         when(userPort.getUser(1L)).thenReturn(new UserSnapshot(1L, "홍길동"));
@@ -58,6 +63,14 @@ class ReviewServiceTest {
 
         assertThat(result.authorName()).isEqualTo("홍길동");
         assertThat(result.rewardName()).isEqualTo("얼리버드 리워드");
+
+        ArgumentCaptor<ReviewCreatedEvent> eventCaptor = ArgumentCaptor.forClass(ReviewCreatedEvent.class);
+        verify(domainEventPublisher).publish(eventCaptor.capture());
+        ReviewCreatedEvent event = eventCaptor.getValue();
+        assertThat(event.projectId()).isEqualTo(10L);
+        assertThat(event.authorId()).isEqualTo(1L);
+        assertThat(event.authorName()).isEqualTo("홍길동");
+        assertThat(event.occurredAt()).isNotNull();
     }
 
     @Test
@@ -69,12 +82,12 @@ class ReviewServiceTest {
                 new RegisterReviewCommand(10L, 100L, 1L, BigDecimal.valueOf(4.5), "좋아요")))
             .isInstanceOf(DuplicateReviewException.class);
 
-        verifyNoInteractions(userPort, orderPort);
+        verifyNoInteractions(userPort, orderPort, domainEventPublisher);
         verify(reviewRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("구매가 확인되지 않으면 등록이 거부되고 저장하지 않는다")
+    @DisplayName("구매가 확인되지 않으면 등록이 거부되고 저장/이벤트 발행 없이 끝난다")
     void register_purchaseNotVerified_throws() {
         when(reviewRepository.existsActiveByProjectIdAndAuthorId(10L, 1L)).thenReturn(false);
         when(userPort.getUser(1L)).thenReturn(new UserSnapshot(1L, "홍길동"));
@@ -85,6 +98,7 @@ class ReviewServiceTest {
             .isInstanceOf(PurchaseNotVerifiedException.class);
 
         verify(reviewRepository, never()).save(any());
+        verifyNoInteractions(domainEventPublisher);
     }
 
     @Test
@@ -97,7 +111,7 @@ class ReviewServiceTest {
                 new RegisterReviewCommand(10L, 100L, 1L, BigDecimal.valueOf(4.5), "좋아요")))
             .isInstanceOf(ServiceUnavailableException.class);
 
-        verifyNoInteractions(orderPort);
+        verifyNoInteractions(orderPort, domainEventPublisher);
         verify(reviewRepository, never()).save(any());
     }
 }

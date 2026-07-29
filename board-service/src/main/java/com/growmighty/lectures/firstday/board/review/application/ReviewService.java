@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.board.review.application;
 
+import com.growmighty.lectures.firstday.board.event.ReviewCreatedEvent;
+import com.growmighty.lectures.firstday.board.event.port.DomainEventPublisher;
 import com.growmighty.lectures.firstday.board.feign.port.OrderPort;
 import com.growmighty.lectures.firstday.board.feign.port.UserPort;
 import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
@@ -29,6 +31,7 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final UserPort userPort;
     private final OrderPort orderPort;
+    private final DomainEventPublisher domainEventPublisher;
 
     @Transactional
     public ReviewResult register(RegisterReviewCommand command) {
@@ -47,6 +50,10 @@ public class ReviewService {
 
         Review review = reviewRepository.save(Review.create(command.projectId(), command.rewardId(), verification.rewardName(),
             command.authorId(), authorName, command.rating(), command.content()));
+
+        domainEventPublisher.publish(
+            ReviewCreatedEvent.of(review.getId(), review.getProjectId(), review.getAuthorId(), review.getAuthorName()));
+
         return ReviewResult.from(review);
     }
 
