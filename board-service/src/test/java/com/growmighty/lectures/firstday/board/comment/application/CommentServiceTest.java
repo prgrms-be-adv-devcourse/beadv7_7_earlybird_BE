@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.board.comment.application;
 
-import com.growmighty.lectures.firstday.board.application.port.ProjectPort;
-import com.growmighty.lectures.firstday.board.application.port.UserPort;
-import com.growmighty.lectures.firstday.board.application.port.dto.UserSnapshot;
+import com.growmighty.lectures.firstday.board.feign.port.ProjectPort;
+import com.growmighty.lectures.firstday.board.feign.port.UserPort;
+import com.growmighty.lectures.firstday.board.feign.port.dto.UserSnapshot;
 import com.growmighty.lectures.firstday.board.comment.application.dto.CommentResult;
 import com.growmighty.lectures.firstday.board.comment.application.dto.RegisterCommentCommand;
 import com.growmighty.lectures.firstday.board.comment.domain.Comment;
