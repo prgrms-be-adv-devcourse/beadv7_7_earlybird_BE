@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.board.application.port;
+package com.growmighty.lectures.firstday.board.feign.port;
 
-import com.growmighty.lectures.firstday.board.application.port.dto.PurchaseVerification;
+import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
 
 /**
  * board-service 는 order-service 의 클래스를 알지 못한다. 오직 이 인터페이스로만 구매 여부를 바라보고,

@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.user.dto;
+package com.growmighty.lectures.firstday.board.feign.httpClient.user.dto;
 
 /**
  * user-service 의 GET /internal/v1/users/{userId} 응답 data 부분.

@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.board.application.port;
+package com.growmighty.lectures.firstday.board.feign.port;
 
-import com.growmighty.lectures.firstday.board.application.port.dto.UserSnapshot;
+import com.growmighty.lectures.firstday.board.feign.port.dto.UserSnapshot;
 
 /**
  * board-service 는 user-service 의 클래스를 알지 못한다. 오직 이 인터페이스로만 작성자 정보를 바라보고,

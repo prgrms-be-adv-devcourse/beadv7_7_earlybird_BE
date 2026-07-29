@@ -1,8 +1,8 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.user;
+package com.growmighty.lectures.firstday.board.feign.httpClient.user;
 
-import com.growmighty.lectures.firstday.board.application.port.UserPort;
-import com.growmighty.lectures.firstday.board.application.port.dto.UserSnapshot;
-import com.growmighty.lectures.firstday.board.infrastructure.client.user.dto.UserApiData;
+import com.growmighty.lectures.firstday.board.feign.port.UserPort;
+import com.growmighty.lectures.firstday.board.feign.port.dto.UserSnapshot;
+import com.growmighty.lectures.firstday.board.feign.httpClient.user.dto.UserApiData;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

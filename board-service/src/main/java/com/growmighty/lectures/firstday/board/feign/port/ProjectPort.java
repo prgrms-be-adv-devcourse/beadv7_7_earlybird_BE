@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.board.application.port;
+package com.growmighty.lectures.firstday.board.feign.port;
 
 /**
  * board-service 는 project-service 의 클래스를 알지 못한다. 오직 이 인터페이스로만 프로젝트 존재 여부를 바라보고,

@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.order;
+package com.growmighty.lectures.firstday.board.feign.httpClient.order;
 
-import com.growmighty.lectures.firstday.board.infrastructure.client.order.dto.OrderPurchaseVerificationApiData;
+import com.growmighty.lectures.firstday.board.feign.httpClient.order.dto.OrderPurchaseVerificationApiData;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;

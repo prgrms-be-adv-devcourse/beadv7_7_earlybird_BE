@@ -1,7 +1,7 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.order;
+package com.growmighty.lectures.firstday.board.feign.httpClient.order;
 
-import com.growmighty.lectures.firstday.board.application.port.dto.PurchaseVerification;
-import com.growmighty.lectures.firstday.board.infrastructure.client.order.dto.OrderPurchaseVerificationApiData;
+import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
+import com.growmighty.lectures.firstday.board.feign.httpClient.order.dto.OrderPurchaseVerificationApiData;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;

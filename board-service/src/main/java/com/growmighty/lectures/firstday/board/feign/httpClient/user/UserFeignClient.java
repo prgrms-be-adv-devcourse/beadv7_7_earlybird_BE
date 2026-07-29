@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.board.infrastructure.client.user;
+package com.growmighty.lectures.firstday.board.feign.httpClient.user;
 
-import com.growmighty.lectures.firstday.board.infrastructure.client.user.dto.UserApiData;
+import com.growmighty.lectures.firstday.board.feign.httpClient.user.dto.UserApiData;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
