@@ -34,7 +34,7 @@ POST http://localhost:8000/users/login
 Content-Type: application/json
 
 {
-  "email": "buyer@growmighty.co.kr",
+  "email": "buyer@earlybird.co.kr",
   "password": "rawPassword1!"
 }
 ```
@@ -45,7 +45,7 @@ Content-Type: application/json
 {
   "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
   "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
-  "user": { "id": 1, "email": "buyer@growmighty.co.kr", "name": "구매자", "phoneNumber": "010-1111-1111", "role": "BACKER" }
+  "user": { "id": 1, "email": "buyer@earlybird.co.kr", "name": "구매자", "phoneNumber": "010-1111-1111", "role": "BACKER" }
 }
 ```
 

@@ -56,6 +56,11 @@ public class User extends BaseEntity {
         this.role = UserRole.CREATOR;
     }
 
+    /** 관리자 전환 — API로 노출하지 않는다(운영 절차/시드 데이터 전용, §범위 밖: 승격 엔드포인트 없음). */
+    public void grantAdminRole() {
+        this.role = UserRole.ADMIN;
+    }
+
     public void changePassword(String newEncodedPassword) {
         if (newEncodedPassword == null || newEncodedPassword.isBlank()) {
             throw new IllegalArgumentException("새 비밀번호는 비어 있을 수 없습니다.");

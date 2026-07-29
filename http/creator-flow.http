@@ -1,0 +1,196 @@
+### creator-flow.http — 실제 창작자 플로우 시뮬레이션
+###
+### 회원가입 → 로그인 → 창작자 전환 → 토큰 재발급(role 갱신) → 프로젝트 생성 → 리워드 등록 →
+### 내 프로젝트/리워드 조회 → 관리자 심사 승인 으로 이어지는 시나리오를 순서대로 실행한다.
+### 마지막 두 단계(관리자 로그인/승인)는 UserDataInitializer가 시드하는 admin@earlybird.co.kr
+### 계정을 쓴다 — 별도 승격 API가 없어 시드 데이터로만 존재한다.
+###
+### 환경 전환: backer-flow.http 와 동일하게 같은 폴더의 http-client.env.json 의 local/production 을 쓴다.
+### 매 요청은 위에서부터 순서대로 실행해야 한다(응답 값을 다음 요청이 전역 변수로 이어받는다).
+###
+### 주의: system-test/.../CreatorFlowLiveTest.java 가 같은 시나리오를 JUnit으로 중복 구현한다
+### (의도적 — 이 파일은 수동 확인/시연용, 그쪽은 자동화용). 이 파일을 고치면 그 테스트도 같이 고칠 것.
+
+### 1. 회원가입
+< {%
+    client.global.set("creatorEmail", "creatorflow-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{creatorEmail}}",
+  "password": "rawPassword1!",
+  "name": "창작자플로우",
+  "phoneNumber": "010-9876-5432"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인 (access/refresh token 발급 — 이 시점 access token 은 아직 BACKER role)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{creatorEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공, BACKER role 로 토큰 발급", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+        client.assert(response.body.data.user.role === "BACKER", "unexpected role: " + response.body.data.user.role);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환 (판매자 등록)
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "bankName": "신한은행",
+  "accountNumber": "110-123-456789",
+  "accountHolder": "창작자플로우"
+}
+
+> {%
+    client.test("창작자 전환 성공(role=CREATOR)", function() {
+        client.assert(response.status === 200, "register as creator failed: " + response.body);
+        client.assert(response.body.data.role === "CREATOR", "unexpected role: " + response.body.data.role);
+    });
+%}
+
+### 4. access token 재발급 — 창작자 전환 후 최신 role(CREATOR)을 담은 새 토큰을 받는다
+### (docs/3_JWT_AUTH.md §1-1 — 로그인 때 발급된 access token 은 role 전환 전 값을 그대로 담고 있다)
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+> {%
+    client.test("토큰 재발급 성공", function() {
+        client.assert(response.status === 200, "refresh failed: " + response.body);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 목록 조회 (프로젝트 등록에 쓸 categoryId 확보)
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("카테고리 목록 조회 성공, 1건 이상", function() {
+        client.assert(response.status === 200, "category list failed: " + response.body);
+        client.assert(response.body.data.length > 0, "no categories found");
+    });
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록 (PENDING_REVIEW 상태로 생성 — 관리자 승인 전)
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "창작자 플로우 테스트 프로젝트",
+  "categoryId": {{categoryId}},
+  "summary": "backer-flow.http 와 대칭되는 창작자 플로우 검증용",
+  "description": "creator-flow.http 로 생성된 프로젝트",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공(PENDING_REVIEW)", function() {
+        client.assert(response.status === 200, "create project failed: " + response.body);
+        client.assert(response.body.data.status === "PENDING_REVIEW", "unexpected status: " + response.body.data.status);
+    });
+    client.global.set("projectId", response.body.data.projectId);
+%}
+
+### 7. 리워드 등록
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "얼리버드 리워드",
+  "description": "creator-flow.http 로 생성된 리워드",
+  "price": 10000,
+  "totalQuantity": 50
+}
+
+> {%
+    client.test("리워드 등록 성공", function() {
+        client.assert(response.status === 200, "register reward failed: " + response.body);
+    });
+    client.global.set("rewardId", response.body.data.rewardId);
+%}
+
+### 8. 내 프로젝트 목록 조회 (방금 만든 프로젝트가 보이는지 확인)
+GET {{baseUrl}}/api/v1/projects/me
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("내 프로젝트 목록에 방금 만든 프로젝트 포함", function() {
+        client.assert(response.status === 200, "get my projects failed: " + response.body);
+        const found = response.body.data.some(p => String(p.projectId) === String(client.global.get("projectId")));
+        client.assert(found, "created project not found in /projects/me");
+    });
+%}
+
+### 9. 프로젝트의 리워드 목록 조회 (방금 만든 리워드가 보이는지 확인)
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("리워드 목록에 방금 만든 리워드 포함", function() {
+        client.assert(response.status === 200, "get project rewards failed: " + response.body);
+        const found = response.body.data.some(r => String(r.rewardId) === String(client.global.get("rewardId")));
+        client.assert(found, "created reward not found in project rewards");
+    });
+%}
+
+### 10. 관리자 로그인 (UserDataInitializer가 시드하는 계정 — 승격 API가 없어 시드 데이터로만 존재)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공(role=ADMIN)", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+        client.assert(response.body.data.user.role === "ADMIN", "unexpected role: " + response.body.data.user.role);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 11. 관리자 심사 승인 (PENDING_REVIEW → IN_PROGRESS)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("심사 승인 성공(IN_PROGRESS)", function() {
+        client.assert(response.status === 200, "approve failed: " + response.body);
+        client.assert(response.body.data.status === "IN_PROGRESS", "unexpected status: " + response.body.data.status);
+    });
+%}

@@ -54,6 +54,7 @@
 - **인증 방식: Stateless JWT vs 서버 세션** — 서버가 로그인 상태를 따로 저장하지 않는 JWT를 선택. 서버를 여러 대로 늘려도 세션 공유 문제가 없지만, 그 대가로 로그아웃해도 서버가 토큰을 강제로 무효화할 수 없다 — 클라이언트가 토큰을 지우는 데 의존한다 ([`UserController.logout`](../../user-service/src/main/java/com/growmighty/lectures/firstday/user/presentation/UserController.java#L57) 주석 참고).
 - **회원 도메인: 단일 User + role enum vs 역할별 테이블 분리** — 후원자/창작자/관리자를 하나의 `User` 엔티티와 role 컬럼으로 구분. 역할 전환(후원자→창작자)이 행 하나만 갱신하면 되지만, 창작자에게만 필요한 정산 계좌 정보는 `User`에 넣지 않고 `CreatorProfile`로 분리해 절충했다.
 - **테스트 전략: 실제 DB(Testcontainers) vs 목(mock)** — 분기 로직은 목으로 빠르게, "비밀번호가 실제로 해시돼 저장되는가" 같은 계층을 관통하는 보장은 실제 MySQL로 검증. 전부 실제 DB로 하면 느리고 실패 원인 추적이 어려워지므로 계층별로 나눠 썼다.
+- **시드 계정 자격증명 보관 위치: config-server(private 레포) vs `.env` 환경변수** — [`UserDataInitializer`](../../user-service/src/main/java/com/growmighty/lectures/firstday/user/UserDataInitializer.java)가 기동 시 만드는 구매자/판매자/관리자 계정 정보를 소스코드에 두지 않고 [`SeedUserProperties`](../../user-service/src/main/java/com/growmighty/lectures/firstday/user/config/SeedUserProperties.java)(`earlybird.seed.*`)로 빼서, config-server가 관리하는 private 레포([`user-service.yml`](https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_config))에서 값을 받도록 했다. DB 비밀번호 등 다른 민감값도 이미 이 레포에 있어 같은 경계를 그대로 재사용하는 선택 — `.env` 환경변수로 옮기면 docker-compose/EC2/로컬 실행 세 곳 모두에 값을 새로 배선해야 하지만, config-server 경로는 이미 다른 모든 설정이 흘러가는 통로라 배관을 새로 놓지 않아도 된다. 다만 그만큼 config-server가 떠 있어야 시드 계정이 만들어진다는 전제가 붙는다(다른 설정값들과 동일한 전제).
 
 ## 참고
 
