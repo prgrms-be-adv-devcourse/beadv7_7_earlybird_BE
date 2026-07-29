@@ -13,7 +13,6 @@ import com.growmighty.lectures.firstday.settlement.application.error.SettlementE
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
 import java.io.IOException;
-import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,10 +40,10 @@ class ProjectSettlementTargetHttpReaderTest {
     }
 
     @Test
-    @DisplayName("정산 월에 완료되고 펀딩에 성공한 프로젝트 정산 대상을 조회한다")
+    @DisplayName("develop ProjectResponse에서 성공 프로젝트 정산 대상의 최소 식별자만 조회한다")
     void readsProjectSettlementTargets() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("""
@@ -53,20 +52,36 @@ class ProjectSettlementTargetHttpReaderTest {
                           "data": [
                             {
                               "projectId": 101,
-                              "creatorId": 201
+                              "creatorId": 201,
+                              "thumbnailId": 301,
+                              "title": "Settlement가 소비하지 않는 프로젝트 제목",
+                              "categoryId": 401,
+                              "summary": "요약",
+                              "description": "설명",
+                              "goalAmount": 100000,
+                              "fundedAmount": 120000,
+                              "startAt": "2026-06-01T09:00:00",
+                              "endAt": "2026-07-31",
+                              "status": "SUCCEEDED",
+                              "closed": true,
+                              "rejectReason": null,
+                              "submittedAt": "2026-05-20T09:00:00",
+                              "approvedAt": "2026-05-21T09:00:00",
+                              "closedAt": "2026-08-01T00:00:01",
+                              "createdAt": "2026-05-20T08:00:00",
+                              "updatedAt": "2026-08-01T00:00:01"
                             },
                             {
                               "projectId": 102,
-                              "creatorId": 202
+                              "creatorId": 202,
+                              "status": "SUCCEEDED"
                             }
                           ],
                           "error": null
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        List<ProjectSettlementTarget> targets = reader.findSettlementTargets(
-                YearMonth.of(2026, 7)
-        );
+        List<ProjectSettlementTarget> targets = reader.findSettlementTargets();
 
         assertThat(targets).containsExactly(
                 new ProjectSettlementTarget(101L, 201L),
@@ -79,7 +94,7 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("정산 대상이 없으면 빈 목록을 반환한다")
     void returnsEmptyTargets() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(withSuccess("""
                         {
@@ -89,7 +104,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertThat(reader.findSettlementTargets(YearMonth.of(2026, 7))).isEmpty();
+        assertThat(reader.findSettlementTargets()).isEmpty();
         server.verify();
     }
 
@@ -97,7 +112,7 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("Project 실패 봉투를 정산 대상 조회 불가로 번역한다")
     void rejectsFailureEnvelope() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(withSuccess("""
                         {
@@ -109,7 +124,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)))
+        assertThatThrownBy(reader::findSettlementTargets)
                 .isInstanceOfSatisfying(SettlementException.class, exception -> {
                     assertThat(exception.errorCode()).isEqualTo(
                             SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE
@@ -124,7 +139,7 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("성공 데이터와 오류가 함께 있는 모순된 봉투를 거부한다")
     void rejectsSuccessEnvelopeContainingError() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(withSuccess("""
                         {
@@ -136,7 +151,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)));
+        assertUnavailable(reader::findSettlementTargets);
         server.verify();
     }
 
@@ -144,21 +159,46 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("필수 필드가 누락된 정산 대상을 조회 불가로 번역한다")
     void rejectsTargetMissingRequiredField() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(withSuccess("""
                         {
                           "success": true,
                           "data": [
                             {
-                              "projectId": 101
+                              "projectId": 101,
+                              "status": "SUCCEEDED"
                             }
                           ],
                           "error": null
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)));
+        assertUnavailable(reader::findSettlementTargets);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("SUCCEEDED가 아닌 Project 응답을 조회 계약 위반으로 거부한다")
+    void rejectsTargetWithUnexpectedStatus() {
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
+                ))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [
+                            {
+                              "projectId": 101,
+                              "creatorId": 201,
+                              "status": "FAILED"
+                            }
+                          ],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        assertUnavailable(reader::findSettlementTargets);
         server.verify();
     }
 
@@ -166,7 +206,7 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("중복 프로젝트 식별자를 조회 불가로 번역한다")
     void rejectsDuplicateProjectId() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(withSuccess("""
                         {
@@ -174,18 +214,20 @@ class ProjectSettlementTargetHttpReaderTest {
                           "data": [
                             {
                               "projectId": 101,
-                              "creatorId": 201
+                              "creatorId": 201,
+                              "status": "SUCCEEDED"
                             },
                             {
                               "projectId": 101,
-                              "creatorId": 201
+                              "creatorId": 201,
+                              "status": "SUCCEEDED"
                             }
                           ],
                           "error": null
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)));
+        assertUnavailable(reader::findSettlementTargets);
         server.verify();
     }
 
@@ -194,7 +236,7 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("Project HTTP 실패를 정산 대상 조회 불가로 번역한다")
     void translatesProjectHttpFailure(int statusCode) {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(withStatus(HttpStatus.valueOf(statusCode))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -208,7 +250,7 @@ class ProjectSettlementTargetHttpReaderTest {
                                 }
                                 """));
 
-        assertUnavailable(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)));
+        assertUnavailable(reader::findSettlementTargets);
         server.verify();
     }
 
@@ -216,11 +258,11 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("해석할 수 없는 Project 응답을 정산 대상 조회 불가로 번역한다")
     void translatesMalformedResponse() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(withSuccess("not-json", MediaType.APPLICATION_JSON));
 
-        assertUnavailable(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)));
+        assertUnavailable(reader::findSettlementTargets);
         server.verify();
     }
 
@@ -228,13 +270,13 @@ class ProjectSettlementTargetHttpReaderTest {
     @DisplayName("Project 연결 실패를 정산 대상 조회 불가로 번역한다")
     void translatesConnectionFailure() {
         server.expect(once(), requestTo(
-                        BASE_URL + "/internal/projects/settlement-targets?settlementMonth=2026-07"
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
                 .andRespond(request -> {
                     throw new IOException("Project 연결 원문 오류");
                 });
 
-        assertUnavailable(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)));
+        assertUnavailable(reader::findSettlementTargets);
         server.verify();
     }
 

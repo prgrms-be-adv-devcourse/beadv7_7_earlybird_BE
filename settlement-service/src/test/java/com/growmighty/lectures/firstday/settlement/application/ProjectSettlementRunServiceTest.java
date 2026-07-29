@@ -39,7 +39,7 @@ class ProjectSettlementRunServiceTest {
     void runsAllProjectSettlementsForMonth() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(201L, "seller-201", "********0201"));
         creatorPayoutProfileRepository.save(payoutReadyProfile(202L, "seller-202", "********0202"));
-        ProjectSettlementTargetReader targetReader = month -> List.of(
+        ProjectSettlementTargetReader targetReader = () -> List.of(
                 new ProjectSettlementTarget(101L, 201L),
                 new ProjectSettlementTarget(102L, 202L)
         );
@@ -94,7 +94,7 @@ class ProjectSettlementRunServiceTest {
         creatorPayoutProfileRepository.save(
                 payoutReadyProfile(creatorId, "seller-203", "********0203")
         );
-        ProjectSettlementTargetReader targetReader = month -> List.of(
+        ProjectSettlementTargetReader targetReader = () -> List.of(
                 new ProjectSettlementTarget(projectId, creatorId)
         );
         AtomicInteger paymentReads = new AtomicInteger();

@@ -13,7 +13,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.YearMonth;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
@@ -37,7 +36,7 @@ class ProjectSettlementTargetHttpReaderHttpIntegrationTest {
         executor = Executors.newSingleThreadExecutor();
         server.setExecutor(executor);
         server.createContext(
-                ProjectSettlementTargetHttpReader.SETTLEMENT_TARGETS_PATH,
+                ProjectSettlementTargetHttpReader.PROJECTS_PATH,
                 this::respondAfterReadTimeout
         );
         server.start();
@@ -61,7 +60,7 @@ class ProjectSettlementTargetHttpReaderHttpIntegrationTest {
                 .build();
         ProjectSettlementTargetReader reader = new ProjectSettlementTargetHttpReader(restClient);
 
-        assertThatThrownBy(() -> reader.findSettlementTargets(YearMonth.of(2026, 7)))
+        assertThatThrownBy(reader::findSettlementTargets)
                 .isInstanceOfSatisfying(SettlementException.class, exception ->
                         assertThat(exception.errorCode()).isEqualTo(
                                 SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE

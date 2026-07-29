@@ -298,7 +298,7 @@ class ProjectSettlementErrorControllerTest {
         }
 
         @Override
-        public List<ProjectSettlementTarget> findSettlementTargets(YearMonth settlementMonth) {
+        public List<ProjectSettlementTarget> findSettlementTargets() {
             if (targetReadFailure != null) {
                 throw targetReadFailure;
             }

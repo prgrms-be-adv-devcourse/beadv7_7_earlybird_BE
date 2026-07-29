@@ -3,26 +3,20 @@ package com.growmighty.lectures.firstday.settlement.application.port;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.YearMonth;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class ProjectSettlementTargetContractTest {
 
     @Test
-    @DisplayName("정산 월로 프로젝트 식별자·제목·창작자 식별자를 조회한다")
-    void readsSettlementTargetsForMonth() {
-        AtomicReference<YearMonth> requestedMonth = new AtomicReference<>();
-        ProjectSettlementTargetReader reader = settlementMonth -> {
-            requestedMonth.set(settlementMonth);
-            return List.of(new ProjectSettlementTarget(101L, 201L));
-        };
+    @DisplayName("성공 프로젝트의 프로젝트 식별자·창작자 식별자를 조회한다")
+    void readsSucceededProjectSettlementTargets() {
+        ProjectSettlementTargetReader reader = () ->
+                List.of(new ProjectSettlementTarget(101L, 201L));
 
-        List<ProjectSettlementTarget> targets = reader.findSettlementTargets(YearMonth.of(2026, 7));
+        List<ProjectSettlementTarget> targets = reader.findSettlementTargets();
 
-        assertThat(requestedMonth.get()).isEqualTo(YearMonth.of(2026, 7));
         assertThat(targets).containsExactly(
                 new ProjectSettlementTarget(101L, 201L)
         );

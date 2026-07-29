@@ -5,7 +5,6 @@ import static com.growmighty.lectures.firstday.settlement.application.error.Sett
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
-import java.time.YearMonth;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -16,7 +15,8 @@ import org.springframework.web.client.RestClientException;
 
 public final class ProjectSettlementTargetHttpReader implements ProjectSettlementTargetReader {
 
-    static final String SETTLEMENT_TARGETS_PATH = "/internal/projects/settlement-targets";
+    static final String PROJECTS_PATH = "/internal/v1/projects";
+    static final String SETTLEMENT_TARGET_STATUS = "SUCCEEDED";
 
     private final RestClient restClient;
 
@@ -25,13 +25,13 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
     }
 
     @Override
-    public List<ProjectSettlementTarget> findSettlementTargets(YearMonth settlementMonth) {
+    public List<ProjectSettlementTarget> findSettlementTargets() {
         ProjectSettlementTargetsResponse response;
         try {
             response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
-                            .path(SETTLEMENT_TARGETS_PATH)
-                            .queryParam("settlementMonth", settlementMonth)
+                            .path(PROJECTS_PATH)
+                            .queryParam("status", SETTLEMENT_TARGET_STATUS)
                             .build())
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
@@ -48,10 +48,7 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
         }
         try {
             List<ProjectSettlementTarget> targets = response.data().stream()
-                    .map(target -> new ProjectSettlementTarget(
-                            target.projectId(),
-                            target.creatorId()
-                    ))
+                    .map(ProjectSettlementTargetHttpReader::toSettlementTarget)
                     .toList();
             Set<Long> projectIds = new HashSet<>();
             if (targets.stream().anyMatch(target -> !projectIds.add(target.projectId()))) {
@@ -63,6 +60,13 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
         }
     }
 
+    private static ProjectSettlementTarget toSettlementTarget(ProjectSettlementTargetResponse target) {
+        if (target == null || !SETTLEMENT_TARGET_STATUS.equals(target.status())) {
+            throw new IllegalArgumentException("성공 프로젝트 응답 계약을 위반했습니다.");
+        }
+        return new ProjectSettlementTarget(target.projectId(), target.creatorId());
+    }
+
     private record ProjectSettlementTargetsResponse(
             boolean success,
             List<ProjectSettlementTargetResponse> data,
@@ -72,7 +76,8 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
 
     private record ProjectSettlementTargetResponse(
             Long projectId,
-            Long creatorId
+            Long creatorId,
+            String status
     ) {
     }
 }

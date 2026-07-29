@@ -2,7 +2,6 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
-import java.time.YearMonth;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -18,7 +17,7 @@ public class DummyProjectSettlementTargetReader implements ProjectSettlementTarg
     static final long DUMMY_CREATOR_ID = 9_000_001L;
 
     @Override
-    public List<ProjectSettlementTarget> findSettlementTargets(YearMonth settlementMonth) {
+    public List<ProjectSettlementTarget> findSettlementTargets() {
         return List.of(new ProjectSettlementTarget(
                 DUMMY_PROJECT_ID,
                 DUMMY_CREATOR_ID
