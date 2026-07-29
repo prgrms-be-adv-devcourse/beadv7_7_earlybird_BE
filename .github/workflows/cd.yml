@@ -4,6 +4,14 @@ on:
     workflows: [CI]
     types: [completed]
   workflow_dispatch:
+permissions:
+  contents: write
+# Serialize deploys instead of letting them overlap: concurrent `docker compose build`s on the
+# same 2-vCPU EC2 box would reintroduce the CPU contention this sequential-build design exists
+# to avoid, and concurrent runs would also race pushing the cd-deployed tag against each other.
+concurrency:
+  group: cd-deploy
+  cancel-in-progress: false
 jobs:
   build:
     name: deploy
@@ -18,25 +26,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          # fetch-depth 1 (the default) only fetches the checked-out commit itself, with no
-          # parent - the paths-filter step below diffs against head_sha~1, which needs that
-          # parent commit to exist locally.
-          fetch-depth: 2
+          # Full history, not just a fixed few commits back: the `cd-deployed` tag below can
+          # point arbitrarily far behind HEAD if recent runs failed or were skipped, and we
+          # need that commit locally to diff against it.
+          fetch-depth: 0
 
       - name: Resolve diff base
         id: base
-        # workflow_run events carry no `before` SHA, so without an explicit `base` paths-filter
-        # falls back to diffing just the last commit via a plain `git log -n 1` - which returns
-        # zero changed files for merge commits (git won't pick a parent to diff against on its
-        # own), silently breaking on ordinary PR-merge pushes to main. HEAD~1 (first parent) is
-        # well-defined for both merge and non-merge commits and is what CI actually validated.
-        # Resolved to a literal SHA here rather than passed as `HEAD~1` directly to paths-filter,
-        # since paths-filter treats an unresolvable `base` as something to `git fetch` from the
-        # remote, and `~1` isn't a valid refspec to fetch by (only plain refs/SHAs are).
-        run: echo "sha=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
+        # `cd-deployed` is moved to HEAD by the last step of this job, but only on a fully
+        # successful run - so it always marks the last commit CD actually finished deploying.
+        # Diffing against it (instead of a fixed HEAD~1) means a run that fails or is skipped
+        # never loses track of what's still undeployed: the tag simply doesn't move, and the
+        # next run's diff naturally covers everything since the last real success, no matter
+        # how many runs failed or were skipped in between.
+        run: |
+          deployed_sha=$(git ls-remote origin refs/tags/cd-deployed | cut -f1)
+          if [ -z "$deployed_sha" ]; then
+            echo "No cd-deployed tag yet - treating this as a first run and redeploying everything."
+          fi
+          echo "sha=$deployed_sha" >> "$GITHUB_OUTPUT"
 
       - uses: dorny/paths-filter@v3
         id: filter
+        if: steps.base.outputs.sha != ''
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           base: ${{ steps.base.outputs.sha }}
@@ -62,12 +74,12 @@ jobs:
 
       - name: Compute deploy targets
         id: targets
-        # `shared` covers deps every service builds against (common/, root Dockerfile,
-        # root build.gradle/settings.gradle) or shared deploy topology (infrastructure/,
-        # e.g. docker-compose.yml, Caddyfile) - any of those changing means every service
-        # needs a rebuild, not just the ones with their own directory touched.
+        # No cd-deployed tag yet (first run) or `shared` changed (common/, root Dockerfile,
+        # root build.gradle/settings.gradle, or infrastructure/ - deps every service builds
+        # against or shared deploy topology) -> rebuild everything. Otherwise just the
+        # services paths-filter matched.
         run: |
-          if [ "${{ steps.filter.outputs.shared }}" = "true" ]; then
+          if [ -z "${{ steps.base.outputs.sha }}" ] || [ "${{ steps.filter.outputs.shared }}" = "true" ]; then
             echo 'services=config-server discovery-server gateway-server caddy order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service' >> "$GITHUB_OUTPUT"
           else
             echo 'services=${{ join(fromJSON(steps.filter.outputs.changes), ' ') }}' >> "$GITHUB_OUTPUT"
@@ -103,3 +115,11 @@ jobs:
             done
         env:
           SERVICES: ${{ steps.targets.outputs.services }}
+
+      - name: Mark commit as deployed
+        # Runs whenever every prior step succeeded (steps skipped by their own `if` - e.g. no
+        # changes to deploy - don't count as failures), so this only advances the marker past
+        # a commit whose relevant changes (if any) actually made it to EC2.
+        run: |
+          git tag -f cd-deployed
+          git push origin refs/tags/cd-deployed -f
