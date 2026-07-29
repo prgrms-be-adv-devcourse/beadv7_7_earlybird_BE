@@ -151,12 +151,27 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/me 는 newPassword 가 없으면 400 을 반환한다")
-    void updateMe_withoutNewPassword_returns400() throws Exception {
+    @DisplayName("PATCH /api/v1/users/me 는 비밀번호 필드 없이 이름과 전화번호만 수정할 수 있다")
+    void updateMe_withoutPasswordFields_returnsUpdatedUser() throws Exception {
+        UserInfo updated = new UserInfo(1L, "hanahan@example.com", "새이름", "010-1111-2222", UserRole.BACKER);
+        when(userService.updateProfile(any())).thenReturn(updated);
+
         mockMvc.perform(patch("/api/v1/users/me")
                         .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\",\"currentPassword\":\"rawPassword1!\"}"))
+                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("새이름"))
+                .andExpect(jsonPath("$.data.phoneNumber").value("010-1111-2222"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/me 는 newPassword 만 있고 currentPassword 가 없으면 400 을 반환한다")
+    void updateMe_withNewPasswordButNoCurrentPassword_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"새이름\",\"phoneNumber\":\"010-1111-2222\",\"newPassword\":\"newPassword1!\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
     }

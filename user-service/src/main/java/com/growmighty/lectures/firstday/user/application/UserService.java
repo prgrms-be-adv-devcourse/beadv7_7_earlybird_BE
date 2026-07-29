@@ -54,10 +54,12 @@ public class UserService {
         User user = userRepository.findById(command.userId())
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + command.userId()));
         user.updateProfile(command.name(), command.phoneNumber());
-        if (!passwordEncoder.matches(command.currentPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("현재 비밀번호가 올바르지 않습니다.");
+        if (command.newPassword() != null) {
+            if (!passwordEncoder.matches(command.currentPassword(), user.getPassword())) {
+                throw new IllegalArgumentException("현재 비밀번호가 올바르지 않습니다.");
+            }
+            user.changePassword(passwordEncoder.encode(command.newPassword()));
         }
-        user.changePassword(passwordEncoder.encode(command.newPassword()));
         return UserInfo.from(user);
     }
 

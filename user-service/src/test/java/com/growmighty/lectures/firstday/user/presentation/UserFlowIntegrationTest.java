@@ -127,8 +127,8 @@ class UserFlowIntegrationTest {
     }
 
     @Test
-    @DisplayName("내 정보를 수정하고 비밀번호를 변경하면, 이후 로그인은 새 비밀번호로만 성공한다")
-    void updateProfileThenChangePassword_reflectsInSubsequentLogin() throws Exception {
+    @DisplayName("내 정보만 수정하면 비밀번호는 그대로 유지된다")
+    void updateProfile_withoutPasswordFields_keepsPasswordUnchanged() throws Exception {
         signup("profile@example.com", "rawPassword1!", "옛이름", "010-5555-5555");
         Long userId = userRepository.findByEmail("profile@example.com").orElseThrow().getId();
 
@@ -146,25 +146,42 @@ class UserFlowIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("새이름"));
 
-        mockMvc.perform(patch("/api/v1/users/me/password")
-                        .header(JwtHeaders.USER_ID, userId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"currentPassword":"rawPassword1!","newPassword":"newPassword1!"}
-                                """))
-                .andExpect(status().isNoContent());
-
         mockMvc.perform(post("/api/v1/users/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"profile@example.com","password":"rawPassword1!"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("내 정보를 수정하면서 비밀번호를 함께 변경하면, 이후 로그인은 새 비밀번호로만 성공한다")
+    void updateProfileWithPassword_reflectsInSubsequentLogin() throws Exception {
+        signup("profile2@example.com", "rawPassword1!", "옛이름", "010-5555-5556");
+        Long userId = userRepository.findByEmail("profile2@example.com").orElseThrow().getId();
+
+        mockMvc.perform(patch("/api/v1/users/me")
+                        .header(JwtHeaders.USER_ID, userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"새이름","phoneNumber":"010-9999-9998","currentPassword":"rawPassword1!","newPassword":"newPassword1!"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("새이름"))
+                .andExpect(jsonPath("$.data.phoneNumber").value("010-9999-9998"));
+
+        mockMvc.perform(post("/api/v1/users/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"profile2@example.com","password":"rawPassword1!"}
                                 """))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post("/api/v1/users/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"profile@example.com","password":"newPassword1!"}
+                                {"email":"profile2@example.com","password":"newPassword1!"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
