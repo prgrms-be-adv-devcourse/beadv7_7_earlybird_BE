@@ -15,6 +15,4 @@ public interface PaymentRepository {
 
     List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit);
 
-    Optional<Payment> findByPaymentKey(String paymentKey);
-
 }

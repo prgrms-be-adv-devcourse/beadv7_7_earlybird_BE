@@ -104,8 +104,12 @@ public class PaymentConfirmationService {
 
     @Transactional
     public Optional<PaymentInfo> reconcile(PaymentGateway.PgPayment pgPayment) {
-        Payment payment = paymentRepository.findByPaymentKey(pgPayment.paymentKey())
-            .orElseThrow(() -> new EntityNotFoundException("paymentKey 에 해당하는 결제가 없습니다. paymentKey = " + pgPayment.paymentKey()));
+        Payment payment = paymentRepository.findByPgOrderId(pgPayment.pgOrderId())
+            .orElseThrow(() -> new EntityNotFoundException("paymentKey 에 해당하는 결제가 없습니다."));
+
+        if (!payment.getPaymentKey().equals(pgPayment.paymentKey())) {
+            throw new IllegalStateException("PG 결제 키가 일치하지 않습니다.");
+        }
 
         switch (pgPayment.status()) {
             case  COMPLETED -> {
