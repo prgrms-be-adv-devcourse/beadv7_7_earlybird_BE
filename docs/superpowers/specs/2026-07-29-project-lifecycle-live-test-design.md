@@ -15,18 +15,103 @@
 - 마감 배치(`ProjectDeadlineScheduler`, 매일 자정 Asia/Seoul)를 실제 자정까지 기다리지 않고 확인하는 방법: `ProjectController`에 이미 `POST /api/v1/projects/close-expired`(관리자 전용, "테스트/운영 확인용으로 즉시 트리거"라고 주석에 명시된 기존 엔드포인트)가 있다 — 그대로 재사용.
 - `Project.validatePeriod()`는 "endAt이 startAt 이후 & 3개월 이내"만 검증하고 "오늘 이후"는 검증하지 않는다 — 그래서 이미 지난 `endAt`으로 프로젝트를 바로 생성할 수 있다. 자정을 기다릴 필요 없이 `close-expired`를 바로 호출해 결과를 즉시 확인 가능.
 
-## 요구사항
+## API 검증 결과
 
-배포 환경(게이트웨이 `https://earlybird-team5-api.duckdns.org`)을 대상으로, 다음 6개 시나리오를 자동화된 라이브 테스트로 검증한다:
+라이브 테스트가 호출할 API들을 실제 코드(project-service 컨트롤러 + gateway `SecurityConfig`)와 대조한 결과. ✅는 문서/코드 일치, **이상함**은 불일치·부정확한 항목.
 
-1. 주문 생성 → 리워드 재고(`remainingQuantity`) 1 감소 확인 → 최대 60~70초 폴링으로 project의 `fundedAmount`가 해당 리워드 가격만큼 증가했는지 확인
-2. 주문 취소(환불) → 리워드 재고 1 증가 확인 → 최대 60~70초 폴링으로 `fundedAmount`가 다시 감소했는지 확인
-3. `endAt`을 과거로 만든 목표달성 프로젝트 → 관리자가 `POST /api/v1/projects/close-expired` 호출 → 해당 프로젝트 상태가 `SUCCEEDED`로 바뀌었는지 확인
-4. `endAt`을 과거로 만든 목표미달성 프로젝트 → 동일 배치 호출 → 상태가 `FAILED`로 바뀌었는지 확인
-5. `endAt`이 아직 안 지난 목표달성 프로젝트 → 관리자가 `POST /api/v1/projects/{projectId}/close-early` 호출 → 즉시 `SUCCEEDED` 확인
-6. 진행중 프로젝트 → 창작자 또는 관리자가 취소 → `CANCELLED` 확인
+| # | API | 검증 |
+|---|---|---|
+| 1 | POST `/api/v1/projects` | ✅ |
+| 2 | GET `/api/v1/projects` | 이상함 — 게이트웨이는 `permitAll`(로그인 없이도 호출 가능)인데 "X-User-Role 필요"처럼 표기됨. 헤더 없으면 컨트롤러가 BACKER로 간주 |
+| 3 | GET `/api/v1/projects/me` | ✅ (게이트웨이 `hasRole(CREATOR)`) |
+| 4 | GET `/api/v1/projects/{id}` | ✅ (permitAll) |
+| 5 | PATCH `/api/v1/projects/{id}` | ✅ (게이트웨이 `hasRole(CREATOR)`, 본인 확인은 서비스 레이어) |
+| 6 | DELETE `/api/v1/projects/{id}` | ✅ |
+| 7 | POST `/api/v1/projects/{id}/cancel` | **이상함** — 게이트웨이에 이 경로 규칙이 아예 없어 catch-all(`authenticated()`)로 빠짐. "본인/ADMIN" 검증이 게이트웨이가 아니라 서비스 레이어(`validateOwnershipOrAdmin`)에서만 이뤄짐 |
+| 8 | POST `/api/v1/projects/{id}/approve` | ✅ |
+| 9 | POST `/api/v1/projects/{id}/reject` | ✅ |
+| 10 | PATCH `/api/v1/projects/{id}/deadline` | ✅ |
+| 11 | POST `/api/v1/projects/close-expired` | 이상함 — 경로/권한은 맞으나 설명이 부정확. "정산 즉시 실행"이 아니라 **성공/실패 판정만** 함(실제 정산은 settlement가 별도 트리거) |
+| 12 | POST `/api/v1/projects/{id}/close-early` | ✅ |
+| 13 | POST `/api/v1/projects/{id}/rewards` | ✅ (게이트웨이 `hasRole(CREATOR)`) |
+| 14 | GET `/api/v1/projects/{id}/rewards` | ✅ (permitAll) |
+| 15 | GET `/api/v1/rewards/{id}` | ✅ (permitAll) |
+| 16 | PATCH `/api/v1/rewards/{id}` | ✅ |
+| 17 | DELETE `/api/v1/rewards/{id}` | 이상함 — "삭제(공개전)/비활성화(공개후)"를 한 엔드포인트가 다 하는 것처럼 읽히지만, 실제론 공개 후엔 **거부(에러)만** 되고 비활성화는 별도 admin 전용 `/deactivate`가 처리 |
+| 18 | PATCH `/api/v1/rewards/{id}/quantity` | ✅ |
+| 19 | POST `/api/v1/rewards/{id}/deactivate` | ✅ |
+| 20 | POST `/api/v1/project-categories` | **이상함** — 컨트롤러가 `requireAdmin()`으로 ADMIN 강제하는데 표엔 인증 없음으로 표기. 게이트웨이도 이 경로에 role 규칙이 없어 ADMIN 여부는 서비스단에서만 걸러짐(위반 시 403 아니라 400) |
+| 21 | GET `/api/v1/project-categories` | ✅ (permitAll) |
+| 22 | GET `/api/v1/project-categories/{id}` | ✅ (permitAll) |
+| 23 | PUT `/api/v1/project-categories/{id}` | **이상함** — 20번과 동일 (ADMIN 강제인데 게이트웨이 차단 없음) |
+| 24 | POST `/internal/v1/rewards/{id}/decrease-stock` | ✅ |
+| 25 | POST `/internal/v1/rewards/{id}/restore-stock` | ✅ |
+| 26 | GET `/internal/v1/projects?status=X` | ✅ |
 
-settlement-service와의 상호작용은 범위 밖(위 조사 결과 참고).
+표에 없던 것: `DELETE /api/v1/project-categories/{id}`(카테고리 삭제, ADMIN 전용, 하위/참조 있으면 거부)가 실제로 존재하는데 원본 표엔 빠져 있었음.
+
+**눈여겨볼 패턴(#7, #20, #23)**: 셋 다 ADMIN(또는 본인) 권한 검증이 게이트웨이가 아니라 project-service 서비스 레이어에서만 이뤄진다 — 다른 admin 전용 액션(approve/reject/close-expired 등)은 게이트웨이 `SecurityConfig`에서부터 이미 막혀있는 것과 대조적. 버그라기보다 게이트웨이 규칙 추가 누락으로 보이며, 이번 라이브 테스트 범위는 아니고 별도 이슈 후보.
+
+## 시나리오별 API 호출 & 기대 결과
+
+배포 환경(게이트웨이 `https://earlybird-team5-api.duckdns.org`)을 대상으로 다음 6개 시나리오를 검증한다. settlement-service와의 상호작용은 범위 밖(위 조사 결과 참고).
+
+**시나리오 1 — 주문 생성 → fundedAmount 증가**
+
+| 순서 | API | 기대 결과 |
+| --- | --- | --- |
+| 1 | POST `/api/v1/users/signup`, `/login` | 창작자 계정 생성/로그인 성공 |
+| 2 | POST `/api/v1/users/me/creator` + `/refresh` | role=CREATOR로 전환 |
+| 3 | POST `/api/v1/projects` | status=PENDING_REVIEW |
+| 4 | POST `/api/v1/projects/{id}/rewards` | 리워드 생성, remainingQuantity=totalQuantity |
+| 5 | POST `/api/v1/projects/{id}/approve` (관리자) | status=IN_PROGRESS |
+| 6 | GET `/api/v1/rewards/{id}` (test@test.com 로그인 후) | 리워드 조회 성공 |
+| 7 | POST `/api/v1/orders` (userId=4) | order status=PAID, 이 시점 리워드 remainingQuantity -1 |
+| 8 | GET `/api/v1/rewards/{id}` (재조회) | remainingQuantity가 -1 된 값으로 확인 |
+| 9 | GET `/api/v1/projects/{id}` (최대 60~70초 폴링) | fundedAmount == 리워드 price |
+
+**시나리오 2 — 주문 취소(환불) → fundedAmount 감소**
+
+| 순서 | API | 기대 결과 |
+| --- | --- | --- |
+| 1~7 | 시나리오 1과 동일하게 주문까지 생성 | fundedAmount가 price만큼 반영된 상태 |
+| 8 | POST `/api/v1/orders/{orderId}/cancel` | order status=CANCELLED |
+| 9 | GET `/api/v1/rewards/{id}` | remainingQuantity가 다시 +1 (원복) |
+| 10 | GET `/api/v1/projects/{id}` (최대 60~70초 폴링) | fundedAmount == 0 (또는 취소 전 값 - price) |
+
+**시나리오 3 — 마감 배치 → 목표 달성(SUCCEEDED)**
+
+| 순서 | API | 기대 결과 |
+| --- | --- | --- |
+| 1 | POST `/api/v1/projects` (startAt/endAt 둘 다 과거) | status=PENDING_REVIEW |
+| 2 | POST `/api/v1/projects/{id}/rewards` (goalAmount == price) | 리워드 생성 |
+| 3 | POST `/api/v1/projects/{id}/approve` | status=IN_PROGRESS |
+| 4 | POST `/api/v1/orders` (test@test.com) → 목표금액 달성 | order PAID |
+| 5 | GET `/api/v1/projects/{id}` (폴링) | fundedAmount == goalAmount 확인 |
+| 6 | POST `/api/v1/projects/close-expired` (관리자) | 200 반환 |
+| 7 | GET `/api/v1/projects/{id}` | status==SUCCEEDED |
+
+**시나리오 4 — 마감 배치 → 목표 미달(FAILED)**
+
+| 순서 | API | 기대 결과 |
+| --- | --- | --- |
+| 1~3 | 시나리오 3과 동일 (단, 주문 없음 → fundedAmount=0) | status=IN_PROGRESS |
+| 4 | POST `/api/v1/projects/close-expired` | 200 반환 |
+| 5 | GET `/api/v1/projects/{id}` | status==FAILED |
+
+**시나리오 5 — 조기종료(SUCCEEDED)**
+
+| 순서 | API | 기대 결과 |
+| --- | --- | --- |
+| 1~5 | 시나리오 3의 1~5와 동일 (단, endAt은 미래) | fundedAmount==goalAmount, status는 아직 IN_PROGRESS |
+| 6 | POST `/api/v1/projects/{id}/close-early` (관리자) | 응답 즉시 status==SUCCEEDED |
+
+**시나리오 6 — 취소(CANCELLED)**
+
+| 순서 | API | 기대 결과 |
+| --- | --- | --- |
+| 1~3 | 프로젝트 생성→승인 (IN_PROGRESS) | status=IN_PROGRESS |
+| 4 | POST `/api/v1/projects/{id}/cancel` (창작자 본인 또는 관리자) | 응답 즉시 status==CANCELLED |
 
 ## 아키텍처
 
@@ -71,3 +156,4 @@ settlement-service와의 상호작용은 범위 밖(위 조사 결과 참고).
 - settlement-service와의 상호작용 검증 (팀 결정으로 자동 트리거 자체가 없음 — 위 경위 참고)
 - 부하/동시성 테스트(재고 100개/동시 요청 1,000건 시나리오) — 별도 작업으로 갭 리포트에 기록됨
 - 생성된 테스트 데이터의 정리(cleanup) 자동화
+- 게이트웨이 ADMIN 권한 검증 누락(#7, #20, #23) 수정 — 이번 작업 범위 밖, 별도 이슈 후보
