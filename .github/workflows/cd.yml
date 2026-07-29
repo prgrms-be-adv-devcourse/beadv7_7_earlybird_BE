@@ -8,98 +8,32 @@ jobs:
   build:
     name: deploy
     runs-on: ubuntu-latest
-    # workflow_run fires for every CI run regardless of branch/outcome, so gate here:
-    # only deploy a main-branch CI run that actually passed. workflow_dispatch bypasses
-    # this entirely since it has no associated workflow_run event.
+    # workflow_run은 브랜치/결과와 무관하게 모든 CI 실행마다 발생하므로 여기서 게이팅한다:
+    # main 브랜치에서 실제로 성공한 CI 실행만 배포한다. workflow_dispatch는 연결된
+    # workflow_run 이벤트가 없으므로 이 조건을 완전히 우회한다.
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          # fetch-depth 1 (the default) only fetches the checked-out commit itself, with no
-          # parent - the paths-filter step below diffs against head_sha~1, which needs that
-          # parent commit to exist locally.
-          fetch-depth: 2
-
-      - name: Resolve diff base
-        id: base
-        # workflow_run events carry no `before` SHA, so without an explicit `base` paths-filter
-        # falls back to diffing just the last commit via a plain `git log -n 1` - which returns
-        # zero changed files for merge commits (git won't pick a parent to diff against on its
-        # own), silently breaking on ordinary PR-merge pushes to main. HEAD~1 (first parent) is
-        # well-defined for both merge and non-merge commits and is what CI actually validated.
-        # Resolved to a literal SHA here rather than passed as `HEAD~1` directly to paths-filter,
-        # since paths-filter treats an unresolvable `base` as something to `git fetch` from the
-        # remote, and `~1` isn't a valid refspec to fetch by (only plain refs/SHAs are).
-        run: echo "sha=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
-
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          base: ${{ steps.base.outputs.sha }}
-          filters: |
-            shared:
-              - 'common/**'
-              - 'Dockerfile'
-              - 'build.gradle'
-              - 'settings.gradle'
-              - 'infrastructure/**'
-            config-server: 'config-server/**'
-            discovery-server: 'discovery-server/**'
-            gateway-server: 'gateway-server/**'
-            order-service: 'order-service/**'
-            project-service: 'project-service/**'
-            payment-service: 'payment-service/**'
-            user-service: 'user-service/**'
-            cart-service: 'cart-service/**'
-            settlement-service: 'settlement-service/**'
-            file-service: 'file-service/**'
-            board-service: 'board-service/**'
-            notification-service: 'notification-service/**'
-
-      - name: Compute deploy targets
-        id: targets
-        # `shared` covers deps every service builds against (common/, root Dockerfile,
-        # root build.gradle/settings.gradle) or shared deploy topology (infrastructure/,
-        # e.g. docker-compose.yml, Caddyfile) - any of those changing means every service
-        # needs a rebuild, not just the ones with their own directory touched.
-        run: |
-          if [ "${{ steps.filter.outputs.shared }}" = "true" ]; then
-            echo 'services=config-server discovery-server gateway-server caddy order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service' >> "$GITHUB_OUTPUT"
-          else
-            echo 'services=${{ join(fromJSON(steps.filter.outputs.changes), ' ') }}' >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: appleboy/ssh-action@v1
-        # Nothing changed that any service depends on (e.g. a docs-only push) -> skip the SSH
-        # connection and remote git pull entirely instead of running a no-op loop.
-        if: steps.targets.outputs.services != ''
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          # drone-ssh kills the remote command after this long regardless of progress.
-          # Default is 10m, which isn't enough headroom for a full rebuild.
+          # drone-ssh는 진행 상황과 무관하게 이 시간이 지나면 원격 명령을 강제 종료한다.
+          # 기본값 10분으로는 12개 이미지를 전부 재빌드하기엔 여유가 부족하다.
           command_timeout: '30m'
-          envs: SERVICES
           script: |
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
             git pull
-            # Build one service at a time instead of a single `docker compose up -d --build`
-            # (which builds all images in parallel via buildx bake). EC2 is a 2-vCPU box,
-            # so many concurrent Gradle builds thrash the CPU badly enough to make even sshd
-            # unresponsive - that's what caused a past CD run to time out and the box to need
-            # a reboot. Sequential builds are slower in total, but each one actually finishes.
-            # $SERVICES is the subset `targets` determined actually needs rebuilding - see that
-            # step for how it's picked.
-            # -f infrastructure/docker-compose.prod.yml layers the AWS-only overrides (currently
-            # just gateway-server's host port) on top of the shared base file - see that file
-            # for why. Local dev never passes it, so nothing there is affected.
-            for svc in $SERVICES; do
+            # 단일 `docker compose up -d --build`(buildx bake로 12개 이미지를 전부 병렬
+            # 빌드)가 아니라 서비스를 한 번에 하나씩 빌드한다. EC2는 2 vCPU 짜리라
+            # Gradle 빌드 12개가 동시에 돌면 CPU 경합이 심해져 sshd조차 응답하지
+            # 않게 되는데, 이 때문에 CD 실행이 타임아웃되고 인스턴스를 재부팅해야
+            # 했던 적이 있다. 순차 빌드는 전체 시간은 더 걸리지만 각 빌드가 확실히 끝난다.
+            # -f infrastructure/docker-compose.prod.yml 은 공용 base 파일 위에 AWS 전용
+            # 오버라이드(현재는 gateway-server 호스트 포트뿐)를 얹는다 - 이유는 그 파일
+            # 참고. 로컬 개발에서는 이 옵션을 절대 넘기지 않으므로 영향 없음.
+            for svc in config-server discovery-server gateway-server caddy order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
               docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d --build "$svc"
             done
-        env:
-          SERVICES: ${{ steps.targets.outputs.services }}
