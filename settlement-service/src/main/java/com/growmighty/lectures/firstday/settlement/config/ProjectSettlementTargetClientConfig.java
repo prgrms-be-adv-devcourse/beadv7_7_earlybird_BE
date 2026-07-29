@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.config;
 
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.infrastructure.client.project.ProjectSettlementTargetHttpReader;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -48,7 +48,7 @@ public class ProjectSettlementTargetClientConfig {
     }
 
     @Bean
-    public ProjectSettlementTargetReader projectSettlementTargetReader(
+    public ProjectOutcomeReader projectOutcomeReader(
             @Qualifier("projectSettlementTargetRestClient") RestClient restClient
     ) {
         return new ProjectSettlementTargetHttpReader(restClient);

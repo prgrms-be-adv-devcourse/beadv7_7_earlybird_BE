@@ -9,8 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
@@ -270,40 +271,40 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     static class TestExternalDataAdapter
-            implements ProjectSettlementTargetReader, FinalEffectivePaymentAmountReader {
+            implements ProjectOutcomeReader, FinalEffectivePaymentAmountReader {
 
-        private ProjectSettlementTarget target;
+        private ProjectOutcome outcome;
         private List<Money> paymentAmounts;
         private RuntimeException paymentReadFailure;
         private RuntimeException targetReadFailure;
 
         void respondWith(Long projectId, Long creatorId, List<Money> paymentAmounts) {
-            this.target = new ProjectSettlementTarget(projectId, creatorId);
+            this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
             this.paymentAmounts = List.copyOf(paymentAmounts);
             this.paymentReadFailure = null;
             this.targetReadFailure = null;
         }
 
         void failPaymentReadWith(Long projectId, Long creatorId, RuntimeException failure) {
-            this.target = new ProjectSettlementTarget(projectId, creatorId);
+            this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
             this.paymentAmounts = List.of();
             this.paymentReadFailure = failure;
             this.targetReadFailure = null;
         }
 
         void failTargetReadWith(RuntimeException failure) {
-            this.target = null;
+            this.outcome = null;
             this.paymentAmounts = List.of();
             this.paymentReadFailure = null;
             this.targetReadFailure = failure;
         }
 
         @Override
-        public List<ProjectSettlementTarget> findSettlementTargets() {
+        public List<ProjectOutcome> findProjectOutcomes() {
             if (targetReadFailure != null) {
                 throw targetReadFailure;
             }
-            return List.of(target);
+            return List.of(outcome);
         }
 
         @Override

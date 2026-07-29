@@ -3,8 +3,9 @@ package com.growmighty.lectures.firstday.settlement.application;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
@@ -36,13 +37,49 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Test
+    @DisplayName("Project 결과 중 성공 프로젝트만 정산한다")
+    void settlesOnlySucceededProjectOutcomes() {
+        creatorPayoutProfileRepository.save(payoutReadyProfile(211L, "seller-211", "********0211"));
+        ProjectOutcomeReader outcomeReader = () -> List.of(
+                new ProjectOutcome(111L, 211L, ProjectOutcomeStatus.SUCCEEDED),
+                new ProjectOutcome(112L, 212L, ProjectOutcomeStatus.FAILED),
+                new ProjectOutcome(113L, 213L, ProjectOutcomeStatus.CANCELLED)
+        );
+        AtomicInteger paymentReads = new AtomicInteger();
+        FinalEffectivePaymentAmountReader paymentAmountReader = ignored -> {
+            paymentReads.incrementAndGet();
+            return List.of(Money.wons(100_000));
+        };
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                outcomeReader,
+                paymentAmountReader,
+                projectSettlementService,
+                Clock.fixed(
+                        LocalDateTime.of(2026, 7, 23, 10, 0).toInstant(ZoneOffset.UTC),
+                        ZoneOffset.UTC
+                )
+        );
+
+        ProjectSettlementRunResult result = runService.run(new RunProjectSettlementsCommand(
+                YearMonth.of(2026, 7),
+                LocalDate.of(2026, 8, 3),
+                LocalDateTime.of(2026, 7, 23, 10, 0)
+        ));
+
+        assertThat(paymentReads).hasValue(1);
+        assertThat(result.confirmedSettlements())
+                .extracting(ConfirmedProjectSettlement::projectId)
+                .containsExactly(111L);
+    }
+
+    @Test
     @DisplayName("대상 월의 모든 프로젝트 정산을 실행한다")
     void runsAllProjectSettlementsForMonth() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(201L, "seller-201", "********0201"));
         creatorPayoutProfileRepository.save(payoutReadyProfile(202L, "seller-202", "********0202"));
-        ProjectSettlementTargetReader targetReader = () -> List.of(
-                new ProjectSettlementTarget(101L, 201L),
-                new ProjectSettlementTarget(102L, 202L)
+        ProjectOutcomeReader outcomeReader = () -> List.of(
+                new ProjectOutcome(101L, 201L, ProjectOutcomeStatus.SUCCEEDED),
+                new ProjectOutcome(102L, 202L, ProjectOutcomeStatus.SUCCEEDED)
         );
         Map<Long, List<Money>> amountsByProject = Map.of(
                 101L, List.of(Money.wons(100_000)),
@@ -50,7 +87,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         );
         FinalEffectivePaymentAmountReader paymentAmountReader = amountsByProject::get;
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
-                targetReader,
+                outcomeReader,
                 paymentAmountReader,
                 projectSettlementService,
                 Clock.fixed(
@@ -95,8 +132,8 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(
                 payoutReadyProfile(creatorId, "seller-203", "********0203")
         );
-        ProjectSettlementTargetReader targetReader = () -> List.of(
-                new ProjectSettlementTarget(projectId, creatorId)
+        ProjectOutcomeReader outcomeReader = () -> List.of(
+                new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED)
         );
         AtomicInteger paymentReads = new AtomicInteger();
         FinalEffectivePaymentAmountReader paymentAmountReader = ignored ->
@@ -104,7 +141,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                         ? List.of(Money.wons(100_000))
                         : List.of(Money.wons(900_000));
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
-                targetReader,
+                outcomeReader,
                 paymentAmountReader,
                 projectSettlementService,
                 Clock.fixed(

@@ -10,8 +10,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
 import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +31,7 @@ class ProjectSettlementTargetHttpReaderTest {
     private static final String BASE_URL = "http://project-service";
 
     private MockRestServiceServer server;
-    private ProjectSettlementTargetReader reader;
+    private ProjectOutcomeReader reader;
 
     @BeforeEach
     void setUp() {
@@ -81,11 +82,11 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        List<ProjectSettlementTarget> targets = reader.findSettlementTargets();
+        List<ProjectOutcome> targets = reader.findProjectOutcomes();
 
         assertThat(targets).containsExactly(
-                new ProjectSettlementTarget(101L, 201L),
-                new ProjectSettlementTarget(102L, 202L)
+                new ProjectOutcome(101L, 201L, ProjectOutcomeStatus.SUCCEEDED),
+                new ProjectOutcome(102L, 202L, ProjectOutcomeStatus.SUCCEEDED)
         );
         server.verify();
     }
@@ -104,7 +105,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertThat(reader.findSettlementTargets()).isEmpty();
+        assertThat(reader.findProjectOutcomes()).isEmpty();
         server.verify();
     }
 
@@ -124,7 +125,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(reader::findSettlementTargets)
+        assertThatThrownBy(reader::findProjectOutcomes)
                 .isInstanceOfSatisfying(SettlementException.class, exception -> {
                     assertThat(exception.errorCode()).isEqualTo(
                             SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE
@@ -151,7 +152,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -174,7 +175,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -198,7 +199,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -227,7 +228,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -250,7 +251,7 @@ class ProjectSettlementTargetHttpReaderTest {
                                 }
                                 """));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -262,7 +263,7 @@ class ProjectSettlementTargetHttpReaderTest {
                 ))
                 .andRespond(withSuccess("not-json", MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -276,7 +277,7 @@ class ProjectSettlementTargetHttpReaderTest {
                     throw new IOException("Project 연결 원문 오류");
                 });
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 

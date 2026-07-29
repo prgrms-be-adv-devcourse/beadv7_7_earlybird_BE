@@ -5,8 +5,9 @@ import static com.growmighty.lectures.firstday.settlement.application.error.Sett
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutSchedulePolicy;
 import java.time.Clock;
@@ -21,20 +22,20 @@ import org.springframework.stereotype.Service;
 @Service
 public final class ProjectSettlementRunService {
 
-    private final ProjectSettlementTargetReader projectSettlementTargetReader;
+    private final ProjectOutcomeReader projectOutcomeReader;
     private final FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader;
     private final ProjectSettlementService projectSettlementService;
     private final Clock clock;
     private final Optional<PayoutExecutor> payoutExecutor;
 
     public ProjectSettlementRunService(
-            ProjectSettlementTargetReader projectSettlementTargetReader,
+            ProjectOutcomeReader projectOutcomeReader,
             FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader,
             ProjectSettlementService projectSettlementService,
             Clock clock
     ) {
         this(
-                projectSettlementTargetReader,
+                projectOutcomeReader,
                 finalEffectivePaymentAmountReader,
                 projectSettlementService,
                 clock,
@@ -44,13 +45,13 @@ public final class ProjectSettlementRunService {
 
     @Autowired
     public ProjectSettlementRunService(
-            ProjectSettlementTargetReader projectSettlementTargetReader,
+            ProjectOutcomeReader projectOutcomeReader,
             FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader,
             ProjectSettlementService projectSettlementService,
             Clock clock,
             Optional<PayoutExecutor> payoutExecutor
     ) {
-        this.projectSettlementTargetReader = projectSettlementTargetReader;
+        this.projectOutcomeReader = projectOutcomeReader;
         this.finalEffectivePaymentAmountReader = finalEffectivePaymentAmountReader;
         this.projectSettlementService = projectSettlementService;
         this.clock = clock;
@@ -66,29 +67,32 @@ public final class ProjectSettlementRunService {
     }
 
     public ProjectSettlementRunResult run(RunProjectSettlementsCommand command) {
-        List<ProjectSettlementTarget> targets;
+        List<ProjectOutcome> outcomes;
         try {
-            targets = projectSettlementTargetReader.findSettlementTargets();
+            outcomes = projectOutcomeReader.findProjectOutcomes();
         } catch (SettlementException exception) {
             throw exception;
         } catch (RuntimeException exception) {
             throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE, exception);
         }
-        if (targets == null) {
+        try {
+            outcomes = List.copyOf(outcomes);
+        } catch (NullPointerException exception) {
+            throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
+        }
+        if (outcomes.stream().anyMatch(ProjectSettlementRunService::isInvalid)) {
             throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
         }
         List<ConfirmedProjectSettlement> confirmedSettlements = new ArrayList<>();
 
-        for (ProjectSettlementTarget target : targets) {
-            if (target == null
-                    || target.projectId() == null || target.projectId() <= 0
-                    || target.creatorId() == null || target.creatorId() <= 0) {
-                throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
+        for (ProjectOutcome outcome : outcomes) {
+            if (outcome.status() != ProjectOutcomeStatus.SUCCEEDED) {
+                continue;
             }
             List<Money> paymentAmounts;
             try {
                 paymentAmounts = finalEffectivePaymentAmountReader
-                        .findFinalEffectivePaymentAmounts(target.projectId());
+                        .findFinalEffectivePaymentAmounts(outcome.projectId());
             } catch (SettlementException exception) {
                 throw exception;
             } catch (RuntimeException exception) {
@@ -100,8 +104,8 @@ public final class ProjectSettlementRunService {
                 throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
             }
             ConfirmProjectSettlementCommand confirmCommand = new ConfirmProjectSettlementCommand(
-                    target.projectId(),
-                    target.creatorId(),
+                    outcome.projectId(),
+                    outcome.creatorId(),
                     paymentAmounts,
                     command.scheduledDate(),
                     command.confirmedAt()
@@ -118,5 +122,12 @@ public final class ProjectSettlementRunService {
         }
 
         return new ProjectSettlementRunResult(command.settlementMonth(), confirmedSettlements);
+    }
+
+    private static boolean isInvalid(ProjectOutcome outcome) {
+        return outcome == null
+                || outcome.projectId() == null || outcome.projectId() <= 0
+                || outcome.creatorId() == null || outcome.creatorId() <= 0
+                || outcome.status() == null;
     }
 }
