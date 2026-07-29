@@ -29,8 +29,8 @@ public class Order extends BaseEntity {
     @OrderBy("id ASC")
     private final List<OrderItem> items = new ArrayList<>();
 
-    @Column
-    private Long paymentId;
+    @Column(name = "project_id", nullable = false)
+    private Long projectId;
 
     @Embedded
     @AttributeOverride(name = "value", column = @Column(name = "items_amount", nullable = false))
@@ -60,13 +60,14 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private String zipCode;
 
-    private Order(Long id, Long userId, List<OrderItem> items,
+    private Order(Long id, Long userId, Long projectId, List<OrderItem> items,
                   String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
         validateItems(items);
         validateShippingInfo(receiverName, receiverPhone, shippingAddress, zipCode);
         this.id = id;
         items.forEach(this::addOrderItem);
         this.userId = userId;
+        this.projectId = projectId;
         this.receiverName = receiverName;
         this.receiverPhone = receiverPhone;
         this.shippingAddress = shippingAddress;
@@ -75,9 +76,9 @@ public class Order extends BaseEntity {
         recalculateAmounts();
     }
 
-    public static Order create(Long id, Long userId, List<OrderItem> items,
+    public static Order create(Long id, Long userId, Long projectId, List<OrderItem> items,
                                String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        return new Order(id, userId, items, receiverName, receiverPhone, shippingAddress, zipCode);
+        return new Order(id, userId, projectId, items, receiverName, receiverPhone, shippingAddress, zipCode);
     }
 
     private void validateItems(List<OrderItem> items) {
@@ -143,12 +144,11 @@ public class Order extends BaseEntity {
         this.status = OrderStatus.PAYMENT_FAILED;
     }
 
-    public void markPaid(Long paymentId) {
+    public void markPaid() {
         if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAID);
         }
         this.status = OrderStatus.PAID;
-        this.paymentId = paymentId;
     }
 
     public void cancel() {

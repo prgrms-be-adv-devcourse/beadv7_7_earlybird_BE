@@ -20,7 +20,6 @@ import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,7 +84,7 @@ public class OrderApiService {
     // 주문 생성 요청
     public OrderResult placeOrder(PlaceOrderCommand command, Long requesterId) {
         validateRequesterId(requesterId);
-        command = new PlaceOrderCommand(requesterId, command.lines(),
+        command = new PlaceOrderCommand(requesterId, command.projectId(), command.lines(),
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
                 command.expectedItemsAmount(), command.expectedTotalAmount());
         validateCommand(command);
@@ -206,7 +205,7 @@ public class OrderApiService {
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
         }
 
-        Order order = Order.create(null, command.userId(), orderItems,
+        Order order = Order.create(null, command.userId(), command.projectId(), orderItems,
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
         validateAmounts(command, order);
         log.info("pending order created. orderId={}", order.getId());
@@ -220,7 +219,7 @@ public class OrderApiService {
         }
 
         if (payment.status() == PaymentResult.Status.SUCCESS) {
-            order.markPaid(payment.paymentId());
+            order.markPaid();
             removeOrderedCartItems(order);
             log.info("payment succeeded. orderId={}", order.getId());
             return;

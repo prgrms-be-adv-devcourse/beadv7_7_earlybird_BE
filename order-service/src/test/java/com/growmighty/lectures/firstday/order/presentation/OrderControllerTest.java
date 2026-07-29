@@ -50,7 +50,7 @@ class OrderControllerTest {
                         .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"userId":1,"requests":[{"rewardId":1,"quantity":1,"expectedUnitPrice":20000}],"receiverName":"Receiver","receiverPhone":"010-0000-0000","shippingAddress":"Seoul","zipCode":"06236","expectedItemsAmount":20000,"expectedTotalAmount":23000}
+                                {"userId":1,"projectId":10,"requests":[{"rewardId":1,"quantity":1,"expectedUnitPrice":20000}],"receiverName":"Receiver","receiverPhone":"010-0000-0000","shippingAddress":"Seoul","zipCode":"06236","expectedItemsAmount":20000,"expectedTotalAmount":23000}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))

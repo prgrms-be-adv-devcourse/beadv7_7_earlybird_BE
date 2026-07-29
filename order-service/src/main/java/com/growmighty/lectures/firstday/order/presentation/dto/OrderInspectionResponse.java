@@ -13,7 +13,7 @@ public record OrderInspectionResponse(
         BigDecimal shippingFee,
         BigDecimal totalAmount,
         BigDecimal paymentAmount,
-        Long paymentId,
+        Long projectId,
         List<ItemResponse> items
 ) {
     public record ItemResponse(
@@ -49,7 +49,7 @@ public record OrderInspectionResponse(
                 view.shippingFee(),
                 view.totalAmount(),
                 view.paymentAmount(),
-                view.paymentId(),
+                view.projectId(),
                 items);
     }
 }

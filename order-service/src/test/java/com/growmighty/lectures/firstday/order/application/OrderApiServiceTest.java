@@ -71,6 +71,7 @@ class OrderApiServiceTest {
 
         assertThat(result.id()).isEqualTo(1L);
         assertThat(result.status()).isEqualTo(OrderStatus.PAID);
+        assertThat(orders.get(1L).getProjectId()).isEqualTo(10L);
         verify(rewardPort, times(1)).decreaseStock(10L, 2);
         verify(rewardPort, never()).restoreStock(10L, 2);
     }
@@ -246,13 +247,13 @@ class OrderApiServiceTest {
     }
 
     private PlaceOrderCommand command(Long userId) {
-        return new PlaceOrderCommand(userId, List.of(new OrderLine(10L, 2, BigDecimal.valueOf(10_000))),
+        return new PlaceOrderCommand(userId, 10L, List.of(new OrderLine(10L, 2, BigDecimal.valueOf(10_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
                 BigDecimal.valueOf(20_000), BigDecimal.valueOf(23_000));
     }
 
     private Order processingOrder(Long orderId) {
-        Order order = Order.create(orderId, 1L,
+        Order order = Order.create(orderId, 1L, 1L,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 1L, 10L, 2)),
                 "Receiver", "010-0000-0000", "Seoul", "06236");
         order.markPaymentRequested();
@@ -261,11 +262,11 @@ class OrderApiServiceTest {
     }
 
     private Order paidOrder(Long orderId) {
-        Order order = Order.create(orderId, 1L,
+        Order order = Order.create(orderId, 1L, 1L,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 1L, 10L, 2)),
                 "Receiver", "010-0000-0000", "Seoul", "06236");
         order.markPaymentRequested();
-        order.markPaid(99L);
+        order.markPaid();
         return order;
     }
 }

@@ -19,7 +19,7 @@ class OrderTest {
     }
 
     private Order order(List<OrderItem> items) {
-        return Order.create(1L, 1L, items, "Receiver", "010-0000-0000", "Seoul", "06236");
+        return Order.create(1L, 1L, 1L, items, "Receiver", "010-0000-0000", "Seoul", "06236");
     }
 
     @Disabled
@@ -56,9 +56,9 @@ class OrderTest {
     @DisplayName("배송지 정보가 비어 있으면 생성할 수 없다")
     void create_withoutShippingInfo_throws() {
         List<OrderItem> items = List.of(item(1L, "10000", 1));
-        assertThatThrownBy(() -> Order.create(1L, 1L, items, "", "010-0000-0000", "Seoul", "06236"))
+        assertThatThrownBy(() -> Order.create(1L, 1L, 1L, items, "", "010-0000-0000", "Seoul", "06236"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Order.create(1L, 1L, items, "Receiver", null, "Seoul", "06236"))
+        assertThatThrownBy(() -> Order.create(1L, 1L, 1L, items, "Receiver", null, "Seoul", "06236"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -66,10 +66,11 @@ class OrderTest {
     @Test
     @DisplayName("new order id is null before persistence")
     void create_idIsNullBeforePersistence() {
-        Order order = Order.create(null, 1L, List.of(item(1L, "10000", 1)),
+        Order order = Order.create(null, 1L, 1L, List.of(item(1L, "10000", 1)),
                 "Receiver", "010-0000-0000", "Seoul", "06236");
 
         assertThat(order.getId()).isNull();
+        assertThat(order.getProjectId()).isEqualTo(1L);
     }
 
     @Disabled
@@ -81,7 +82,7 @@ class OrderTest {
         assertThatThrownBy(order::cancel).isInstanceOf(InvalidOrderStatusException.class);
 
         order.markPaymentRequested();
-        order.markPaid(99L);
+        order.markPaid();
         order.cancel();
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
@@ -93,12 +94,12 @@ class OrderTest {
     void cancel_twice_throws() {
         Order order = order(List.of(item(1L, "10000", 1)));
 
-        assertThatThrownBy(() -> order.markPaid(99L)).isInstanceOf(InvalidOrderStatusException.class);
+        assertThatThrownBy(() -> order.markPaid()).isInstanceOf(InvalidOrderStatusException.class);
         assertThatThrownBy(order::markPaymentProcessing).isInstanceOf(InvalidOrderStatusException.class);
 
         order.markPaymentRequested();
-        order.markPaid(99L);
-        assertThatThrownBy(() -> order.markPaid(100L)).isInstanceOf(InvalidOrderStatusException.class);
+        order.markPaid();
+        assertThatThrownBy(() -> order.markPaid()).isInstanceOf(InvalidOrderStatusException.class);
     }
 
     @Disabled
