@@ -23,6 +23,7 @@ Payment 도메인은 주문에 대한 결제 준비, PG 승인 요청, 결제 �
 - `@Version` 기반 낙관적 락으로 동시 승인 선점 보호
 - 승인용 멱등키 생성 및 토스 `Idempotency-Key` 헤더 전달
 - `paymentKey` 기반 토스 결제 상태 조회
+- `paymentKey`, `approveIdempotencyKey`의 AES-256-GCM 암호화 저장 및 JPA 자동 복호화
 - 오래된 `CONFIRMING` 결제의 토스 상태 복구
 - `CONFIRMING` 최대 대기 시간 초과 시 `PENDING` 결제 실패 처리
 - 3분 주기 타임아웃 결제 복구 배치 실행
@@ -40,7 +41,7 @@ Payment 도메인은 주문에 대한 결제 준비, PG 승인 요청, 결제 �
 - 승인/취소 이벤트 발행
 - 프로젝트 마감 전 취소 가능 여부 검증
 - `READY` 상태로 장기 체류한 미결제 건의 만료 정책
-- 카드·영수증 등 토스 상세 응답 저장, 암호화·마스킹
+- 카드·영수증 등 토스 상세 응답 저장 및 마스킹
 - 웹훅 `eventType` 검증 및 인프라 레벨 Toss 인바운드 IP ACL 적용
 - 외부 Toss 관리자 화면에서 발생한 취소를 `PAID → CANCELLED`로 정합화하고 Refund 이력을 생성하는 처리
 - 환불 결과 재조회·재시도 및 실패 Refund 처리
@@ -53,10 +54,10 @@ Payment 도메인은 주문에 대한 결제 준비, PG 승인 요청, 결제 �
 | --- | --- |
 | `paymentId` | 내부 결제 식별자. DB 컬럼은 `id` |
 | `orderId` | 주문 서비스의 주문 식별자. `Long`이며 결제당 하나로 유니크 |
-| `pgOrderId` | `order-{orderId}-{32자리 UUID}` 형식의 Toss 주문번호. 유니크, 최대 58자 |
-| `paymentKey` | 토스가 인증 성공 후 발급하는 결제 식별자. `READY → CONFIRMING` 전이 시 저장하며, 상태 복구 조회 키로 사용 |
+| `pgOrderId` | `order-{orderId}-{32자리 UUID}` 형식의 Toss 주문번호. 유니크, 최대 58자. 웹훅·복구 정합화 시 Payment 조회 키로 사용 |
+| `paymentKey` | 토스가 인증 성공 후 발급하는 결제 식별자. `READY → CONFIRMING` 전이 시 저장하며, DB에는 AES-256-GCM 암호문으로 저장 |
 | `amount` | 준비·승인 단계에서 검증하는 결제 금액 |
-| `approveIdempotencyKey` | 승인 재시도 시 토스에 전달하는 서버 생성 UUID. 유니크 |
+| `approveIdempotencyKey` | 승인 재시도 시 토스에 전달하는 서버 생성 UUID. DB에는 AES-256-GCM 암호문으로 저장 |
 | `version` | 낙관적 락 버전 |
 | `confirmingAt` | 승인 선점 시각 |
 | `confirmedAt` | 내부 승인 완료 시각 |
@@ -64,6 +65,14 @@ Payment 도메인은 주문에 대한 결제 준비, PG 승인 요청, 결제 �
 | `status` | 결제 상태 |
 
 복구 배치 조회를 위해 `payments(status, confirming_At)` 복합 인덱스를 선언한다. 조회 조건인 `status = CONFIRMING`, `confirmingAt < cutoff` 및 정렬에 사용한다.
+
+### 결제 민감정보 암호화
+
+`paymentKey`, `approveIdempotencyKey`는 `PaymentSensitiveDataConverter`를 통해 DB 저장 시 AES-256-GCM으로 암호화하고, 엔티티 조회 시 자동 복호화한다. 암호문은 매 저장마다 생성되는 12바이트 IV와 GCM 인증 태그를 포함한 뒤 Base64 문자열로 저장한다. 따라서 같은 평문도 저장할 때마다 서로 다른 암호문이 된다.
+
+AES 키는 코드나 설정 파일에 저장하지 않으며, `PAYMENT_SECURITY_ENCRYPTION_KEY` 환경변수를 `payment.security.encryption-key`로 바인딩해 주입한다. 값은 Base64로 인코딩한 32바이트 AES-256 키여야 하며, 기존 암호문을 복호화하려면 같은 키를 유지해야 한다.
+
+AES-GCM 암호문은 매번 달라져 `paymentKey`를 DB 동등 조회 조건으로 사용할 수 없다. PG 정합화는 Toss 재조회 응답의 유니크한 `pgOrderId`로 Payment를 찾고, 조회 후 복호화된 `paymentKey`가 Toss 응답의 값과 일치하는지 검증한다.
 
 ### 응답 DTO 분리
 
@@ -140,8 +149,8 @@ READY → CONFIRMING → PAID → CANCELLED
 1. 토스 결제창은 `paymentKey`, `orderId`, `amount`를 성공 URL에 전달한다.
 2. 성공 페이지는 `/api/v1/payments/confirm`을 호출한다.
 3. `PaymentConfirmationService`는 `pgOrderId`로 준비된 결제를 찾고, 요청 금액이 준비 금액과 같은지 확인한다.
-4. 결제를 `CONFIRMING`으로 바꾸고 `paymentKey`를 저장한 뒤 트랜잭션을 종료한다. 외부 PG 호출 중 DB 트랜잭션을 유지하지 않는다.
-5. `PaymentService`는 `PaymentGateway`에 `paymentKey`, `pgOrderId`, 금액, 저장된 멱등키를 전달한다.
+4. 결제를 `CONFIRMING`으로 바꾸고 `paymentKey`를 저장한 뒤 트랜잭션을 종료한다. `paymentKey`와 승인 멱등키는 DB 저장 시 AES-256-GCM으로 암호화된다. 외부 PG 호출 중 DB 트랜잭션을 유지하지 않는다.
+5. `PaymentService`는 조회 시 자동 복호화된 `paymentKey`, `pgOrderId`, 금액, 승인 멱등키를 `PaymentGateway`에 전달한다.
 6. Toss 구현체는 `POST /v1/payments/confirm`을 호출하고, 응답 상태가 `DONE`인지 확인한다.
 7. 토스 응답의 결제키·주문번호·금액이 내부 값과 같으면 결제를 `PAID`로 변경하고 `confirmedAt`을 저장한다.
 8. `PaymentService`는 `PAID` 결과를 Order 서비스에 통보한다. Order 서비스 장애 시 Payment는 이미 `PAID`로 저장되며, 현재 동기 호출 실패를 영속 재시도하지 않는다.
@@ -166,6 +175,7 @@ READY → CONFIRMING → PAID → CANCELLED
 ```text
 PAYMENT_GATEWAY=toss
 PAYMENT_TOSS_SECRET_KEY=test_sk_... 또는 live_sk_...
+PAYMENT_SECURITY_ENCRYPTION_KEY=Base64로_인코딩한_32바이트_AES_키
 ```
 
 `TossPaymentConfig`는 시크릿 키와 빈 비밀번호를 Basic 인증으로 설정한다. `TossPaymentGateway`는 승인 시 `POST /v1/payments/confirm`을, 복구 조회 시 `GET /v1/payments/{paymentKey}`를 호출한다. `TossRefundGateway`는 전액 환불 시 `POST /v1/payments/{paymentKey}/cancel`을 호출하고 응답 상태가 `CANCELED`인지 검증한다. 클라이언트 키는 결제창을 여는 프론트엔드용 키이며 시크릿 키와 같은 상점의 키 쌍이어야 한다.
@@ -243,7 +253,7 @@ Toss 웹훅 또는 복구 배치
   → OrderStatusPort.notifyStatus() (PAID일 때)
 ```
 
-`PaymentConfirmationService.reconcile()`은 트랜잭션 안에서 Payment를 조회·검증·상태 전이한다. 완료 상태는 `PaymentInfo`를 반환하고, `PaymentReconciliationService`가 트랜잭션 밖에서 Order 서비스에 `PAID` 상태를 통보한다.
+`PaymentConfirmationService.reconcile()`은 트랜잭션 안에서 Toss 응답의 `pgOrderId`로 Payment를 조회한 뒤, 복호화된 `paymentKey`가 응답의 결제 키와 같은지 검증하고 상태를 전이한다. 완료 상태는 `PaymentInfo`를 반환하고, `PaymentReconciliationService`가 트랜잭션 밖에서 Order 서비스에 `PAID` 상태를 통보한다.
 
 - 이미 `PAID`인 완료 웹훅은 Payment를 다시 저장하지 않는다.
 - 다만 `PAID` 정보를 다시 반환하므로 웹훅 재전송 또는 복구 재실행 시 Order 상태 통보는 다시 시도한다.
@@ -264,6 +274,9 @@ Toss 웹훅 또는 복구 배치
 - `PaymentReconciliationServiceTest`: `PAID` 정합화 후 Order 상태 통보, 미전이 시 미통보 검증
 - `TossWebhookControllerTest`: 웹훅 `paymentKey` 기반 Toss 조회·정합화 서비스 위임 검증
 - `RefundServiceTest`: 전액 환불 완료, PAID가 아닌 결제 거절, Toss 환불 실패 시 Payment 상태 유지 검증
+- `PaymentSensitiveDataCryptoTest`: AES-GCM 암·복호화, 랜덤 IV로 인한 암호문 비결정성, 암호문 변조 감지 검증
+- `PaymentSensitiveDataConverterTest`: JPA Converter의 DB 저장 암호화·엔티티 조회 복호화 검증
+- `PaymentConfirmationServiceConcurrencyTest`: Testcontainers MySQL 테스트 슬라이스에 암호화 키·AES-GCM Bean을 등록해 실제 암호화 컬럼과 낙관적 락 동시성 검증
 
 현재 테스트는 실제 토스 네트워크를 호출하지 않는다. `TossPaymentGateway`의 HTTP 응답 매핑과 오류 변환은 별도 단위 테스트가 필요하다.
 
