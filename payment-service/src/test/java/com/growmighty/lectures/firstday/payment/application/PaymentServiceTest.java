@@ -254,7 +254,6 @@ class PaymentServiceTest {
         private final Map<Long, Payment> paymentsById = new HashMap<>();
         private final Map<Long, Payment> paymentsByOrderId = new HashMap<>();
         private final Map<String, Payment> paymentsByPgOrderId = new HashMap<>();
-        private final Map<String, Payment> paymentsByPaymentKey = new HashMap<>();
 
         @Override
         public Payment save(Payment payment) {
@@ -265,9 +264,6 @@ class PaymentServiceTest {
             paymentsById.put(payment.getPaymentId(), payment);
             paymentsByOrderId.put(payment.getOrderId(), payment);
             paymentsByPgOrderId.put(payment.getPgOrderId(), payment);
-            if (payment.getPaymentKey() != null) {
-                paymentsByPaymentKey.put(payment.getPaymentKey(), payment);
-            }
             return payment;
         }
 
@@ -284,11 +280,6 @@ class PaymentServiceTest {
         @Override
         public Optional<Payment> findByPgOrderId(String pgOrderId) {
             return Optional.ofNullable(paymentsByPgOrderId.get(pgOrderId));
-        }
-
-        @Override
-        public Optional<Payment> findByPaymentKey(String paymentKey) {
-            return Optional.ofNullable(paymentsByPaymentKey.get(paymentKey));
         }
 
         @Override

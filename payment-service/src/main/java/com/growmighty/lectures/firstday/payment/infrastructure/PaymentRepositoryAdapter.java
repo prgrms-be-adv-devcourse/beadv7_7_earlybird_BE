@@ -44,10 +44,4 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
             PageRequest.of(0, limit)
         );
     }
-
-    @Override
-    public Optional<Payment> findByPaymentKey(String paymentKey) {
-        return jpaRepository.findByPaymentKey(paymentKey);
-    }
-
 }

@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.payment.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import com.growmighty.lectures.firstday.payment.infrastructure.security.PaymentSensitiveDataConverter;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -34,13 +35,15 @@ public class Payment extends BaseEntity {
     @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
     private String pgOrderId;
 
-    @Column(name = "payment_key", unique = true, length = 200)
+    @Convert(converter = PaymentSensitiveDataConverter.class)
+    @Column(name = "payment_key", length = 512)
     private String paymentKey;
 
     @Version
     private Long version;
 
-    @Column(name = "approve_idempotency_key", nullable = false, unique = true, length = 64)
+    @Convert(converter = PaymentSensitiveDataConverter.class)
+    @Column(name = "approve_idempotency_key", nullable = false, length = 512)
     private String approveIdempotencyKey;
 
     @Column(name = "confirming_At")

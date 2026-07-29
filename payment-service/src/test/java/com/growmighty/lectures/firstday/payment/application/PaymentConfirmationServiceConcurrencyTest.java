@@ -1,10 +1,12 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.payment.config.JpaAuditingConfig;
+import com.growmighty.lectures.firstday.payment.config.PaymentSecurityConfig;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.payment.infrastructure.PaymentRepositoryAdapter;
+import com.growmighty.lectures.firstday.payment.infrastructure.security.PaymentSensitiveDataCrypto;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,13 +30,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @DataJpaTest(properties = {
     "spring.jpa.hibernate.ddl-auto=create",
-    "spring.cloud.config.enabled=false"
+    "spring.cloud.config.enabled=false",
+    "payment.security.encryption-key=MDEyMzQ1Njc4OUFCQ0RFRjAxMjM0NTY3ODlBQkNERUY=" // <-- 테스트 전용 32바이트 AES 키
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({
     JpaAuditingConfig.class,
     PaymentRepositoryAdapter.class,
-    PaymentConfirmationService.class
+    PaymentConfirmationService.class,
+    PaymentSecurityConfig.class, // <-- PaymentSecurityProperties Bean 등록
+    PaymentSensitiveDataCrypto.class // <-- Converter가 주입받는 AES-GCM Bean 등록
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class PaymentConfirmationServiceConcurrencyTest {
