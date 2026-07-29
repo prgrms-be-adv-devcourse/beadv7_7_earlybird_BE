@@ -247,6 +247,7 @@ class SecurityConfigTest {
                 Arguments.of(HttpMethod.POST, "/api/v1/projects/1/cancel", List.of(UserRole.CREATOR, UserRole.ADMIN)),
                 Arguments.of(HttpMethod.POST, "/api/v1/project-categories", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.PUT, "/api/v1/project-categories/1", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/project-categories/1", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.POST, "/api/v1/projects/1/rewards", List.of(UserRole.CREATOR)),
                 Arguments.of(HttpMethod.PATCH, "/api/v1/rewards/1", List.of(UserRole.CREATOR)),
                 Arguments.of(HttpMethod.DELETE, "/api/v1/rewards/1", List.of(UserRole.CREATOR)),

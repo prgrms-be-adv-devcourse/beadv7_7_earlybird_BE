@@ -78,6 +78,7 @@ public class SecurityConfig {
                                 URI_PREFIX_API + "/project-categories/*").permitAll()
                         .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/project-categories").hasRole(ADMIN.getCode())
                         .pathMatchers(HttpMethod.PUT, URI_PREFIX_API + "/project-categories/*").hasRole(ADMIN.getCode())
+                        .pathMatchers(HttpMethod.DELETE, URI_PREFIX_API + "/project-categories/*").hasRole(ADMIN.getCode())
 
                         // rewards
                         .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/rewards/*").permitAll()
