@@ -57,7 +57,7 @@ public class Project {
     @Column(nullable = false)
     private BigDecimal goalAmount;
 
-    // TODO(팀): 결제 성공 시 이 값을 실제로 채워주는 트리거가 아직 없다(order/payment-service
+    // TODO(팀): 결제 성공 시 이 값을 실제로 채워주는 트리거가 아직 없다(order)
     // 확인 결과 프로젝트 단위 누적 모금액 집계·통보 API 없음, 주문 1건당 totalAmount만 존재).
     // order/payment-service와 "언제·어떻게 알려줄지" 별도로 맞춰야 하는 cross-service 이슈.
     @Column(nullable = false)

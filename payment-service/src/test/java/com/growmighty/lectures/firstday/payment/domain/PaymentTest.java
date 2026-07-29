@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -93,6 +95,34 @@ class PaymentTest {
 
         payment.fail();
 
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getConfirmingAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("CONFIRMING 결제는 최대 대기 시간 전에는 실패 처리되지 않는다")
+    void failIfConfirmingExpired_beforeMaximumDuration_returnsFalse() {
+        Payment payment = readyPayment();
+        payment.startConfirming(PAYMENT_KEY);
+        Duration maximumDuration = Duration.ofMinutes(10);
+        LocalDateTime beforeExpiration = payment.getConfirmingAt()
+            .plus(maximumDuration)
+            .minusNanos(1);
+
+        assertThat(payment.failIfConfirmingExpired(beforeExpiration, maximumDuration)).isFalse();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
+        assertThat(payment.getConfirmingAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("CONFIRMING 결제는 최대 대기 시간에 도달하면 실패 처리된다")
+    void failIfConfirmingExpired_atMaximumDuration_transitionsToFailed() {
+        Payment payment = readyPayment();
+        payment.startConfirming(PAYMENT_KEY);
+        Duration maximumDuration = Duration.ofMinutes(10);
+        LocalDateTime expiration = payment.getConfirmingAt().plus(maximumDuration);
+
+        assertThat(payment.failIfConfirmingExpired(expiration, maximumDuration)).isTrue();
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
         assertThat(payment.getConfirmingAt()).isNull();
     }

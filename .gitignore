@@ -42,3 +42,6 @@ out/
 ### Docker ###
 .env
 infrastructure/.env
+
+### Logging ###
+logs/

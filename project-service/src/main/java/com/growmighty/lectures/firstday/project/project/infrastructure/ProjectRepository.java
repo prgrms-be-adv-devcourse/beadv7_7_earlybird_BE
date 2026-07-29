@@ -38,4 +38,17 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
     @Lock(LockModeType.PESSIMISTIC_READ)
     @Query("select p from Project p where p.projectId = :projectId")
     Optional<Project> findByIdForStatusCheck(@Param("projectId") Long projectId);
+
+    /**
+     * 배타 락(FOR UPDATE)으로 조회 — ProjectServiceImpl.delete() 전용.
+     * Reward 쓰기 경로(RewardServiceImpl)는 findByIdForStatusCheck()로 Project를 공유 락으로
+     * 먼저 잠그고 Reward를 나중에(커밋 시점) 잠근다. delete()는 반대로 Reward를 먼저 지우고
+     * Project를 나중에 지우는 순서라, 동시에 겹치면 락 순서가 반대라서 데드락이 생길 수 있었다.
+     * delete()가 맨 처음에 Project를 배타 락으로 선점하면, 그 사이 다른 트랜잭션은 공유 락도
+     * 못 걸고 대기하게 돼(끼어들 틈이 없어져) 이 경합 자체가 발생하지 않는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Project p where p.projectId = :projectId")
+    Optional<Project> findByIdForDelete(@Param("projectId") Long projectId);
 }
+

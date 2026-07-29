@@ -16,6 +16,8 @@ public interface OrderRepository {
 
     Optional<BigDecimal> getFundedAmount(Long projectId);
 
+    Optional<OrderItem> findPaidItem(Long userId, Long rewardId);
+
     List<Order> findAll();
 
     List<Order> findByUserId(Long userId);
