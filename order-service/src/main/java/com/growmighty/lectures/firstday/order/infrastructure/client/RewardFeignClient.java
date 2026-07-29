@@ -36,7 +36,7 @@ public interface RewardFeignClient extends RewardPort {
     default RewardSnapshot getReward(Long rewardId) {
         RewardApiData data = fetchReward(rewardId).data();
         return new RewardSnapshot(
-                data.id(),
+                data.rewardId(),
                 data.projectId(),
                 data.name(),
                 data.price(),

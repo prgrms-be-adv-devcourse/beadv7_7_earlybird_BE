@@ -8,7 +8,7 @@ import java.math.BigDecimal;
  * (모르는 JSON 필드는 무시되므로 전체 응답을 다 적을 필요는 없다)
  */
 public record RewardApiData(
-        Long id,
+        Long rewardId,
         Long projectId,
         String name,
         BigDecimal price,
