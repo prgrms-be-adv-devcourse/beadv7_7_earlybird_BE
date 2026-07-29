@@ -62,7 +62,7 @@ public class RewardHttpClient implements RewardPort {
                 ? null
                 : projects.computeIfAbsent(data.projectId(), this::callGetProject);
         return new RewardSnapshot(
-                data.id(),
+                data.rewardId(),
                 data.projectId(),
                 data.name(),
                 project == null ? null : project.title(),

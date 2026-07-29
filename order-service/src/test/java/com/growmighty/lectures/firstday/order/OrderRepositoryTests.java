@@ -48,7 +48,7 @@ class OrderRepositoryTests {
         Long userId = 1L;
         Long projectId = 100L;
         Long rewardId = 10L;
-        Order order = Order.create(null, userId,
+        Order order = Order.create(null, userId, projectId,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(179000), projectId, rewardId, 1)),
                 "Receiver", "010-0000-0000", "Seoul", "06236");
 
@@ -62,6 +62,7 @@ class OrderRepositoryTests {
         assertThat(saved.getId()).isNotNull();
         assertThat(found.getId()).isEqualTo(saved.getId());
         assertThat(found.getId()).isInstanceOf(Long.class);
+        assertThat(found.getProjectId()).isEqualTo(projectId);
         assertThat(found.getItems()).hasSize(1);
         OrderItem foundItem = found.getItems().get(0);
         assertThat(foundItem.getQuantity()).isEqualTo(1);
@@ -78,7 +79,7 @@ class OrderRepositoryTests {
         Long existingProjectId = 100L;
         Long otherProjectId = 200L;
 
-        Order order = Order.create(null, 1L,
+        Order order = Order.create(null, 1L, existingProjectId,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), existingProjectId, 10L, 1)),
                 "Receiver", "010-0000-0000", "Seoul", "06236");
 

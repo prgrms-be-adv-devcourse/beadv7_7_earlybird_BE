@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.cart.presentation.dto.UpdateCartItemsReq
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/users/{userId}/cart")
+@RequestMapping("/api/v1/users/{userId}/cart")
 public class CartController {
     private final CartService cartService;
 
@@ -38,8 +39,7 @@ public class CartController {
     @PostMapping("/items")
     public CartResponse addItems(@PathVariable Long userId,
                                  @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                 @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                 @RequestBody AddCartItemsRequest request) {
+                                 @Valid @RequestBody AddCartItemsRequest request) {
         validateRequester(userId, requesterId);
         return CartResponse.from(cartService.addItems(request.toCommand(requesterId)));
     }
@@ -47,8 +47,7 @@ public class CartController {
     @PatchMapping("/items")
     public CartResponse updateItems(@PathVariable Long userId,
                                     @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                    @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
-                                    @RequestBody UpdateCartItemsRequest request) {
+                                    @Valid @RequestBody UpdateCartItemsRequest request) {
         validateRequester(userId, requesterId);
         return CartResponse.from(cartService.updateItems(request.toCommand(requesterId)));
     }
@@ -56,16 +55,14 @@ public class CartController {
     @DeleteMapping("/items/{rewardId}")
     public CartResponse removeItem(@PathVariable Long userId,
                                    @PathVariable Long rewardId,
-                                   @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                   @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+                                   @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequester(userId, requesterId);
         return CartResponse.from(cartService.removeItem(requesterId, rewardId));
     }
 
     @DeleteMapping
     public Void clear(@PathVariable Long userId,
-                      @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                      @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+                      @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequester(userId, requesterId);
         cartService.clear(requesterId);
         return null;

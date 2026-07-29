@@ -78,9 +78,11 @@ public class CartService {
         getCartEntity(userId).clear();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public CartView getCart(Long userId) {
-        return toView(getCartEntity(userId));
+        Cart cart = cartRepository.findByUserId(userId)
+                .orElseGet(() -> cartRepository.save(Cart.create(userId)));
+        return toView(cart);
     }
 
     private <T> List<CartLineCommand> toCartLineCommands(List<T> items, Function<T, CartLineCommand> mapper) {

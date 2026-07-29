@@ -20,7 +20,6 @@ import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,7 +84,7 @@ public class OrderApiService {
     // 주문 생성 요청
     public OrderResult placeOrder(PlaceOrderCommand command, Long requesterId) {
         validateRequesterId(requesterId);
-        command = new PlaceOrderCommand(requesterId, command.lines(),
+        command = new PlaceOrderCommand(requesterId, command.projectId(), command.lines(),
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
                 command.expectedItemsAmount(), command.expectedTotalAmount());
         validateCommand(command);
@@ -162,7 +161,7 @@ public class OrderApiService {
     @Transactional(readOnly = true)
     public OrderResult getOrderInfo(Long orderId, Long requesterId) {
         validateRequesterId(requesterId);
-        Order order = getOrder(orderId);
+        Order order = getOrderWithItems(orderId);
         verifyOwner(order, requesterId);
         return OrderResult.from(order);
     }
@@ -206,7 +205,8 @@ public class OrderApiService {
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
         }
 
-        Order order = Order.create(null, command.userId(), orderItems,
+        Long projectId = command.projectId() != null ? command.projectId() : orderItems.get(0).getProjectId();
+        Order order = Order.create(null, command.userId(), projectId, orderItems,
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
         validateAmounts(command, order);
         log.info("pending order created. orderId={}", order.getId());
@@ -220,7 +220,7 @@ public class OrderApiService {
         }
 
         if (payment.status() == PaymentResult.Status.SUCCESS) {
-            order.markPaid(payment.paymentId());
+            order.markPaid();
             removeOrderedCartItems(order);
             log.info("payment succeeded. orderId={}", order.getId());
             return;
@@ -245,6 +245,12 @@ public class OrderApiService {
         }
         Set<Long> rewardIds = new HashSet<>();
         for (OrderLine line : command.lines()) {
+            if (line == null) {
+                throw new IllegalArgumentException("Order item is required.");
+            }
+            if (line.rewardId() == null) {
+                throw new IllegalArgumentException("rewardId is required.");
+            }
             if (line.quantity() <= 0) {
                 throw new IllegalArgumentException("Order quantity must be positive.");
             }

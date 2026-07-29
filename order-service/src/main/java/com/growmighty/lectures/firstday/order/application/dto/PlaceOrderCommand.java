@@ -5,6 +5,7 @@ import java.util.List;
 
 public record PlaceOrderCommand(
         Long userId,
+        Long projectId,
         List<OrderLine> lines,
         String receiverName,
         String receiverPhone,

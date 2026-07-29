@@ -1,10 +1,13 @@
 package com.growmighty.lectures.firstday.cart.presentation.dto;
 
 import com.growmighty.lectures.firstday.cart.application.dto.UpdateCartItemQuantitiesCommand;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
 
-public record UpdateCartItemsRequest(Long projectId, List<UpdateCartItemQuantityRequest> items) {
+public record UpdateCartItemsRequest(@NotNull Long projectId, @NotEmpty @Valid List<UpdateCartItemQuantityRequest> items) {
     public UpdateCartItemQuantitiesCommand toCommand(Long userId) {
         return new UpdateCartItemQuantitiesCommand(
                 userId,

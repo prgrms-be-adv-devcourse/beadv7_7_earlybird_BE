@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.order.application.OrderApiService;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderResponse;
+import com.growmighty.lectures.firstday.order.presentation.dto.OrderSummaryResponse;
 import com.growmighty.lectures.firstday.order.presentation.dto.PlaceOrderRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +15,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/orders")
+@RequestMapping("/api/v1/orders")
 public class OrderController {
 
     private final OrderApiService orderApiService;
@@ -23,30 +24,36 @@ public class OrderController {
 
     /** 내 후원 내역. */
     @GetMapping("/me")
-    public List<OrderResponse> getMyOrders(@RequestParam Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+    public List<OrderSummaryResponse> getMyOrders(@RequestParam Long userId,
+                                                  @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequester(userId, requesterId);
         return orderApiService.getOrdersByUser(requesterId).stream()
-                .map(OrderResponse::from)
+                .map(OrderSummaryResponse::from)
                 .toList();
     }
 
     @PostMapping
-    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
-        return OrderResponse.from(orderApiService.placeOrder(request.toCommand(requesterId), requesterId));
+    public OrderResponse placeOrder(@Valid @RequestBody PlaceOrderRequest request,
+                                    @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+        return OrderResponse.created(orderApiService.placeOrder(request.toCommand(requesterId), requesterId));
     }
 
     /** 후원 상세. */
     @GetMapping("/{orderId}")
-    public OrderResponse getOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+    public OrderResponse getOrder(@PathVariable Long orderId,
+                                  @RequestParam(required = false) Long userId,
+                                  @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequesterIfPresent(userId, requesterId);
-        return OrderResponse.from(orderApiService.getOrderInfo(orderId, requesterId));
+        return OrderResponse.detail(orderApiService.getOrderInfo(orderId, requesterId));
     }
 
     /** 후원 취소 */
     @PostMapping("/{orderId}/cancel")
-    public OrderResponse cancelOrder(@PathVariable Long orderId, @RequestParam(required = false) Long userId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+    public OrderResponse cancelOrder(@PathVariable Long orderId,
+                                     @RequestParam(required = false) Long userId,
+                                     @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         validateRequesterIfPresent(userId, requesterId);
-        return OrderResponse.from(orderApiService.cancelOrder(orderId, requesterId));
+        return OrderResponse.detail(orderApiService.cancelOrder(orderId, requesterId));
     }
 
     private void validateRequester(Long userId, Long requesterId) {
