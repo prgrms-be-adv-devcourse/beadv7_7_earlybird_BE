@@ -70,11 +70,14 @@ public class SecurityConfig {
                                 URI_PREFIX_API + "/projects/close-expired",
                                 URI_PREFIX_API + "/projects/*/close-early").hasRole(ADMIN.getCode())
                         .pathMatchers(HttpMethod.PATCH, URI_PREFIX_API + "/projects/*/deadline").hasRole(ADMIN.getCode())
+                        .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/projects/*/cancel").hasAnyRole(CREATOR.getCode(), ADMIN.getCode())
 
                         // project-categories
                         .pathMatchers(HttpMethod.GET,
                                 URI_PREFIX_API + "/project-categories",
                                 URI_PREFIX_API + "/project-categories/*").permitAll()
+                        .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/project-categories").hasRole(ADMIN.getCode())
+                        .pathMatchers(HttpMethod.PUT, URI_PREFIX_API + "/project-categories/*").hasRole(ADMIN.getCode())
 
                         // rewards
                         .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/rewards/*").permitAll()
