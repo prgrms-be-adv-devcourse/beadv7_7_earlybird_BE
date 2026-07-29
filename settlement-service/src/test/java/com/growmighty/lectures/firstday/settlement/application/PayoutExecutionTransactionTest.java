@@ -15,6 +15,7 @@ import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
@@ -33,7 +34,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
         "settlement.toss-payout.security-key=0101010101010101010101010101010101010101010101010101010101010101"
 })
 @Import(PayoutExecutionTransactionTest.GatewayTestConfig.class)
-class PayoutExecutionTransactionTest {
+class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private PayoutExecutor payoutExecutor;

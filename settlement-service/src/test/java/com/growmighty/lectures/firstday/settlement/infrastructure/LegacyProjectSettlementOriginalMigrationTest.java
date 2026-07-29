@@ -11,6 +11,7 @@ import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
@@ -22,7 +23,7 @@ import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
-class LegacyProjectSettlementOriginalMigrationTest {
+class LegacyProjectSettlementOriginalMigrationTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private LegacyProjectSettlementOriginalMigration migration;

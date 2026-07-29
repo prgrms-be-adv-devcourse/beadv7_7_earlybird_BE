@@ -21,6 +21,7 @@ import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.ad
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,7 +40,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
         PayoutObligationRepositoryAdapter.class,
         ProjectSettlementRepositoryAdapter.class
 })
-class SettlementPersistenceTest {
+class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private ProjectSettlementRepository projectSettlementRepository;

@@ -9,13 +9,7 @@ spring:
       enabled: false
       import-check:
         enabled: false
-  datasource:
-    url: ${TEST_DB_URL:jdbc:mysql://localhost:3306/settlementdb}
-    username: ${TEST_DB_USERNAME:earlybird}
-    password: ${TEST_DB_PASSWORD:earlybird}
-  test:
-    database:
-      replace: none
+  # datasource는 MySqlIntegrationTestSupport의 Testcontainers MySQL이 공급한다.
   jpa:
     hibernate:
       ddl-auto: create

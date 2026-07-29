@@ -10,6 +10,7 @@ import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 @Transactional
-class ProjectSettlementServiceTest {
+class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private ProjectSettlementService projectSettlementService;

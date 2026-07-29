@@ -18,6 +18,7 @@ import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementCalculationPolicy;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
@@ -38,7 +39,7 @@ import org.springframework.test.web.servlet.MockMvc;
         "settlement.project-target.mode=error-test"
 })
 @AutoConfigureMockMvc
-class ProjectSettlementErrorControllerTest {
+class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

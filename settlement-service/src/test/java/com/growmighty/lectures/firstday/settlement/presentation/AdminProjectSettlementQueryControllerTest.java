@@ -21,6 +21,7 @@ import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationReposi
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementCalculationPolicy;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class AdminProjectSettlementQueryControllerTest {
+class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupport {
 
     private static final String ADMIN_ID = "80000001";
 

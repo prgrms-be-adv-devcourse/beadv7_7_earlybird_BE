@@ -9,6 +9,7 @@ import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -23,7 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class ProjectSettlementRunServiceTest {
+class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private ProjectSettlementService projectSettlementService;
