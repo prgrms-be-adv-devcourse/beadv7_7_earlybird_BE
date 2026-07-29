@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.user;
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
+import com.growmighty.lectures.firstday.user.config.SeedUserProperties;
 import com.growmighty.lectures.firstday.user.domain.User;
 import com.growmighty.lectures.firstday.user.domain.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,17 +17,19 @@ import org.springframework.stereotype.Component;
 public class UserDataInitializer implements CommandLineRunner {
     private final UserService userService;
     private final UserRepository userRepository;
+    private final SeedUserProperties seedUserProperties;
 
     @Override
     public void run(String... args) {
-        UserInfo buyer = registerIfAbsent(
-            new RegisterUserCommand("buyer@earlybird.co.kr", "rawPassword1!", "구매자", "010-1111-1111"));
-        registerIfAbsent(
-            new RegisterUserCommand("seller@earlybird.co.kr", "rawPassword2!", "판매자", "010-2222-2222"));
-        registerAdminIfAbsent(
-            new RegisterUserCommand("admin@earlybird.co.kr", "rawPassword3!", "관리자", "010-3333-3333"));
+        UserInfo buyer = registerIfAbsent(toCommand(seedUserProperties.buyer()));
+        registerIfAbsent(toCommand(seedUserProperties.seller()));
+        registerAdminIfAbsent(toCommand(seedUserProperties.admin()));
 
         System.out.printf("[seed] user-service 준비 완료. 구매자 id=%d%n", buyer.id());
+    }
+
+    private static RegisterUserCommand toCommand(SeedUserProperties.Account account) {
+        return new RegisterUserCommand(account.email(), account.password(), account.name(), account.phone());
     }
 
     private UserInfo registerIfAbsent(RegisterUserCommand command) {
