@@ -5,10 +5,14 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -21,6 +25,8 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import javax.crypto.spec.SecretKeySpec;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * SecurityMockServerConfigurers.mockJwt() 는 mock 바인딩(bindToApplicationContext 등) 클라이언트에서만
@@ -218,6 +224,64 @@ class SecurityConfigTest {
                 .exchange()
                 .expectStatus().value(status -> Assertions.assertThat(status)
                         .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
+    }
+
+    /**
+     * SecurityConfig 의 역할 제한 라우트 전체({@code hasRole}/{@code hasAnyRole})를 표로 관리한다 —
+     * 위에서 대표 라우트 몇 개만 이름 붙여 검증한 것과 별개로, 새 라우트가 추가되면서 보안 설정을
+     * 깜빡 빠뜨리는 회귀를 잡기 위한 전수 검사다.
+     */
+    private static Stream<Arguments> roleGatedRoutes() {
+        return Stream.of(
+                Arguments.of(HttpMethod.GET, "/api/v1/projects/me", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.GET, "/api/v1/projects/1/orders", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.POST, "/api/v1/projects", List.of(UserRole.CREATOR, UserRole.ADMIN)),
+                Arguments.of(HttpMethod.PATCH, "/api/v1/projects/1", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/projects/1", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.POST, "/api/v1/projects/1/notices", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.POST, "/api/v1/projects/1/approve", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/projects/1/reject", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/projects/close-expired", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/projects/1/close-early", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.PATCH, "/api/v1/projects/1/deadline", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/projects/1/rewards", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.PATCH, "/api/v1/rewards/1", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/rewards/1", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.PATCH, "/api/v1/rewards/1/quantity", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/rewards/1/deactivate", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.PATCH, "/api/v1/notices/1", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/notices/1", List.of(UserRole.CREATOR, UserRole.ADMIN)),
+                Arguments.of(HttpMethod.GET, "/api/v1/settlements", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.GET, "/api/v1/settlements/1", List.of(UserRole.CREATOR)),
+                Arguments.of(HttpMethod.GET, "/api/v1/settlements/all", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/settlements/close", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.GET, "/api/v1/reports", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/reports/1/process", List.of(UserRole.ADMIN))
+        );
+    }
+
+    @ParameterizedTest(name = "{0} {1} 은 허용된 role({2}) 토큰이면 401/403 이 아니다")
+    @MethodSource("roleGatedRoutes")
+    @DisplayName("역할 제한 라우트 전수 검사 — 허용된 role")
+    void roleGatedRoute_withAllowedRole_passesSecurityLayer(HttpMethod method, String uri, List<UserRole> allowedRoles) {
+        for (UserRole role : allowedRoles) {
+            webTestClient.method(method).uri(uri)
+                    .header("Authorization", "Bearer " + issueToken(role))
+                    .exchange()
+                    .expectStatus().value(status -> Assertions.assertThat(status)
+                            .as("%s %s 는 %s 토큰으로 401/403 이 아니어야 한다", method, uri, role)
+                            .isNotIn(HttpStatus.UNAUTHORIZED.value(), HttpStatus.FORBIDDEN.value()));
+        }
+    }
+
+    @ParameterizedTest(name = "{0} {1} 은 BACKER 토큰이면 403")
+    @MethodSource("roleGatedRoutes")
+    @DisplayName("역할 제한 라우트 전수 검사 — BACKER 는 차단")
+    void roleGatedRoute_withBackerToken_isForbidden(HttpMethod method, String uri, List<UserRole> allowedRoles) {
+        webTestClient.method(method).uri(uri)
+                .header("Authorization", "Bearer " + issueToken(UserRole.BACKER))
+                .exchange()
+                .expectStatus().isForbidden();
     }
 
     private String issueToken(Instant issuedAt, Instant expiresAt) {
