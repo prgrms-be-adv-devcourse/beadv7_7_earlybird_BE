@@ -23,16 +23,23 @@ jobs:
           # parent commit to exist locally.
           fetch-depth: 2
 
+      - name: Resolve diff base
+        id: base
+        # workflow_run events carry no `before` SHA, so without an explicit `base` paths-filter
+        # falls back to diffing just the last commit via a plain `git log -n 1` - which returns
+        # zero changed files for merge commits (git won't pick a parent to diff against on its
+        # own), silently breaking on ordinary PR-merge pushes to main. HEAD~1 (first parent) is
+        # well-defined for both merge and non-merge commits and is what CI actually validated.
+        # Resolved to a literal SHA here rather than passed as `HEAD~1` directly to paths-filter,
+        # since paths-filter treats an unresolvable `base` as something to `git fetch` from the
+        # remote, and `~1` isn't a valid refspec to fetch by (only plain refs/SHAs are).
+        run: echo "sha=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
+
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          # workflow_run events carry no `before` SHA, so without an explicit `base` paths-filter
-          # falls back to diffing just the last commit via a plain `git log -n 1` - which returns
-          # zero changed files for merge commits (git won't pick a parent to diff against on its
-          # own), silently breaking on ordinary PR-merge pushes to main. head_sha~1 (first parent)
-          # is well-defined for both merge and non-merge commits and is what CI actually validated.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          base: ${{ github.event.workflow_run.head_sha || github.sha }}~1
+          base: ${{ steps.base.outputs.sha }}
           filters: |
             shared:
               - 'common/**'
