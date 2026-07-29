@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 
 import java.util.List;
@@ -38,6 +39,12 @@ public interface ProjectService {
      * 억지로 role을 부여해야 해서 오히려 부자연스럽다.
      */
     List<ProjectResponse> findByStatus(ProjectStatus status);
+
+    /**
+     * 서비스 간 내부 API 전용 — board-service가 리뷰 생성 알림 메일을 보낼 대상(제작자)을 조회할 때 쓴다.
+     * 존재하지 않는 projectId는 EntityNotFoundException(404)으로 처리한다.
+     */
+    ProjectCreatorResponse getCreator(Long projectId);
 
     // ── 관리자 ──────────────────────────────────────────────
     ProjectResponse approve(Long projectId);

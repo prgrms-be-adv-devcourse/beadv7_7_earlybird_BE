@@ -11,6 +11,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
@@ -149,6 +150,11 @@ public class ProjectServiceImpl implements ProjectService {
         return projectRepository.findByStatus(status).stream()
                 .map(ProjectResponse::from)
                 .toList();
+    }
+
+    @Override
+    public ProjectCreatorResponse getCreator(Long projectId) {
+        return ProjectCreatorResponse.from(getProject(projectId));
     }
 
     @Override
