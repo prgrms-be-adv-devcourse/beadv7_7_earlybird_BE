@@ -2,7 +2,6 @@ package com.growmighty.lectures.firstday.user.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
-import com.growmighty.lectures.firstday.user.application.dto.ChangePasswordCommand;
 import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
@@ -124,20 +123,53 @@ class UserServiceTest {
     void updateProfile_withUnknownId_throws() {
         when(userRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> userService.updateProfile(new UpdateProfileCommand(999L, "새이름", "010-1111-1111")))
+        assertThatThrownBy(() -> userService.updateProfile(
+                new UpdateProfileCommand(999L, "새이름", "010-1111-1111", null, null)))
                 .isInstanceOf(EntityNotFoundException.class);
     }
 
     @Test
-    @DisplayName("프로필을 수정하면 이름과 전화번호가 갱신된다")
-    void updateProfile_updatesNameAndPhoneNumber() {
+    @DisplayName("비밀번호 필드 없이 프로필을 수정하면 이름과 전화번호만 갱신되고 비밀번호는 그대로 유지된다")
+    void updateProfile_withoutPasswordFields_updatesNameAndPhoneNumberOnly() {
         User user = backer();
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 
-        UserInfo result = userService.updateProfile(new UpdateProfileCommand(1L, "새이름", "010-1111-1111"));
+        UserInfo result = userService.updateProfile(
+                new UpdateProfileCommand(1L, "새이름", "010-1111-1111", null, null));
 
         assertThat(result.name()).isEqualTo("새이름");
         assertThat(result.phoneNumber()).isEqualTo("010-1111-1111");
+        assertThat(user.getPassword()).isEqualTo("encoded-old");
+        verify(passwordEncoder, never()).matches(any(), any());
+        verify(passwordEncoder, never()).encode(any());
+    }
+
+    @Test
+    @DisplayName("현재 비밀번호가 틀리면 프로필 수정 시 예외가 발생한다")
+    void updateProfile_withWrongCurrentPassword_throws() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrongPassword!", "encoded-old")).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.updateProfile(
+                new UpdateProfileCommand(1L, "새이름", "010-1111-1111", "wrongPassword!", "newPassword1!")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("현재 비밀번호가 맞으면 프로필과 비밀번호가 함께 갱신된다")
+    void updateProfile_withValidPasswordFields_updatesProfileAndPassword() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("rawPassword1!", "encoded-old")).thenReturn(true);
+        when(passwordEncoder.encode("newPassword1!")).thenReturn("encoded-new");
+
+        UserInfo result = userService.updateProfile(
+                new UpdateProfileCommand(1L, "새이름", "010-1111-1111", "rawPassword1!", "newPassword1!"));
+
+        assertThat(result.name()).isEqualTo("새이름");
+        assertThat(result.phoneNumber()).isEqualTo("010-1111-1111");
+        assertThat(user.getPassword()).isEqualTo("encoded-new");
     }
 
     @Test
@@ -181,38 +213,4 @@ class UserServiceTest {
         assertThat(captor.getValue().getBankName()).isEqualTo("신한은행");
     }
 
-    @Test
-    @DisplayName("존재하지 않는 유저의 비밀번호를 변경하면 예외가 발생한다")
-    void changePassword_withUnknownId_throws() {
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> userService.changePassword(
-                new ChangePasswordCommand(999L, "rawPassword1!", "newPassword1!")))
-                .isInstanceOf(EntityNotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("현재 비밀번호가 틀리면 예외가 발생한다")
-    void changePassword_withWrongCurrentPassword_throws() {
-        User user = backer();
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("wrongPassword!", "encoded-old")).thenReturn(false);
-
-        assertThatThrownBy(() -> userService.changePassword(
-                new ChangePasswordCommand(1L, "wrongPassword!", "newPassword1!")))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    @DisplayName("비밀번호를 변경하면 새 비밀번호가 인코딩되어 저장된다")
-    void changePassword_encodesNewPasswordBeforeSaving() {
-        User user = backer();
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(passwordEncoder.matches("rawPassword1!", "encoded-old")).thenReturn(true);
-        when(passwordEncoder.encode("newPassword1!")).thenReturn("encoded-new");
-
-        userService.changePassword(new ChangePasswordCommand(1L, "rawPassword1!", "newPassword1!"));
-
-        assertThat(user.getPassword()).isEqualTo("encoded-new");
-    }
 }

@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.user.application;
 
-import com.growmighty.lectures.firstday.user.application.dto.ChangePasswordCommand;
 import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
@@ -55,6 +54,12 @@ public class UserService {
         User user = userRepository.findById(command.userId())
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + command.userId()));
         user.updateProfile(command.name(), command.phoneNumber());
+        if (command.newPassword() != null) {
+            if (!passwordEncoder.matches(command.currentPassword(), user.getPassword())) {
+                throw new IllegalArgumentException("현재 비밀번호가 올바르지 않습니다.");
+            }
+            user.changePassword(passwordEncoder.encode(command.newPassword()));
+        }
         return UserInfo.from(user);
     }
 
@@ -70,15 +75,5 @@ public class UserService {
         creatorProfileRepository.save(CreatorProfile.register(
                 command.userId(), command.bankName(), command.accountNumber(), command.accountHolder()));
         return UserInfo.from(user);
-    }
-
-    @Transactional
-    public void changePassword(ChangePasswordCommand command) {
-        User user = userRepository.findById(command.userId())
-                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + command.userId()));
-        if (!passwordEncoder.matches(command.currentPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("현재 비밀번호가 올바르지 않습니다.");
-        }
-        user.changePassword(passwordEncoder.encode(command.newPassword()));
     }
 }
