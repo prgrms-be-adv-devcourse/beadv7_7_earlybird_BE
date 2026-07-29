@@ -35,7 +35,7 @@ class BackerFlowLiveTest {
             .connectTimeout(Duration.ofSeconds(5))
             .build();
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String EMAIL = "backerflow." + System.currentTimeMillis() + "@growmighty.co.kr";
+    private static final String EMAIL = "backerflow." + System.currentTimeMillis() + "@earlybird.co.kr";
 
     private static String accessToken;
     private static Long userId;

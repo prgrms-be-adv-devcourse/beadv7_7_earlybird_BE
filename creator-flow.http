@@ -1,16 +1,16 @@
 ### creator-flow.http — 실제 창작자 플로우 시뮬레이션
 ###
 ### 회원가입 → 로그인 → 창작자 전환 → 토큰 재발급(role 갱신) → 프로젝트 생성 → 리워드 등록 →
-### 내 프로젝트/리워드 조회 로 이어지는 시나리오를 순서대로 실행한다. 관리자 심사 승인은 다른
-### 액터(ADMIN)의 몫이라 범위 밖 — 여기서는 창작자 본인이 할 수 있는 데까지만 다룬다
-### (backer-flow.http 와 대칭되는 범위).
+### 내 프로젝트/리워드 조회 → 관리자 심사 승인 으로 이어지는 시나리오를 순서대로 실행한다.
+### 마지막 두 단계(관리자 로그인/승인)는 UserDataInitializer가 시드하는 admin@earlybird.co.kr
+### 계정을 쓴다 — 별도 승격 API가 없어 시드 데이터로만 존재한다.
 ###
 ### 환경 전환: backer-flow.http 와 동일하게 루트 http-client.env.json 의 local/production 을 쓴다.
 ### 매 요청은 위에서부터 순서대로 실행해야 한다(응답 값을 다음 요청이 전역 변수로 이어받는다).
 
 ### 1. 회원가입
 < {%
-    client.global.set("creatorEmail", "creatorflow-" + Date.now() + "@growmighty.co.kr");
+    client.global.set("creatorEmail", "creatorflow-" + Date.now() + "@earlybird.co.kr");
 %}
 POST {{baseUrl}}/api/v1/users/signup
 Content-Type: application/json
@@ -161,5 +161,33 @@ Authorization: Bearer {{accessToken}}
         client.assert(response.status === 200, "get project rewards failed: " + response.body);
         const found = response.body.data.some(r => String(r.rewardId) === String(client.global.get("rewardId")));
         client.assert(found, "created reward not found in project rewards");
+    });
+%}
+
+### 10. 관리자 로그인 (UserDataInitializer가 시드하는 계정 — 승격 API가 없어 시드 데이터로만 존재)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공(role=ADMIN)", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+        client.assert(response.body.data.user.role === "ADMIN", "unexpected role: " + response.body.data.user.role);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 11. 관리자 심사 승인 (PENDING_REVIEW → IN_PROGRESS)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("심사 승인 성공(IN_PROGRESS)", function() {
+        client.assert(response.status === 200, "approve failed: " + response.body);
+        client.assert(response.body.data.status === "IN_PROGRESS", "unexpected status: " + response.body.data.status);
     });
 %}

@@ -20,9 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 게이트웨이를 통해 실제 창작자 플로우(회원가입 → 로그인 → 창작자 전환 → 토큰 재발급 →
- * 프로젝트 생성 → 리워드 등록 → 내 프로젝트/리워드 조회)를 실행해 검증하는 라이브 테스트.
- * 관리자 심사 승인(approve)은 다른 액터(ADMIN)의 몫이라 이 플로우 범위 밖 — 여기서는 창작자
- * 본인이 할 수 있는 데까지만 다룬다({@link BackerFlowLiveTest}와 대칭되는 범위).
+ * 프로젝트 생성 → 리워드 등록 → 내 프로젝트/리워드 조회 → 관리자 심사 승인)를 실행해 검증하는
+ * 라이브 테스트. 마지막 두 단계(관리자 로그인/승인)는 UserDataInitializer가 시드하는
+ * admin@earlybird.co.kr 계정을 쓴다 — 별도 승격 API가 없어 시드 데이터로만 존재한다.
  *
  * 기본 `test` 태스크에서는 제외된다(@Tag("live") + build.gradle의 excludeTags). 실행:
  * ./gradlew :system-test:liveTest -Dsystem-test.baseUrl=... (기본값 로컬 게이트웨이)
@@ -36,13 +36,14 @@ class CreatorFlowLiveTest {
             .connectTimeout(Duration.ofSeconds(5))
             .build();
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String EMAIL = "creatorflow." + System.currentTimeMillis() + "@growmighty.co.kr";
+    private static final String EMAIL = "creatorflow." + System.currentTimeMillis() + "@earlybird.co.kr";
 
     private static String refreshToken;
     private static String accessToken;
     private static Long categoryId;
     private static Long projectId;
     private static Long rewardId;
+    private static String adminAccessToken;
 
     @Test
     @Order(1)
@@ -150,6 +151,25 @@ class CreatorFlowLiveTest {
             }
         }
         assertThat(found).withFailMessage("created reward %s not found in project rewards", rewardId).isTrue();
+    }
+
+    @Test
+    @Order(10)
+    void adminLogin() throws Exception {
+        // UserDataInitializer가 시드하는 계정 — 승격 API가 없어(§운영 절차 전용) 시드 데이터로만 존재한다.
+        String body = """
+                {"email":"admin@earlybird.co.kr","password":"rawPassword3!"}
+                """;
+        JsonNode data = post("/api/v1/users/login", body, null, 200);
+        assertThat(data.get("user").get("role").asText()).isEqualTo("ADMIN");
+        adminAccessToken = data.get("accessToken").asText();
+    }
+
+    @Test
+    @Order(11)
+    void adminApprovesProject() throws Exception {
+        JsonNode data = post("/api/v1/projects/" + projectId + "/approve", "", adminAccessToken, 200);
+        assertThat(data.get("status").asText()).isEqualTo("IN_PROGRESS");
     }
 
     private JsonNode post(String path, String body, String token, int expectedStatus) throws Exception {

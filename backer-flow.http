@@ -16,7 +16,7 @@
 < {%
     // client.global 은 요청 간에 유지된다 — 2번(로그인)에서도 같은 이메일을 써야 하므로
     // 요청 1회성인 request.variables 대신 client.global 을 쓴다.
-    client.global.set("userEmail", "backerflow-" + Date.now() + "@growmighty.co.kr");
+    client.global.set("userEmail", "backerflow-" + Date.now() + "@earlybird.co.kr");
 %}
 POST {{baseUrl}}/api/v1/users/signup
 Content-Type: application/json

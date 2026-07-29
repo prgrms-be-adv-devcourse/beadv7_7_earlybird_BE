@@ -40,7 +40,7 @@ POST http://localhost:8000/users/signup
 Content-Type: application/json
 
 {
-  "email": "new@growmighty.co.kr",
+  "email": "new@earlybird.co.kr",
   "password": "rawPassword!",
   "name": "신규유저",
   "phoneNumber": "010-3333-3333"
@@ -51,7 +51,7 @@ POST http://localhost:8000/users/login
 Content-Type: application/json
 
 {
-  "email": "buyer@growmighty.co.kr",
+  "email": "buyer@earlybird.co.kr",
   "password": "rawPassword1!"
 }
 
