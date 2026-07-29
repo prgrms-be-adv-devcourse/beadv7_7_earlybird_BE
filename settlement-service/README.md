@@ -17,10 +17,10 @@ sequenceDiagram
     Project-->>Settlement: projectId, creatorId, 프로젝트 결과
     Settlement->>Order: projectIds의 orderIds 일괄 조회
     Order-->>Settlement: projectId별 orderIds
-    Settlement->>Payment: orderIds의 결제 판정 일괄 조회
-    Payment-->>Settlement: orderId별 준비 상태와 최종 유효 금액
     loop 프로젝트마다
-        alt 성공 프로젝트이고 모든 결제가 준비됨
+        alt 성공 프로젝트
+            Settlement->>Payment: orderIds의 결제 판정 일괄 조회
+            Payment-->>Settlement: orderId별 준비 상태와 최종 유효 금액
             Settlement->>Store: 프로젝트 정산과 지급 의무 생성
             Settlement->>Payout: 예약 지급 요청
             Payout-->>Settlement: 결정적 지급 결과
@@ -47,13 +47,13 @@ sequenceDiagram
 | Seam | 현재 구현 | 목표 대비 상태 |
 |---|---|---|
 | 프로젝트 처리 대상 | Project HTTP adapter가 `SUCCEEDED`·`FAILED`·`CANCELLED`를 각각 조회해 상태 일치와 응답 내·상태 간 중복을 검증하고 `ProjectOutcomeReader`로 전달한다. dummy는 `SUCCEEDED`만 반환한다. | Project 결과 조회 계약 완료. 실패·취소 후속 처리는 이슈 14 범위 |
-| 프로젝트별 주문 식별자 | Settlement에서 Order를 호출하는 port와 adapter가 없다. | `projectIds → projectId별 orderIds` 목록 조회 경계 필요 |
-| 주문별 결제 판정 | 프로젝트별 `FinalEffectivePaymentAmountReader`와 고정 금액 dummy만 존재한다. | `orderIds → 최종 유효 금액·준비 결과` Payment 조회 경계로 교체 필요 |
+| 프로젝트별 주문 식별자 | `ProjectOrderReader`와 결정적 dummy가 `projectIds → projectId별 orderIds` 목록 계약을 제공한다. | 운영 Order HTTP adapter는 외부 제공 interface 확정 후 구현 필요 |
+| 주문별 결제 판정 | `PaymentAssessmentReader`와 결정적 dummy가 `orderIds → READY·NOT_READY·NO_PAYMENT` 판정 계약을 제공하고, 성공 프로젝트 정산 입력으로 변환한다. | 운영 Payment HTTP adapter는 외부 제공 interface 확정 후 구현 필요 |
 | 프로젝트 정산 확정 | 프로젝트별 정산과 지급 의무를 한 DB 트랜잭션에서 생성하고 기존 `projectId` 결과를 재사용한다. | 완료 |
-| 실패·취소 프로젝트 결제 취소 | Settlement에서 Payment로 결제 취소를 요청하는 port와 adapter가 없다. | `orderIds`와 주문별 멱등키를 사용하는 취소 요청 경계 필요 |
+| 실패·취소 프로젝트 결제 취소 | `ProjectPaymentCancellationGateway`가 주문별 사유·멱등키 요청과 일곱 가지 처리 결과 계약을 제공한다. | 결과별 분기와 운영 Payment HTTP adapter는 후속 구현 필요 |
 | 지급대행 | `PayoutGateway`가 있지만 현재 선택 가능한 실행 adapter는 opt-in 실제 Toss adapter뿐이다. 기본값에서는 지급 실행기가 비활성화된다. | 외부 네트워크 없는 결정적 dummy adapter로 교체 필요 |
 
-현재 조합은 목표 E2E 흐름이 완성된 상태가 아니다. Order·Payment 목록 조회와 실패·취소 결제 취소 경계가 없고, 기존 Payment dummy는 새 경계와 맞지 않으며, dummy 지급대행도 아직 없으므로 운영 준비 완료로 해석하지 않는다.
+현재 조합은 목표 E2E 흐름이 완성된 상태가 아니다. Settlement application port와 성공 프로젝트용 dummy 조합은 마련됐지만, 실패·취소 분기와 Order·Payment 운영 adapter 및 dummy 지급대행은 아직 없으므로 운영 준비 완료로 해석하지 않는다.
 
 실제 Toss 자격 증명, 테스트 셀러, HTTP/JWE 호출, smoke test와 webhook은 활성 경로와 완료 조건에서 제외한다. `tossPayoutSmokeTest` Gradle 태스크와 Toss adapter 코드는 과거 계약 검증용으로 남아 있지만 기본 테스트·CI·목표 실행 흐름에서 사용하지 않는다.
 
@@ -87,7 +87,7 @@ Content-Type: application/json
 | `settlement.project-target.http.base-url` | 기본값 `http://project-service` |
 | `settlement.project-target.http.connect-timeout` | 기본값 1초 |
 | `settlement.project-target.http.read-timeout` | 기본값 3초 |
-| `settlement.external-data.mode` | 미지정 시 기존 Payment 금액 dummy와 dummy 지급 프로필 활성화. 새 Order·Payment 조회 경계로 교체 필요 |
+| `settlement.external-data.mode` | 미지정 시 새 Order 목록·Payment 판정 dummy와 dummy 지급 프로필 활성화 |
 | `settlement.toss-payout.enabled` | 미지정 시 비활성; `true`는 목표에서 제외된 실제 Toss adapter를 활성화 |
 
 Config server의 기존 값은 별도 승인 없이 변경하지 않는다. 후속 구현은 운영 Project·Order·Payment adapter와 dummy 지급 adapter가 역할별로 하나씩만 선택되도록 서비스 내부 조건을 먼저 완성해야 한다.

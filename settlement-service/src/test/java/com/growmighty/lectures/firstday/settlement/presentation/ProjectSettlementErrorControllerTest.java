@@ -8,7 +8,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
+import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
+import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
@@ -23,6 +26,8 @@ import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestS
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -271,30 +276,41 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     static class TestExternalDataAdapter
-            implements ProjectOutcomeReader, FinalEffectivePaymentAmountReader {
+            implements ProjectOutcomeReader, ProjectOrderReader, PaymentAssessmentReader {
 
         private ProjectOutcome outcome;
-        private List<Money> paymentAmounts;
+        private List<Long> orderIds;
+        private List<PaymentAssessment> paymentAssessments;
         private RuntimeException paymentReadFailure;
         private RuntimeException targetReadFailure;
 
         void respondWith(Long projectId, Long creatorId, List<Money> paymentAmounts) {
             this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
-            this.paymentAmounts = List.copyOf(paymentAmounts);
+            this.orderIds = IntStream.range(0, paymentAmounts.size())
+                    .mapToObj(index -> projectId * 1_000 + index + 1)
+                    .toList();
+            this.paymentAssessments = IntStream.range(0, paymentAmounts.size())
+                    .mapToObj(index -> PaymentAssessment.ready(
+                            orderIds.get(index),
+                            paymentAmounts.get(index)
+                    ))
+                    .toList();
             this.paymentReadFailure = null;
             this.targetReadFailure = null;
         }
 
         void failPaymentReadWith(Long projectId, Long creatorId, RuntimeException failure) {
             this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
-            this.paymentAmounts = List.of();
+            this.orderIds = List.of(projectId * 1_000 + 1);
+            this.paymentAssessments = List.of();
             this.paymentReadFailure = failure;
             this.targetReadFailure = null;
         }
 
         void failTargetReadWith(RuntimeException failure) {
             this.outcome = null;
-            this.paymentAmounts = List.of();
+            this.orderIds = List.of();
+            this.paymentAssessments = List.of();
             this.paymentReadFailure = null;
             this.targetReadFailure = failure;
         }
@@ -308,11 +324,16 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         }
 
         @Override
-        public List<Money> findFinalEffectivePaymentAmounts(Long projectId) {
+        public List<ProjectOrders> findProjectOrders(Set<Long> projectIds) {
+            return List.of(new ProjectOrders(outcome.projectId(), orderIds));
+        }
+
+        @Override
+        public List<PaymentAssessment> findPaymentAssessments(Set<Long> orderIds) {
             if (paymentReadFailure != null) {
                 throw paymentReadFailure;
             }
-            return paymentAmounts;
+            return paymentAssessments;
         }
     }
 

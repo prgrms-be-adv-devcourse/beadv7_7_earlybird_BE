@@ -5,7 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
+import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
+import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
@@ -32,7 +35,12 @@ class ProjectSettlementRunPayoutTest {
         ProjectOutcomeReader outcomeReader = () -> List.of(
                 new ProjectOutcome(101L, 201L, ProjectOutcomeStatus.SUCCEEDED)
         );
-        FinalEffectivePaymentAmountReader amountReader = projectId -> List.of(Money.wons(100_000));
+        ProjectOrderReader orderReader = projectIds -> List.of(
+                new ProjectOrders(101L, List.of(1_001L))
+        );
+        PaymentAssessmentReader paymentReader = orderIds -> List.of(
+                PaymentAssessment.ready(1_001L, Money.wons(100_000))
+        );
         ProjectSettlementService settlementService = mock(ProjectSettlementService.class);
         when(settlementService.confirm(any())).thenReturn(new ConfirmedProjectSettlement(
                 101L,
@@ -55,7 +63,8 @@ class ProjectSettlementRunPayoutTest {
         };
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 outcomeReader,
-                amountReader,
+                orderReader,
+                paymentReader,
                 settlementService,
                 Clock.fixed(Instant.parse("2026-07-26T01:00:00Z"), ZoneOffset.UTC),
                 Optional.of(payoutExecutor)

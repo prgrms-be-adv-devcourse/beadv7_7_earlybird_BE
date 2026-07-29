@@ -4,7 +4,10 @@ import static com.growmighty.lectures.firstday.settlement.application.error.Sett
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
+import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
+import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
@@ -14,8 +17,12 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -23,36 +30,39 @@ import org.springframework.stereotype.Service;
 public final class ProjectSettlementRunService {
 
     private final ProjectOutcomeReader projectOutcomeReader;
-    private final FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader;
+    private final ProjectOrderReader projectOrderReader;
+    private final PaymentAssessmentReader paymentAssessmentReader;
     private final ProjectSettlementService projectSettlementService;
     private final Clock clock;
     private final Optional<PayoutExecutor> payoutExecutor;
 
     public ProjectSettlementRunService(
             ProjectOutcomeReader projectOutcomeReader,
-            FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader,
+            ProjectOrderReader projectOrderReader,
+            PaymentAssessmentReader paymentAssessmentReader,
             ProjectSettlementService projectSettlementService,
             Clock clock
     ) {
-        this(
-                projectOutcomeReader,
-                finalEffectivePaymentAmountReader,
-                projectSettlementService,
-                clock,
-                Optional.empty()
-        );
+        this.projectOutcomeReader = projectOutcomeReader;
+        this.projectOrderReader = projectOrderReader;
+        this.paymentAssessmentReader = paymentAssessmentReader;
+        this.projectSettlementService = projectSettlementService;
+        this.clock = clock;
+        this.payoutExecutor = Optional.empty();
     }
 
     @Autowired
     public ProjectSettlementRunService(
             ProjectOutcomeReader projectOutcomeReader,
-            FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader,
+            ProjectOrderReader projectOrderReader,
+            PaymentAssessmentReader paymentAssessmentReader,
             ProjectSettlementService projectSettlementService,
             Clock clock,
             Optional<PayoutExecutor> payoutExecutor
     ) {
         this.projectOutcomeReader = projectOutcomeReader;
-        this.finalEffectivePaymentAmountReader = finalEffectivePaymentAmountReader;
+        this.projectOrderReader = projectOrderReader;
+        this.paymentAssessmentReader = paymentAssessmentReader;
         this.projectSettlementService = projectSettlementService;
         this.clock = clock;
         this.payoutExecutor = payoutExecutor;
@@ -91,8 +101,7 @@ public final class ProjectSettlementRunService {
             }
             List<Money> paymentAmounts;
             try {
-                paymentAmounts = finalEffectivePaymentAmountReader
-                        .findFinalEffectivePaymentAmounts(outcome.projectId());
+                paymentAmounts = findFinalEffectivePaymentAmounts(outcome.projectId());
             } catch (SettlementException exception) {
                 throw exception;
             } catch (RuntimeException exception) {
@@ -122,6 +131,45 @@ public final class ProjectSettlementRunService {
         }
 
         return new ProjectSettlementRunResult(command.settlementMonth(), confirmedSettlements);
+    }
+
+    private List<Money> findFinalEffectivePaymentAmounts(Long projectId) {
+        List<ProjectOrders> orderResults = List.copyOf(
+                projectOrderReader.findProjectOrders(Set.of(projectId))
+        );
+        if (orderResults.size() != 1 || !projectId.equals(orderResults.getFirst().projectId())) {
+            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+        }
+        ProjectOrders projectOrders = orderResults.getFirst();
+        if (projectOrders.orderIds().isEmpty()) {
+            return List.of();
+        }
+        Set<Long> orderIds = Set.copyOf(projectOrders.orderIds());
+        List<PaymentAssessment> assessments = List.copyOf(
+                paymentAssessmentReader.findPaymentAssessments(orderIds)
+        );
+        Map<Long, PaymentAssessment> assessmentByOrderId = new HashMap<>();
+        for (PaymentAssessment assessment : assessments) {
+            if (assessment == null || assessmentByOrderId.put(assessment.orderId(), assessment) != null) {
+                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+            }
+        }
+        if (!new HashSet<>(assessmentByOrderId.keySet()).equals(orderIds)) {
+            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+        }
+        return projectOrders.orderIds().stream()
+                .map(assessmentByOrderId::get)
+                .map(ProjectSettlementRunService::finalEffectiveAmount)
+                .toList();
+    }
+
+    private static Money finalEffectiveAmount(PaymentAssessment assessment) {
+        return switch (assessment) {
+            case PaymentAssessment.Ready ready -> ready.finalEffectiveAmount();
+            case PaymentAssessment.NoPayment ignored -> Money.wons(0);
+            case PaymentAssessment.NotReady ignored ->
+                    throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+        };
     }
 
     private static boolean isInvalid(ProjectOutcome outcome) {
