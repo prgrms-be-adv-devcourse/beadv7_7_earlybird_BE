@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -407,8 +408,8 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("같은 월에 같은 프로젝트를 다시 조회해도 기존 프로젝트 정산을 유지한다")
-    void keepsExistingSettlementWhenMonthRunIsRepeated() {
+    @DisplayName("이미 확정된 성공 프로젝트는 Order와 Payment 재조회 없이 기존 정산을 복원한다")
+    void restoresExistingSettlementBeforeExternalInputReads() {
         long projectId = 103L;
         long creatorId = 203L;
         creatorPayoutProfileRepository.save(
@@ -417,14 +418,20 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         ProjectOutcomeReader outcomeReader = () -> List.of(
                 new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED)
         );
+        AtomicInteger orderReads = new AtomicInteger();
+        ProjectOrderReader orderReader = projectIds -> {
+            if (orderReads.getAndIncrement() > 0) {
+                throw new AssertionError("기존 프로젝트 정산의 Order를 다시 조회하면 안 됩니다.");
+            }
+            return List.of(new ProjectOrders(projectId, List.of(projectId)));
+        };
         AtomicInteger paymentReads = new AtomicInteger();
-        ProjectOrderReader orderReader = sameIdProjectOrderReader();
         PaymentAssessmentReader paymentReader = orderIds -> {
-            Money amount = paymentReads.getAndIncrement() == 0
-                    ? Money.wons(100_000)
-                    : Money.wons(900_000);
+            if (paymentReads.getAndIncrement() > 0) {
+                throw new AssertionError("기존 프로젝트 정산의 Payment를 다시 조회하면 안 됩니다.");
+            }
             return orderIds.stream()
-                    .map(orderId -> PaymentAssessment.ready(orderId, amount))
+                    .map(orderId -> PaymentAssessment.ready(orderId, Money.wons(100_000)))
                     .toList();
         };
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
@@ -447,12 +454,124 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         ProjectSettlementRunResult first = runService.run(command);
         ProjectSettlementRunResult second = runService.run(command);
 
-        assertThat(paymentReads).hasValue(2);
+        assertThat(orderReads).hasValue(1);
+        assertThat(paymentReads).hasValue(1);
         assertThat(first.confirmedSettlements())
                 .containsExactlyElementsOf(second.confirmedSettlements());
         assertThat(second.confirmedSettlements())
                 .extracting(ConfirmedProjectSettlement::creatorPayoutAmount)
                 .containsExactly(Money.wons(91_200));
+        assertThat(first.projectResults())
+                .extracting(ProjectOutcomeProcessingResult::processingStatus)
+                .containsExactly(ProjectOutcomeProcessingStatus.SETTLEMENT_CONFIRMED);
+        assertThat(second.projectResults())
+                .extracting(ProjectOutcomeProcessingResult::processingStatus)
+                .containsExactly(ProjectOutcomeProcessingStatus.SETTLEMENT_ALREADY_CONFIRMED);
+    }
+
+    @Test
+    @DisplayName("기존 정산과 신규 성공 프로젝트가 섞이면 신규 프로젝트만 외부 조회한다")
+    void readsExternalInputsOnlyForNewProjectAmongExistingSettlements() {
+        creatorPayoutProfileRepository.save(payoutReadyProfile(221L, "seller-221", "********0221"));
+        creatorPayoutProfileRepository.save(payoutReadyProfile(222L, "seller-222", "********0222"));
+        ProjectSettlementRunService initialRunService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(121L, 221L, ProjectOutcomeStatus.SUCCEEDED)),
+                projectIds -> List.of(new ProjectOrders(121L, List.of(1_011L))),
+                orderIds -> List.of(PaymentAssessment.ready(1_011L, Money.wons(100_000))),
+                noCancellationExpected(),
+                projectSettlementService,
+                fixedClock()
+        );
+        initialRunService.run(command());
+        AtomicReference<Set<Long>> requestedProjectIds = new AtomicReference<>();
+        ProjectSettlementRunService mixedRunService = new ProjectSettlementRunService(
+                () -> List.of(
+                        new ProjectOutcome(121L, 221L, ProjectOutcomeStatus.SUCCEEDED),
+                        new ProjectOutcome(122L, 222L, ProjectOutcomeStatus.SUCCEEDED)
+                ),
+                projectIds -> {
+                    requestedProjectIds.set(projectIds);
+                    return List.of(new ProjectOrders(122L, List.of(1_012L)));
+                },
+                orderIds -> List.of(PaymentAssessment.ready(1_012L, Money.wons(200_000))),
+                noCancellationExpected(),
+                projectSettlementService,
+                fixedClock()
+        );
+
+        ProjectSettlementRunResult result = mixedRunService.run(command());
+
+        assertThat(requestedProjectIds.get()).containsExactly(122L);
+        assertThat(result.projectResults())
+                .extracting(
+                        ProjectOutcomeProcessingResult::projectId,
+                        ProjectOutcomeProcessingResult::processingStatus
+                )
+                .containsExactly(
+                        tuple(121L, ProjectOutcomeProcessingStatus.SETTLEMENT_ALREADY_CONFIRMED),
+                        tuple(122L, ProjectOutcomeProcessingStatus.SETTLEMENT_CONFIRMED)
+                );
+        assertThat(result.confirmedSettlements())
+                .extracting(ConfirmedProjectSettlement::projectId)
+                .containsExactly(121L, 122L);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = ProjectOutcomeStatus.class,
+            names = {"FAILED", "CANCELLED"}
+    )
+    @DisplayName("이미 확정된 프로젝트가 실패·취소로 관찰되면 기존 정산을 유지하고 충돌로 처리한다")
+    void rejectsOutcomeTransitionAfterSettlementConfirmation(ProjectOutcomeStatus changedStatus) {
+        long projectId = changedStatus == ProjectOutcomeStatus.FAILED ? 123L : 124L;
+        long creatorId = changedStatus == ProjectOutcomeStatus.FAILED ? 223L : 224L;
+        creatorPayoutProfileRepository.save(payoutReadyProfile(
+                creatorId,
+                "seller-" + creatorId,
+                "********0" + creatorId
+        ));
+        AtomicReference<ProjectOutcomeStatus> observedStatus =
+                new AtomicReference<>(ProjectOutcomeStatus.SUCCEEDED);
+        AtomicInteger orderReads = new AtomicInteger();
+        AtomicInteger paymentReads = new AtomicInteger();
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(projectId, creatorId, observedStatus.get())),
+                projectIds -> {
+                    if (orderReads.getAndIncrement() > 0) {
+                        throw new AssertionError("결과 충돌 프로젝트의 Order를 다시 조회하면 안 됩니다.");
+                    }
+                    return List.of(new ProjectOrders(projectId, List.of(projectId)));
+                },
+                orderIds -> {
+                    if (paymentReads.getAndIncrement() > 0) {
+                        throw new AssertionError("결과 충돌 프로젝트의 Payment를 다시 조회하면 안 됩니다.");
+                    }
+                    return List.of(PaymentAssessment.ready(projectId, Money.wons(100_000)));
+                },
+                noCancellationExpected(),
+                projectSettlementService,
+                fixedClock()
+        );
+
+        ProjectSettlementRunResult confirmed = runService.run(command());
+        observedStatus.set(changedStatus);
+        ProjectSettlementRunResult conflicted = runService.run(command());
+
+        assertThat(orderReads).hasValue(1);
+        assertThat(paymentReads).hasValue(1);
+        assertThat(conflicted.projectResults())
+                .extracting(
+                        ProjectOutcomeProcessingResult::projectId,
+                        ProjectOutcomeProcessingResult::outcomeStatus,
+                        ProjectOutcomeProcessingResult::processingStatus
+                )
+                .containsExactly(tuple(
+                        projectId,
+                        changedStatus,
+                        ProjectOutcomeProcessingStatus.OUTCOME_CONFLICT
+                ));
+        assertThat(conflicted.confirmedSettlements())
+                .containsExactlyElementsOf(confirmed.confirmedSettlements());
     }
 
     private static ProjectOrderReader sameIdProjectOrderReader() {

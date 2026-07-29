@@ -114,17 +114,44 @@ public final class ProjectSettlementRunService {
             return new ProjectSettlementRunResult(command.settlementMonth(), List.of(), List.of());
         }
 
-        Map<Long, ProjectOrders> ordersByProjectId = findProjectOrders(outcomes);
-        Set<Long> successfulOrderIds = orderIdsFor(outcomes, ordersByProjectId, ProjectOutcomeStatus.SUCCEEDED);
+        Map<Long, ConfirmedProjectSettlement> existingSettlements = findExistingSettlements(outcomes);
+        List<ProjectOutcome> pendingOutcomes = outcomes.stream()
+                .filter(outcome -> !existingSettlements.containsKey(outcome.projectId()))
+                .toList();
+        Map<Long, ProjectOrders> ordersByProjectId = pendingOutcomes.isEmpty()
+                ? Map.of()
+                : findProjectOrders(pendingOutcomes);
+        Set<Long> successfulOrderIds = orderIdsFor(
+                pendingOutcomes,
+                ordersByProjectId,
+                ProjectOutcomeStatus.SUCCEEDED
+        );
         Map<Long, PaymentAssessment> assessmentsByOrderId = findPaymentAssessments(successfulOrderIds);
         Map<Long, ProjectPaymentCancellationResult> cancellationsByOrderId = cancelProjectPayments(
-                outcomes,
+                pendingOutcomes,
                 ordersByProjectId
         );
 
         List<ConfirmedProjectSettlement> confirmedSettlements = new ArrayList<>();
         List<ProjectOutcomeProcessingResult> projectResults = new ArrayList<>();
         for (ProjectOutcome outcome : outcomes) {
+            ConfirmedProjectSettlement existingSettlement = existingSettlements.get(outcome.projectId());
+            if (existingSettlement != null) {
+                boolean outcomeMatchesSettlement = outcome.status() == ProjectOutcomeStatus.SUCCEEDED
+                        && outcome.creatorId().equals(existingSettlement.creatorId());
+                ConfirmedProjectSettlement restored = outcomeMatchesSettlement
+                        ? executePayout(existingSettlement)
+                        : existingSettlement;
+                confirmedSettlements.add(restored);
+                projectResults.add(new ProjectOutcomeProcessingResult(
+                        outcome.projectId(),
+                        outcome.status(),
+                        outcomeMatchesSettlement
+                                ? ProjectOutcomeProcessingStatus.SETTLEMENT_ALREADY_CONFIRMED
+                                : ProjectOutcomeProcessingStatus.OUTCOME_CONFLICT
+                ));
+                continue;
+            }
             if (outcome.status() != ProjectOutcomeStatus.SUCCEEDED) {
                 projectResults.add(new ProjectOutcomeProcessingResult(
                         outcome.projectId(),
@@ -169,13 +196,7 @@ public final class ProjectSettlementRunService {
                     command.confirmedAt()
             );
             ConfirmedProjectSettlement confirmed = projectSettlementService.confirm(confirmCommand);
-            if (payoutExecutor.isPresent()) {
-                PayoutExecutionResult payoutResult = payoutExecutor.get()
-                        .execute(confirmed.payoutObligationId());
-                confirmed = confirmed.withPayoutObligationStatus(
-                        payoutResult.payoutObligationStatus()
-                );
-            }
+            confirmed = executePayout(confirmed);
             confirmedSettlements.add(confirmed);
             projectResults.add(ProjectOutcomeProcessingResult.settlementConfirmed(outcome.projectId()));
         }
@@ -185,6 +206,26 @@ public final class ProjectSettlementRunService {
                 projectResults,
                 confirmedSettlements
         );
+    }
+
+    private Map<Long, ConfirmedProjectSettlement> findExistingSettlements(
+            List<ProjectOutcome> outcomes
+    ) {
+        Map<Long, ConfirmedProjectSettlement> existingSettlements = new HashMap<>();
+        for (ProjectOutcome outcome : outcomes) {
+            projectSettlementService.findConfirmedByProjectId(outcome.projectId())
+                    .ifPresent(settlement -> existingSettlements.put(outcome.projectId(), settlement));
+        }
+        return Map.copyOf(existingSettlements);
+    }
+
+    private ConfirmedProjectSettlement executePayout(ConfirmedProjectSettlement settlement) {
+        if (payoutExecutor.isEmpty()) {
+            return settlement;
+        }
+        PayoutExecutionResult payoutResult = payoutExecutor.get()
+                .execute(settlement.payoutObligationId());
+        return settlement.withPayoutObligationStatus(payoutResult.payoutObligationStatus());
     }
 
     private Map<Long, ProjectOrders> findProjectOrders(List<ProjectOutcome> outcomes) {

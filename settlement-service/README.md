@@ -15,7 +15,9 @@ sequenceDiagram
 
     Settlement->>Project: 처리 대상 프로젝트 조회
     Project-->>Settlement: projectId, creatorId, 프로젝트 결과
-    Settlement->>Order: projectIds의 orderIds 일괄 조회
+    Settlement->>Store: 기존 프로젝트 정산과 지급 의무 조회
+    Store-->>Settlement: 이미 확정된 프로젝트 복원
+    Settlement->>Order: 신규 projectIds의 orderIds 일괄 조회
     Order-->>Settlement: projectId별 orderIds
     Settlement->>Payment: 성공 orderIds의 결제 판정 일괄 조회
     Payment-->>Settlement: orderId별 준비 상태와 최종 유효 금액
@@ -34,6 +36,7 @@ sequenceDiagram
 
 - Project가 프로젝트 완료와 성공·실패·취소 결과를 판정한다.
 - Settlement는 Project에서 받은 `projectId` 목록을 Order에 전달한다.
+- 이미 확정된 프로젝트는 로컬 정산과 지급 의무를 먼저 복원해 Order·Payment 조회 대상에서 제외한다. 이후 `FAILED`·`CANCELLED`로 관찰되면 기존 정산을 유지하고 결과 전환 충돌로 처리한다.
 - Order는 주문의 단일 프로젝트 귀속을 소유하고 `projectId`별 `orderId` 목록만 제공한다.
 - Settlement는 Order에서 받은 `orderId` 목록으로 Payment의 결제 판정을 조회한다. Payment가 `projectId`를 전달받거나 보존할 필요는 없다.
 - 성공 프로젝트는 준비 완료된 최종 유효 결제 금액으로 프로젝트 정산과 지급 의무를 생성한다.
@@ -50,7 +53,7 @@ sequenceDiagram
 | 프로젝트 처리 대상 | Project HTTP adapter가 `SUCCEEDED`·`FAILED`·`CANCELLED`를 각각 조회해 상태 일치와 응답 내·상태 간 중복을 검증하고 `ProjectOutcomeReader`로 전달한다. dummy는 `SUCCEEDED`만 반환한다. | Project 결과 조회 계약 완료. 실패·취소 후속 처리는 이슈 14 범위 |
 | 프로젝트별 주문 식별자 | `ProjectOrderReader`와 결정적 dummy가 모든 `projectIds → projectId별 orderIds`를 한 번에 제공하며, 실행 서비스가 누락·중복·예상 밖 프로젝트와 프로젝트 간 주문 중복을 거부한다. | 운영 Order HTTP adapter는 외부 제공 interface 확정 후 구현 필요 |
 | 주문별 결제 판정 | `PaymentAssessmentReader`와 결정적 dummy가 성공 프로젝트의 `orderIds`만 받아 `READY·NOT_READY·NO_PAYMENT`를 반환한다. 미준비 프로젝트는 확정하지 않고 다른 프로젝트 처리를 계속한다. | 운영 Payment HTTP adapter는 외부 제공 interface 확정 후 구현 필요 |
-| 프로젝트 정산 확정 | 프로젝트별 정산과 지급 의무를 한 DB 트랜잭션에서 생성하고 기존 `projectId` 결과를 재사용한다. | 완료 |
+| 프로젝트 정산 확정 | 프로젝트별 정산과 지급 의무를 한 DB 트랜잭션에서 생성한다. 재실행은 기존 정산·지급 의무를 외부 조회 전에 복원하며 성공 결과는 `SETTLEMENT_ALREADY_CONFIRMED`, 실패·취소 결과는 `OUTCOME_CONFLICT`로 반환한다. | 성공 정산 기준 재실행·전환 충돌 완료. 결제 취소 후 성공으로 바뀌는 역방향 충돌은 취소 명령 영속화 후 검증 필요 |
 | 실패·취소 프로젝트 결제 취소 | 실행 서비스가 결제 판정 조회 없이 주문별 프로젝트 결과 사유와 결정적 멱등키로 `ProjectPaymentCancellationGateway`를 호출한다. dummy는 완료를 반환하고, 주문별 일곱 가지 결과는 프로젝트 처리 상태로 보수적으로 집약한다. | 운영 Payment HTTP adapter와 취소 명령 영속화는 후속 구현 필요 |
 | 지급대행 | `PayoutGateway`가 있지만 현재 선택 가능한 실행 adapter는 opt-in 실제 Toss adapter뿐이다. 기본값에서는 지급 실행기가 비활성화된다. | 외부 네트워크 없는 결정적 dummy adapter로 교체 필요 |
 
