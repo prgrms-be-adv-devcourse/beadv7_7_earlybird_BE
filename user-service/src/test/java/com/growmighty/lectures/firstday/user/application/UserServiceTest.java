@@ -1,0 +1,218 @@
+package com.growmighty.lectures.firstday.user.application;
+
+import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.user.application.dto.ChangePasswordCommand;
+import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
+import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
+import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
+import com.growmighty.lectures.firstday.user.application.dto.UpdateProfileCommand;
+import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
+import com.growmighty.lectures.firstday.user.domain.CreatorProfile;
+import com.growmighty.lectures.firstday.user.domain.CreatorProfileRepository;
+import com.growmighty.lectures.firstday.user.domain.User;
+import com.growmighty.lectures.firstday.user.domain.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class UserServiceTest {
+
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private CreatorProfileRepository creatorProfileRepository;
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
+    private UserService userService;
+
+    @BeforeEach
+    void setUp() {
+        userService = new UserService(userRepository, creatorProfileRepository, passwordEncoder);
+    }
+
+    private static User backer() {
+        return User.register("hana@example.com", "encoded-old", "김하나한", "010-0000-0000");
+    }
+
+    @Test
+    @DisplayName("이미 가입된 이메일로 가입하면 예외가 발생한다")
+    void register_withDuplicateEmail_throws() {
+        when(userRepository.existsByEmail("hana@example.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.register(
+                new RegisterUserCommand("hana@example.com", "rawPassword1!", "김하나한", "010-0000-0000")))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("가입 시 비밀번호를 인코딩해서 저장한다")
+    void register_encodesPasswordBeforeSaving() {
+        when(userRepository.existsByEmail("hana@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("rawPassword1!")).thenReturn("encoded-password");
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        when(userRepository.save(captor.capture())).thenAnswer(invocation -> captor.getValue());
+
+        UserInfo result = userService.register(
+                new RegisterUserCommand("hana@example.com", "rawPassword1!", "김하나한", "010-0000-0000"));
+
+        assertThat(captor.getValue().getPassword()).isEqualTo("encoded-password");
+        assertThat(result.email()).isEqualTo("hana@example.com");
+        assertThat(result.role()).isEqualTo(UserRole.BACKER);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 이메일로 로그인하면 예외가 발생한다")
+    void authenticate_withUnknownEmail_throws() {
+        when(userRepository.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.authenticate(new LoginCommand("nobody@example.com", "rawPassword1!")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("비밀번호가 틀리면 예외가 발생한다")
+    void authenticate_withWrongPassword_throws() {
+        User user = backer();
+        when(userRepository.findByEmail("hana@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrongPassword!", "encoded-old")).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.authenticate(new LoginCommand("hana@example.com", "wrongPassword!")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("이메일과 비밀번호가 맞으면 사용자 정보를 반환한다")
+    void authenticate_withCorrectCredentials_returnsUserInfo() {
+        User user = backer();
+        when(userRepository.findByEmail("hana@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("rawPassword1!", "encoded-old")).thenReturn(true);
+
+        UserInfo result = userService.authenticate(new LoginCommand("hana@example.com", "rawPassword1!"));
+
+        assertThat(result.email()).isEqualTo("hana@example.com");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 유저를 조회하면 예외가 발생한다")
+    void getUser_withUnknownId_throws() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getUser(999L)).isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 유저의 프로필을 수정하면 예외가 발생한다")
+    void updateProfile_withUnknownId_throws() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.updateProfile(new UpdateProfileCommand(999L, "새이름", "010-1111-1111")))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("프로필을 수정하면 이름과 전화번호가 갱신된다")
+    void updateProfile_updatesNameAndPhoneNumber() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        UserInfo result = userService.updateProfile(new UpdateProfileCommand(1L, "새이름", "010-1111-1111"));
+
+        assertThat(result.name()).isEqualTo("새이름");
+        assertThat(result.phoneNumber()).isEqualTo("010-1111-1111");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 유저를 판매자로 등록하면 예외가 발생한다")
+    void registerAsCreator_withUnknownId_throws() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.registerAsCreator(
+                new RegisterCreatorCommand(999L, "신한은행", "110-123-456789", "창작자")))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("이미 판매자로 등록된 유저를 다시 등록하면 예외가 발생한다")
+    void registerAsCreator_whenAlreadyRegistered_throws() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(creatorProfileRepository.existsByUserId(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.registerAsCreator(
+                new RegisterCreatorCommand(1L, "신한은행", "110-123-456789", "창작자")))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(creatorProfileRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("판매자로 등록하면 role 이 CREATOR 로 바뀌고 정산 계좌 정보가 저장된다")
+    void registerAsCreator_switchesRoleAndSavesProfile() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(creatorProfileRepository.existsByUserId(1L)).thenReturn(false);
+        ArgumentCaptor<CreatorProfile> captor = ArgumentCaptor.forClass(CreatorProfile.class);
+
+        UserInfo result = userService.registerAsCreator(
+                new RegisterCreatorCommand(1L, "신한은행", "110-123-456789", "창작자"));
+
+        assertThat(result.role()).isEqualTo(UserRole.CREATOR);
+        verify(creatorProfileRepository).save(captor.capture());
+        assertThat(captor.getValue().getUserId()).isEqualTo(1L);
+        assertThat(captor.getValue().getBankName()).isEqualTo("신한은행");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 유저의 비밀번호를 변경하면 예외가 발생한다")
+    void changePassword_withUnknownId_throws() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.changePassword(
+                new ChangePasswordCommand(999L, "rawPassword1!", "newPassword1!")))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("현재 비밀번호가 틀리면 예외가 발생한다")
+    void changePassword_withWrongCurrentPassword_throws() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrongPassword!", "encoded-old")).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.changePassword(
+                new ChangePasswordCommand(1L, "wrongPassword!", "newPassword1!")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("비밀번호를 변경하면 새 비밀번호가 인코딩되어 저장된다")
+    void changePassword_encodesNewPasswordBeforeSaving() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("rawPassword1!", "encoded-old")).thenReturn(true);
+        when(passwordEncoder.encode("newPassword1!")).thenReturn("encoded-new");
+
+        userService.changePassword(new ChangePasswordCommand(1L, "rawPassword1!", "newPassword1!"));
+
+        assertThat(user.getPassword()).isEqualTo("encoded-new");
+    }
+}

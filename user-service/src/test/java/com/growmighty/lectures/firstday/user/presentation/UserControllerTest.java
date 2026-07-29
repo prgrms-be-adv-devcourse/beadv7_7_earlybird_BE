@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -184,6 +185,42 @@ class UserControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(userService).changePassword(any());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users/me 는 X-User-Id 헤더의 사용자 정보를 반환한다")
+    void getMe_returnsCurrentUser() throws Exception {
+        when(userService.getUser(1L)).thenReturn(BACKER);
+
+        mockMvc.perform(get("/api/v1/users/me").header(JwtHeaders.USER_ID, "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.email").value("hanahan@example.com"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/me/creator 는 필수 필드가 빈 값이면 400 을 반환한다")
+    void registerAsCreator_withBlankFields_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/users/me/creator")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankName\":\"\",\"accountNumber\":\"\",\"accountHolder\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/me/creator 는 정상 요청이면 CREATOR 로 전환된 사용자 정보를 반환한다")
+    void registerAsCreator_withValidRequest_returnsCreatorUser() throws Exception {
+        UserInfo creator = new UserInfo(1L, "hanahan@example.com", "김하나한", "010-0000-0000", UserRole.CREATOR);
+        when(userService.registerAsCreator(any())).thenReturn(creator);
+
+        mockMvc.perform(post("/api/v1/users/me/creator")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankName\":\"신한은행\",\"accountNumber\":\"110-123-456789\",\"accountHolder\":\"김하나한\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("CREATOR"));
     }
 
     @Test
