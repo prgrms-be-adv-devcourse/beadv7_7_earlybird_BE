@@ -223,6 +223,14 @@ services:
       args:
         MODULE: board-service
     container_name: earlybird-board-service
+    # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써진다 — 그래서 여기선
+    # SPRING_PROFILES_ACTIVE/SPRING_CONFIG_IMPORT 두 개를 그대로 반복하고 GMAIL_* 만 추가한다.
+    # 값이 없으면(로컬 .env 미설정) 빈 문자열로 들어가고, board-service.yml 의 ":" 기본값이 마저 받아준다.
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      GMAIL_USERNAME: ${GMAIL_USERNAME:-}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8088:8088"
