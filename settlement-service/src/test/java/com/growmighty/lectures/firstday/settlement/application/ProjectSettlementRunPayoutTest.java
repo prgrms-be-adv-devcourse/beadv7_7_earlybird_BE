@@ -65,6 +65,7 @@ class ProjectSettlementRunPayoutTest {
                 outcomeReader,
                 orderReader,
                 paymentReader,
+                requests -> List.of(),
                 settlementService,
                 Clock.fixed(Instant.parse("2026-07-26T01:00:00Z"), ZoneOffset.UTC),
                 Optional.of(payoutExecutor)

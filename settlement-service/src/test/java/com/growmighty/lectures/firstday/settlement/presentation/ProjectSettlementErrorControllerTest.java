@@ -15,6 +15,10 @@ import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrder
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationGateway;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationRequest;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationResult;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
@@ -276,7 +280,10 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     static class TestExternalDataAdapter
-            implements ProjectOutcomeReader, ProjectOrderReader, PaymentAssessmentReader {
+            implements ProjectOutcomeReader,
+            ProjectOrderReader,
+            PaymentAssessmentReader,
+            ProjectPaymentCancellationGateway {
 
         private ProjectOutcome outcome;
         private List<Long> orderIds;
@@ -334,6 +341,19 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 throw paymentReadFailure;
             }
             return paymentAssessments;
+        }
+
+        @Override
+        public List<ProjectPaymentCancellationResult> cancel(
+                List<ProjectPaymentCancellationRequest> requests
+        ) {
+            return requests.stream()
+                    .map(ProjectPaymentCancellationRequest::orderId)
+                    .map(orderId -> new ProjectPaymentCancellationResult(
+                            orderId,
+                            ProjectPaymentCancellationStatus.COMPLETED
+                    ))
+                    .toList();
         }
     }
 
