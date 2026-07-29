@@ -61,7 +61,6 @@ class SettlementPersistenceTest {
     void recordsAuditTimestampsWithCommonJpaAuditing() {
         projectSettlementRepository.save(ProjectSettlement.confirm(
                 1L,
-                "감사 필드 테스트 프로젝트",
                 10L,
                 SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(
@@ -90,7 +89,6 @@ class SettlementPersistenceTest {
     void persistsAndRestoresProjectSettlementMoney() {
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
-                "여름의 기록",
                 10L,
                 SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(
@@ -113,7 +111,6 @@ class SettlementPersistenceTest {
 
         assertThat(saved.id()).isNotNull();
         assertThat(restored.creatorPayoutAmount()).isEqualTo(Money.wons(91_200));
-        assertThat(restored.projectTitle()).isEqualTo("여름의 기록");
         assertThat(restored.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
     }
 
@@ -325,7 +322,6 @@ class SettlementPersistenceTest {
         );
         ProjectSettlement first = ProjectSettlement.confirm(
                 1L,
-                "첫 번째 프로젝트",
                 10L,
                 SettlementFeePolicySnapshot.current(),
                 breakdown,
@@ -334,7 +330,6 @@ class SettlementPersistenceTest {
         );
         ProjectSettlement duplicate = ProjectSettlement.confirm(
                 1L,
-                "중복 프로젝트",
                 10L,
                 SettlementFeePolicySnapshot.current(),
                 breakdown,

@@ -31,7 +31,7 @@ public record AdminProjectSettlementDetailResponse(
         return new AdminProjectSettlementDetailResponse(
                 detail.settlementId(),
                 detail.creatorId(),
-                new ProjectResponse(detail.projectId(), detail.projectTitle()),
+                new ProjectResponse(detail.projectId()),
                 toOffsetDateTime(detail.confirmedAt()),
                 BreakdownResponse.from(detail.feePolicySnapshot(), detail.breakdown()),
                 new PayoutResponse(
@@ -53,7 +53,7 @@ public record AdminProjectSettlementDetailResponse(
         return dateTime == null ? null : dateTime.atZone(SEOUL).toOffsetDateTime();
     }
 
-    public record ProjectResponse(Long projectId, String title) {
+    public record ProjectResponse(Long projectId) {
     }
 
     public record BreakdownResponse(

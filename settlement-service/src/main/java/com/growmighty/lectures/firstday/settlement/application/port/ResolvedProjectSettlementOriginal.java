@@ -6,7 +6,6 @@ public record ResolvedProjectSettlementOriginal(
         Long settlementId,
         Long projectId,
         Long creatorId,
-        String projectTitle,
         SettlementFeePolicySnapshot feePolicySnapshot
 ) {
 }

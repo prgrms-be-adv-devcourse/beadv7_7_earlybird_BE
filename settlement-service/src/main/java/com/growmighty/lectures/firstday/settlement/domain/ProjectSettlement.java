@@ -7,7 +7,6 @@ public final class ProjectSettlement {
 
     private final Long id;
     private final Long projectId;
-    private final String projectTitle;
     private final Long creatorId;
     private final SettlementFeePolicySnapshot feePolicySnapshot;
     private final SettlementBreakdown breakdown;
@@ -17,7 +16,6 @@ public final class ProjectSettlement {
     private ProjectSettlement(
             Long id,
             Long projectId,
-            String projectTitle,
             Long creatorId,
             SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
@@ -30,15 +28,11 @@ public final class ProjectSettlement {
         if (projectId == null || projectId <= 0) {
             throw new IllegalArgumentException("프로젝트 식별자는 양수여야 합니다.");
         }
-        if (projectTitle == null || projectTitle.isBlank()) {
-            throw new IllegalArgumentException("프로젝트 제목은 필수입니다.");
-        }
         if (creatorId == null || creatorId <= 0) {
             throw new IllegalArgumentException("창작자 식별자는 양수여야 합니다.");
         }
         this.id = id;
         this.projectId = projectId;
-        this.projectTitle = projectTitle;
         this.creatorId = creatorId;
         this.feePolicySnapshot = Objects.requireNonNull(feePolicySnapshot, "수수료 정책 스냅샷은 필수입니다.");
         this.breakdown = Objects.requireNonNull(breakdown, "정산 금액 명세는 필수입니다.");
@@ -51,7 +45,6 @@ public final class ProjectSettlement {
 
     public static ProjectSettlement confirm(
             Long projectId,
-            String projectTitle,
             Long creatorId,
             SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
@@ -61,7 +54,6 @@ public final class ProjectSettlement {
         return new ProjectSettlement(
                 null,
                 projectId,
-                projectTitle,
                 creatorId,
                 feePolicySnapshot,
                 breakdown,
@@ -73,7 +65,6 @@ public final class ProjectSettlement {
     public static ProjectSettlement restore(
             Long id,
             Long projectId,
-            String projectTitle,
             Long creatorId,
             SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
@@ -83,7 +74,6 @@ public final class ProjectSettlement {
         return new ProjectSettlement(
                 Objects.requireNonNull(id, "프로젝트 정산 식별자는 필수입니다."),
                 projectId,
-                projectTitle,
                 creatorId,
                 feePolicySnapshot,
                 breakdown,
@@ -98,10 +88,6 @@ public final class ProjectSettlement {
 
     public Long projectId() {
         return projectId;
-    }
-
-    public String projectTitle() {
-        return projectTitle;
     }
 
     public Long creatorId() {

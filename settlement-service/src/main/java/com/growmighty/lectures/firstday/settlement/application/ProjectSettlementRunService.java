@@ -68,7 +68,7 @@ public final class ProjectSettlementRunService {
     public ProjectSettlementRunResult run(RunProjectSettlementsCommand command) {
         List<ProjectSettlementTarget> targets;
         try {
-            targets = projectSettlementTargetReader.findSettlementTargets(command.settlementMonth());
+            targets = projectSettlementTargetReader.findSettlementTargets();
         } catch (SettlementException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -101,7 +101,6 @@ public final class ProjectSettlementRunService {
             }
             ConfirmProjectSettlementCommand confirmCommand = new ConfirmProjectSettlementCommand(
                     target.projectId(),
-                    target.projectTitle(),
                     target.creatorId(),
                     paymentAmounts,
                     command.scheduledDate(),

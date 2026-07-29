@@ -41,7 +41,6 @@ public class CreatorProjectSettlementQueryService {
         return new CreatorProjectSettlementDetail(
                 settlement.id(),
                 settlement.projectId(),
-                settlement.projectTitle(),
                 settlement.confirmedAt(),
                 settlement.feePolicySnapshot(),
                 settlement.breakdown(),
@@ -61,7 +60,6 @@ public class CreatorProjectSettlementQueryService {
         return new CreatorProjectSettlementSummary(
                 settlement.id(),
                 settlement.projectId(),
-                settlement.projectTitle(),
                 settlement.breakdown().baseAmount(),
                 settlement.creatorPayoutAmount(),
                 obligation.status(),

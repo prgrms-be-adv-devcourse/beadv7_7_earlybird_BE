@@ -28,8 +28,8 @@ class ProjectSettlementRunPayoutTest {
     @Test
     @DisplayName("지급 연동이 활성화되면 확정된 지급 의무의 지급을 실행한다")
     void executesPayoutForConfirmedSettlement() {
-        ProjectSettlementTargetReader targetReader = month -> List.of(
-                new ProjectSettlementTarget(101L, "지급 대상 프로젝트", 201L)
+        ProjectSettlementTargetReader targetReader = () -> List.of(
+                new ProjectSettlementTarget(101L, 201L)
         );
         FinalEffectivePaymentAmountReader amountReader = projectId -> List.of(Money.wons(100_000));
         ProjectSettlementService settlementService = mock(ProjectSettlementService.class);

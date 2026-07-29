@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 public record CreatorProjectSettlementDetail(
         Long settlementId,
         Long projectId,
-        String projectTitle,
         LocalDateTime confirmedAt,
         SettlementFeePolicySnapshot feePolicySnapshot,
         SettlementBreakdown breakdown,

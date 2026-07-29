@@ -65,7 +65,6 @@ public class ProjectSettlementService {
         PayoutDestinationSnapshot destinationSnapshot = payoutProfile.snapshotDestination();
         ProjectSettlement settlementToSave = ProjectSettlement.confirm(
                 command.projectId(),
-                command.projectTitle(),
                 command.creatorId(),
                 calculationPolicy.feePolicySnapshot(),
                 breakdown,

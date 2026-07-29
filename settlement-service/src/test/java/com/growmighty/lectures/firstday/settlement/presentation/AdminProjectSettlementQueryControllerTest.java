@@ -78,19 +78,16 @@ class AdminProjectSettlementQueryControllerTest {
 
         ConfirmedProjectSettlement oldest = confirm(
                 82_000_001L,
-                "가장 오래된 관리자 조회 프로젝트",
                 firstCreatorId,
                 LocalDateTime.of(2026, 6, 1, 9, 0)
         );
         ConfirmedProjectSettlement sameTimeLowerId = confirm(
                 82_000_002L,
-                "같은 시각의 먼저 확정된 관리자 조회 프로젝트",
                 secondCreatorId,
                 LocalDateTime.of(2026, 7, 1, 10, 0)
         );
         ConfirmedProjectSettlement sameTimeHigherId = confirm(
                 82_000_003L,
-                "같은 시각의 나중에 확정된 관리자 조회 프로젝트",
                 firstCreatorId,
                 LocalDateTime.of(2026, 7, 1, 10, 0)
         );
@@ -104,8 +101,7 @@ class AdminProjectSettlementQueryControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].settlementId").value(sameTimeHigherId.settlementId()))
                 .andExpect(jsonPath("$.data[0].projectId").value(82_000_003L))
-                .andExpect(jsonPath("$.data[0].projectTitle")
-                        .value("같은 시각의 나중에 확정된 관리자 조회 프로젝트"))
+                .andExpect(jsonPath("$.data[0].projectTitle").doesNotExist())
                 .andExpect(jsonPath("$.data[0].creatorId").value(firstCreatorId))
                 .andExpect(jsonPath("$.data[0].settlementBaseAmount").value(1_000_000))
                 .andExpect(jsonPath("$.data[0].creatorPayoutAmount").value(912_000))
@@ -133,7 +129,6 @@ class AdminProjectSettlementQueryControllerTest {
         savePayoutReadyProfile(creatorId);
         ConfirmedProjectSettlement confirmed = confirm(
                 84_000_001L,
-                "관리자 운영 상세 프로젝트",
                 creatorId,
                 LocalDateTime.of(2026, 7, 1, 9, 0)
         );
@@ -149,7 +144,7 @@ class AdminProjectSettlementQueryControllerTest {
                 .andExpect(jsonPath("$.data.settlementId").value(confirmed.settlementId()))
                 .andExpect(jsonPath("$.data.creatorId").value(creatorId))
                 .andExpect(jsonPath("$.data.project.projectId").value(84_000_001L))
-                .andExpect(jsonPath("$.data.project.title").value("관리자 운영 상세 프로젝트"))
+                .andExpect(jsonPath("$.data.project.title").doesNotExist())
                 .andExpect(jsonPath("$.data.confirmedAt").value("2026-07-01T09:00:00+09:00"))
                 .andExpect(jsonPath("$.data.breakdown.settlementBaseAmount").value(1_000_000))
                 .andExpect(jsonPath("$.data.breakdown.paymentAndSettlementAgencyFee.rate").value(0.04))
@@ -223,7 +218,6 @@ class AdminProjectSettlementQueryControllerTest {
         creatorPayoutProfileRepository.save(payoutProfile);
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 86_000_001L,
-                "관리자 지급 의무 누락 프로젝트",
                 creatorId,
                 SettlementCalculationPolicy.current().feePolicySnapshot(),
                 SettlementCalculationPolicy.current().calculate(List.of(Money.wons(1_000_000))),
@@ -244,13 +238,11 @@ class AdminProjectSettlementQueryControllerTest {
 
     private ConfirmedProjectSettlement confirm(
             long projectId,
-            String projectTitle,
             long creatorId,
             LocalDateTime confirmedAt
     ) {
         return projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
                 projectId,
-                projectTitle,
                 creatorId,
                 List.of(Money.wons(1_000_000)),
                 LocalDate.of(2026, 7, 7),

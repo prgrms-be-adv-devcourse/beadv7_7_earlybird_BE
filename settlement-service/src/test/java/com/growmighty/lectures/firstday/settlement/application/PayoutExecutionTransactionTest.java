@@ -52,7 +52,6 @@ class PayoutExecutionTransactionTest {
     void commitsAttemptBeforeExternalCall() {
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 501L,
-                "지급 트랜잭션 테스트 프로젝트",
                 601L,
                 SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(

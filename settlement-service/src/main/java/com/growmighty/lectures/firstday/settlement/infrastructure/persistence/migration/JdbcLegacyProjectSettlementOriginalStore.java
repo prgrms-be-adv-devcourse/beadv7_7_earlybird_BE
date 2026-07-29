@@ -17,24 +17,16 @@ public class JdbcLegacyProjectSettlementOriginalStore implements LegacyProjectSe
             SELECT settlement.id AS settlement_id,
                    settlement.project_id,
                    settlement.creator_id,
-                   obligation.scheduled_date,
-                   settlement.project_title,
                    settlement.payment_and_settlement_agency_fee_rate,
                    settlement.platform_fee_rate,
                    settlement.fee_vat_rate
             FROM project_settlements settlement
-            LEFT JOIN payout_obligations obligation
-                   ON obligation.settlement_id = settlement.id
             ORDER BY settlement.id
             """;
 
     private static final String BACKFILL_ORIGINAL_SQL = """
             UPDATE project_settlements
-            SET project_title = CASE
-                    WHEN project_title IS NULL OR TRIM(project_title) = '' THEN ?
-                    ELSE project_title
-                END,
-                payment_and_settlement_agency_fee_rate = COALESCE(
+            SET payment_and_settlement_agency_fee_rate = COALESCE(
                     payment_and_settlement_agency_fee_rate,
                     ?
                 ),
@@ -48,19 +40,21 @@ public class JdbcLegacyProjectSettlementOriginalStore implements LegacyProjectSe
     private static final String COUNT_MISSING_ORIGINALS_SQL = """
             SELECT COUNT(*)
             FROM project_settlements
-            WHERE project_title IS NULL
-               OR TRIM(project_title) = ''
-               OR payment_and_settlement_agency_fee_rate IS NULL
+            WHERE payment_and_settlement_agency_fee_rate IS NULL
                OR platform_fee_rate IS NULL
                OR fee_vat_rate IS NULL
             """;
 
     private static final String ENFORCE_REQUIRED_ORIGINALS_SQL = """
             ALTER TABLE project_settlements
-                MODIFY project_title VARCHAR(255) NOT NULL,
                 MODIFY payment_and_settlement_agency_fee_rate DECIMAL(7, 6) NOT NULL,
                 MODIFY platform_fee_rate DECIMAL(7, 6) NOT NULL,
                 MODIFY fee_vat_rate DECIMAL(7, 6) NOT NULL
+            """;
+
+    private static final String RELAX_LEGACY_PROJECT_TITLE_SQL = """
+            ALTER TABLE project_settlements
+                MODIFY project_title VARCHAR(255) NULL
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -73,8 +67,6 @@ public class JdbcLegacyProjectSettlementOriginalStore implements LegacyProjectSe
                         resultSet.getLong("settlement_id"),
                         resultSet.getLong("project_id"),
                         resultSet.getLong("creator_id"),
-                        resultSet.getObject("scheduled_date", java.time.LocalDate.class),
-                        resultSet.getString("project_title"),
                         resultSet.getBigDecimal("payment_and_settlement_agency_fee_rate"),
                         resultSet.getBigDecimal("platform_fee_rate"),
                         resultSet.getBigDecimal("fee_vat_rate")
@@ -88,7 +80,6 @@ public class JdbcLegacyProjectSettlementOriginalStore implements LegacyProjectSe
         for (ResolvedProjectSettlementOriginal original : originals) {
             int updatedRowCount = jdbcTemplate.update(
                     BACKFILL_ORIGINAL_SQL,
-                    original.projectTitle(),
                     original.feePolicySnapshot().paymentAndSettlementAgencyFeeRate(),
                     original.feePolicySnapshot().platformFeeRate(),
                     original.feePolicySnapshot().vatRate(),
@@ -112,6 +103,7 @@ public class JdbcLegacyProjectSettlementOriginalStore implements LegacyProjectSe
         if (missingOriginalCount == null || missingOriginalCount > 0) {
             throw new IllegalStateException("필수 프로젝트 정산 원본이 남아 있어 제약을 적용할 수 없습니다.");
         }
+        jdbcTemplate.execute(RELAX_LEGACY_PROJECT_TITLE_SQL);
         jdbcTemplate.execute(ENFORCE_REQUIRED_ORIGINALS_SQL);
     }
 }

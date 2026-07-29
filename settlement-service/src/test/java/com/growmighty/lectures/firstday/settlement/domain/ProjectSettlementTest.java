@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class ProjectSettlementTest {
 
     @Test
-    @DisplayName("정산 확정 시점의 프로젝트 제목과 수수료 정책을 원본으로 고정한다")
+    @DisplayName("정산 확정 시점의 수수료 정책을 원본으로 고정한다")
     void fixesProjectAndFeePolicySnapshotAtConfirmation() {
         SettlementFeePolicySnapshot feePolicySnapshot = SettlementFeePolicySnapshot.of(
                 new BigDecimal("0.04"),
@@ -29,7 +29,6 @@ class ProjectSettlementTest {
 
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
-                "여름의 기록",
                 10L,
                 feePolicySnapshot,
                 breakdown,
@@ -37,7 +36,6 @@ class ProjectSettlementTest {
                 LocalDateTime.of(2026, 7, 22, 10, 0)
         );
 
-        assertThat(settlement.projectTitle()).isEqualTo("여름의 기록");
         assertThat(settlement.feePolicySnapshot()).isEqualTo(feePolicySnapshot);
     }
 
@@ -56,7 +54,6 @@ class ProjectSettlementTest {
 
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
-                "여름의 기록",
                 10L,
                 SettlementFeePolicySnapshot.current(),
                 breakdown,
@@ -88,7 +85,6 @@ class ProjectSettlementTest {
 
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
-                "여름의 기록",
                 10L,
                 SettlementFeePolicySnapshot.current(),
                 breakdown,
