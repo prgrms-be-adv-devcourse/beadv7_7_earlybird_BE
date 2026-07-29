@@ -14,6 +14,8 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -23,6 +25,7 @@ public final class ProjectSettlementRunService {
     private final FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader;
     private final ProjectSettlementService projectSettlementService;
     private final Clock clock;
+    private final Optional<PayoutExecutor> payoutExecutor;
 
     public ProjectSettlementRunService(
             ProjectSettlementTargetReader projectSettlementTargetReader,
@@ -30,10 +33,28 @@ public final class ProjectSettlementRunService {
             ProjectSettlementService projectSettlementService,
             Clock clock
     ) {
+        this(
+                projectSettlementTargetReader,
+                finalEffectivePaymentAmountReader,
+                projectSettlementService,
+                clock,
+                Optional.empty()
+        );
+    }
+
+    @Autowired
+    public ProjectSettlementRunService(
+            ProjectSettlementTargetReader projectSettlementTargetReader,
+            FinalEffectivePaymentAmountReader finalEffectivePaymentAmountReader,
+            ProjectSettlementService projectSettlementService,
+            Clock clock,
+            Optional<PayoutExecutor> payoutExecutor
+    ) {
         this.projectSettlementTargetReader = projectSettlementTargetReader;
         this.finalEffectivePaymentAmountReader = finalEffectivePaymentAmountReader;
         this.projectSettlementService = projectSettlementService;
         this.clock = clock;
+        this.payoutExecutor = payoutExecutor;
     }
 
     public ProjectSettlementRunResult run(YearMonth settlementMonth) {
@@ -47,7 +68,7 @@ public final class ProjectSettlementRunService {
     public ProjectSettlementRunResult run(RunProjectSettlementsCommand command) {
         List<ProjectSettlementTarget> targets;
         try {
-            targets = projectSettlementTargetReader.findSettlementTargets(command.settlementMonth());
+            targets = projectSettlementTargetReader.findSettlementTargets();
         } catch (SettlementException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -85,7 +106,15 @@ public final class ProjectSettlementRunService {
                     command.scheduledDate(),
                     command.confirmedAt()
             );
-            confirmedSettlements.add(projectSettlementService.confirm(confirmCommand));
+            ConfirmedProjectSettlement confirmed = projectSettlementService.confirm(confirmCommand);
+            if (payoutExecutor.isPresent()) {
+                PayoutExecutionResult payoutResult = payoutExecutor.get()
+                        .execute(confirmed.payoutObligationId());
+                confirmed = confirmed.withPayoutObligationStatus(
+                        payoutResult.payoutObligationStatus()
+                );
+            }
+            confirmedSettlements.add(confirmed);
         }
 
         return new ProjectSettlementRunResult(command.settlementMonth(), confirmedSettlements);

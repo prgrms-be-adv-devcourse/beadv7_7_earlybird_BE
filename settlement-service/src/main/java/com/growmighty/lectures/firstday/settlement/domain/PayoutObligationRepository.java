@@ -6,5 +6,7 @@ public interface PayoutObligationRepository {
 
     PayoutObligation save(PayoutObligation obligation);
 
+    Optional<PayoutObligation> findById(Long id);
+
     Optional<PayoutObligation> findBySettlementId(Long settlementId);
 }

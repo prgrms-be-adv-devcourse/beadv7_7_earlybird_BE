@@ -52,10 +52,10 @@ public class ProjectSettlementService {
                 () -> creatorPayoutProfileRepository.findByCreatorId(command.creatorId())
         )
                 .orElseThrow(() -> new SettlementException(PAYOUT_PROFILE_NOT_READY));
+        SettlementCalculationPolicy calculationPolicy = SettlementCalculationPolicy.current();
         SettlementBreakdown breakdown;
         try {
-            breakdown = SettlementCalculationPolicy.current()
-                    .calculate(command.finalEffectivePaymentAmounts());
+            breakdown = calculationPolicy.calculate(command.finalEffectivePaymentAmounts());
         } catch (IllegalArgumentException exception) {
             throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
         }
@@ -66,6 +66,7 @@ public class ProjectSettlementService {
         ProjectSettlement settlementToSave = ProjectSettlement.confirm(
                 command.projectId(),
                 command.creatorId(),
+                calculationPolicy.feePolicySnapshot(),
                 breakdown,
                 destinationSnapshot,
                 command.confirmedAt()

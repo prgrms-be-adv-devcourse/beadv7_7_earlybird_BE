@@ -9,7 +9,7 @@ spring:
       enabled: false
       import-check:
         enabled: false
-  # datasource 는 MySqlIntegrationTestSupport 의 Testcontainers MySQL(@ServiceConnection)이 공급한다.
+  # datasource는 MySqlIntegrationTestSupport의 Testcontainers MySQL이 공급한다.
   jpa:
     hibernate:
       ddl-auto: create
@@ -31,6 +31,8 @@ jwt:
   secret: A196b/7T15tWsckvVi3uwbzkfgbxZnvVYHTQ5kl+6nQ=
 
 settlement:
+  project-target:
+    mode: dummy
   batch:
     chunk-size: 1000
     thread-count: 8

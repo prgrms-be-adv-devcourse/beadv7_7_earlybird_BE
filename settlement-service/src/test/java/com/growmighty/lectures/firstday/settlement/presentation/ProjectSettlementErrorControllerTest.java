@@ -18,6 +18,7 @@ import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementCalculationPolicy;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
@@ -26,25 +27,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers
-@SpringBootTest(properties = "settlement.external-data.mode=error-test")
+@SpringBootTest(properties = {
+        "settlement.external-data.mode=error-test",
+        "settlement.project-target.mode=error-test"
+})
 @AutoConfigureMockMvc
-class ProjectSettlementErrorControllerTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -183,6 +178,7 @@ class ProjectSettlementErrorControllerTest {
         projectSettlementRepository.save(ProjectSettlement.confirm(
                 projectId,
                 creatorId,
+                SettlementCalculationPolicy.current().feePolicySnapshot(),
                 SettlementCalculationPolicy.current().calculate(List.of(Money.wons(100_000))),
                 payoutProfile.snapshotDestination(),
                 LocalDateTime.of(2026, 7, 23, 10, 0)
@@ -303,7 +299,7 @@ class ProjectSettlementErrorControllerTest {
         }
 
         @Override
-        public List<ProjectSettlementTarget> findSettlementTargets(YearMonth settlementMonth) {
+        public List<ProjectSettlementTarget> findSettlementTargets() {
             if (targetReadFailure != null) {
                 throw targetReadFailure;
             }

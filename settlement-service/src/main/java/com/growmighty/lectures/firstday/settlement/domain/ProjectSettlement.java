@@ -8,6 +8,7 @@ public final class ProjectSettlement {
     private final Long id;
     private final Long projectId;
     private final Long creatorId;
+    private final SettlementFeePolicySnapshot feePolicySnapshot;
     private final SettlementBreakdown breakdown;
     private final PayoutDestinationSnapshot destinationSnapshot;
     private final LocalDateTime confirmedAt;
@@ -16,6 +17,7 @@ public final class ProjectSettlement {
             Long id,
             Long projectId,
             Long creatorId,
+            SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
             PayoutDestinationSnapshot destinationSnapshot,
             LocalDateTime confirmedAt
@@ -32,6 +34,7 @@ public final class ProjectSettlement {
         this.id = id;
         this.projectId = projectId;
         this.creatorId = creatorId;
+        this.feePolicySnapshot = Objects.requireNonNull(feePolicySnapshot, "수수료 정책 스냅샷은 필수입니다.");
         this.breakdown = Objects.requireNonNull(breakdown, "정산 금액 명세는 필수입니다.");
         this.destinationSnapshot = Objects.requireNonNull(destinationSnapshot, "지급 대상 스냅샷은 필수입니다.");
         if (!destinationSnapshot.belongsTo(creatorId)) {
@@ -43,6 +46,7 @@ public final class ProjectSettlement {
     public static ProjectSettlement confirm(
             Long projectId,
             Long creatorId,
+            SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
             PayoutDestinationSnapshot destinationSnapshot,
             LocalDateTime confirmedAt
@@ -51,6 +55,7 @@ public final class ProjectSettlement {
                 null,
                 projectId,
                 creatorId,
+                feePolicySnapshot,
                 breakdown,
                 destinationSnapshot,
                 confirmedAt
@@ -61,6 +66,7 @@ public final class ProjectSettlement {
             Long id,
             Long projectId,
             Long creatorId,
+            SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
             PayoutDestinationSnapshot destinationSnapshot,
             LocalDateTime confirmedAt
@@ -69,6 +75,7 @@ public final class ProjectSettlement {
                 Objects.requireNonNull(id, "프로젝트 정산 식별자는 필수입니다."),
                 projectId,
                 creatorId,
+                feePolicySnapshot,
                 breakdown,
                 destinationSnapshot,
                 confirmedAt
@@ -85,6 +92,10 @@ public final class ProjectSettlement {
 
     public Long creatorId() {
         return creatorId;
+    }
+
+    public SettlementFeePolicySnapshot feePolicySnapshot() {
+        return feePolicySnapshot;
     }
 
     public SettlementBreakdown breakdown() {

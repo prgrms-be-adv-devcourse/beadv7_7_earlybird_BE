@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.ProjectSettlementJpaEntity;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectSettlementRepository;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -29,7 +30,29 @@ public class ProjectSettlementRepositoryAdapter implements ProjectSettlementRepo
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<ProjectSettlement> findById(Long id) {
+        return repository.findById(id).map(ProjectSettlementJpaEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<ProjectSettlement> findByProjectId(Long projectId) {
         return repository.findByProjectId(projectId).map(ProjectSettlementJpaEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectSettlement> findAllByCreatorIdOrderByConfirmedAtDescIdDesc(Long creatorId) {
+        return repository.findAllByCreatorIdOrderByConfirmedAtDescIdDesc(creatorId).stream()
+                .map(ProjectSettlementJpaEntity::toDomain)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectSettlement> findAllByOrderByConfirmedAtDescIdDesc() {
+        return repository.findAllByOrderByConfirmedAtDescIdDesc().stream()
+                .map(ProjectSettlementJpaEntity::toDomain)
+                .toList();
     }
 }

@@ -7,6 +7,10 @@ import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRe
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -14,26 +18,20 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers
 @SpringBootTest
 @Transactional
-class ProjectSettlementServiceTest {
-
-    @Container
-    @ServiceConnection
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
+class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private ProjectSettlementService projectSettlementService;
 
     @Autowired
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
+
+    @Autowired
+    private ProjectSettlementRepository projectSettlementRepository;
 
     @Test
     @DisplayName("검증된 프로젝트 입력으로 프로젝트 정산과 지급 의무를 확정한다")
@@ -55,6 +53,7 @@ class ProjectSettlementServiceTest {
         );
 
         ConfirmedProjectSettlement result = projectSettlementService.confirm(command);
+        ProjectSettlement settlement = projectSettlementRepository.findByProjectId(1L).orElseThrow();
 
         assertThat(result)
                 .extracting(
@@ -69,6 +68,7 @@ class ProjectSettlementServiceTest {
                     assertThat(values.get(2)).isEqualTo(Money.wons(27_595));
                     assertThat(values.get(3)).isEqualTo(PayoutObligationStatus.SCHEDULED);
                 });
+        assertThat(settlement.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
     }
 
     @Test
