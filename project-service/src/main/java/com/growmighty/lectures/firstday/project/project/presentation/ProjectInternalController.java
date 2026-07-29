@@ -2,9 +2,11 @@ package com.growmighty.lectures.firstday.project.project.presentation;
 
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,5 +31,11 @@ public class ProjectInternalController {
     @GetMapping
     public List<ProjectResponse> findByStatus(@RequestParam ProjectStatus status) {
         return projectService.findByStatus(status);
+    }
+
+    /** board-service가 리뷰 생성 알림 메일을 보낼 대상(제작자)을 조회할 때 호출한다. */
+    @GetMapping("/{projectId}/creator")
+    public ProjectCreatorResponse getCreator(@PathVariable Long projectId) {
+        return projectService.getCreator(projectId);
     }
 }
