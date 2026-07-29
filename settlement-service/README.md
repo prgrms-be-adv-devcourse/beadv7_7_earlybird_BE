@@ -46,7 +46,7 @@ sequenceDiagram
 
 | Seam | 현재 구현 | 목표 대비 상태 |
 |---|---|---|
-| 프로젝트 처리 대상 | `ProjectOutcomeReader`가 `projectId`, `creatorId`, `SUCCEEDED`·`FAILED`·`CANCELLED`를 보존하고 월 실행은 성공 결과만 기존 정산 경로로 전달한다. 현행 HTTP adapter와 dummy는 `SUCCEEDED`만 반환한다. | 결과 모델·Application 필터는 완료. HTTP adapter의 세 상태 조회와 전역 검증 필요 |
+| 프로젝트 처리 대상 | Project HTTP adapter가 `SUCCEEDED`·`FAILED`·`CANCELLED`를 각각 조회해 상태 일치와 응답 내·상태 간 중복을 검증하고 `ProjectOutcomeReader`로 전달한다. dummy는 `SUCCEEDED`만 반환한다. | Project 결과 조회 계약 완료. 실패·취소 후속 처리는 이슈 14 범위 |
 | 프로젝트별 주문 식별자 | Settlement에서 Order를 호출하는 port와 adapter가 없다. | `projectIds → projectId별 orderIds` 목록 조회 경계 필요 |
 | 주문별 결제 판정 | 프로젝트별 `FinalEffectivePaymentAmountReader`와 고정 금액 dummy만 존재한다. | `orderIds → 최종 유효 금액·준비 결과` Payment 조회 경계로 교체 필요 |
 | 프로젝트 정산 확정 | 프로젝트별 정산과 지급 의무를 한 DB 트랜잭션에서 생성하고 기존 `projectId` 결과를 재사용한다. | 완료 |
