@@ -35,7 +35,7 @@ class PaymentConfirmationServiceReconcileTest {
     @Test
     void 완료된_PG_결제는_PAID로_정합화한다() {
         Payment payment = confirmingPayment();
-        when(paymentRepository.findByPaymentKey(PAYMENT_KEY)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
 
         paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.COMPLETED));
 
@@ -47,7 +47,7 @@ class PaymentConfirmationServiceReconcileTest {
     void 이미_PAID인_결제의_완료_웹훅은_무시한다() {
         Payment payment = confirmingPayment();
         payment.confirm(PAYMENT_KEY);
-        when(paymentRepository.findByPaymentKey(PAYMENT_KEY)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
 
         paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.COMPLETED));
 
@@ -58,7 +58,7 @@ class PaymentConfirmationServiceReconcileTest {
     @Test
     void 취소된_PG_결제는_FAILED로_정합화한다() {
         Payment payment = confirmingPayment();
-        when(paymentRepository.findByPaymentKey(PAYMENT_KEY)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
 
         paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.CANCELLED));
 
