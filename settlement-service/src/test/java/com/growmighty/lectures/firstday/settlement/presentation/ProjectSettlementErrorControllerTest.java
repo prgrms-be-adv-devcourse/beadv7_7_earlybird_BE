@@ -176,7 +176,6 @@ class ProjectSettlementErrorControllerTest {
         creatorPayoutProfileRepository.save(payoutProfile);
         projectSettlementRepository.save(ProjectSettlement.confirm(
                 projectId,
-                "정산 정합성 테스트 프로젝트",
                 creatorId,
                 SettlementCalculationPolicy.current().feePolicySnapshot(),
                 SettlementCalculationPolicy.current().calculate(List.of(Money.wons(100_000))),
@@ -278,14 +277,14 @@ class ProjectSettlementErrorControllerTest {
         private RuntimeException targetReadFailure;
 
         void respondWith(Long projectId, Long creatorId, List<Money> paymentAmounts) {
-            this.target = new ProjectSettlementTarget(projectId, "오류 검증 프로젝트", creatorId);
+            this.target = new ProjectSettlementTarget(projectId, creatorId);
             this.paymentAmounts = List.copyOf(paymentAmounts);
             this.paymentReadFailure = null;
             this.targetReadFailure = null;
         }
 
         void failPaymentReadWith(Long projectId, Long creatorId, RuntimeException failure) {
-            this.target = new ProjectSettlementTarget(projectId, "오류 검증 프로젝트", creatorId);
+            this.target = new ProjectSettlementTarget(projectId, creatorId);
             this.paymentAmounts = List.of();
             this.paymentReadFailure = failure;
             this.targetReadFailure = null;

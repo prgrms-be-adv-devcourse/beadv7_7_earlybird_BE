@@ -10,7 +10,6 @@ import java.time.ZoneId;
 public record CreatorProjectSettlementListItemResponse(
         Long settlementId,
         Long projectId,
-        String projectTitle,
         BigDecimal settlementBaseAmount,
         BigDecimal creatorPayoutAmount,
         PayoutObligationStatus status,
@@ -25,7 +24,6 @@ public record CreatorProjectSettlementListItemResponse(
         return new CreatorProjectSettlementListItemResponse(
                 summary.settlementId(),
                 summary.projectId(),
-                summary.projectTitle(),
                 summary.settlementBaseAmount().amount(),
                 summary.creatorPayoutAmount().amount(),
                 summary.status(),

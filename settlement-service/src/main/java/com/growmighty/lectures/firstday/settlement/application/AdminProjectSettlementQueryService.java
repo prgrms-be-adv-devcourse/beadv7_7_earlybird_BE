@@ -45,7 +45,6 @@ public class AdminProjectSettlementQueryService {
         return new AdminProjectSettlementDetail(
                 settlement.id(),
                 settlement.projectId(),
-                settlement.projectTitle(),
                 settlement.creatorId(),
                 settlement.confirmedAt(),
                 settlement.feePolicySnapshot(),
@@ -69,7 +68,6 @@ public class AdminProjectSettlementQueryService {
         return new AdminProjectSettlementSummary(
                 settlement.id(),
                 settlement.projectId(),
-                settlement.projectTitle(),
                 settlement.creatorId(),
                 settlement.breakdown().baseAmount(),
                 settlement.creatorPayoutAmount(),

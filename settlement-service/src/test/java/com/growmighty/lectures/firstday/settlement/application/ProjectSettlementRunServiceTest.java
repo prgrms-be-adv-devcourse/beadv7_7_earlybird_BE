@@ -40,8 +40,8 @@ class ProjectSettlementRunServiceTest {
         creatorPayoutProfileRepository.save(payoutReadyProfile(201L, "seller-201", "********0201"));
         creatorPayoutProfileRepository.save(payoutReadyProfile(202L, "seller-202", "********0202"));
         ProjectSettlementTargetReader targetReader = month -> List.of(
-                new ProjectSettlementTarget(101L, "첫 번째 프로젝트", 201L),
-                new ProjectSettlementTarget(102L, "두 번째 프로젝트", 202L)
+                new ProjectSettlementTarget(101L, 201L),
+                new ProjectSettlementTarget(102L, 202L)
         );
         Map<Long, List<Money>> amountsByProject = Map.of(
                 101L, List.of(Money.wons(100_000)),
@@ -95,7 +95,7 @@ class ProjectSettlementRunServiceTest {
                 payoutReadyProfile(creatorId, "seller-203", "********0203")
         );
         ProjectSettlementTargetReader targetReader = month -> List.of(
-                new ProjectSettlementTarget(projectId, "반복 실행 프로젝트", creatorId)
+                new ProjectSettlementTarget(projectId, creatorId)
         );
         AtomicInteger paymentReads = new AtomicInteger();
         FinalEffectivePaymentAmountReader paymentAmountReader = ignored ->

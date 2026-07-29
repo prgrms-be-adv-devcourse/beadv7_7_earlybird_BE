@@ -7,7 +7,6 @@ import java.util.List;
 
 public record ConfirmProjectSettlementCommand(
         Long projectId,
-        String projectTitle,
         Long creatorId,
         List<Money> finalEffectivePaymentAmounts,
         LocalDate scheduledDate,

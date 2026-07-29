@@ -45,7 +45,6 @@ class ProjectSettlementServiceTest {
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 1L,
-                "여름의 기록",
                 10L,
                 List.of(Money.wons(10_015), Money.wons(20_240)),
                 LocalDate.of(2026, 8, 3),
@@ -68,7 +67,6 @@ class ProjectSettlementServiceTest {
                     assertThat(values.get(2)).isEqualTo(Money.wons(27_595));
                     assertThat(values.get(3)).isEqualTo(PayoutObligationStatus.SCHEDULED);
                 });
-        assertThat(settlement.projectTitle()).isEqualTo("여름의 기록");
         assertThat(settlement.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
     }
 
@@ -85,7 +83,6 @@ class ProjectSettlementServiceTest {
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 2L,
-                "두 번째 프로젝트",
                 20L,
                 List.of(Money.wons(100_000)),
                 LocalDate.of(2026, 8, 3),

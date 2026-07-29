@@ -8,7 +8,6 @@ import java.time.LocalDateTime;
 public record CreatorProjectSettlementSummary(
         Long settlementId,
         Long projectId,
-        String projectTitle,
         Money settlementBaseAmount,
         Money creatorPayoutAmount,
         PayoutObligationStatus status,

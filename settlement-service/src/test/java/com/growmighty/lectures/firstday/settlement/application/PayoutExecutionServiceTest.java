@@ -203,7 +203,6 @@ class PayoutExecutionServiceTest {
         return ProjectSettlement.restore(
                 SETTLEMENT_ID,
                 1L,
-                "지급 실행 테스트 프로젝트",
                 10L,
                 SettlementFeePolicySnapshot.current(),
                 SettlementBreakdown.of(

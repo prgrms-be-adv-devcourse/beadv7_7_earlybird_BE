@@ -11,7 +11,6 @@ import java.util.List;
 public record AdminProjectSettlementDetail(
         Long settlementId,
         Long projectId,
-        String projectTitle,
         Long creatorId,
         LocalDateTime confirmedAt,
         SettlementFeePolicySnapshot feePolicySnapshot,

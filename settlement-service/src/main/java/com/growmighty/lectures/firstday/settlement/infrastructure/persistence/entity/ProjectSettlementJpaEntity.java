@@ -26,8 +26,11 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
     @Column(name = "project_id", nullable = false, updatable = false)
     private Long projectId;
 
+    /**
+     * 과거 스키마와의 호환을 위해서만 유지한다. 신규 정산은 Project 제목을 받거나 저장하지 않는다.
+     */
     @Column(name = "project_title", updatable = false)
-    private String projectTitle;
+    private String legacyProjectTitle;
 
     @Column(name = "creator_id", nullable = false, updatable = false)
     private Long creatorId;
@@ -49,7 +52,6 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
 
     private ProjectSettlementJpaEntity(ProjectSettlement settlement) {
         this.projectId = settlement.projectId();
-        this.projectTitle = settlement.projectTitle();
         this.creatorId = settlement.creatorId();
         this.feePolicySnapshot = SettlementFeePolicySnapshotJpaEmbeddable.fromDomain(
                 settlement.feePolicySnapshot()
@@ -72,7 +74,6 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
         return ProjectSettlement.restore(
                 id,
                 projectId,
-                projectTitle,
                 creatorId,
                 feePolicySnapshot.toDomain(),
                 breakdown.toDomain(),

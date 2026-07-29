@@ -17,41 +17,32 @@ class ProjectSettlementTargetContractTest {
         AtomicReference<YearMonth> requestedMonth = new AtomicReference<>();
         ProjectSettlementTargetReader reader = settlementMonth -> {
             requestedMonth.set(settlementMonth);
-            return List.of(new ProjectSettlementTarget(101L, "여름의 기록", 201L));
+            return List.of(new ProjectSettlementTarget(101L, 201L));
         };
 
         List<ProjectSettlementTarget> targets = reader.findSettlementTargets(YearMonth.of(2026, 7));
 
         assertThat(requestedMonth.get()).isEqualTo(YearMonth.of(2026, 7));
         assertThat(targets).containsExactly(
-                new ProjectSettlementTarget(101L, "여름의 기록", 201L)
+                new ProjectSettlementTarget(101L, 201L)
         );
     }
 
     @Test
     @DisplayName("유효하지 않은 프로젝트 식별자를 거부한다")
     void rejectsInvalidProjectId() {
-        assertThatThrownBy(() -> new ProjectSettlementTarget(null, "여름의 기록", 201L))
+        assertThatThrownBy(() -> new ProjectSettlementTarget(null, 201L))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectSettlementTarget(0L, "여름의 기록", 201L))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    @DisplayName("비어 있는 프로젝트 제목을 거부한다")
-    void rejectsBlankProjectTitle() {
-        assertThatThrownBy(() -> new ProjectSettlementTarget(101L, null, 201L))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectSettlementTarget(101L, " ", 201L))
+        assertThatThrownBy(() -> new ProjectSettlementTarget(0L, 201L))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("유효하지 않은 창작자 식별자를 거부한다")
     void rejectsInvalidCreatorId() {
-        assertThatThrownBy(() -> new ProjectSettlementTarget(101L, "여름의 기록", null))
+        assertThatThrownBy(() -> new ProjectSettlementTarget(101L, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ProjectSettlementTarget(101L, "여름의 기록", 0L))
+        assertThatThrownBy(() -> new ProjectSettlementTarget(101L, 0L))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

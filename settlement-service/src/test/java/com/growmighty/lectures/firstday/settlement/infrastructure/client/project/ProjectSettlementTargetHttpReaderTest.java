@@ -53,12 +53,10 @@ class ProjectSettlementTargetHttpReaderTest {
                           "data": [
                             {
                               "projectId": 101,
-                              "projectTitle": "여름의 기록",
                               "creatorId": 201
                             },
                             {
                               "projectId": 102,
-                              "projectTitle": "작은 숲",
                               "creatorId": 202
                             }
                           ],
@@ -71,8 +69,8 @@ class ProjectSettlementTargetHttpReaderTest {
         );
 
         assertThat(targets).containsExactly(
-                new ProjectSettlementTarget(101L, "여름의 기록", 201L),
-                new ProjectSettlementTarget(102L, "작은 숲", 202L)
+                new ProjectSettlementTarget(101L, 201L),
+                new ProjectSettlementTarget(102L, 202L)
         );
         server.verify();
     }
@@ -153,8 +151,7 @@ class ProjectSettlementTargetHttpReaderTest {
                           "success": true,
                           "data": [
                             {
-                              "projectId": 101,
-                              "creatorId": 201
+                              "projectId": 101
                             }
                           ],
                           "error": null
@@ -177,12 +174,10 @@ class ProjectSettlementTargetHttpReaderTest {
                           "data": [
                             {
                               "projectId": 101,
-                              "projectTitle": "여름의 기록",
                               "creatorId": 201
                             },
                             {
                               "projectId": 101,
-                              "projectTitle": "중복된 기록",
                               "creatorId": 201
                             }
                           ],

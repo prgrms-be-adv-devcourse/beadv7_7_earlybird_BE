@@ -50,7 +50,6 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
             List<ProjectSettlementTarget> targets = response.data().stream()
                     .map(target -> new ProjectSettlementTarget(
                             target.projectId(),
-                            target.projectTitle(),
                             target.creatorId()
                     ))
                     .toList();
@@ -73,7 +72,6 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
 
     private record ProjectSettlementTargetResponse(
             Long projectId,
-            String projectTitle,
             Long creatorId
     ) {
     }

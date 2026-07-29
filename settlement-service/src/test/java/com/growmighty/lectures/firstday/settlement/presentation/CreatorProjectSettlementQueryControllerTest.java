@@ -80,25 +80,21 @@ class CreatorProjectSettlementQueryControllerTest {
 
         ConfirmedProjectSettlement oldest = confirm(
                 71_000_001L,
-                "가장 오래된 프로젝트",
                 creatorId,
                 LocalDateTime.of(2026, 6, 1, 9, 0)
         );
         ConfirmedProjectSettlement sameTimeLowerId = confirm(
                 71_000_002L,
-                "같은 시각의 먼저 확정된 프로젝트",
                 creatorId,
                 LocalDateTime.of(2026, 7, 1, 10, 0)
         );
         ConfirmedProjectSettlement sameTimeHigherId = confirm(
                 71_000_003L,
-                "같은 시각의 나중에 확정된 프로젝트",
                 creatorId,
                 LocalDateTime.of(2026, 7, 1, 10, 0)
         );
         confirm(
                 71_000_004L,
-                "다른 창작자의 프로젝트",
                 otherCreatorId,
                 LocalDateTime.of(2026, 8, 1, 10, 0)
         );
@@ -111,7 +107,7 @@ class CreatorProjectSettlementQueryControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].settlementId").value(sameTimeHigherId.settlementId()))
                 .andExpect(jsonPath("$.data[0].projectId").value(71_000_003L))
-                .andExpect(jsonPath("$.data[0].projectTitle").value("같은 시각의 나중에 확정된 프로젝트"))
+                .andExpect(jsonPath("$.data[0].projectTitle").doesNotExist())
                 .andExpect(jsonPath("$.data[0].settlementBaseAmount").value(1_000_000))
                 .andExpect(jsonPath("$.data[0].creatorPayoutAmount").value(912_000))
                 .andExpect(jsonPath("$.data[0].status").value("SCHEDULED"))
@@ -134,7 +130,6 @@ class CreatorProjectSettlementQueryControllerTest {
         savePayoutReadyProfile(creatorId);
         ConfirmedProjectSettlement confirmed = confirm(
                 72_000_001L,
-                "창작자 상세 프로젝트",
                 creatorId,
                 LocalDateTime.of(2026, 7, 1, 9, 0)
         );
@@ -147,7 +142,7 @@ class CreatorProjectSettlementQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.settlementId").value(confirmed.settlementId()))
                 .andExpect(jsonPath("$.data.project.projectId").value(72_000_001L))
-                .andExpect(jsonPath("$.data.project.title").value("창작자 상세 프로젝트"))
+                .andExpect(jsonPath("$.data.project.title").doesNotExist())
                 .andExpect(jsonPath("$.data.confirmedAt").value("2026-07-01T09:00:00+09:00"))
                 .andExpect(jsonPath("$.data.breakdown.settlementBaseAmount").value(1_000_000))
                 .andExpect(jsonPath("$.data.breakdown.paymentAndSettlementAgencyFee.rate").value(0.04))
@@ -182,7 +177,6 @@ class CreatorProjectSettlementQueryControllerTest {
         savePayoutReadyProfile(creatorId);
         ConfirmedProjectSettlement confirmed = confirm(
                 73_000_001L,
-                "지급 완료 프로젝트",
                 creatorId,
                 LocalDateTime.of(2026, 7, 1, 9, 0)
         );
@@ -212,7 +206,6 @@ class CreatorProjectSettlementQueryControllerTest {
         savePayoutReadyProfile(otherCreatorId);
         ConfirmedProjectSettlement otherCreatorSettlement = confirm(
                 74_000_001L,
-                "다른 창작자의 비공개 정산",
                 otherCreatorId,
                 LocalDateTime.of(2026, 7, 1, 9, 0)
         );
@@ -247,7 +240,6 @@ class CreatorProjectSettlementQueryControllerTest {
         creatorPayoutProfileRepository.save(payoutProfile);
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 75_000_001L,
-                "지급 의무 누락 프로젝트",
                 creatorId,
                 SettlementCalculationPolicy.current().feePolicySnapshot(),
                 SettlementCalculationPolicy.current().calculate(List.of(Money.wons(1_000_000))),
@@ -279,13 +271,11 @@ class CreatorProjectSettlementQueryControllerTest {
 
     private ConfirmedProjectSettlement confirm(
             long projectId,
-            String projectTitle,
             long creatorId,
             LocalDateTime confirmedAt
     ) {
         return projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
                 projectId,
-                projectTitle,
                 creatorId,
                 List.of(Money.wons(1_000_000)),
                 LocalDate.of(2026, 7, 7),

@@ -22,7 +22,7 @@ public record CreatorProjectSettlementDetailResponse(
     public static CreatorProjectSettlementDetailResponse from(CreatorProjectSettlementDetail detail) {
         return new CreatorProjectSettlementDetailResponse(
                 detail.settlementId(),
-                new ProjectResponse(detail.projectId(), detail.projectTitle()),
+                new ProjectResponse(detail.projectId()),
                 toOffsetDateTime(detail.confirmedAt()),
                 BreakdownResponse.from(detail.feePolicySnapshot(), detail.breakdown()),
                 new PayoutResponse(
@@ -38,7 +38,7 @@ public record CreatorProjectSettlementDetailResponse(
         return dateTime == null ? null : dateTime.atZone(SEOUL).toOffsetDateTime();
     }
 
-    public record ProjectResponse(Long projectId, String title) {
+    public record ProjectResponse(Long projectId) {
     }
 
     public record BreakdownResponse(
