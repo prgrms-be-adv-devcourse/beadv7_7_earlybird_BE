@@ -25,6 +25,7 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -211,8 +212,14 @@ public class ProjectServiceImpl implements ProjectService {
      * 영속성 컨텍스트를 재사용해 엔티티를 새로 못 읽어오고, try/catch도 flush가 커밋 시점까지
      * 미뤄져서 실제로는 격리가 안 된다. 그래서 조회만 하고, 실제 처리는 프로젝트 하나당
      * closeProjectByDeadline() 호출로 위임해 각자 독립된 트랜잭션 + 재시도를 갖게 한다.
+     *
+     * NOT_SUPPORTED로 이 메서드 자체는 트랜잭션을 열지 않는다 — 애노테이션을 안 달면 클래스 레벨
+     * @Transactional(readOnly=true)를 그대로 상속해서, self.closeProjectByDeadline()이 새 트랜잭션을
+     * 여는 대신 그 readOnly 트랜잭션에 합류해버린다(REQUIRED 기본값). 그러면 Hibernate가 그 세션에서
+     * 로드한 엔티티를 dirty-checking 대상에서 빼버려서, status 변경이 예외 없이 조용히 커밋 안 된다.
      */
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void closeExpiredProjects() {
         List<Project> expired = projectRepository.findByStatusAndEndAtLessThan(ProjectStatus.IN_PROGRESS, LocalDate.now());
         ProjectService self = selfProvider.getObject();
@@ -265,8 +272,12 @@ public class ProjectServiceImpl implements ProjectService {
      * closeExpiredProjects()와 같은 이유로 한 트랜잭션으로 묶지 않는다 — 프로젝트 하나의 pull 실패나
      * 락 충돌이 같은 배치 실행의 나머지 프로젝트까지 막으면 안 된다. selfProvider로 프록시를 거쳐
      * updateFundedAmount() 한 건마다 독립된 트랜잭션 + 재시도를 갖게 한다.
+     *
+     * closeExpiredProjects()와 같은 이유로 NOT_SUPPORTED — 안 그러면 클래스 레벨 readOnly 트랜잭션에
+     * self.updateFundedAmount()가 합류해서 fundedAmount 갱신이 조용히 커밋되지 않는다.
      */
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void reconcileFundedAmounts() {
         List<Project> inProgress = projectRepository.findByStatus(ProjectStatus.IN_PROGRESS);
         ProjectService self = selfProvider.getObject();

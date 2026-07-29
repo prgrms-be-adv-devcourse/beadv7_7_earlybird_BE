@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -72,11 +74,46 @@ class ProjectConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
                 .isEqualTo(versionBefore + 1);
     }
 
+    @Test
+    @DisplayName("closeExpiredProjects()로 호출해도(자정 스케줄러/수동 트리거 진입점) status 변경이 실제 DB에 반영된다")
+    void closeExpiredProjects_viaEntryPoint_persistsStatusChange() {
+        Long projectId = expiredProject();
+        when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
+
+        projectService.closeExpiredProjects();
+
+        Project fresh = projectRepository.findById(projectId).orElseThrow();
+        assertThat(fresh.getStatus()).isEqualTo(ProjectStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("reconcileFundedAmounts()로 호출해도(1분 스케줄러 진입점) fundedAmount 변경이 실제 DB에 반영된다")
+    void reconcileFundedAmounts_viaEntryPoint_persistsFundedAmount() {
+        Long projectId = publishedProject();
+        when(orderPort.getFundedAmount(projectId)).thenReturn(BigDecimal.valueOf(300_000));
+
+        projectService.reconcileFundedAmounts();
+
+        Project fresh = projectRepository.findById(projectId).orElseThrow();
+        assertThat(fresh.getFundedAmount()).isEqualByComparingTo(BigDecimal.valueOf(300_000));
+    }
+
     private Long publishedProject() {
         Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project = projectRepository.save(project);
         project.approve();
+        project = projectRepository.save(project);
+        return project.getProjectId();
+    }
+
+    private Long expiredProject() {
+        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        project = projectRepository.save(project);
+        project.approve();
+        project = projectRepository.save(project);
+        ReflectionTestUtils.setField(project, "endAt", LocalDate.now().minusDays(1));
         project = projectRepository.save(project);
         return project.getProjectId();
     }
