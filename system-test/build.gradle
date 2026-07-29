@@ -1,0 +1,27 @@
+// 러너블 서비스가 아니다 — 게이트웨이를 통해 이미 떠 있는 스택을 상대로 실제 HTTP 호출을
+// 실행하는 라이브(시스템) 테스트 모음. common 처럼 Boot 플러그인을 적용하지 않는다.
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind'
+}
+
+// 기본 `test` 태스크(= ./gradlew build 에도 포함됨)는 이 라이브 테스트를 절대 돌리지 않는다 —
+// 로컬/운영 스택이 이미 기동 중이어야 하므로 CI나 일반 빌드에서 실행하면 안 된다.
+// 명시적으로 돌리려면: ./gradlew :system-test:liveTest (스택이 떠 있는 상태에서)
+tasks.named('test') {
+    useJUnitPlatform {
+        excludeTags 'live'
+    }
+}
+
+tasks.register('liveTest', Test) {
+    useJUnitPlatform {
+        includeTags 'live'
+    }
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+}
