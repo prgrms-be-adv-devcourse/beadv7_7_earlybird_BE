@@ -7,3 +7,13 @@
 !**/src/main/**/build/
 !**/src/test/**/build/
 *.iml
+
+# Secrets - must never enter the build context or get baked into an image layer
+.env
+**/.env
+
+# Not needed to build/run the jar
+logs/
+docs/
+*.http
+*.md
