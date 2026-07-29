@@ -161,7 +161,7 @@ public class OrderApiService {
     @Transactional(readOnly = true)
     public OrderResult getOrderInfo(Long orderId, Long requesterId) {
         validateRequesterId(requesterId);
-        Order order = getOrder(orderId);
+        Order order = getOrderWithItems(orderId);
         verifyOwner(order, requesterId);
         return OrderResult.from(order);
     }
@@ -205,7 +205,8 @@ public class OrderApiService {
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
         }
 
-        Order order = Order.create(null, command.userId(), command.projectId(), orderItems,
+        Long projectId = command.projectId() != null ? command.projectId() : orderItems.get(0).getProjectId();
+        Order order = Order.create(null, command.userId(), projectId, orderItems,
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
         validateAmounts(command, order);
         log.info("pending order created. orderId={}", order.getId());
@@ -244,6 +245,12 @@ public class OrderApiService {
         }
         Set<Long> rewardIds = new HashSet<>();
         for (OrderLine line : command.lines()) {
+            if (line == null) {
+                throw new IllegalArgumentException("Order item is required.");
+            }
+            if (line.rewardId() == null) {
+                throw new IllegalArgumentException("rewardId is required.");
+            }
             if (line.quantity() <= 0) {
                 throw new IllegalArgumentException("Order quantity must be positive.");
             }

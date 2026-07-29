@@ -155,6 +155,8 @@ class OrderControllerTest {
 
     private OrderResult result(Long orderId, OrderStatus status) {
         return new OrderResult(orderId, status, BigDecimal.valueOf(20_000), BigDecimal.valueOf(3_000),
-                BigDecimal.valueOf(23_000), "Receiver", "010-0000-0000", "Seoul", "06236");
+                BigDecimal.valueOf(23_000), "Receiver", "010-0000-0000", "Seoul", "06236",
+                List.of(new OrderResult.Item(100L, "Reward A", BigDecimal.valueOf(20_000), 10L, 1L, 1,
+                        BigDecimal.valueOf(20_000))));
     }
 }

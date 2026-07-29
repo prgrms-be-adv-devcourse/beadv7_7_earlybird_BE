@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
@@ -12,12 +13,12 @@ import java.util.List;
 
 public record PlaceOrderRequest(
         @NotNull Long userId,
-        @NotNull Long projectId,
+        Long projectId,
         @NotEmpty @Valid List<OrderItemRequest> requests,
-        @NotNull String receiverName,
-        @NotNull String receiverPhone,
-        @NotNull String shippingAddress,
-        @NotNull String zipCode,
+        @NotBlank String receiverName,
+        @NotBlank String receiverPhone,
+        @NotBlank String shippingAddress,
+        @NotBlank String zipCode,
         @NotNull BigDecimal expectedItemsAmount,
         @NotNull BigDecimal expectedTotalAmount
 ) {
