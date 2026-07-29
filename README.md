@@ -94,14 +94,14 @@ docker compose -f infrastructure/docker-compose.yml up -d
 
 ### 수동 테스트
 
-저장소 루트의 `.http` 파일(`orders.http`, `domain-communication.http`, `settlement.http`, `backer-flow.http`,
+`http/` 폴더의 `.http` 파일(`orders.http`, `domain-communication.http`, `settlement.http`, `backer-flow.http`,
 `creator-flow.http`)은 IntelliJ HTTP Client로 바로 실행 가능한 요청 모음이다.
 
 `backer-flow.http`는 회원가입 → 로그인 → 프로젝트/리워드 조회 → 후원(주문 생성) → 내 후원 내역 조회 →
 후원 취소로 이어지는 실제 후원자 플로우를, `creator-flow.http`는 회원가입 → 로그인 → 창작자 전환 →
 토큰 재발급 → 프로젝트 생성 → 리워드 등록 → 내 프로젝트/리워드 조회 → 관리자 심사 승인으로 이어지는
 창작자 플로우를 순서대로 실행/검증한다(관리자 로그인은 UserDataInitializer가 시드하는
-admin@earlybird.co.kr 계정을 쓴다). 루트의 `http-client.env.json`이
+admin@earlybird.co.kr 계정을 쓴다). 같은 폴더의 `http-client.env.json`이
 `local`(`http://localhost:8000`)/`production`(DuckDNS 게이트웨이) 두 환경의 `baseUrl`을 정의해두었으므로,
 IntelliJ 우측 상단 환경 드롭다운에서 골라 그대로 재사용하면 된다 — 요청 파일을 환경별로 복제할 필요는 없다.
 

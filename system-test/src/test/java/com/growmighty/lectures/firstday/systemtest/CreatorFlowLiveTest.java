@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 기본 `test` 태스크에서는 제외된다(@Tag("live") + build.gradle의 excludeTags). 실행:
  * ./gradlew :system-test:liveTest -Dsystem-test.baseUrl=... (기본값 로컬 게이트웨이)
  *
- * 주의: 루트의 creator-flow.http 가 같은 시나리오를 의도적으로 중복 구현한다 — 그쪽은 수동
+ * 주의: http/creator-flow.http 가 같은 시나리오를 의도적으로 중복 구현한다 — 그쪽은 수동
  * 확인/시연용, 이쪽은 자동화(이슈 #157)용. 이 테스트를 고치면 creator-flow.http 도 같이 고칠 것.
  */
 @Tag("live")
