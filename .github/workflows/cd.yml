@@ -5,8 +5,8 @@ on:
     types: [completed]
   workflow_dispatch:
 jobs:
-  changes:
-    name: detect-changes
+  build:
+    name: deploy
     runs-on: ubuntu-latest
     # workflow_run fires for every CI run regardless of branch/outcome, so gate here:
     # only deploy a main-branch CI run that actually passed. workflow_dispatch bypasses
@@ -14,8 +14,6 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
-    outputs:
-      services: ${{ steps.targets.outputs.services }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,17 +62,10 @@ jobs:
             echo 'services=${{ join(fromJSON(steps.filter.outputs.changes), ' ') }}' >> "$GITHUB_OUTPUT"
           fi
 
-  build:
-    name: deploy
-    needs: changes
-    # Nothing changed that any service depends on (e.g. a docs-only push) -> skip the SSH
-    # connection and remote git pull entirely instead of running a no-op loop.
-    if: needs.changes.outputs.services != ''
-    runs-on: ubuntu-latest
-    env:
-      SERVICES: ${{ needs.changes.outputs.services }}
-    steps:
       - uses: appleboy/ssh-action@v1
+        # Nothing changed that any service depends on (e.g. a docs-only push) -> skip the SSH
+        # connection and remote git pull entirely instead of running a no-op loop.
+        if: steps.targets.outputs.services != ''
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -91,11 +82,13 @@ jobs:
             # so many concurrent Gradle builds thrash the CPU badly enough to make even sshd
             # unresponsive - that's what caused a past CD run to time out and the box to need
             # a reboot. Sequential builds are slower in total, but each one actually finishes.
-            # $SERVICES is the subset `changes` determined actually needs rebuilding - see that
-            # job for how it's picked.
+            # $SERVICES is the subset `targets` determined actually needs rebuilding - see that
+            # step for how it's picked.
             # -f infrastructure/docker-compose.prod.yml layers the AWS-only overrides (currently
             # just gateway-server's host port) on top of the shared base file - see that file
             # for why. Local dev never passes it, so nothing there is affected.
             for svc in $SERVICES; do
               docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d --build "$svc"
             done
+        env:
+          SERVICES: ${{ steps.targets.outputs.services }}
