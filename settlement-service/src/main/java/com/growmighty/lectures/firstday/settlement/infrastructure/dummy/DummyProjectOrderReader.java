@@ -11,9 +11,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(
-        name = "settlement.external-data.mode",
-        havingValue = "dummy",
-        matchIfMissing = true
+        name = "settlement.project-order.mode",
+        havingValue = "dummy"
 )
 public class DummyProjectOrderReader implements ProjectOrderReader {
 

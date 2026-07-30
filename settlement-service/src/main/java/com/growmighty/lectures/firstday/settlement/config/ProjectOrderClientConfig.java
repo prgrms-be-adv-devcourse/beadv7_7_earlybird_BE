@@ -1,43 +1,35 @@
 package com.growmighty.lectures.firstday.settlement.config;
 
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
-import com.growmighty.lectures.firstday.settlement.infrastructure.client.project.ProjectSettlementTargetHttpReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.infrastructure.client.order.ProjectOrderHttpReader;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(
-        name = "settlement.project-target.mode",
+        name = "settlement.project-order.mode",
         havingValue = "http",
         matchIfMissing = true
 )
-@EnableConfigurationProperties(ProjectSettlementTargetClientProperties.class)
-public class ProjectSettlementTargetClientConfig {
-
-    @Bean
-    @Primary
-    public RestClient.Builder projectSettlementTargetPlainRestClientBuilder() {
-        return RestClient.builder();
-    }
+@EnableConfigurationProperties(ProjectOrderClientProperties.class)
+public class ProjectOrderClientConfig {
 
     @Bean
     @LoadBalanced
-    public RestClient.Builder projectSettlementTargetLoadBalancedRestClientBuilder() {
+    public RestClient.Builder projectOrderLoadBalancedRestClientBuilder() {
         return RestClient.builder();
     }
 
     @Bean
-    public RestClient projectSettlementTargetRestClient(
-            @Qualifier("projectSettlementTargetLoadBalancedRestClientBuilder")
-            RestClient.Builder builder,
-            ProjectSettlementTargetClientProperties properties
+    public RestClient projectOrderRestClient(
+            @Qualifier("projectOrderLoadBalancedRestClientBuilder") RestClient.Builder builder,
+            ProjectOrderClientProperties properties
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.connectTimeout());
@@ -49,9 +41,9 @@ public class ProjectSettlementTargetClientConfig {
     }
 
     @Bean
-    public ProjectOutcomeReader projectOutcomeReader(
-            @Qualifier("projectSettlementTargetRestClient") RestClient restClient
+    public ProjectOrderReader projectOrderReader(
+            @Qualifier("projectOrderRestClient") RestClient restClient
     ) {
-        return new ProjectSettlementTargetHttpReader(restClient);
+        return new ProjectOrderHttpReader(restClient);
     }
 }

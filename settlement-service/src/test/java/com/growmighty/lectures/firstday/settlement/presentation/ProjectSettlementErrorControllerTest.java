@@ -45,7 +45,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(properties = {
         "settlement.external-data.mode=error-test",
-        "settlement.project-target.mode=error-test"
+        "settlement.project-target.mode=error-test",
+        "settlement.project-order.mode=error-test"
 })
 @AutoConfigureMockMvc
 class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {

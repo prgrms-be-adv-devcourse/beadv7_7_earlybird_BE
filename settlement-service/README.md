@@ -47,13 +47,13 @@ sequenceDiagram
 | Seam | 현재 구현 | 목표 대비 상태 |
 |---|---|---|
 | 프로젝트 처리 대상 | Project HTTP adapter가 `SUCCEEDED`·`FAILED`·`CANCELLED`를 각각 조회해 상태 일치와 응답 내·상태 간 중복을 검증하고 `ProjectOutcomeReader`로 전달한다. dummy는 `SUCCEEDED`만 반환한다. | Project 결과 조회와 결과별 분기 완료 |
-| 프로젝트별 주문 결제금액 | `ProjectOrderReader`가 `projectId별 orders(orderId, paymentAmount)`를 제공한다. 요청 프로젝트의 누락·중복·예상 밖 결과, 전역 주문 중복과 성공 프로젝트의 빈 목록·0원 합계를 정산 전에 거부한다. dummy도 같은 port를 사용한다. | Settlement 소비 계약 완료. 운영 Order HTTP adapter는 외부 제공 interface 구현 후 연결 필요 |
+| 프로젝트별 주문 결제금액 | `ProjectOrderReader`의 운영 HTTP adapter가 `POST /internal/v1/orders/by-projects/query`를 호출해 `projectId별 orders(orderId, paymentAmount)`로 변환한다. 요청 프로젝트의 누락·중복·예상 밖 결과, 전역 주문 중복과 성공 프로젝트의 빈 목록·0원 합계를 정산 전에 거부하며 dummy도 같은 port를 사용한다. | 합의된 Order 계약 기준 소비 adapter·제한시간·실제 HTTP 검증 완료. 제공자 구현 완료는 사용자 가정이며 서비스 간 E2E는 별도 검증 필요 |
 | 성공 정산 금액 입력 | 성공 프로젝트는 Order의 주문별 `paymentAmount`를 직접 계산 정책에 전달한다. Payment에는 금액이나 준비 상태를 조회하지 않는다. | Order 금액 소비 전환 완료 |
 | 프로젝트 정산 확정 | 프로젝트별 정산과 지급 의무를 한 DB 트랜잭션에서 생성한다. 재실행은 기존 정산·지급 의무를 외부 조회 전에 복원하며 성공 결과는 `SETTLEMENT_ALREADY_CONFIRMED`, 실패·취소 결과는 `OUTCOME_CONFLICT`로 반환한다. 저장된 결제 취소 명령 뒤 성공으로 바뀌는 역방향 전환도 충돌로 차단한다. | 성공 정산과 양방향 결과 전환 충돌 검증 완료 |
 | 실패·취소 프로젝트 결제 취소 | 실행 서비스가 Order에서 받은 `orderId`로 주문별 명령을 선저장한 뒤 결정적 멱등키로 `ProjectPaymentCancellationGateway`를 호출한다. 주문별 마지막 관찰 결과를 보존해 완료·no-op·최종 실패는 건너뛰고 미완료만 같은 키로 재개하며, 일곱 가지 결과를 프로젝트 처리 상태로 보수적으로 집약한다. | Settlement 영속화·재실행 완료. 운영 Payment HTTP adapter는 외부 제공 interface 확정 후 구현 필요 |
 | 지급대행 | `PayoutGateway` 포트를 구현한 결정적 dummy adapter가 항상 등록된다. 기본값은 `COMPLETED`이고 같은 멱등키는 같은 지급 식별자와 결과로 수렴한다. | 실제 송금 없이 예약 지급 흐름 실행 가능 |
 
-Settlement core는 Order 주문별 결제금액을 소비해 성공 정산과 실패·취소 결제 취소로 분기한다. 목표 E2E 흐름을 완성하려면 이슈 12의 운영 Order 조회 adapter와 이슈 13의 운영 Payment 취소 adapter를 연결해야 한다.
+Settlement core는 Order 주문별 결제금액을 소비해 성공 정산과 실패·취소 결제 취소로 분기한다. 운영 Order 조회 adapter는 합의된 제공자 계약을 기준으로 연결했으며, 목표 E2E 흐름을 완성하려면 이슈 13의 운영 Payment 취소 adapter와 실제 제공자·소비자 계약 검증이 필요하다.
 
 실제 PG HTTP 연동, 자격 증명, 암호화 요청, smoke test와 webhook 구현은 제거했다. 지급 요청은 애플리케이션의 기존 선저장·결과 반영 트랜잭션 흐름을 그대로 지나지만 외부 네트워크나 실제 송금은 발생하지 않는다. 서비스 시작 로그에도 더미 지급대행임을 명시한다.
 
@@ -87,7 +87,11 @@ Content-Type: application/json
 | `settlement.project-target.http.base-url` | 기본값 `http://project-service` |
 | `settlement.project-target.http.connect-timeout` | 기본값 1초 |
 | `settlement.project-target.http.read-timeout` | 기본값 3초 |
-| `settlement.external-data.mode` | 미지정 시 Order 조회·Payment 취소 dummy와 dummy 지급 프로필 활성화 |
+| `settlement.project-order.mode` | 미지정 시 `http`; 테스트·로컬에서 `dummy` 선택 가능 |
+| `settlement.project-order.http.base-url` | 기본값 `http://order-service` |
+| `settlement.project-order.http.connect-timeout` | 기본값 1초 |
+| `settlement.project-order.http.read-timeout` | 기본값 3초 |
+| `settlement.external-data.mode` | 미지정 시 Payment 취소 dummy와 dummy 지급 프로필 활성화 |
 | `settlement.dummy-payout.scenario` | 미지정 시 `COMPLETED`; 로컬·테스트에서 `REQUESTED`, `IN_PROGRESS`, `RETRYABLE_FAILED`, `NON_RETRYABLE_FAILED`, `UNKNOWN` 선택 가능 |
 
 Config server의 기존 값은 변경하지 않는다. 외부 요청자가 더미 지급 결과를 조작하는 공개 API는 제공하지 않으며 시나리오 설정은 로컬 실행과 테스트 seam으로만 사용한다.
