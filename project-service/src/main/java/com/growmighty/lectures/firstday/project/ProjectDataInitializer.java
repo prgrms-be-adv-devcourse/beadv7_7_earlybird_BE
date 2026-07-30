@@ -32,6 +32,11 @@ public class ProjectDataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        // ddl-auto: update 라 재시작해도 테이블이 비워지지 않는다 — 이미 시드가 들어가 있으면 건너뛴다.
+        if (!projectCategoryService.findAllAsTree().isEmpty()) {
+            return;
+        }
+
         // 카테고리 계층 (루트 → 중분류 → 소분류). 프로젝트는 소분류(리프)에 매달린다.
         Long fashion = category(null, "패션");
         Long clothing = category(fashion, "의류");
