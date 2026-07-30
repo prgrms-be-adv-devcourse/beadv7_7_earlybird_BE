@@ -135,6 +135,13 @@ services:
       args:
         MODULE: gateway-server
     container_name: earlybird-gateway-server
+    # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써진다 — 그래서 여기선
+    # SPRING_PROFILES_ACTIVE/SPRING_CONFIG_IMPORT 두 개를 그대로 반복하고 JWT_SECRET 만 추가한다.
+    # JWT 검증 키 — user-service 와 반드시 같은 값이어야 한다 (#164).
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      JWT_SECRET: ${JWT_SECRET}
     ports:
       - "8000:8000"
     depends_on: *core-depends-on
@@ -168,6 +175,18 @@ services:
       args:
         MODULE: payment-service
     container_name: earlybird-payment-service
+    # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써진다 — 그래서 여기선
+    # SPRING_PROFILES_ACTIVE/SPRING_CONFIG_IMPORT 두 개를 그대로 반복하고 PAYMENT_* 만 추가한다.
+    # PAYMENT_SECURITY_ENCRYPTION_KEY 는 @NotBlank 필수값이라 비어있으면 기동 자체가 실패한다 (#183).
+    # PAYMENT_GATEWAY 는 반드시 fake 로 기본값을 줘야 한다 — @ConditionalOnProperty(matchIfMissing=true)는
+    # 프로퍼티가 "존재하되 빈 문자열"인 경우엔 적용되지 않아서, .env 에 값이 없을 때 그냥 ${VAR:-} 로
+    # 두면 빈 문자열이 주입되어 FakePaymentGateway/TossPaymentGateway 둘 다 안 만들어지고 기동이 깨진다.
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-fake}
+      PAYMENT_TOSS_SECRET_KEY: ${PAYMENT_TOSS_SECRET_KEY:-}
+      PAYMENT_SECURITY_ENCRYPTION_KEY: ${PAYMENT_SECURITY_ENCRYPTION_KEY}
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8082:8082"
@@ -179,6 +198,13 @@ services:
       args:
         MODULE: user-service
     container_name: earlybird-user-service
+    # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써진다 — 그래서 여기선
+    # SPRING_PROFILES_ACTIVE/SPRING_CONFIG_IMPORT 두 개를 그대로 반복하고 JWT_SECRET 만 추가한다.
+    # JWT 발급 키 — gateway-server 와 반드시 같은 값이어야 한다 (#164).
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      JWT_SECRET: ${JWT_SECRET}
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8083:8083"
