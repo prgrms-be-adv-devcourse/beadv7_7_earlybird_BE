@@ -268,7 +268,7 @@ public class OrderApiService {
         if (!reward.orderable()) {
             throw new IllegalStateException("Reward is not orderable. rewardId=" + reward.rewardId());
         }
-        if (reward.remainingQuantity() < line.quantity()) {
+        if (reward.remainingQuantity() != null && reward.remainingQuantity() < line.quantity()) {
             throw new IllegalStateException("Reward stock is insufficient. rewardId=" + reward.rewardId());
         }
         if (reward.price().compareTo(line.expectedUnitPrice()) != 0) {

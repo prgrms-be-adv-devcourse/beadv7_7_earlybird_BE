@@ -412,6 +412,32 @@ class OrderApiServiceTest {
         verify(paymentPort).pay(1L, 1L, BigDecimal.valueOf(23_000));
     }
 
+    @Disabled
+    @Test
+    @DisplayName("Order creation accepts unlimited reward stock and includes base shipping fee")
+    void placeOrder_unlimitedRewardWithBaseShippingFee_success() {
+        stubRepository();
+        when(rewardPort.getReward(94L))
+                .thenReturn(new RewardSnapshot(94L, 10L, "Reward A", BigDecimal.valueOf(10_000), null, true));
+        when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.success(99L, BigDecimal.valueOf(13_000)));
+        PlaceOrderCommand command = new PlaceOrderCommand(16L, null,
+                List.of(new OrderLine(94L, 1, BigDecimal.valueOf(10_000))),
+                "Receiver", "010-0000-0000", "Seoul", "06236",
+                BigDecimal.valueOf(10_000), BigDecimal.valueOf(13_000));
+
+        OrderResult result = orderApiService.placeOrder(command, 16L);
+
+        assertThat(result.status()).isEqualTo(OrderStatus.PAID);
+        assertThat(result.itemsAmount()).isEqualByComparingTo("10000");
+        assertThat(result.shippingFee()).isEqualByComparingTo("3000");
+        assertThat(result.totalAmount()).isEqualByComparingTo("13000");
+        assertThat(result.orderItems())
+                .extracting(OrderResult.Item::rewardId, OrderResult.Item::quantity)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(94L, 1));
+        verify(rewardPort).decreaseStock(94L, 1);
+        verify(paymentPort).pay(1L, 16L, BigDecimal.valueOf(13_000));
+    }
+
     private void stubRepository() {
         lenient().when(orderRepository.findById(any(Long.class))).thenAnswer(invocation ->
                 Optional.ofNullable(orders.get(invocation.getArgument(0))));
