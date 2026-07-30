@@ -7,6 +7,8 @@ import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryT
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ import java.util.Optional;
 public class PaymentConfirmationService {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
     private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     /**
@@ -80,8 +83,10 @@ public class PaymentConfirmationService {
         );
 
         payment.confirm(approval.paymentKey());
+        Payment savedPayment = paymentRepository.save(payment);
+        savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 동일 상태 Outbox 중복 저장 방지
 
-        return PaymentInfo.from(paymentRepository.save(payment));
+        return PaymentInfo.from(savedPayment);
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +125,8 @@ public class PaymentConfirmationService {
                 );
 
                 if (payment.reconcileConfirmed(pgPayment.paymentKey())) {
-                    paymentRepository.save(payment);
+                    Payment savedPayment = paymentRepository.save(payment);
+                    savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 정합화 경로의 중복 Outbox 저장 방지
                 }
 
                 return Optional.of(PaymentInfo.from(payment));
@@ -143,6 +149,24 @@ public class PaymentConfirmationService {
         }
 
         return  Optional.empty();
+    }
+
+    // 추가 : 동일 결제 상태 Outbox 중복 생성 방지
+    private void savePaymentStatusOutboxIfAbsent(Payment payment) {
+        if (paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(
+            payment.getPaymentId(),
+            payment.getStatus()
+        )) {
+            return;
+        }
+
+        paymentStatusOutboxRepository.save(
+            PaymentStatusOutbox.pending(
+                payment.getPaymentId(),
+                payment.getOrderId(),
+                payment.getStatus()
+            )
+        );
     }
 
     private Payment findPayment(Long paymentId) {

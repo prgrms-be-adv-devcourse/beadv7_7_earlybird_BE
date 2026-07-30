@@ -6,6 +6,7 @@ import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.payment.infrastructure.PaymentRepositoryAdapter;
+import com.growmighty.lectures.firstday.payment.infrastructure.PaymentStatusOutboxRepositoryAdapter;
 import com.growmighty.lectures.firstday.payment.infrastructure.security.PaymentSensitiveDataCrypto;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Import({
     JpaAuditingConfig.class,
     PaymentRepositoryAdapter.class,
+    PaymentStatusOutboxRepositoryAdapter.class,
     PaymentConfirmationService.class,
     PaymentSecurityConfig.class, // <-- PaymentSecurityProperties Bean 등록
     PaymentSensitiveDataCrypto.class // <-- Converter가 주입받는 AES-GCM Bean 등록

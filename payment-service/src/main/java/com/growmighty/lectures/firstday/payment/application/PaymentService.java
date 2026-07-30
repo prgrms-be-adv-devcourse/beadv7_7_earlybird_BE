@@ -83,19 +83,11 @@ public class PaymentService {
             target.amount(),
             target.idempotencyKey()
         );
-
-        PaymentInfo paymentInfo = paymentConfirmationService.completeConfirmation(
+        return paymentConfirmationService.completeConfirmation(
             target.paymentId(),
             paymentKey,
             approval
         );
-
-        orderStatusPort.notifyStatus(
-            paymentInfo.orderId(),
-            paymentInfo.status()
-        );
-
-        return paymentInfo;
     }
 
     @Transactional
