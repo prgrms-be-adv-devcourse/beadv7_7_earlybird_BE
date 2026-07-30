@@ -6,9 +6,7 @@ import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparati
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
-import com.growmighty.lectures.firstday.payment.domain.Payment;
-import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
+import com.growmighty.lectures.firstday.payment.domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +27,7 @@ class PaymentServiceTest {
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
 
     private InMemoryPaymentRepository paymentRepository;
+    private InMemoryPaymentStatusOutboxRepository paymentStatusOutboxRepository;
     private RecordingPaymentGateway paymentGateway;
     private RecordingOrderStatusPort orderStatusPort;
     private PaymentService paymentService;
@@ -36,14 +35,16 @@ class PaymentServiceTest {
     @BeforeEach
     void setUp() {
         paymentRepository = new InMemoryPaymentRepository();
+        paymentStatusOutboxRepository = new InMemoryPaymentStatusOutboxRepository();
         paymentGateway = new RecordingPaymentGateway();
         orderStatusPort = new RecordingOrderStatusPort();
         paymentService = new PaymentService(
             paymentRepository,
             paymentGateway,
             new PaymentConfirmationService(
-                paymentRepository,
-                new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10))
+            paymentRepository,
+            paymentStatusOutboxRepository,
+            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10))
             ),
             orderStatusPort
         );
@@ -246,6 +247,26 @@ class PaymentServiceTest {
             callCount++;
             requestedOrderId = orderId;
             requestedStatus = status;
+        }
+    }
+
+    private static final class InMemoryPaymentStatusOutboxRepository
+        implements PaymentStatusOutboxRepository {
+
+        private final List<PaymentStatusOutbox> outboxes = new ArrayList<>();
+
+        @Override
+        public PaymentStatusOutbox save(PaymentStatusOutbox outbox) {
+            outboxes.add(outbox);
+            return outbox;
+        }
+
+        @Override
+        public List<PaymentStatusOutbox> findPending(int limit) {
+            return outboxes.stream()
+                .filter(PaymentStatusOutbox::isPending)
+                .limit(limit)
+                .toList();
         }
     }
 
