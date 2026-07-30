@@ -7,6 +7,8 @@ import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryT
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ import java.util.Optional;
 public class PaymentConfirmationService {
 
     private final PaymentRepository paymentRepository;
+    private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
     private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     /**
@@ -80,8 +83,16 @@ public class PaymentConfirmationService {
         );
 
         payment.confirm(approval.paymentKey());
+        Payment savedPayment = paymentRepository.save(payment);
+        paymentStatusOutboxRepository.save( // <-- 일반 승인 경로의 Outbox 저장
+            PaymentStatusOutbox.pending(
+                savedPayment.getPaymentId(),
+                savedPayment.getOrderId(),
+                savedPayment.getStatus()
+            )
+        );
 
-        return PaymentInfo.from(paymentRepository.save(payment));
+        return PaymentInfo.from(savedPayment);
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +131,15 @@ public class PaymentConfirmationService {
                 );
 
                 if (payment.reconcileConfirmed(pgPayment.paymentKey())) {
-                    paymentRepository.save(payment);
+                    Payment savedPayment = paymentRepository.save(payment);
+
+                    paymentStatusOutboxRepository.save(
+                        PaymentStatusOutbox.pending(
+                            savedPayment.getPaymentId(),
+                            savedPayment.getOrderId(),
+                            savedPayment.getStatus()
+                        )
+                    );
                 }
 
                 return Optional.of(PaymentInfo.from(payment));

@@ -22,7 +22,7 @@ public class PaymentStatusOutboxRepositoryAdapter implements PaymentStatusOutbox
     }
 
     @Override
-    public List<PaymentStatusOutbox> findPendig(int limit) {
+    public List<PaymentStatusOutbox> findPending(int limit) {
         return jpaRepository.findByStatusOrderByIdAsc(
             PaymentStatusOutboxStatus.PENDING,
             PageRequest.of(0, limit)

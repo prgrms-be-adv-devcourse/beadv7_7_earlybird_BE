@@ -6,5 +6,5 @@ public interface PaymentStatusOutboxRepository {
 
     PaymentStatusOutbox save(PaymentStatusOutbox paymentStatusOutbox);
 
-    List<PaymentStatusOutbox> findPendig(int limit);
+    List<PaymentStatusOutbox> findPending(int limit);
 }
