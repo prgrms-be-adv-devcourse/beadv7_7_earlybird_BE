@@ -8,4 +8,6 @@ import com.growmighty.lectures.firstday.board.feign.port.dto.UserSnapshot;
  */
 public interface UserPort {
     UserSnapshot getUser(Long userId);
+
+    String getUserEmail(Long userId);
 }

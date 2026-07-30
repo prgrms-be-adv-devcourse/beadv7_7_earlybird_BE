@@ -1,6 +1,8 @@
 package com.growmighty.lectures.firstday.board.feign.httpClient.project;
 
+import com.growmighty.lectures.firstday.board.feign.httpClient.project.dto.ProjectCreatorApiData;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import feign.FeignException;
 import feign.Request;
 import feign.Response;
@@ -20,6 +22,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 
 // UserHttpClientTest/OrderHttpClientTest와 같은 원칙: Feign 통신 자체는 mock으로 끊고, 우리가 짠 서킷브레이커 배선만 검증한다.
 @ExtendWith(MockitoExtension.class)
@@ -61,6 +64,25 @@ class ProjectHttpClientTest {
         doThrow(new RuntimeException("project-service 응답 없음")).when(projectFeignClient).getProject(1L);
 
         assertThatThrownBy(() -> projectHttpClient.existsProject(1L))
+            .isInstanceOf(ServiceUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("정상 응답이면 제작자 userId를 반환한다")
+    void getCreatorUserId_success() {
+        when(projectFeignClient.getCreator(1L)).thenReturn(ApiResponse.ok(new ProjectCreatorApiData(99L)));
+
+        Long creatorId = projectHttpClient.getCreatorUserId(1L);
+
+        assertThat(creatorId).isEqualTo(99L);
+    }
+
+    @Test
+    @DisplayName("제작자 조회 중 Feign 호출이 실패하면 ServiceUnavailableException으로 하드 실패한다")
+    void getCreatorUserId_feignFailure_failsHardViaFallback() {
+        doThrow(new RuntimeException("project-service 응답 없음")).when(projectFeignClient).getCreator(1L);
+
+        assertThatThrownBy(() -> projectHttpClient.getCreatorUserId(1L))
             .isInstanceOf(ServiceUnavailableException.class);
     }
 

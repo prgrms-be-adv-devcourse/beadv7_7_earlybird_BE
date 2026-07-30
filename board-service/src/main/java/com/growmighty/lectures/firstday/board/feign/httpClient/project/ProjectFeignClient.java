@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.board.feign.httpClient.project;
 
+import com.growmighty.lectures.firstday.board.feign.httpClient.project.dto.ProjectCreatorApiData;
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,4 +14,9 @@ public interface ProjectFeignClient {
 
     @GetMapping("/api/v1/projects/{projectId}")
     void getProject(@PathVariable("projectId") Long projectId);
+
+    // project-service 팀에 요청한 계약 — 이 엔드포인트는 project-service 쪽에 아직 구현돼 있지 않다 (board-service 몫만 먼저 작성).
+    // 리뷰 생성 알림 메일 발송을 위해 projectId로 제작자 userId만 조회한다. (order-service 구매 검증 엔드포인트와 같은 방식의 선요청)
+    @GetMapping("/internal/v1/projects/{projectId}/creator")
+    ApiResponse<ProjectCreatorApiData> getCreator(@PathVariable("projectId") Long projectId);
 }

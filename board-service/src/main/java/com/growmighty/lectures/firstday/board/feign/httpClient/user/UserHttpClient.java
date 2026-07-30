@@ -35,4 +35,20 @@ public class UserHttpClient implements UserPort {
         log.warn("사용자 정보 조회 실패. userId={}, 원인={}", userId, cause.toString());
         throw new ServiceUnavailableException("사용자 정보를 확인할 수 없어 요청을 처리할 수 없습니다. userId=" + userId);
     }
+
+    @Override
+    public String getUserEmail(Long userId) {
+        return circuitBreakerFactory.create("user").run(
+            () -> fetchEmail(userId),
+            cause -> failHardEmail(userId, cause));
+    }
+
+    private String fetchEmail(Long userId) {
+        return userFeignClient.fetchUser(userId).data().email();
+    }
+
+    private String failHardEmail(Long userId, Throwable cause) {
+        log.warn("사용자 이메일 조회 실패. userId={}, 원인={}", userId, cause.toString());
+        throw new ServiceUnavailableException("사용자 이메일을 확인할 수 없어 요청을 처리할 수 없습니다. userId=" + userId);
+    }
 }

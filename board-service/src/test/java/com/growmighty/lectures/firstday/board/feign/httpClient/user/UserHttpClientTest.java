@@ -40,7 +40,7 @@ class UserHttpClientTest {
     @Test
     @DisplayName("정상 응답이면 UserSnapshot으로 변환해 반환한다")
     void getUser_success() {
-        when(userFeignClient.fetchUser(1L)).thenReturn(ApiResponse.ok(new UserApiData(1L, "홍길동")));
+        when(userFeignClient.fetchUser(1L)).thenReturn(ApiResponse.ok(new UserApiData(1L, "홍길동", "hong@example.com")));
 
         UserSnapshot snapshot = userHttpClient.getUser(1L);
 
@@ -53,6 +53,25 @@ class UserHttpClientTest {
         when(userFeignClient.fetchUser(1L)).thenThrow(new RuntimeException("user-service 응답 없음"));
 
         assertThatThrownBy(() -> userHttpClient.getUser(1L))
+                .isInstanceOf(ServiceUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("정상 응답이면 email만 뽑아 반환한다")
+    void getUserEmail_success() {
+        when(userFeignClient.fetchUser(1L)).thenReturn(ApiResponse.ok(new UserApiData(1L, "홍길동", "hong@example.com")));
+
+        String email = userHttpClient.getUserEmail(1L);
+
+        assertThat(email).isEqualTo("hong@example.com");
+    }
+
+    @Test
+    @DisplayName("email 조회 중 Feign 호출이 실패하면 ServiceUnavailableException으로 하드 실패한다")
+    void getUserEmail_feignFailure_failsHardViaFallback() {
+        when(userFeignClient.fetchUser(1L)).thenThrow(new RuntimeException("user-service 응답 없음"));
+
+        assertThatThrownBy(() -> userHttpClient.getUserEmail(1L))
                 .isInstanceOf(ServiceUnavailableException.class);
     }
 }

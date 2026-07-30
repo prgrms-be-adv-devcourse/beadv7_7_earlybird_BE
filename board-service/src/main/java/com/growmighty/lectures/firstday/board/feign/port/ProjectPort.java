@@ -6,4 +6,6 @@ package com.growmighty.lectures.firstday.board.feign.port;
  */
 public interface ProjectPort {
     boolean existsProject(Long projectId);
+
+    Long getCreatorUserId(Long projectId);
 }
