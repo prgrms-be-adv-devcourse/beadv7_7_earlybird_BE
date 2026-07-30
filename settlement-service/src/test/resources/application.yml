@@ -35,6 +35,8 @@ settlement:
     mode: dummy
   project-order:
     mode: dummy
+  payment-cancellation:
+    mode: dummy
   batch:
     chunk-size: 1000
     thread-count: 8
