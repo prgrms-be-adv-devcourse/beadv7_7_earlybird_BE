@@ -9,8 +9,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-batch'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-    implementation 'com.nimbusds:nimbus-jose-jwt'
-
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
     runtimeOnly 'com.mysql:mysql-connector-j'
@@ -29,20 +27,4 @@ dependencies {
     // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
     // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
-}
-
-tasks.named('test') {
-    useJUnitPlatform {
-        excludeTags 'toss-payout-smoke'
-    }
-}
-
-tasks.register('tossPayoutSmokeTest', Test) {
-    group = 'verification'
-    description = 'Runs the opt-in Toss Payments test-environment payout smoke test.'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform {
-        includeTags 'toss-payout-smoke'
-    }
 }

@@ -10,26 +10,21 @@ sequenceDiagram
     participant Project
     participant Order
     participant Payment
-    participant Store as Settlement DB
-    participant Payout as Dummy PayoutGateway
+    participant PG
 
     Settlement->>Project: 처리 대상 프로젝트 조회
     Project-->>Settlement: projectId, creatorId, 프로젝트 결과
-    Settlement->>Store: 기존 프로젝트 정산·지급 의무·결제 취소 명령 조회
-    Store-->>Settlement: 이미 처리 중이거나 완료된 프로젝트 복원
     Settlement->>Order: 신규 projectIds의 orderIds 일괄 조회
     Order-->>Settlement: projectId별 orderIds
     Settlement->>Payment: 성공 orderIds의 결제 판정 일괄 조회
     Payment-->>Settlement: orderId별 준비 상태와 최종 유효 금액
-    Settlement->>Store: 실패·취소 주문별 명령 선저장
     Settlement->>Payment: 미완료 orderIds의 결제 취소 일괄 요청
     Payment-->>Settlement: 주문별 멱등 처리 결과
-    Settlement->>Store: 마지막 관찰 결과 반영
     loop 프로젝트마다
         alt 성공 프로젝트이고 결제가 준비됨
-            Settlement->>Store: 프로젝트 정산과 지급 의무 생성
-            Settlement->>Payout: 예약 지급 요청
-            Payout-->>Settlement: 결정적 지급 결과
+            Settlement->>Settlement: 프로젝트 정산과 지급 의무 생성
+            Settlement->>PG: 예약 지급 요청
+            PG-->>Settlement: 지급 결과
         else 결제 미준비 또는 실패·취소 프로젝트
             Settlement-->>Settlement: 프로젝트별 처리 상태 보존
         end
@@ -58,11 +53,11 @@ sequenceDiagram
 | 주문별 결제 판정 | `PaymentAssessmentReader`와 결정적 dummy가 성공 프로젝트의 `orderIds`만 받아 `READY·NOT_READY·NO_PAYMENT`를 반환한다. 미준비 프로젝트는 확정하지 않고 다른 프로젝트 처리를 계속한다. | 운영 Payment HTTP adapter는 외부 제공 interface 확정 후 구현 필요 |
 | 프로젝트 정산 확정 | 프로젝트별 정산과 지급 의무를 한 DB 트랜잭션에서 생성한다. 재실행은 기존 정산·지급 의무를 외부 조회 전에 복원하며 성공 결과는 `SETTLEMENT_ALREADY_CONFIRMED`, 실패·취소 결과는 `OUTCOME_CONFLICT`로 반환한다. 저장된 결제 취소 명령 뒤 성공으로 바뀌는 역방향 전환도 충돌로 차단한다. | 성공 정산과 양방향 결과 전환 충돌 검증 완료 |
 | 실패·취소 프로젝트 결제 취소 | 실행 서비스가 결제 판정 조회 없이 주문별 명령을 선저장한 뒤 결정적 멱등키로 `ProjectPaymentCancellationGateway`를 호출한다. 주문별 마지막 관찰 결과를 보존해 완료·no-op·최종 실패는 건너뛰고 미완료만 같은 키로 재개하며, 일곱 가지 결과를 프로젝트 처리 상태로 보수적으로 집약한다. | Settlement 영속화·재실행 완료. 운영 Payment HTTP adapter는 외부 제공 interface 확정 후 구현 필요 |
-| 지급대행 | `PayoutGateway`가 있지만 현재 선택 가능한 실행 adapter는 opt-in 실제 Toss adapter뿐이다. 기본값에서는 지급 실행기가 비활성화된다. | 외부 네트워크 없는 결정적 dummy adapter로 교체 필요 |
+| 지급대행 | `PayoutGateway` 포트를 구현한 결정적 dummy adapter가 항상 등록된다. 기본값은 `COMPLETED`이고 같은 멱등키는 같은 지급 식별자와 결과로 수렴한다. | 실제 송금 없이 예약 지급 흐름 실행 가능 |
 
-현재 조합은 목표 E2E 흐름이 완성된 상태가 아니다. Settlement core의 성공 정산·미준비·실패·취소 분기와 결제 취소 명령 영속화, Order·Payment·결제 취소 dummy는 마련됐지만, 운영 Order·Payment adapter와 dummy 지급대행은 아직 없으므로 운영 준비 완료로 해석하지 않는다.
+현재 조합은 목표 E2E 흐름이 완성된 상태가 아니다. Settlement core의 성공 정산·미준비·실패·취소 분기, 결제 취소 명령 영속화와 더미 지급대행은 마련됐지만 운영 Order·Payment adapter가 아직 없으므로 운영 준비 완료로 해석하지 않는다.
 
-실제 Toss 자격 증명, 테스트 셀러, HTTP/JWE 호출, smoke test와 webhook은 활성 경로와 완료 조건에서 제외한다. `tossPayoutSmokeTest` Gradle 태스크와 Toss adapter 코드는 과거 계약 검증용으로 남아 있지만 기본 테스트·CI·목표 실행 흐름에서 사용하지 않는다.
+실제 PG HTTP 연동, 자격 증명, 암호화 요청, smoke test와 webhook 구현은 제거했다. 지급 요청은 애플리케이션의 기존 선저장·결과 반영 트랜잭션 흐름을 그대로 지나지만 외부 네트워크나 실제 송금은 발생하지 않는다. 서비스 시작 로그에도 더미 지급대행임을 명시한다.
 
 ## 로컬 검증
 
@@ -95,9 +90,9 @@ Content-Type: application/json
 | `settlement.project-target.http.connect-timeout` | 기본값 1초 |
 | `settlement.project-target.http.read-timeout` | 기본값 3초 |
 | `settlement.external-data.mode` | 미지정 시 Order 목록·Payment 판정·결제 취소 dummy와 dummy 지급 프로필 활성화 |
-| `settlement.toss-payout.enabled` | 미지정 시 비활성; `true`는 목표에서 제외된 실제 Toss adapter를 활성화 |
+| `settlement.dummy-payout.scenario` | 미지정 시 `COMPLETED`; 로컬·테스트에서 `REQUESTED`, `IN_PROGRESS`, `RETRYABLE_FAILED`, `NON_RETRYABLE_FAILED`, `UNKNOWN` 선택 가능 |
 
-Config server의 기존 값은 별도 승인 없이 변경하지 않는다. 후속 구현은 운영 Project·Order·Payment adapter와 dummy 지급 adapter가 역할별로 하나씩만 선택되도록 서비스 내부 조건을 먼저 완성해야 한다.
+Config server의 기존 값은 변경하지 않는다. 외부 요청자가 더미 지급 결과를 조작하는 공개 API는 제공하지 않으며 시나리오 설정은 로컬 실행과 테스트 seam으로만 사용한다.
 
 ## 후속 문서·구현 동기화
 
@@ -110,4 +105,4 @@ Config server의 기존 값은 별도 승인 없이 변경하지 않는다. 후�
 7. [이슈 16](../../.scratch/project-settlement/issues/16-verify-project-outcome-flow-e2e.md): 전체 흐름 E2E와 운영 전환 검증
 8. [이슈 17](../../.scratch/project-settlement/issues/17-automate-dummy-payout-reconciliation.md): 더미 지급 결과 진행과 재시도 자동화
 
-이슈 05는 제공자 interface와 독립적으로 진행할 수 있고, 이슈 17의 직접 선행 조건이다. Config server 변경은 별도 승인 전까지 수행하지 않는다.
+이슈 05의 더미 지급대행이 완료되어 이슈 17의 선행 조건이 해소됐다. Config server 변경은 별도 승인 전까지 수행하지 않는다.
