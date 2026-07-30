@@ -21,16 +21,16 @@ public final class SettlementCalculationPolicy {
         return feePolicySnapshot;
     }
 
-    public SettlementBreakdown calculate(List<Money> finalEffectivePaymentAmounts) {
-        Objects.requireNonNull(finalEffectivePaymentAmounts, "최종 유효 결제 금액 목록은 필수입니다.");
+    public SettlementBreakdown calculate(List<Money> orderPaymentAmounts) {
+        Objects.requireNonNull(orderPaymentAmounts, "주문 결제금액 목록은 필수입니다.");
 
-        Money baseAmount = Money.wons(finalEffectivePaymentAmounts.stream()
+        Money baseAmount = Money.wons(orderPaymentAmounts.stream()
                 .map(Money::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
         if (baseAmount.amount().signum() == 0) {
             throw new IllegalArgumentException("프로젝트 정산 기준 금액은 0원보다 커야 합니다.");
         }
-        Money paymentAndSettlementAgencyFeeAmount = Money.wons(finalEffectivePaymentAmounts.stream()
+        Money paymentAndSettlementAgencyFeeAmount = Money.wons(orderPaymentAmounts.stream()
                 .map(Money::amount)
                 .map(amount -> applyRate(amount, feePolicySnapshot.paymentAndSettlementAgencyFeeRate()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add));

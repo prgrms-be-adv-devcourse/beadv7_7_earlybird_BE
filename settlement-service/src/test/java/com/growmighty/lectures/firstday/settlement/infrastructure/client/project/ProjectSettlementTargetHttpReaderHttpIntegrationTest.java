@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -58,9 +58,9 @@ class ProjectSettlementTargetHttpReaderHttpIntegrationTest {
                 .baseUrl(baseUrl())
                 .requestFactory(requestFactory)
                 .build();
-        ProjectSettlementTargetReader reader = new ProjectSettlementTargetHttpReader(restClient);
+        ProjectOutcomeReader reader = new ProjectSettlementTargetHttpReader(restClient);
 
-        assertThatThrownBy(reader::findSettlementTargets)
+        assertThatThrownBy(reader::findProjectOutcomes)
                 .isInstanceOfSatisfying(SettlementException.class, exception ->
                         assertThat(exception.errorCode()).isEqualTo(
                                 SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE

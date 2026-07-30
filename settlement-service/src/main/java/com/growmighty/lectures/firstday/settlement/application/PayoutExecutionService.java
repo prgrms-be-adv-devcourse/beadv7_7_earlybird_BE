@@ -17,32 +17,18 @@ import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepos
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
-@ConditionalOnProperty(
-        name = "settlement.toss-payout.enabled",
-        havingValue = "true"
-)
 public final class PayoutExecutionService implements PayoutExecutor {
 
     private static final int MAX_ATTEMPTS = 4;
     private static final String TRANSACTION_DESCRIPTION = "얼리버드";
-    private static final Set<String> SAME_ATTEMPT_ERROR_CODES = Set.of(
-            "PREVIOUS_REQUEST_IN_PROGRESS",
-            "IDEMPOTENT_REQUEST_PROCESSING"
-    );
-    private static final Set<String> RETRYABLE_ERROR_CODES = Set.of(
-            "COMMON_ERROR",
-            "EXCEEDED_PAYOUT_BALANCE_AMOUNT"
-    );
 
     private final PayoutObligationRepository payoutObligationRepository;
     private final ProjectSettlementRepository projectSettlementRepository;
@@ -82,7 +68,7 @@ public final class PayoutExecutionService implements PayoutExecutor {
                 projectSettlementRepository,
                 "프로젝트 정산 저장소는 필수입니다."
         );
-        this.payoutGateway = Objects.requireNonNull(payoutGateway, "지급대행 외부 연동은 필수입니다.");
+        this.payoutGateway = Objects.requireNonNull(payoutGateway, "지급대행 실행기는 필수입니다.");
         this.transactions = Objects.requireNonNull(transactions, "지급 트랜잭션 실행기는 필수입니다.");
         this.clock = Objects.requireNonNull(clock, "지급 처리 Clock은 필수입니다.");
     }
@@ -167,8 +153,8 @@ public final class PayoutExecutionService implements PayoutExecutor {
         }
         PayoutAttempt attempt = findAttempt(obligation, prepared.attemptSequence());
 
-        if (gatewayResult instanceof PayoutGatewayResult.Rejected rejected) {
-            applyFailure(obligation, attempt, null, rejected.errorCode());
+        if (gatewayResult instanceof PayoutGatewayResult.Failed failed) {
+            applyFailure(obligation, attempt, failed);
         } else if (gatewayResult instanceof PayoutGatewayResult.Accepted accepted) {
             applyAcceptedResult(obligation, attempt, accepted);
         } else {
@@ -204,39 +190,26 @@ public final class PayoutExecutionService implements PayoutExecutor {
                     accepted.payoutId(),
                     LocalDateTime.now(clock)
             );
-            case FAILED -> applyFailure(
-                    obligation,
-                    attempt,
-                    accepted.payoutId(),
-                    accepted.errorCode()
-            );
             case CANCELED -> obligation.cancelAttempt(
                     attempt,
                     accepted.payoutId(),
                     LocalDateTime.now(clock)
             );
-            case UNKNOWN -> throw new PayoutGatewayException(
-                    "결과 불명확 상태는 토스 확정 응답으로 반영할 수 없습니다."
-            );
+            case FAILED, UNKNOWN -> throw new PayoutGatewayException("지원하지 않는 지급대행 확정 상태입니다.");
         }
     }
 
     private void applyFailure(
             PayoutObligation obligation,
             PayoutAttempt attempt,
-            String tossPayoutId,
-            String errorCode
+            PayoutGatewayResult.Failed failed
     ) {
-        if (SAME_ATTEMPT_ERROR_CODES.contains(errorCode)) {
-            obligation.markAttemptUnknown(attempt, errorCode);
-            return;
-        }
-        boolean retryable = RETRYABLE_ERROR_CODES.contains(errorCode)
+        boolean retryable = failed.retryable()
                 && obligation.attemptCount() < MAX_ATTEMPTS;
         obligation.failAttempt(
                 attempt,
-                tossPayoutId,
-                errorCode,
+                failed.payoutId(),
+                failed.errorCode(),
                 LocalDateTime.now(clock),
                 retryable
         );

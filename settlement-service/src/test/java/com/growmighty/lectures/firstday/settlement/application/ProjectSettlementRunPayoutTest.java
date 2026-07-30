@@ -5,9 +5,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutAttemptStatus;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus;
@@ -26,13 +29,21 @@ import org.junit.jupiter.api.Test;
 class ProjectSettlementRunPayoutTest {
 
     @Test
-    @DisplayName("지급 연동이 활성화되면 확정된 지급 의무의 지급을 실행한다")
+    @DisplayName("성공 정산은 확정된 지급 의무의 지급 흐름을 실행한다")
     void executesPayoutForConfirmedSettlement() {
-        ProjectSettlementTargetReader targetReader = () -> List.of(
-                new ProjectSettlementTarget(101L, 201L)
+        ProjectOutcomeReader outcomeReader = () -> List.of(
+                new ProjectOutcome(101L, 201L, ProjectOutcomeStatus.SUCCEEDED)
         );
-        FinalEffectivePaymentAmountReader amountReader = projectId -> List.of(Money.wons(100_000));
+        ProjectOrderReader orderReader = projectIds -> List.of(
+                new ProjectOrders(
+                        101L,
+                        List.of(new OrderPayment(1_001L, Money.wons(100_000)))
+                )
+        );
         ProjectSettlementService settlementService = mock(ProjectSettlementService.class);
+        ProjectPaymentCancellationCommandService cancellationCommandService =
+                mock(ProjectPaymentCancellationCommandService.class);
+        when(cancellationCommandService.findAllByProjectIdIn(any())).thenReturn(List.of());
         when(settlementService.confirm(any())).thenReturn(new ConfirmedProjectSettlement(
                 101L,
                 201L,
@@ -53,9 +64,11 @@ class ProjectSettlementRunPayoutTest {
             );
         };
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
-                targetReader,
-                amountReader,
+                outcomeReader,
+                orderReader,
+                requests -> List.of(),
                 settlementService,
+                cancellationCommandService,
                 Clock.fixed(Instant.parse("2026-07-26T01:00:00Z"), ZoneOffset.UTC),
                 Optional.of(payoutExecutor)
         );

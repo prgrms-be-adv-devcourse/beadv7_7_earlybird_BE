@@ -8,12 +8,12 @@ import java.util.List;
 public record ConfirmProjectSettlementCommand(
         Long projectId,
         Long creatorId,
-        List<Money> finalEffectivePaymentAmounts,
+        List<Money> orderPaymentAmounts,
         LocalDate scheduledDate,
         LocalDateTime confirmedAt
 ) {
 
     public ConfirmProjectSettlementCommand {
-        finalEffectivePaymentAmounts = List.copyOf(finalEffectivePaymentAmounts);
+        orderPaymentAmounts = List.copyOf(orderPaymentAmounts);
     }
 }

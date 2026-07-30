@@ -6,9 +6,9 @@ public enum SettlementErrorCode {
             "S001",
             "창작자 지급 준비가 완료되지 않았습니다."
     ),
-    FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE(
+    ORDER_PAYMENT_INPUTS_UNAVAILABLE(
             "S002",
-            "최종 유효 결제 금액을 확인할 수 없습니다."
+            "주문 결제금액을 확인할 수 없습니다."
     ),
     PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE(
             "S003",
@@ -17,6 +17,10 @@ public enum SettlementErrorCode {
     PROJECT_SETTLEMENT_NOT_FOUND(
             "S004",
             "프로젝트 정산 내역을 찾을 수 없습니다."
+    ),
+    PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE(
+            "S005",
+            "프로젝트 결제 취소 결과를 확인할 수 없습니다."
     ),
     SETTLEMENT_DATA_INCONSISTENT(
             "S500",

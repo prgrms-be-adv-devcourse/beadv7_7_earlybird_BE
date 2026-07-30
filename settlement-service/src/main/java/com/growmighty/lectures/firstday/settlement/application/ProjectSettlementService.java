@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
-import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PAYOUT_PROFILE_NOT_READY;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.SETTLEMENT_DATA_INCONSISTENT;
 
@@ -14,6 +14,7 @@ import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
 import com.growmighty.lectures.firstday.settlement.domain.SettlementCalculationPolicy;
+import java.util.Optional;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,19 +34,7 @@ public class ProjectSettlementService {
                 () -> projectSettlementRepository.findByProjectId(command.projectId()).orElse(null)
         );
         if (existingSettlement != null) {
-            PayoutObligation existingPayoutObligation = executePersistenceOperation(
-                    () -> payoutObligationRepository.findBySettlementId(existingSettlement.id())
-            )
-                    .orElseThrow(() -> new SettlementException(SETTLEMENT_DATA_INCONSISTENT));
-            return new ConfirmedProjectSettlement(
-                    existingSettlement.projectId(),
-                    existingSettlement.creatorId(),
-                    existingSettlement.id(),
-                    existingPayoutObligation.id(),
-                    existingSettlement.creatorPayoutAmount(),
-                    existingPayoutObligation.status(),
-                    existingPayoutObligation.scheduledDate()
-            );
+            return confirmedSettlement(existingSettlement);
         }
 
         CreatorPayoutProfile payoutProfile = executePersistenceOperation(
@@ -55,9 +44,9 @@ public class ProjectSettlementService {
         SettlementCalculationPolicy calculationPolicy = SettlementCalculationPolicy.current();
         SettlementBreakdown breakdown;
         try {
-            breakdown = calculationPolicy.calculate(command.finalEffectivePaymentAmounts());
+            breakdown = calculationPolicy.calculate(command.orderPaymentAmounts());
         } catch (IllegalArgumentException exception) {
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
+            throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE, exception);
         }
         if (!payoutProfile.canReceivePayout()) {
             throw new SettlementException(PAYOUT_PROFILE_NOT_READY);
@@ -84,6 +73,27 @@ public class ProjectSettlementService {
                 () -> payoutObligationRepository.save(payoutObligationToSave)
         );
 
+        return new ConfirmedProjectSettlement(
+                settlement.projectId(),
+                settlement.creatorId(),
+                settlement.id(),
+                payoutObligation.id(),
+                settlement.creatorPayoutAmount(),
+                payoutObligation.status(),
+                payoutObligation.scheduledDate()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ConfirmedProjectSettlement> findConfirmedByProjectId(Long projectId) {
+        return executePersistenceOperation(() -> projectSettlementRepository.findByProjectId(projectId))
+                .map(this::confirmedSettlement);
+    }
+
+    private ConfirmedProjectSettlement confirmedSettlement(ProjectSettlement settlement) {
+        PayoutObligation payoutObligation = executePersistenceOperation(
+                () -> payoutObligationRepository.findBySettlementId(settlement.id())
+        ).orElseThrow(() -> new SettlementException(SETTLEMENT_DATA_INCONSISTENT));
         return new ConfirmedProjectSettlement(
                 settlement.projectId(),
                 settlement.creatorId(),

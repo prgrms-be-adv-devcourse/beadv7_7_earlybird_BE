@@ -2,7 +2,7 @@ package com.growmighty.lectures.firstday.settlement.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.infrastructure.client.project.ProjectSettlementTargetHttpReader;
 import com.growmighty.lectures.firstday.settlement.infrastructure.dummy.DummyProjectSettlementTargetReader;
 import java.time.Duration;
@@ -25,8 +25,8 @@ class ProjectSettlementTargetClientConfigTest {
     void registersHttpReaderByDefault() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(ProjectSettlementTargetReader.class);
-            assertThat(context.getBean(ProjectSettlementTargetReader.class))
+            assertThat(context).hasSingleBean(ProjectOutcomeReader.class);
+            assertThat(context.getBean(ProjectOutcomeReader.class))
                     .isInstanceOf(ProjectSettlementTargetHttpReader.class);
             assertThat(context).doesNotHaveBean(DummyProjectSettlementTargetReader.class);
         });
@@ -39,8 +39,8 @@ class ProjectSettlementTargetClientConfigTest {
                 .withPropertyValues("settlement.project-target.mode=dummy")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    assertThat(context).hasSingleBean(ProjectSettlementTargetReader.class);
-                    assertThat(context.getBean(ProjectSettlementTargetReader.class))
+                    assertThat(context).hasSingleBean(ProjectOutcomeReader.class);
+                    assertThat(context.getBean(ProjectOutcomeReader.class))
                             .isInstanceOf(DummyProjectSettlementTargetReader.class);
                     assertThat(context).doesNotHaveBean(ProjectSettlementTargetHttpReader.class);
                     assertThat(context).doesNotHaveBean("projectSettlementTargetRestClient");
