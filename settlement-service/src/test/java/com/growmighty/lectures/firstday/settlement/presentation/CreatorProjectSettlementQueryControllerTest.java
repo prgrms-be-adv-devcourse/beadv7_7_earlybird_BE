@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.settlement.presentation;
 
-import static com.growmighty.lectures.firstday.settlement.presentation.TestJwtTokens.bearerToken;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -9,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.settlement.application.ConfirmProjectSettlementCommand;
 import com.growmighty.lectures.firstday.settlement.application.ConfirmedProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.application.ProjectSettlementService;
@@ -31,7 +31,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,12 +58,17 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     private ProjectSettlementRepository projectSettlementRepository;
 
     @Test
+    @DisplayName("Gateway 전달 사용자 식별자 없이 창작자 프로젝트 정산 조회를 요청하면 거부한다")
+    void rejectsCreatorQueryWithoutForwardedUserId() throws Exception {
+        mockMvc.perform(get("/api/v1/settlements"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("프로젝트 정산 내역이 없는 창작자는 빈 목록을 조회한다")
     void returnsEmptyListWhenCreatorHasNoProjectSettlements() throws Exception {
         mockMvc.perform(get("/api/v1/settlements")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())
@@ -101,9 +105,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
         );
 
         mockMvc.perform(get("/api/v1/settlements")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].settlementId").value(sameTimeHigherId.settlementId()))
@@ -137,9 +139,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
         failPayoutAttempt(confirmed);
 
         mockMvc.perform(get("/api/v1/settlements/{settlementId}", confirmed.settlementId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.settlementId").value(confirmed.settlementId()))
                 .andExpect(jsonPath("$.data.project.projectId").value(72_000_001L))
@@ -184,17 +184,13 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
         completePayoutAttempt(confirmed);
 
         mockMvc.perform(get("/api/v1/settlements")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data[0].completedAt").value("2026-07-07T09:00:03+09:00"));
 
         mockMvc.perform(get("/api/v1/settlements/{settlementId}", confirmed.settlementId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.payout.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.payout.completedAt").value("2026-07-07T09:00:03+09:00"));
@@ -213,9 +209,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
 
         MvcResult otherCreatorResult = mockMvc.perform(
                         get("/api/v1/settlements/{settlementId}", otherCreatorSettlement.settlementId())
-                                .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                                .header("X-User-Id", CREATOR_ID)
-                                .header("X-User-Role", "CREATOR"))
+                                .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
@@ -223,9 +217,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
                 .andReturn();
 
         MvcResult missingResult = mockMvc.perform(get("/api/v1/settlements/{settlementId}", Long.MAX_VALUE)
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isNotFound())
                 .andReturn();
 
@@ -249,9 +241,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
         ));
 
         mockMvc.perform(get("/api/v1/settlements/{settlementId}", settlement.id())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
@@ -263,9 +253,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     @DisplayName("프로젝트 정산 식별자 형식이 올바르지 않으면 잘못된 요청으로 응답한다")
     void rejectsMalformedSettlementId() throws Exception {
         mockMvc.perform(get("/api/v1/settlements/not-a-number")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(CREATOR_ID, "CREATOR"))
-                        .header("X-User-Id", CREATOR_ID)
-                        .header("X-User-Role", "CREATOR"))
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
     }

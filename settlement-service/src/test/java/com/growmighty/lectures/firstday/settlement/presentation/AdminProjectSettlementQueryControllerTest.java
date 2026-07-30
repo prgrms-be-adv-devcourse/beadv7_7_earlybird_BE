@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.settlement.presentation;
 
-import static com.growmighty.lectures.firstday.settlement.presentation.TestJwtTokens.bearerToken;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,7 +29,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,8 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupport {
-
-    private static final String ADMIN_ID = "80000001";
 
     @Autowired
     private MockMvc mockMvc;
@@ -59,10 +55,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     @Test
     @DisplayName("프로젝트 정산 내역이 없으면 관리자는 빈 목록을 조회한다")
     void returnsEmptyListWhenNoProjectSettlementsExist() throws Exception {
-        mockMvc.perform(get("/api/v1/settlements/all")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(ADMIN_ID, "ADMIN"))
-                        .header("X-User-Id", ADMIN_ID)
-                        .header("X-User-Role", "ADMIN"))
+        mockMvc.perform(get("/api/v1/settlements/all"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())
@@ -94,10 +87,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         );
         failPayoutAttempt(sameTimeHigherId);
 
-        mockMvc.perform(get("/api/v1/settlements/all")
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(ADMIN_ID, "ADMIN"))
-                        .header("X-User-Id", ADMIN_ID)
-                        .header("X-User-Role", "ADMIN"))
+        mockMvc.perform(get("/api/v1/settlements/all"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].settlementId").value(sameTimeHigherId.settlementId()))
@@ -137,10 +127,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         PayoutAttempt failedAttempt = completedObligation.attempts().getFirst();
         PayoutAttempt completedAttempt = completedObligation.attempts().getLast();
 
-        mockMvc.perform(get("/api/v1/settlements/all/{settlementId}", confirmed.settlementId())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(ADMIN_ID, "ADMIN"))
-                        .header("X-User-Id", ADMIN_ID)
-                        .header("X-User-Role", "ADMIN"))
+        mockMvc.perform(get("/api/v1/settlements/all/{settlementId}", confirmed.settlementId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.settlementId").value(confirmed.settlementId()))
                 .andExpect(jsonPath("$.data.creatorId").value(creatorId))
@@ -201,10 +188,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     @Test
     @DisplayName("존재하지 않는 프로젝트 정산 상세는 공개 오류 코드 없이 찾을 수 없음으로 응답한다")
     void returnsNotFoundForMissingProjectSettlement() throws Exception {
-        mockMvc.perform(get("/api/v1/settlements/all/{settlementId}", Long.MAX_VALUE)
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(ADMIN_ID, "ADMIN"))
-                        .header("X-User-Id", ADMIN_ID)
-                        .header("X-User-Role", "ADMIN"))
+        mockMvc.perform(get("/api/v1/settlements/all/{settlementId}", Long.MAX_VALUE))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
@@ -226,10 +210,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 LocalDateTime.of(2026, 7, 1, 9, 0)
         ));
 
-        mockMvc.perform(get("/api/v1/settlements/all/{settlementId}", settlement.id())
-                        .header(HttpHeaders.AUTHORIZATION, bearerToken(ADMIN_ID, "ADMIN"))
-                        .header("X-User-Id", ADMIN_ID)
-                        .header("X-User-Role", "ADMIN"))
+        mockMvc.perform(get("/api/v1/settlements/all/{settlementId}", settlement.id()))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
