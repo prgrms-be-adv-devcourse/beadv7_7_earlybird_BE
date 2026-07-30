@@ -62,6 +62,23 @@ class PaymentConfirmationServiceReconcileTest {
     }
 
     @Test
+    void 기존_PAID_Outbox가_있으면_정합화_과정에서_새로_저장하지_않는다() {
+        Payment payment = confirmingPayment();
+        when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+        when(paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(
+            any(),
+            eq(PaymentStatus.PAID)
+        )).thenReturn(true);
+
+        paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.COMPLETED));
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
+        verify(paymentStatusOutboxRepository).existsByPaymentIdAndPaymentStatus(any(), eq(PaymentStatus.PAID));
+        verify(paymentStatusOutboxRepository, never()).save(any());
+    }
+
+    @Test
     void 취소된_PG_결제는_FAILED로_정합화한다() {
         Payment payment = confirmingPayment();
         when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));

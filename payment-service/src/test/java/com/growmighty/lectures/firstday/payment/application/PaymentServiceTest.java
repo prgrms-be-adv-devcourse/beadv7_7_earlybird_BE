@@ -262,6 +262,14 @@ class PaymentServiceTest {
         }
 
         @Override
+        public boolean existsByPaymentIdAndPaymentStatus(Long paymentId, PaymentStatus paymentStatus) {
+            return outboxes.stream().anyMatch(outbox ->
+                outbox.getPaymentId().equals(paymentId)
+                    && outbox.getPaymentStatus() == paymentStatus
+            );
+        }
+
+        @Override
         public List<PaymentStatusOutbox> findPending(int limit) {
             return outboxes.stream()
                 .filter(PaymentStatusOutbox::isPending)

@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.payment.infrastructure;
 
 
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxStatus;
@@ -19,6 +20,11 @@ public class PaymentStatusOutboxRepositoryAdapter implements PaymentStatusOutbox
     @Override
     public PaymentStatusOutbox save(PaymentStatusOutbox outbox) {
         return jpaRepository.save(outbox);
+    }
+
+    @Override
+    public boolean existsByPaymentIdAndPaymentStatus(Long paymentId, PaymentStatus paymentStatus) {
+        return jpaRepository.existsByPaymentIdAndPaymentStatus(paymentId, paymentStatus);
     }
 
     @Override

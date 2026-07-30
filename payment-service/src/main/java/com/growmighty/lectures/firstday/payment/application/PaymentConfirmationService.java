@@ -84,13 +84,7 @@ public class PaymentConfirmationService {
 
         payment.confirm(approval.paymentKey());
         Payment savedPayment = paymentRepository.save(payment);
-        paymentStatusOutboxRepository.save( // <-- 일반 승인 경로의 Outbox 저장
-            PaymentStatusOutbox.pending(
-                savedPayment.getPaymentId(),
-                savedPayment.getOrderId(),
-                savedPayment.getStatus()
-            )
-        );
+        savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 동일 상태 Outbox 중복 저장 방지
 
         return PaymentInfo.from(savedPayment);
     }
@@ -132,14 +126,7 @@ public class PaymentConfirmationService {
 
                 if (payment.reconcileConfirmed(pgPayment.paymentKey())) {
                     Payment savedPayment = paymentRepository.save(payment);
-
-                    paymentStatusOutboxRepository.save(
-                        PaymentStatusOutbox.pending(
-                            savedPayment.getPaymentId(),
-                            savedPayment.getOrderId(),
-                            savedPayment.getStatus()
-                        )
-                    );
+                    savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 정합화 경로의 중복 Outbox 저장 방지
                 }
 
                 return Optional.of(PaymentInfo.from(payment));
@@ -162,6 +149,24 @@ public class PaymentConfirmationService {
         }
 
         return  Optional.empty();
+    }
+
+    // 추가 : 동일 결제 상태 Outbox 중복 생성 방지
+    private void savePaymentStatusOutboxIfAbsent(Payment payment) {
+        if (paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(
+            payment.getPaymentId(),
+            payment.getStatus()
+        )) {
+            return;
+        }
+
+        paymentStatusOutboxRepository.save(
+            PaymentStatusOutbox.pending(
+                payment.getPaymentId(),
+                payment.getOrderId(),
+                payment.getStatus()
+            )
+        );
     }
 
     private Payment findPayment(Long paymentId) {
