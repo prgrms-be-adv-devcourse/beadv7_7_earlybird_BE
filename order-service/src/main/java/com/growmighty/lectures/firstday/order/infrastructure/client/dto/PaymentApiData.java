@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 
 public record PaymentApiData(
         Long paymentId,
-        String orderId,
+        String pgOrderId,
         BigDecimal amount,
         String status
 ) {

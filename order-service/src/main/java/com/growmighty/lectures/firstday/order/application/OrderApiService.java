@@ -30,10 +30,9 @@ import java.util.*;
 /**
  * 주문 애플리케이션 서비스.
  *
- * <p>다른 도메인(reward/payment)의 클래스를 직접 알지 않는다. 오직 주문이 스스로 정의한
- * {@link RewardPort} / {@link PaymentPort} 계약으로만 대화하고, 실제 통신은
- * infrastructure 의 HTTP 클라이언트가 담당한다. 이 경계 덕분에 order 는 컴파일 의존이
- * common 뿐이고, project/payment 와는 HTTP(JSON 계약)로만 연결된다.
+ * <p>다른 도메인(reward/payment)의 클래스를 직접 알지 않는다. 오직 주문이 스스로 정의한다.
+ * {@link RewardPort} / {@link PaymentPort} 계약으로만 대화하고, 실제 통신은 infrastructure 의 HTTP 클라이언트가 담당한다.
+ * 이 경계 덕분에 order 는 컴파일 의존이 common 뿐이고, project/payment 와는 HTTP(JSON 계약)로만 연결된다.
  */
 @Slf4j
 @Service
@@ -93,12 +92,12 @@ public class OrderApiService {
         Order order = createPendingOrder(command);
 
         /*
-          4. Project 서비스에 "재고 확보" 요청
+          Project 서비스에 "재고 확보" 요청
              - 재고 검증과 확보를 원자적으로 수행
-          4-1. 재고 확보 실패
+          재고 확보 실패
              - status = STOCK_FAILED
              - 결제 호출하지 않음
-          4-2. 재고 확보 성공
+          재고 확보 성공
              - status = PAYMENT_REQUEST
           */
 
@@ -119,7 +118,8 @@ public class OrderApiService {
         orderRepository.save(order);
 
         PaymentResult payment = paymentPort.pay(order.getId(), order.getUserId(), order.getTotalAmount().getValue());
-        applyPaymentResult(order, payment);
+        applyPaymentResult(order, payment); // TODO: pending 처리 -> 지속적인(일정시간동안) 요청 트랙잭션이 있어야 하는데 방법혼 구상 필요
+
         return OrderResult.from(orderRepository.save(order));
     }
 
