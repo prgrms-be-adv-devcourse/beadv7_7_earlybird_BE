@@ -1,9 +1,18 @@
 package com.growmighty.lectures.firstday.order;
 
 import com.growmighty.lectures.firstday.order.config.JpaAuditingConfig;
+import com.growmighty.lectures.firstday.order.application.OrderApiService;
+import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
+import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
+import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
+import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
+import com.growmighty.lectures.firstday.order.application.port.RewardPort;
+import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
+import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
+import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import com.growmighty.lectures.firstday.order.infrastructure.OrderRepositoryAdapter;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Disabled;
@@ -13,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -40,6 +50,32 @@ class OrderRepositoryTests {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Test
+    @DisplayName("Order STATUS 변화 테스트")
+    void orderCreationStatusesArePersistedAndLoaded() {
+        Order paymentOrder = saveAndReload(order());
+
+        paymentOrder.markPaymentRequested();
+        paymentOrder = saveAndReload(paymentOrder);
+        assertThat(paymentOrder.getStatus()).isEqualTo(OrderStatus.PAYMENT_REQUEST);
+
+        paymentOrder.markPaymentProcessing();
+        paymentOrder = saveAndReload(paymentOrder);
+        assertThat(paymentOrder.getStatus()).isEqualTo(OrderStatus.PAYMENT_PROCESSING);
+
+        paymentOrder.markPaymentFailed();
+        paymentOrder = saveAndReload(paymentOrder);
+        assertThat(paymentOrder.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+
+        Order stockOrder = order();
+        stockOrder.markStockReservationFailed();
+        stockOrder = saveAndReload(stockOrder);
+        assertThat(stockOrder.getStatus()).isEqualTo(OrderStatus.STOCK_FAILED);
+    }
 
     @Disabled
     @Test
@@ -89,5 +125,53 @@ class OrderRepositoryTests {
 
         assertThat(orderRepository.existsByProjectId(existingProjectId)).isTrue();
         assertThat(orderRepository.existsByProjectId(otherProjectId)).isFalse();
+    }
+
+    private Order saveAndReload(Order order) {
+        Order saved = orderRepository.saveAndFlush(order);
+        entityManager.clear();
+        return orderRepository.findById(saved.getId()).orElseThrow();
+    }
+
+    private Order order() {
+        return Order.create(null, 1L, 100L,
+                List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 100L, 10L, 1)),
+                "Receiver", "010-0000-0000", "Seoul", "06236");
+    }
+
+    private RewardPort rewardPort() {
+        return new RewardPort() {
+            @Override
+            public RewardSnapshot getReward(Long rewardId) {
+                return new RewardSnapshot(rewardId, 100L, "Reward A", BigDecimal.valueOf(10_000), 10, true);
+            }
+
+            @Override
+            public void decreaseStock(Long rewardId, int quantity) {
+            }
+
+            @Override
+            public void restoreStock(Long rewardId, int quantity) {
+            }
+        };
+    }
+
+    private PaymentPort paymentPort() {
+        return new PaymentPort() {
+            @Override
+            public PaymentResult pay(Long orderId, Long userId, BigDecimal amount) {
+                return PaymentResult.unknown(amount);
+            }
+
+            @Override
+            public RefundResult refund(Long orderId, BigDecimal amount) {
+                return RefundResult.success(amount, "refund-reference");
+            }
+
+            @Override
+            public PaymentResult getPaymentResult(Long orderId) {
+                return PaymentResult.unknown(BigDecimal.valueOf(13_000));
+            }
+        };
     }
 }
