@@ -44,11 +44,15 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.settlementMonth").value("2026-07"))
+                .andExpect(jsonPath("$.data.projectResults[0].projectId").value(9_000_001))
+                .andExpect(jsonPath("$.data.projectResults[0].outcomeStatus").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.projectResults[0].processingStatus")
+                        .value("SETTLEMENT_CONFIRMED"))
                 .andExpect(jsonPath("$.data.confirmedSettlements[0].projectId").value(9_000_001))
                 .andExpect(jsonPath("$.data.confirmedSettlements[0].creatorPayoutAmount").value(91_200))
                 .andExpect(jsonPath("$.data.confirmedSettlements[0].scheduledDate").value("2026-08-03"))
                 .andExpect(jsonPath("$.data.confirmedSettlements[0].payoutObligationStatus")
-                        .value("SCHEDULED"));
+                        .value("COMPLETED"));
     }
 
     @Test

@@ -60,12 +60,11 @@ class PayoutExecutionServiceTest {
     }
 
     @Test
-    @DisplayName("지급 시도를 저장한 뒤 외부 요청하고 접수 결과를 같은 시도에 반영한다")
+    @DisplayName("지급 시도를 저장한 뒤 지급대행을 요청하고 접수 결과를 같은 시도에 반영한다")
     void persistsAttemptBeforeCallingGateway() {
         payoutGateway.enqueue(new PayoutGatewayResult.Accepted(
-                "toss-payout-1",
-                PayoutAttemptStatus.REQUESTED,
-                null
+                "dummy-payout-1",
+                PayoutAttemptStatus.REQUESTED
         ));
 
         PayoutExecutionResult result = service.execute(OBLIGATION_ID);
@@ -74,7 +73,7 @@ class PayoutExecutionServiceTest {
         assertThat(result.attemptStatus()).isEqualTo(PayoutAttemptStatus.REQUESTED);
         assertThat(result.payoutObligationStatus()).isEqualTo(PayoutObligationStatus.PROCESSING);
         assertThat(payoutObligationRepository.obligation().attempts().getFirst().tossPayoutId())
-                .isEqualTo("toss-payout-1");
+                .isEqualTo("dummy-payout-1");
         assertThat(payoutGateway.requests().getFirst())
                 .extracting(
                         ScheduledPayoutRequest::sellerId,
@@ -95,9 +94,8 @@ class PayoutExecutionServiceTest {
     void reusesSameAttemptAfterUnknownResult() {
         payoutGateway.enqueue(new PayoutGatewayException("응답을 받지 못했습니다."));
         payoutGateway.enqueue(new PayoutGatewayResult.Accepted(
-                "toss-payout-1",
-                PayoutAttemptStatus.IN_PROGRESS,
-                null
+                "dummy-payout-1",
+                PayoutAttemptStatus.IN_PROGRESS
         ));
 
         PayoutExecutionResult unknown = service.execute(OBLIGATION_ID);
@@ -115,11 +113,14 @@ class PayoutExecutionServiceTest {
     @Test
     @DisplayName("최종 일시 오류가 확인된 뒤에만 새 지급 시도와 새 멱등키를 만든다")
     void startsNewAttemptAfterConfirmedRetryableFailure() {
-        payoutGateway.enqueue(new PayoutGatewayResult.Rejected("COMMON_ERROR"));
+        payoutGateway.enqueue(new PayoutGatewayResult.Failed(
+                "dummy-payout-1",
+                "DUMMY_RETRYABLE_FAILURE",
+                true
+        ));
         payoutGateway.enqueue(new PayoutGatewayResult.Accepted(
-                "toss-payout-2",
-                PayoutAttemptStatus.REQUESTED,
-                null
+                "dummy-payout-2",
+                PayoutAttemptStatus.REQUESTED
         ));
 
         PayoutExecutionResult failed = service.execute(OBLIGATION_ID);
@@ -137,7 +138,11 @@ class PayoutExecutionServiceTest {
     @Test
     @DisplayName("입력 또는 셀러 조치가 필요한 오류는 자동 재호출하지 않는다")
     void stopsAfterActionRequiredFailure() {
-        payoutGateway.enqueue(new PayoutGatewayResult.Rejected("FORBIDDEN_SELLER_PAYOUT"));
+        payoutGateway.enqueue(new PayoutGatewayResult.Failed(
+                "dummy-payout-1",
+                "DUMMY_ACTION_REQUIRED",
+                false
+        ));
 
         PayoutExecutionResult failed = service.execute(OBLIGATION_ID);
         PayoutExecutionResult repeated = service.execute(OBLIGATION_ID);
@@ -152,7 +157,11 @@ class PayoutExecutionServiceTest {
     @DisplayName("일시적 지급 실패는 최초 시도와 재시도 3회까지만 허용한다")
     void limitsAutomaticRetryToFourAttempts() {
         for (int count = 0; count < 4; count++) {
-            payoutGateway.enqueue(new PayoutGatewayResult.Rejected("COMMON_ERROR"));
+            payoutGateway.enqueue(new PayoutGatewayResult.Failed(
+                    "dummy-payout-" + count,
+                    "DUMMY_RETRYABLE_FAILURE",
+                    true
+            ));
         }
 
         PayoutExecutionResult result = null;
@@ -169,12 +178,11 @@ class PayoutExecutionServiceTest {
     }
 
     @Test
-    @DisplayName("토스 완료가 확인된 지급 의무는 재실행해도 다시 요청하지 않는다")
+    @DisplayName("지급 완료가 확인된 지급 의무는 재실행해도 다시 요청하지 않는다")
     void doesNotRequestCompletedObligationAgain() {
         payoutGateway.enqueue(new PayoutGatewayResult.Accepted(
-                "toss-payout-1",
-                PayoutAttemptStatus.COMPLETED,
-                null
+                "dummy-payout-1",
+                PayoutAttemptStatus.COMPLETED
         ));
 
         PayoutExecutionResult completed = service.execute(OBLIGATION_ID);

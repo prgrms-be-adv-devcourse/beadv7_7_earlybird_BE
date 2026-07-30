@@ -3,8 +3,10 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.client.projec
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -13,10 +15,14 @@ import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-public final class ProjectSettlementTargetHttpReader implements ProjectSettlementTargetReader {
+public final class ProjectSettlementTargetHttpReader implements ProjectOutcomeReader {
 
     static final String PROJECTS_PATH = "/internal/v1/projects";
-    static final String SETTLEMENT_TARGET_STATUS = "SUCCEEDED";
+    private static final List<ProjectOutcomeStatus> OUTCOME_STATUSES = List.of(
+            ProjectOutcomeStatus.SUCCEEDED,
+            ProjectOutcomeStatus.FAILED,
+            ProjectOutcomeStatus.CANCELLED
+    );
 
     private final RestClient restClient;
 
@@ -25,13 +31,24 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
     }
 
     @Override
-    public List<ProjectSettlementTarget> findSettlementTargets() {
+    public List<ProjectOutcome> findProjectOutcomes() {
+        List<ProjectOutcome> outcomes = new ArrayList<>();
+        for (ProjectOutcomeStatus status : OUTCOME_STATUSES) {
+            outcomes.addAll(findProjectOutcomes(status));
+        }
+        if (hasDuplicateProjectId(outcomes)) {
+            throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
+        }
+        return List.copyOf(outcomes);
+    }
+
+    private List<ProjectOutcome> findProjectOutcomes(ProjectOutcomeStatus expectedStatus) {
         ProjectSettlementTargetsResponse response;
         try {
             response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path(PROJECTS_PATH)
-                            .queryParam("status", SETTLEMENT_TARGET_STATUS)
+                            .queryParam("status", expectedStatus.name())
                             .build())
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
@@ -47,24 +64,35 @@ public final class ProjectSettlementTargetHttpReader implements ProjectSettlemen
             throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
         }
         try {
-            List<ProjectSettlementTarget> targets = response.data().stream()
-                    .map(ProjectSettlementTargetHttpReader::toSettlementTarget)
+            List<ProjectOutcome> outcomes = response.data().stream()
+                    .map(target -> toProjectOutcome(target, expectedStatus))
                     .toList();
-            Set<Long> projectIds = new HashSet<>();
-            if (targets.stream().anyMatch(target -> !projectIds.add(target.projectId()))) {
+            if (hasDuplicateProjectId(outcomes)) {
                 throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE);
             }
-            return targets;
+            return outcomes;
         } catch (IllegalArgumentException | NullPointerException exception) {
             throw new SettlementException(PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE, exception);
         }
     }
 
-    private static ProjectSettlementTarget toSettlementTarget(ProjectSettlementTargetResponse target) {
-        if (target == null || !SETTLEMENT_TARGET_STATUS.equals(target.status())) {
-            throw new IllegalArgumentException("성공 프로젝트 응답 계약을 위반했습니다.");
+    private static ProjectOutcome toProjectOutcome(
+            ProjectSettlementTargetResponse target,
+            ProjectOutcomeStatus expectedStatus
+    ) {
+        if (target == null || !expectedStatus.name().equals(target.status())) {
+            throw new IllegalArgumentException("Project 결과 상태 응답 계약을 위반했습니다.");
         }
-        return new ProjectSettlementTarget(target.projectId(), target.creatorId());
+        return new ProjectOutcome(
+                target.projectId(),
+                target.creatorId(),
+                expectedStatus
+        );
+    }
+
+    private static boolean hasDuplicateProjectId(List<ProjectOutcome> outcomes) {
+        Set<Long> projectIds = new HashSet<>();
+        return outcomes.stream().anyMatch(outcome -> !projectIds.add(outcome.projectId()));
     }
 
     private record ProjectSettlementTargetsResponse(

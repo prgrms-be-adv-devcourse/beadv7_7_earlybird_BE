@@ -28,11 +28,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-@SpringBootTest(properties = {
-        "settlement.toss-payout.enabled=true",
-        "settlement.toss-payout.secret-key=test_sk_example",
-        "settlement.toss-payout.security-key=0101010101010101010101010101010101010101010101010101010101010101"
-})
+@SpringBootTest
 @Import(PayoutExecutionTransactionTest.GatewayTestConfig.class)
 class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
 
@@ -49,7 +45,7 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
     private ObservingPayoutGateway payoutGateway;
 
     @Test
-    @DisplayName("지급 시도 선저장 트랜잭션을 커밋한 뒤 외부 지급을 요청한다")
+    @DisplayName("지급 시도 선저장 트랜잭션을 커밋한 뒤 지급대행을 요청한다")
     void commitsAttemptBeforeExternalCall() {
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 501L,
@@ -82,7 +78,7 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
         assertThat(result.payoutObligationStatus()).isEqualTo(PayoutObligationStatus.PROCESSING);
         PayoutObligation restored = payoutObligationRepository.findById(obligation.id()).orElseThrow();
         assertThat(restored.attemptCount()).isEqualTo(1);
-        assertThat(restored.attempts().getFirst().tossPayoutId()).isEqualTo("toss-payout-501");
+        assertThat(restored.attempts().getFirst().tossPayoutId()).isEqualTo("dummy-payout-501");
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -116,9 +112,8 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
                     .orElseThrow();
             observedAttemptStatus = persisted.attempts().getFirst().status();
             return new PayoutGatewayResult.Accepted(
-                    "toss-payout-501",
-                    PayoutAttemptStatus.REQUESTED,
-                    null
+                    "dummy-payout-501",
+                    PayoutAttemptStatus.REQUESTED
             );
         }
 

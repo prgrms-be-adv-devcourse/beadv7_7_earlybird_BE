@@ -12,37 +12,25 @@ class ScheduledPayoutRequestTest {
     private static final LocalDate PAYOUT_DATE = LocalDate.of(2026, 8, 3);
 
     @Test
-    @DisplayName("토스가 허용하는 범위를 벗어난 지급 금액을 거부한다")
-    void rejectsOutOfRangeAmount() {
+    @DisplayName("0원 이하의 지급 금액을 거부한다")
+    void rejectsNonPositiveAmount() {
         assertThatThrownBy(() -> request(Money.wons(0), "얼리버드"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("10억원보다 작아야");
-
-        assertThatThrownBy(() -> request(Money.wons(1_000_000_000L), "얼리버드"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("10억원보다 작아야");
+                .hasMessageContaining("0원보다 커야");
     }
 
     @Test
-    @DisplayName("이체 적요가 7자를 넘으면 요청을 거부한다")
-    void rejectsLongTransactionDescription() {
-        assertThatThrownBy(() -> request(Money.wons(10_000), "여덟글자적요이다"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("7자 이하");
-    }
-
-    @Test
-    @DisplayName("토스 지급 및 멱등 식별자 길이 제한을 지킨다")
-    void rejectsLongIdentifiers() {
+    @DisplayName("지급 흐름에 필요한 식별자가 비어 있으면 거부한다")
+    void rejectsBlankIdentifiers() {
         assertThatThrownBy(() -> new ScheduledPayoutRequest(
-                "p".repeat(51),
+                " ",
                 "seller-1",
                 PAYOUT_DATE,
                 Money.wons(10_000),
                 "얼리버드",
                 "idempotency-1"
         )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("50자 이하");
+                .hasMessageContaining("참조 식별자");
 
         assertThatThrownBy(() -> new ScheduledPayoutRequest(
                 "payout-1",
@@ -50,9 +38,9 @@ class ScheduledPayoutRequestTest {
                 PAYOUT_DATE,
                 Money.wons(10_000),
                 "얼리버드",
-                "i".repeat(301)
+                " "
         )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("300자 이하");
+                .hasMessageContaining("멱등키");
     }
 
     private static ScheduledPayoutRequest request(Money amount, String description) {

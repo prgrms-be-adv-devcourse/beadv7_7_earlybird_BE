@@ -10,8 +10,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
 import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,7 +31,7 @@ class ProjectSettlementTargetHttpReaderTest {
     private static final String BASE_URL = "http://project-service";
 
     private MockRestServiceServer server;
-    private ProjectSettlementTargetReader reader;
+    private ProjectOutcomeReader reader;
 
     @BeforeEach
     void setUp() {
@@ -40,8 +41,8 @@ class ProjectSettlementTargetHttpReaderTest {
     }
 
     @Test
-    @DisplayName("develop ProjectResponse에서 성공 프로젝트 정산 대상의 최소 식별자만 조회한다")
-    void readsProjectSettlementTargets() {
+    @DisplayName("세 상태의 ProjectResponse에서 결과 상태와 최소 식별자를 보존한다")
+    void readsProjectOutcomesForAllStatuses() {
         server.expect(once(), requestTo(
                         BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
                 ))
@@ -80,18 +81,54 @@ class ProjectSettlementTargetHttpReaderTest {
                           "error": null
                         }
                         """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=FAILED"
+                ))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [
+                            {
+                              "projectId": 103,
+                              "creatorId": 203,
+                              "status": "FAILED"
+                            }
+                          ],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=CANCELLED"
+                ))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [
+                            {
+                              "projectId": 104,
+                              "creatorId": 204,
+                              "status": "CANCELLED"
+                            }
+                          ],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
 
-        List<ProjectSettlementTarget> targets = reader.findSettlementTargets();
+        List<ProjectOutcome> outcomes = reader.findProjectOutcomes();
 
-        assertThat(targets).containsExactly(
-                new ProjectSettlementTarget(101L, 201L),
-                new ProjectSettlementTarget(102L, 202L)
+        assertThat(outcomes).containsExactlyInAnyOrder(
+                new ProjectOutcome(101L, 201L, ProjectOutcomeStatus.SUCCEEDED),
+                new ProjectOutcome(102L, 202L, ProjectOutcomeStatus.SUCCEEDED),
+                new ProjectOutcome(103L, 203L, ProjectOutcomeStatus.FAILED),
+                new ProjectOutcome(104L, 204L, ProjectOutcomeStatus.CANCELLED)
         );
         server.verify();
     }
 
     @Test
-    @DisplayName("정산 대상이 없으면 빈 목록을 반환한다")
+    @DisplayName("세 상태의 Project 결과가 없으면 빈 목록을 반환한다")
     void returnsEmptyTargets() {
         server.expect(once(), requestTo(
                         BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
@@ -103,8 +140,28 @@ class ProjectSettlementTargetHttpReaderTest {
                           "error": null
                         }
                         """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=FAILED"
+                ))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=CANCELLED"
+                ))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
 
-        assertThat(reader.findSettlementTargets()).isEmpty();
+        assertThat(reader.findProjectOutcomes()).isEmpty();
         server.verify();
     }
 
@@ -124,7 +181,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(reader::findSettlementTargets)
+        assertThatThrownBy(reader::findProjectOutcomes)
                 .isInstanceOfSatisfying(SettlementException.class, exception -> {
                     assertThat(exception.errorCode()).isEqualTo(
                             SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE
@@ -151,7 +208,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -174,7 +231,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -198,7 +255,7 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -227,7 +284,95 @@ class ProjectSettlementTargetHttpReaderTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("서로 다른 상태 응답의 프로젝트 식별자가 중복되면 전체 결과를 거부한다")
+    void rejectsDuplicateProjectIdAcrossStatuses() {
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
+                ))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [
+                            {
+                              "projectId": 101,
+                              "creatorId": 201,
+                              "status": "SUCCEEDED"
+                            }
+                          ],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=FAILED"
+                ))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [
+                            {
+                              "projectId": 101,
+                              "creatorId": 201,
+                              "status": "FAILED"
+                            }
+                          ],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=CANCELLED"
+                ))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        assertUnavailable(reader::findProjectOutcomes);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("앞선 상태 조회가 성공해도 뒤 상태의 HTTP 실패를 부분 결과로 반환하지 않는다")
+    void rejectsPartialResultsWhenLaterStatusFails() {
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=SUCCEEDED"
+                ))
+                .andRespond(withSuccess("""
+                        {
+                          "success": true,
+                          "data": [
+                            {
+                              "projectId": 101,
+                              "creatorId": 201,
+                              "status": "SUCCEEDED"
+                            }
+                          ],
+                          "error": null
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(
+                        BASE_URL + "/internal/v1/projects?status=FAILED"
+                ))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "success": false,
+                                  "data": null,
+                                  "error": {
+                                    "message": "Project 원문 내부 오류"
+                                  }
+                                }
+                                """));
+
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -250,7 +395,7 @@ class ProjectSettlementTargetHttpReaderTest {
                                 }
                                 """));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -262,7 +407,7 @@ class ProjectSettlementTargetHttpReaderTest {
                 ))
                 .andRespond(withSuccess("not-json", MediaType.APPLICATION_JSON));
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 
@@ -276,7 +421,7 @@ class ProjectSettlementTargetHttpReaderTest {
                     throw new IOException("Project 연결 원문 오류");
                 });
 
-        assertUnavailable(reader::findSettlementTargets);
+        assertUnavailable(reader::findProjectOutcomes);
         server.verify();
     }
 

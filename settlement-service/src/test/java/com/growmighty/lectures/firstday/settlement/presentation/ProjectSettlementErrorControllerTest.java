@@ -8,9 +8,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.growmighty.lectures.firstday.settlement.application.port.FinalEffectivePaymentAmountReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTarget;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectSettlementTargetReader;
+import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationGateway;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationRequest;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationResult;
+import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
@@ -22,6 +29,8 @@ import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestS
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +45,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(properties = {
         "settlement.external-data.mode=error-test",
-        "settlement.project-target.mode=error-test"
+        "settlement.project-target.mode=error-test",
+        "settlement.project-order.mode=error-test",
+        "settlement.payment-cancellation.mode=error-test"
 })
 @AutoConfigureMockMvc
 class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
@@ -104,8 +115,8 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("Payment가 완전한 최종 유효 결제 금액을 제공하지 못하면 재시도 가능한 오류로 응답한다")
-    void rejectsSettlementWhenFinalEffectivePaymentAmountsAreUnavailable() throws Exception {
+    @DisplayName("Order가 완전한 주문 결제 금액을 제공하지 못하면 재시도 가능한 오류로 응답한다")
+    void rejectsSettlementWhenOrderPaymentInputsAreUnavailable() throws Exception {
         long creatorId = 92L;
         creatorPayoutProfileRepository.save(payoutReadyProfile(creatorId));
         externalDataAdapter.respondWith(92L, creatorId, List.of());
@@ -121,16 +132,16 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("최종 유효 결제 금액을 확인할 수 없습니다."));
+                .andExpect(jsonPath("$.error.message").value("주문 결제금액을 확인할 수 없습니다."));
     }
 
     @Test
-    @DisplayName("Payment Adapter 오류는 내부 메시지 없이 재시도 가능한 오류로 응답한다")
-    void hidesPaymentAdapterFailureDetails() throws Exception {
-        externalDataAdapter.failPaymentReadWith(
+    @DisplayName("Order Adapter 오류는 내부 메시지 없이 재시도 가능한 오류로 응답한다")
+    void hidesOrderAdapterFailureDetails() throws Exception {
+        externalDataAdapter.failOrderReadWith(
                 94L,
                 94L,
-                new IllegalArgumentException("payment adapter secret")
+                new IllegalArgumentException("order adapter secret")
         );
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
@@ -144,8 +155,8 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("최종 유효 결제 금액을 확인할 수 없습니다."))
-                .andExpect(content().string(not(containsString("payment adapter secret"))));
+                .andExpect(jsonPath("$.error.message").value("주문 결제금액을 확인할 수 없습니다."))
+                .andExpect(content().string(not(containsString("order adapter secret"))));
     }
 
     @Test
@@ -270,48 +281,68 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     static class TestExternalDataAdapter
-            implements ProjectSettlementTargetReader, FinalEffectivePaymentAmountReader {
+            implements ProjectOutcomeReader,
+            ProjectOrderReader,
+            ProjectPaymentCancellationGateway {
 
-        private ProjectSettlementTarget target;
-        private List<Money> paymentAmounts;
-        private RuntimeException paymentReadFailure;
+        private ProjectOutcome outcome;
+        private List<OrderPayment> orders;
+        private RuntimeException orderReadFailure;
         private RuntimeException targetReadFailure;
 
         void respondWith(Long projectId, Long creatorId, List<Money> paymentAmounts) {
-            this.target = new ProjectSettlementTarget(projectId, creatorId);
-            this.paymentAmounts = List.copyOf(paymentAmounts);
-            this.paymentReadFailure = null;
+            this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
+            this.orders = IntStream.range(0, paymentAmounts.size())
+                    .mapToObj(index -> new OrderPayment(
+                            projectId * 1_000 + index + 1,
+                            paymentAmounts.get(index)
+                    ))
+                    .toList();
+            this.orderReadFailure = null;
             this.targetReadFailure = null;
         }
 
-        void failPaymentReadWith(Long projectId, Long creatorId, RuntimeException failure) {
-            this.target = new ProjectSettlementTarget(projectId, creatorId);
-            this.paymentAmounts = List.of();
-            this.paymentReadFailure = failure;
+        void failOrderReadWith(Long projectId, Long creatorId, RuntimeException failure) {
+            this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
+            this.orders = List.of();
+            this.orderReadFailure = failure;
             this.targetReadFailure = null;
         }
 
         void failTargetReadWith(RuntimeException failure) {
-            this.target = null;
-            this.paymentAmounts = List.of();
-            this.paymentReadFailure = null;
+            this.outcome = null;
+            this.orders = List.of();
+            this.orderReadFailure = null;
             this.targetReadFailure = failure;
         }
 
         @Override
-        public List<ProjectSettlementTarget> findSettlementTargets() {
+        public List<ProjectOutcome> findProjectOutcomes() {
             if (targetReadFailure != null) {
                 throw targetReadFailure;
             }
-            return List.of(target);
+            return List.of(outcome);
         }
 
         @Override
-        public List<Money> findFinalEffectivePaymentAmounts(Long projectId) {
-            if (paymentReadFailure != null) {
-                throw paymentReadFailure;
+        public List<ProjectOrders> findProjectOrders(Set<Long> projectIds) {
+            if (orderReadFailure != null) {
+                throw orderReadFailure;
             }
-            return paymentAmounts;
+            return List.of(new ProjectOrders(outcome.projectId(), orders));
+        }
+
+        @Override
+        public List<ProjectPaymentCancellationResult> cancel(
+                List<ProjectPaymentCancellationRequest> requests
+        ) {
+            return requests.stream()
+                    .map(ProjectPaymentCancellationRequest::orderId)
+                    .map(orderId -> new ProjectPaymentCancellationResult(
+                            orderId,
+                            ProjectPaymentCancellationStatus.COMPLETED
+                    ))
+                    .toList();
         }
     }
 
