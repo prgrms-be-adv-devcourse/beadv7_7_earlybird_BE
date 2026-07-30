@@ -33,7 +33,7 @@ public record ProjectOutcomeProcessingResult(
             ProjectOutcomeProcessingStatus processingStatus
     ) {
         return switch (processingStatus) {
-            case SETTLEMENT_CONFIRMED, SETTLEMENT_ALREADY_CONFIRMED, PAYMENT_NOT_READY ->
+            case SETTLEMENT_CONFIRMED, SETTLEMENT_ALREADY_CONFIRMED ->
                     outcomeStatus == ProjectOutcomeStatus.SUCCEEDED;
             case PAYMENT_CANCELLATION_COMPLETED,
                     PAYMENT_CANCELLATION_PROCESSING,

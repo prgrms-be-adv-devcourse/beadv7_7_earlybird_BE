@@ -8,8 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
+import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
@@ -114,7 +113,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("Payment가 완전한 최종 유효 결제 금액을 제공하지 못하면 재시도 가능한 오류로 응답한다")
+    @DisplayName("Order가 완전한 주문 결제 금액을 제공하지 못하면 재시도 가능한 오류로 응답한다")
     void rejectsSettlementWhenFinalEffectivePaymentAmountsAreUnavailable() throws Exception {
         long creatorId = 92L;
         creatorPayoutProfileRepository.save(payoutReadyProfile(creatorId));
@@ -135,12 +134,12 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("Payment Adapter 오류는 내부 메시지 없이 재시도 가능한 오류로 응답한다")
-    void hidesPaymentAdapterFailureDetails() throws Exception {
-        externalDataAdapter.failPaymentReadWith(
+    @DisplayName("Order Adapter 오류는 내부 메시지 없이 재시도 가능한 오류로 응답한다")
+    void hidesOrderAdapterFailureDetails() throws Exception {
+        externalDataAdapter.failOrderReadWith(
                 94L,
                 94L,
-                new IllegalArgumentException("payment adapter secret")
+                new IllegalArgumentException("order adapter secret")
         );
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
@@ -155,7 +154,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("최종 유효 결제 금액을 확인할 수 없습니다."))
-                .andExpect(content().string(not(containsString("payment adapter secret"))));
+                .andExpect(content().string(not(containsString("order adapter secret"))));
     }
 
     @Test
@@ -282,43 +281,36 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     static class TestExternalDataAdapter
             implements ProjectOutcomeReader,
             ProjectOrderReader,
-            PaymentAssessmentReader,
             ProjectPaymentCancellationGateway {
 
         private ProjectOutcome outcome;
-        private List<Long> orderIds;
-        private List<PaymentAssessment> paymentAssessments;
-        private RuntimeException paymentReadFailure;
+        private List<OrderPayment> orders;
+        private RuntimeException orderReadFailure;
         private RuntimeException targetReadFailure;
 
         void respondWith(Long projectId, Long creatorId, List<Money> paymentAmounts) {
             this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
-            this.orderIds = IntStream.range(0, paymentAmounts.size())
-                    .mapToObj(index -> projectId * 1_000 + index + 1)
-                    .toList();
-            this.paymentAssessments = IntStream.range(0, paymentAmounts.size())
-                    .mapToObj(index -> PaymentAssessment.ready(
-                            orderIds.get(index),
+            this.orders = IntStream.range(0, paymentAmounts.size())
+                    .mapToObj(index -> new OrderPayment(
+                            projectId * 1_000 + index + 1,
                             paymentAmounts.get(index)
                     ))
                     .toList();
-            this.paymentReadFailure = null;
+            this.orderReadFailure = null;
             this.targetReadFailure = null;
         }
 
-        void failPaymentReadWith(Long projectId, Long creatorId, RuntimeException failure) {
+        void failOrderReadWith(Long projectId, Long creatorId, RuntimeException failure) {
             this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
-            this.orderIds = List.of(projectId * 1_000 + 1);
-            this.paymentAssessments = List.of();
-            this.paymentReadFailure = failure;
+            this.orders = List.of();
+            this.orderReadFailure = failure;
             this.targetReadFailure = null;
         }
 
         void failTargetReadWith(RuntimeException failure) {
             this.outcome = null;
-            this.orderIds = List.of();
-            this.paymentAssessments = List.of();
-            this.paymentReadFailure = null;
+            this.orders = List.of();
+            this.orderReadFailure = null;
             this.targetReadFailure = failure;
         }
 
@@ -332,15 +324,10 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
         @Override
         public List<ProjectOrders> findProjectOrders(Set<Long> projectIds) {
-            return List.of(new ProjectOrders(outcome.projectId(), orderIds));
-        }
-
-        @Override
-        public List<PaymentAssessment> findPaymentAssessments(Set<Long> orderIds) {
-            if (paymentReadFailure != null) {
-                throw paymentReadFailure;
+            if (orderReadFailure != null) {
+                throw orderReadFailure;
             }
-            return paymentAssessments;
+            return List.of(new ProjectOrders(outcome.projectId(), orders));
         }
 
         @Override

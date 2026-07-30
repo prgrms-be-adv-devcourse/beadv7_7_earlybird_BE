@@ -6,8 +6,7 @@ import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancella
 import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_FAILED;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
+import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
@@ -43,7 +42,6 @@ public final class ProjectSettlementRunService {
 
     private final ProjectOutcomeReader projectOutcomeReader;
     private final ProjectOrderReader projectOrderReader;
-    private final PaymentAssessmentReader paymentAssessmentReader;
     private final ProjectPaymentCancellationGateway paymentCancellationGateway;
     private final ProjectSettlementService projectSettlementService;
     private final ProjectPaymentCancellationCommandService cancellationCommandService;
@@ -53,7 +51,6 @@ public final class ProjectSettlementRunService {
     public ProjectSettlementRunService(
             ProjectOutcomeReader projectOutcomeReader,
             ProjectOrderReader projectOrderReader,
-            PaymentAssessmentReader paymentAssessmentReader,
             ProjectPaymentCancellationGateway paymentCancellationGateway,
             ProjectSettlementService projectSettlementService,
             ProjectPaymentCancellationCommandService cancellationCommandService,
@@ -62,7 +59,6 @@ public final class ProjectSettlementRunService {
         this(
                 projectOutcomeReader,
                 projectOrderReader,
-                paymentAssessmentReader,
                 paymentCancellationGateway,
                 projectSettlementService,
                 cancellationCommandService,
@@ -75,7 +71,6 @@ public final class ProjectSettlementRunService {
     public ProjectSettlementRunService(
             ProjectOutcomeReader projectOutcomeReader,
             ProjectOrderReader projectOrderReader,
-            PaymentAssessmentReader paymentAssessmentReader,
             ProjectPaymentCancellationGateway paymentCancellationGateway,
             ProjectSettlementService projectSettlementService,
             ProjectPaymentCancellationCommandService cancellationCommandService,
@@ -84,7 +79,6 @@ public final class ProjectSettlementRunService {
     ) {
         this.projectOutcomeReader = projectOutcomeReader;
         this.projectOrderReader = projectOrderReader;
-        this.paymentAssessmentReader = paymentAssessmentReader;
         this.paymentCancellationGateway = paymentCancellationGateway;
         this.projectSettlementService = projectSettlementService;
         this.cancellationCommandService = cancellationCommandService;
@@ -131,12 +125,6 @@ public final class ProjectSettlementRunService {
         Map<Long, ProjectOrders> ordersByProjectId = pendingOutcomes.isEmpty()
                 ? Map.of()
                 : findProjectOrders(pendingOutcomes);
-        Set<Long> successfulOrderIds = orderIdsFor(
-                pendingOutcomes,
-                ordersByProjectId,
-                ProjectOutcomeStatus.SUCCEEDED
-        );
-        Map<Long, PaymentAssessment> assessmentsByOrderId = findPaymentAssessments(successfulOrderIds);
         List<ProjectPaymentCancellationCommand> newCancellationCommands =
                 prepareCancellationCommands(
                 pendingOutcomes,
@@ -207,20 +195,9 @@ public final class ProjectSettlementRunService {
                 continue;
             }
             ProjectOrders projectOrders = ordersByProjectId.get(outcome.projectId());
-            if (isPaymentNotReady(projectOrders, assessmentsByOrderId)) {
-                projectResults.add(new ProjectOutcomeProcessingResult(
-                        outcome.projectId(),
-                        outcome.status(),
-                        ProjectOutcomeProcessingStatus.PAYMENT_NOT_READY
-                ));
-                continue;
-            }
             List<Money> paymentAmounts;
             try {
-                paymentAmounts = finalEffectivePaymentAmounts(
-                        projectOrders,
-                        assessmentsByOrderId
-                );
+                paymentAmounts = finalEffectivePaymentAmounts(projectOrders);
             } catch (SettlementException exception) {
                 throw exception;
             } catch (RuntimeException exception) {
@@ -303,8 +280,8 @@ public final class ProjectSettlementRunService {
                     || ordersByProjectId.put(projectOrders.projectId(), projectOrders) != null) {
                 throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
             }
-            for (Long orderId : projectOrders.orderIds()) {
-                if (!allOrderIds.add(orderId)) {
+            for (OrderPayment order : projectOrders.orders()) {
+                if (!allOrderIds.add(order.orderId())) {
                     throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
                 }
             }
@@ -315,52 +292,14 @@ public final class ProjectSettlementRunService {
         return Map.copyOf(ordersByProjectId);
     }
 
-    private static Set<Long> orderIdsFor(
-            List<ProjectOutcome> outcomes,
-            Map<Long, ProjectOrders> ordersByProjectId,
-            ProjectOutcomeStatus status
-    ) {
-        Set<Long> orderIds = new HashSet<>();
-        outcomes.stream()
-                .filter(outcome -> outcome.status() == status)
-                .map(ProjectOutcome::projectId)
-                .map(ordersByProjectId::get)
-                .map(ProjectOrders::orderIds)
-                .forEach(orderIds::addAll);
-        return Set.copyOf(orderIds);
-    }
-
-    private Map<Long, PaymentAssessment> findPaymentAssessments(Set<Long> orderIds) {
-        if (orderIds.isEmpty()) {
-            return Map.of();
-        }
-        List<PaymentAssessment> assessments;
-        try {
-            assessments = List.copyOf(paymentAssessmentReader.findPaymentAssessments(orderIds));
-        } catch (SettlementException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
-        }
-        Map<Long, PaymentAssessment> assessmentByOrderId = new HashMap<>();
-        for (PaymentAssessment assessment : assessments) {
-            if (assessment == null || assessmentByOrderId.put(assessment.orderId(), assessment) != null) {
-                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
-            }
-        }
-        if (!new HashSet<>(assessmentByOrderId.keySet()).equals(orderIds)) {
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
-        }
-        return Map.copyOf(assessmentByOrderId);
-    }
-
     private List<ProjectPaymentCancellationCommand> prepareCancellationCommands(
             List<ProjectOutcome> outcomes,
             Map<Long, ProjectOrders> ordersByProjectId
     ) {
         List<PrepareProjectPaymentCancellationCommand> commands = outcomes.stream()
                 .filter(outcome -> outcome.status() != ProjectOutcomeStatus.SUCCEEDED)
-                .flatMap(outcome -> ordersByProjectId.get(outcome.projectId()).orderIds().stream()
+                .flatMap(outcome -> ordersByProjectId.get(outcome.projectId()).orders().stream()
+                        .map(OrderPayment::orderId)
                         .map(orderId -> prepareCancellationCommand(outcome, orderId)))
                 .toList();
         return cancellationCommandService.prepare(commands);
@@ -452,23 +391,10 @@ public final class ProjectSettlementRunService {
         };
     }
 
-    private static List<Money> finalEffectivePaymentAmounts(
-            ProjectOrders projectOrders,
-            Map<Long, PaymentAssessment> assessmentByOrderId
-    ) {
-        return projectOrders.orderIds().stream()
-                .map(assessmentByOrderId::get)
-                .map(ProjectSettlementRunService::finalEffectiveAmount)
+    private static List<Money> finalEffectivePaymentAmounts(ProjectOrders projectOrders) {
+        return projectOrders.orders().stream()
+                .map(OrderPayment::paymentAmount)
                 .toList();
-    }
-
-    private static boolean isPaymentNotReady(
-            ProjectOrders projectOrders,
-            Map<Long, PaymentAssessment> assessmentByOrderId
-    ) {
-        return projectOrders.orderIds().stream()
-                .map(assessmentByOrderId::get)
-                .anyMatch(PaymentAssessment.NotReady.class::isInstance);
     }
 
     private static ProjectOutcomeProcessingStatus cancellationProcessingStatus(
@@ -503,15 +429,6 @@ public final class ProjectSettlementRunService {
             case PAYMENT_CANCELLATION_FINAL_FAILED -> 3;
             case PAYMENT_CANCELLATION_UNKNOWN -> 4;
             default -> throw new IllegalArgumentException("결제 취소 처리 상태가 아닙니다.");
-        };
-    }
-
-    private static Money finalEffectiveAmount(PaymentAssessment assessment) {
-        return switch (assessment) {
-            case PaymentAssessment.Ready ready -> ready.finalEffectiveAmount();
-            case PaymentAssessment.NoPayment ignored -> Money.wons(0);
-            case PaymentAssessment.NotReady ignored ->
-                    throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
         };
     }
 

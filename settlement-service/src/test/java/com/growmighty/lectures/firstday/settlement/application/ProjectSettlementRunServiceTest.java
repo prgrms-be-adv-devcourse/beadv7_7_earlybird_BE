@@ -9,8 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
+import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
@@ -64,23 +63,21 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Test
-    @DisplayName("Order의 주문 식별자와 Payment의 결제 판정으로 성공 프로젝트를 정산한다")
-    void settlesSucceededProjectFromOrderAndPaymentInputs() {
+    @DisplayName("Order의 주문별 결제금액으로 성공 프로젝트를 정산한다")
+    void settlesSucceededProjectFromOrderPaymentAmounts() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(210L, "seller-210", "********0210"));
         ProjectOutcomeReader outcomeReader = () -> List.of(
                 new ProjectOutcome(110L, 210L, ProjectOutcomeStatus.SUCCEEDED)
         );
         ProjectOrderReader orderReader = projectIds -> List.of(
-                new ProjectOrders(110L, List.of(1_001L, 1_002L))
-        );
-        PaymentAssessmentReader paymentReader = orderIds -> List.of(
-                PaymentAssessment.ready(1_001L, Money.wons(40_000)),
-                PaymentAssessment.ready(1_002L, Money.wons(60_000))
+                new ProjectOrders(110L, List.of(
+                        new OrderPayment(1_001L, Money.wons(40_000)),
+                        new OrderPayment(1_002L, Money.wons(60_000))
+                ))
         );
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 outcomeReader,
                 orderReader,
-                paymentReader,
                 noCancellationExpected(),
                 projectSettlementService,
                 cancellationCommandService,
@@ -102,16 +99,15 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("결제가 없는 주문은 0원 항목으로 보존하고 준비된 결제만 정산 금액에 반영한다")
-    void treatsNoPaymentAsZeroAmountItem() {
+    @DisplayName("Order의 0원 주문 항목과 유상 주문 항목을 함께 정산한다")
+    void settlesZeroAmountAndPaidOrderItemsTogether() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(214L, "seller-214", "********0214"));
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(114L, 214L, ProjectOutcomeStatus.SUCCEEDED)),
-                projectIds -> List.of(new ProjectOrders(114L, List.of(1_003L, 1_004L))),
-                orderIds -> List.of(
-                        PaymentAssessment.noPayment(1_003L),
-                        PaymentAssessment.ready(1_004L, Money.wons(100_000))
-                ),
+                projectIds -> List.of(new ProjectOrders(114L, List.of(
+                        new OrderPayment(1_003L, Money.wons(0)),
+                        new OrderPayment(1_004L, Money.wons(100_000))
+                ))),
                 noCancellationExpected(),
                 projectSettlementService,
                 cancellationCommandService,
@@ -126,46 +122,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("준비되지 않은 성공 프로젝트는 보류하고 다음 준비 완료 프로젝트를 정산한다")
-    void defersNotReadyProjectAndContinuesReadySettlement() {
-        creatorPayoutProfileRepository.save(payoutReadyProfile(216L, "seller-216", "********0216"));
-        ProjectSettlementRunService runService = new ProjectSettlementRunService(
-                () -> List.of(
-                        new ProjectOutcome(115L, 215L, ProjectOutcomeStatus.SUCCEEDED),
-                        new ProjectOutcome(116L, 216L, ProjectOutcomeStatus.SUCCEEDED)
-                ),
-                projectIds -> List.of(
-                        new ProjectOrders(115L, List.of(1_005L)),
-                        new ProjectOrders(116L, List.of(1_006L))
-                ),
-                orderIds -> List.of(
-                        PaymentAssessment.notReady(1_005L),
-                        PaymentAssessment.ready(1_006L, Money.wons(100_000))
-                ),
-                noCancellationExpected(),
-                projectSettlementService,
-                cancellationCommandService,
-                fixedClock()
-        );
-
-        ProjectSettlementRunResult result = runService.run(command());
-
-        assertThat(result.projectResults())
-                .extracting(
-                        ProjectOutcomeProcessingResult::projectId,
-                        ProjectOutcomeProcessingResult::processingStatus
-                )
-                .containsExactly(
-                        tuple(115L, ProjectOutcomeProcessingStatus.PAYMENT_NOT_READY),
-                        tuple(116L, ProjectOutcomeProcessingStatus.SETTLEMENT_CONFIRMED)
-                );
-        assertThat(result.confirmedSettlements())
-                .extracting(ConfirmedProjectSettlement::projectId)
-                .containsExactly(116L);
-    }
-
-    @Test
-    @DisplayName("성공 주문만 결제 판정을 조회하고 실패·취소 주문은 결제 취소를 요청한다")
+    @DisplayName("성공 주문 금액은 정산하고 실패·취소 주문 식별자는 결제 취소에 사용한다")
     void routesProjectOutcomesToSettlementOrPaymentCancellation() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(211L, "seller-211", "********0211"));
         ProjectOutcomeReader outcomeReader = () -> List.of(
@@ -177,15 +134,10 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         ProjectOrderReader orderReader = projectIds -> {
             requestedProjectIds.set(projectIds);
             return List.of(
-                    new ProjectOrders(111L, List.of(1_001L)),
-                    new ProjectOrders(112L, List.of(1_002L)),
-                    new ProjectOrders(113L, List.of(1_003L))
+                    projectOrders(111L, 1_001L),
+                    projectOrders(112L, 1_002L),
+                    projectOrders(113L, 1_003L)
             );
-        };
-        AtomicReference<Set<Long>> assessedOrderIds = new AtomicReference<>();
-        PaymentAssessmentReader paymentReader = orderIds -> {
-            assessedOrderIds.set(orderIds);
-            return List.of(PaymentAssessment.ready(1_001L, Money.wons(100_000)));
         };
         AtomicReference<List<ProjectPaymentCancellationRequest>> cancellationRequests =
                 new AtomicReference<>();
@@ -199,7 +151,6 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 outcomeReader,
                 orderReader,
-                paymentReader,
                 cancellationGateway,
                 projectSettlementService,
                 cancellationCommandService,
@@ -209,7 +160,6 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         ProjectSettlementRunResult result = runService.run(command());
 
         assertThat(requestedProjectIds.get()).containsExactlyInAnyOrder(111L, 112L, 113L);
-        assertThat(assessedOrderIds.get()).containsExactly(1_001L);
         assertThat(cancellationRequests.get())
                 .extracting(
                         ProjectPaymentCancellationRequest::orderId,
@@ -256,10 +206,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     void completesFailedProjectWithoutOrdersAsNoOp() {
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(117L, 217L, ProjectOutcomeStatus.FAILED)),
-                projectIds -> List.of(new ProjectOrders(117L, List.of())),
-                orderIds -> {
-                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
-                },
+                projectIds -> List.of(projectOrders(117L)),
                 requests -> {
                     throw new AssertionError("빈 결제 취소 목록을 호출하면 안 됩니다.");
                 },
@@ -293,10 +240,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         long orderId = 1_100L + paymentStatus.ordinal();
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(projectId, 218L, ProjectOutcomeStatus.FAILED)),
-                projectIds -> List.of(new ProjectOrders(projectId, List.of(orderId))),
-                orderIds -> {
-                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
-                },
+                projectIds -> List.of(projectOrders(projectId, orderId)),
                 requests -> List.of(new ProjectPaymentCancellationResult(orderId, paymentStatus)),
                 projectSettlementService,
                 cancellationCommandService,
@@ -321,10 +265,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                     if (orderReads.getAndIncrement() > 0) {
                         throw new AssertionError("완료한 결제 취소 명령의 Order를 다시 조회하면 안 됩니다.");
                     }
-                    return List.of(new ProjectOrders(119L, List.of(1_008L)));
-                },
-                orderIds -> {
-                    throw new AssertionError("취소 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                    return List.of(projectOrders(119L, 1_008L));
                 },
                 requests -> {
                     observedIdempotencyKeys.add(requests.getFirst().idempotencyKey());
@@ -353,10 +294,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         AtomicReference<String> observedIdempotencyKey = new AtomicReference<>();
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(projectId, 240L, ProjectOutcomeStatus.FAILED)),
-                projectIds -> List.of(new ProjectOrders(projectId, List.of(orderId))),
-                orderIds -> {
-                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
-                },
+                projectIds -> List.of(projectOrders(projectId, orderId)),
                 requests -> {
                     ProjectPaymentCancellationCommand stored = cancellationCommandService
                             .findAllByProjectIdIn(Set.of(projectId))
@@ -400,13 +338,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 () -> List.of(new ProjectOutcome(projectId, 241L, ProjectOutcomeStatus.CANCELLED)),
                 projectIds -> {
                     orderReads.incrementAndGet();
-                    return List.of(new ProjectOrders(
-                            projectId,
-                            List.of(completedOrderId, processingOrderId)
-                    ));
-                },
-                orderIds -> {
-                    throw new AssertionError("취소 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                    return List.of(projectOrders(projectId, completedOrderId, processingOrderId));
                 },
                 requests -> {
                     if (gatewayCalls.getAndIncrement() == 0) {
@@ -464,10 +396,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 () -> List.of(new ProjectOutcome(projectId, 242L, ProjectOutcomeStatus.FAILED)),
                 projectIds -> {
                     orderReads.incrementAndGet();
-                    return List.of(new ProjectOrders(projectId, List.of(orderId)));
-                },
-                orderIds -> {
-                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                    return List.of(projectOrders(projectId, orderId));
                 },
                 requests -> {
                     observedIdempotencyKeys.add(requests.getFirst().idempotencyKey());
@@ -510,10 +439,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 () -> List.of(new ProjectOutcome(projectId, 243L, ProjectOutcomeStatus.FAILED)),
                 projectIds -> {
                     orderReads.incrementAndGet();
-                    return List.of(new ProjectOrders(projectId, List.of(orderId)));
-                },
-                orderIds -> {
-                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                    return List.of(projectOrders(projectId, orderId));
                 },
                 requests -> {
                     gatewayCalls.incrementAndGet();
@@ -551,10 +477,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 () -> List.of(new ProjectOutcome(projectId, 244L, observedStatus.get())),
                 projectIds -> {
                     orderReads.incrementAndGet();
-                    return List.of(new ProjectOrders(projectId, List.of(orderId)));
-                },
-                orderIds -> {
-                    throw new AssertionError("결제 취소 후 성공으로 바뀐 프로젝트의 Payment를 조회하면 안 됩니다.");
+                    return List.of(projectOrders(projectId, orderId));
                 },
                 requests -> {
                     gatewayCalls.incrementAndGet();
@@ -588,10 +511,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     void preservesUnknownPartialCancellationResult() {
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(120L, 220L, ProjectOutcomeStatus.FAILED)),
-                projectIds -> List.of(new ProjectOrders(120L, List.of(1_009L, 1_010L))),
-                orderIds -> {
-                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
-                },
+                projectIds -> List.of(projectOrders(120L, 1_009L, 1_010L)),
                 requests -> List.of(
                         new ProjectPaymentCancellationResult(1_009L, COMPLETED),
                         new ProjectPaymentCancellationResult(
@@ -624,14 +544,15 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 101L, Money.wons(100_000),
                 102L, Money.wons(200_000)
         );
-        ProjectOrderReader orderReader = sameIdProjectOrderReader();
-        PaymentAssessmentReader paymentReader = orderIds -> orderIds.stream()
-                .map(orderId -> PaymentAssessment.ready(orderId, amountsByOrder.get(orderId)))
+        ProjectOrderReader orderReader = projectIds -> projectIds.stream()
+                .map(projectId -> new ProjectOrders(
+                        projectId,
+                        List.of(new OrderPayment(projectId, amountsByOrder.get(projectId)))
+                ))
                 .toList();
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 outcomeReader,
                 orderReader,
-                paymentReader,
                 noCancellationExpected(),
                 projectSettlementService,
                 cancellationCommandService,
@@ -670,7 +591,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("이미 확정된 성공 프로젝트는 Order와 Payment 재조회 없이 기존 정산을 복원한다")
+    @DisplayName("이미 확정된 성공 프로젝트는 Order 재조회 없이 기존 정산을 복원한다")
     void restoresExistingSettlementBeforeExternalInputReads() {
         long projectId = 103L;
         long creatorId = 203L;
@@ -685,21 +606,11 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
             if (orderReads.getAndIncrement() > 0) {
                 throw new AssertionError("기존 프로젝트 정산의 Order를 다시 조회하면 안 됩니다.");
             }
-            return List.of(new ProjectOrders(projectId, List.of(projectId)));
-        };
-        AtomicInteger paymentReads = new AtomicInteger();
-        PaymentAssessmentReader paymentReader = orderIds -> {
-            if (paymentReads.getAndIncrement() > 0) {
-                throw new AssertionError("기존 프로젝트 정산의 Payment를 다시 조회하면 안 됩니다.");
-            }
-            return orderIds.stream()
-                    .map(orderId -> PaymentAssessment.ready(orderId, Money.wons(100_000)))
-                    .toList();
+            return List.of(projectOrders(projectId, projectId));
         };
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 outcomeReader,
                 orderReader,
-                paymentReader,
                 noCancellationExpected(),
                 projectSettlementService,
                 cancellationCommandService,
@@ -718,7 +629,6 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         ProjectSettlementRunResult second = runService.run(command);
 
         assertThat(orderReads).hasValue(1);
-        assertThat(paymentReads).hasValue(1);
         assertThat(first.confirmedSettlements())
                 .containsExactlyElementsOf(second.confirmedSettlements());
         assertThat(second.confirmedSettlements())
@@ -739,8 +649,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(payoutReadyProfile(222L, "seller-222", "********0222"));
         ProjectSettlementRunService initialRunService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(121L, 221L, ProjectOutcomeStatus.SUCCEEDED)),
-                projectIds -> List.of(new ProjectOrders(121L, List.of(1_011L))),
-                orderIds -> List.of(PaymentAssessment.ready(1_011L, Money.wons(100_000))),
+                projectIds -> List.of(projectOrders(121L, 1_011L)),
                 noCancellationExpected(),
                 projectSettlementService,
                 cancellationCommandService,
@@ -755,9 +664,11 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 ),
                 projectIds -> {
                     requestedProjectIds.set(projectIds);
-                    return List.of(new ProjectOrders(122L, List.of(1_012L)));
+                    return List.of(new ProjectOrders(
+                            122L,
+                            List.of(new OrderPayment(1_012L, Money.wons(200_000)))
+                    ));
                 },
-                orderIds -> List.of(PaymentAssessment.ready(1_012L, Money.wons(200_000))),
                 noCancellationExpected(),
                 projectSettlementService,
                 cancellationCommandService,
@@ -798,20 +709,13 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         AtomicReference<ProjectOutcomeStatus> observedStatus =
                 new AtomicReference<>(ProjectOutcomeStatus.SUCCEEDED);
         AtomicInteger orderReads = new AtomicInteger();
-        AtomicInteger paymentReads = new AtomicInteger();
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(projectId, creatorId, observedStatus.get())),
                 projectIds -> {
                     if (orderReads.getAndIncrement() > 0) {
                         throw new AssertionError("결과 충돌 프로젝트의 Order를 다시 조회하면 안 됩니다.");
                     }
-                    return List.of(new ProjectOrders(projectId, List.of(projectId)));
-                },
-                orderIds -> {
-                    if (paymentReads.getAndIncrement() > 0) {
-                        throw new AssertionError("결과 충돌 프로젝트의 Payment를 다시 조회하면 안 됩니다.");
-                    }
-                    return List.of(PaymentAssessment.ready(projectId, Money.wons(100_000)));
+                    return List.of(projectOrders(projectId, projectId));
                 },
                 noCancellationExpected(),
                 projectSettlementService,
@@ -824,7 +728,6 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         ProjectSettlementRunResult conflicted = runService.run(command());
 
         assertThat(orderReads).hasValue(1);
-        assertThat(paymentReads).hasValue(1);
         assertThat(conflicted.projectResults())
                 .extracting(
                         ProjectOutcomeProcessingResult::projectId,
@@ -840,10 +743,13 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 .containsExactlyElementsOf(confirmed.confirmedSettlements());
     }
 
-    private static ProjectOrderReader sameIdProjectOrderReader() {
-        return projectIds -> projectIds.stream()
-                .map(projectId -> new ProjectOrders(projectId, List.of(projectId)))
-                .toList();
+    private static ProjectOrders projectOrders(Long projectId, Long... orderIds) {
+        return new ProjectOrders(
+                projectId,
+                Stream.of(orderIds)
+                        .map(orderId -> new OrderPayment(orderId, Money.wons(100_000)))
+                        .toList()
+        );
     }
 
     private static Stream<Arguments> cancellationStatusMappings() {

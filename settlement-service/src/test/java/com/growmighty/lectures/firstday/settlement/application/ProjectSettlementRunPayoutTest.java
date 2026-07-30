@@ -5,8 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
-import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
+import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
@@ -36,10 +35,10 @@ class ProjectSettlementRunPayoutTest {
                 new ProjectOutcome(101L, 201L, ProjectOutcomeStatus.SUCCEEDED)
         );
         ProjectOrderReader orderReader = projectIds -> List.of(
-                new ProjectOrders(101L, List.of(1_001L))
-        );
-        PaymentAssessmentReader paymentReader = orderIds -> List.of(
-                PaymentAssessment.ready(1_001L, Money.wons(100_000))
+                new ProjectOrders(
+                        101L,
+                        List.of(new OrderPayment(1_001L, Money.wons(100_000)))
+                )
         );
         ProjectSettlementService settlementService = mock(ProjectSettlementService.class);
         ProjectPaymentCancellationCommandService cancellationCommandService =
@@ -67,7 +66,6 @@ class ProjectSettlementRunPayoutTest {
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 outcomeReader,
                 orderReader,
-                paymentReader,
                 requests -> List.of(),
                 settlementService,
                 cancellationCommandService,

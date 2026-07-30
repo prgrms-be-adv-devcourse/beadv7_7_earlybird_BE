@@ -6,7 +6,6 @@ import static com.growmighty.lectures.firstday.settlement.application.ProjectOut
 import static com.growmighty.lectures.firstday.settlement.application.ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_PROCESSING;
 import static com.growmighty.lectures.firstday.settlement.application.ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_RETRYABLE_FAILED;
 import static com.growmighty.lectures.firstday.settlement.application.ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_UNKNOWN;
-import static com.growmighty.lectures.firstday.settlement.application.ProjectOutcomeProcessingStatus.PAYMENT_NOT_READY;
 import static com.growmighty.lectures.firstday.settlement.application.ProjectOutcomeProcessingStatus.SETTLEMENT_ALREADY_CONFIRMED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus.CANCELLED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus.FAILED;
@@ -30,7 +29,6 @@ class ProjectSettlementRunResponseTest {
                 YearMonth.of(2026, 7),
                 List.of(
                         new ProjectOutcomeProcessingResult(101L, SUCCEEDED, SETTLEMENT_ALREADY_CONFIRMED),
-                        new ProjectOutcomeProcessingResult(102L, SUCCEEDED, PAYMENT_NOT_READY),
                         new ProjectOutcomeProcessingResult(103L, FAILED, PAYMENT_CANCELLATION_COMPLETED),
                         new ProjectOutcomeProcessingResult(104L, CANCELLED, PAYMENT_CANCELLATION_PROCESSING),
                         new ProjectOutcomeProcessingResult(105L, FAILED, PAYMENT_CANCELLATION_RETRYABLE_FAILED),
@@ -51,7 +49,6 @@ class ProjectSettlementRunResponseTest {
                 )
                 .containsExactly(
                         tuple(101L, SUCCEEDED, SETTLEMENT_ALREADY_CONFIRMED),
-                        tuple(102L, SUCCEEDED, PAYMENT_NOT_READY),
                         tuple(103L, FAILED, PAYMENT_CANCELLATION_COMPLETED),
                         tuple(104L, CANCELLED, PAYMENT_CANCELLATION_PROCESSING),
                         tuple(105L, FAILED, PAYMENT_CANCELLATION_RETRYABLE_FAILED),

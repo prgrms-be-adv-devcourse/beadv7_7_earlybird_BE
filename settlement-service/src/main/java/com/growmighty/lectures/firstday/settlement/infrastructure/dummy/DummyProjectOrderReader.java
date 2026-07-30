@@ -1,7 +1,9 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
+import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
+import com.growmighty.lectures.firstday.settlement.domain.Money;
 import java.util.List;
 import java.util.Set;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -24,7 +26,7 @@ public class DummyProjectOrderReader implements ProjectOrderReader {
         }
         return List.of(new ProjectOrders(
                 DummyProjectSettlementTargetReader.DUMMY_PROJECT_ID,
-                List.of(DUMMY_ORDER_ID)
+                List.of(new OrderPayment(DUMMY_ORDER_ID, Money.wons(100_000)))
         ));
     }
 }
