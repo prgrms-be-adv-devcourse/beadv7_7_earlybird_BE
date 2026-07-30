@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -29,6 +30,9 @@ class PaymentConfirmationServiceReconcileTest {
     @Mock
     private PaymentRecoveryProperties paymentRecoveryProperties;
 
+    @Mock
+    private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
+
     @InjectMocks
     private PaymentConfirmationService paymentConfirmationService;
 
@@ -36,11 +40,13 @@ class PaymentConfirmationServiceReconcileTest {
     void 완료된_PG_결제는_PAID로_정합화한다() {
         Payment payment = confirmingPayment();
         when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
 
         paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.COMPLETED));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         verify(paymentRepository).save(payment);
+        verify(paymentStatusOutboxRepository).save(any());
     }
 
     @Test
