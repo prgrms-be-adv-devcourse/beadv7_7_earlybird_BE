@@ -1,15 +1,19 @@
-package com.growmighty.lectures.firstday.settlement.application.port;
+package com.growmighty.lectures.firstday.settlement.application;
 
 import com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason;
 import java.util.Objects;
 
-public record ProjectPaymentCancellationRequest(
+public record PrepareProjectPaymentCancellationCommand(
+        Long projectId,
         Long orderId,
         ProjectCancellationReason reason,
         String idempotencyKey
 ) {
 
-    public ProjectPaymentCancellationRequest {
+    public PrepareProjectPaymentCancellationCommand {
+        if (projectId == null || projectId <= 0) {
+            throw new IllegalArgumentException("프로젝트 식별자는 양수여야 합니다.");
+        }
         if (orderId == null || orderId <= 0) {
             throw new IllegalArgumentException("주문 식별자는 양수여야 합니다.");
         }

@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.application.port;
 
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectCancellationReason.PROJECT_CANCELLED;
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectCancellationReason.PROJECT_FAILED;
+import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
+import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_FAILED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.COMPLETED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.UNKNOWN;
 import static org.assertj.core.api.Assertions.assertThat;

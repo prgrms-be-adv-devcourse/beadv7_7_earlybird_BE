@@ -1,12 +1,14 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectCancellationReason.PROJECT_CANCELLED;
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectCancellationReason.PROJECT_FAILED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.COMPLETED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.PROCESSING;
+import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
+import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_FAILED;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
 import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessmentReader;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
@@ -22,6 +24,8 @@ import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommand;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommandStatus;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -54,6 +58,9 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     private ProjectSettlementRunService connectedRunService;
 
     @Autowired
+    private ProjectPaymentCancellationCommandService cancellationCommandService;
+
+    @Autowired
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Test
@@ -76,6 +83,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 paymentReader,
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 Clock.fixed(
                         LocalDateTime.of(2026, 7, 23, 10, 0).toInstant(ZoneOffset.UTC),
                         ZoneOffset.UTC
@@ -106,6 +114,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 ),
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
@@ -135,6 +144,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 ),
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
@@ -192,6 +202,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 paymentReader,
                 cancellationGateway,
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
@@ -253,6 +264,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                     throw new AssertionError("빈 결제 취소 목록을 호출하면 안 됩니다.");
                 },
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
@@ -277,14 +289,17 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
             ProjectPaymentCancellationStatus paymentStatus,
             ProjectOutcomeProcessingStatus expectedStatus
     ) {
+        long projectId = 130L + paymentStatus.ordinal();
+        long orderId = 1_100L + paymentStatus.ordinal();
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
-                () -> List.of(new ProjectOutcome(118L, 218L, ProjectOutcomeStatus.FAILED)),
-                projectIds -> List.of(new ProjectOrders(118L, List.of(1_007L))),
+                () -> List.of(new ProjectOutcome(projectId, 218L, ProjectOutcomeStatus.FAILED)),
+                projectIds -> List.of(new ProjectOrders(projectId, List.of(orderId))),
                 orderIds -> {
                     throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
                 },
-                requests -> List.of(new ProjectPaymentCancellationResult(1_007L, paymentStatus)),
+                requests -> List.of(new ProjectPaymentCancellationResult(orderId, paymentStatus)),
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
@@ -296,12 +311,18 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("같은 프로젝트 결과의 결제 취소 재호출은 주문별 멱등키를 유지한다")
-    void reusesStableCancellationIdempotencyKey() {
+    @DisplayName("완료한 결제 취소 명령은 재실행 시 Order와 Payment 호출 없이 복원한다")
+    void restoresCompletedCancellationCommandWithoutExternalCalls() {
         List<String> observedIdempotencyKeys = new ArrayList<>();
+        AtomicInteger orderReads = new AtomicInteger();
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 () -> List.of(new ProjectOutcome(119L, 219L, ProjectOutcomeStatus.CANCELLED)),
-                projectIds -> List.of(new ProjectOrders(119L, List.of(1_008L))),
+                projectIds -> {
+                    if (orderReads.getAndIncrement() > 0) {
+                        throw new AssertionError("완료한 결제 취소 명령의 Order를 다시 조회하면 안 됩니다.");
+                    }
+                    return List.of(new ProjectOrders(119L, List.of(1_008L)));
+                },
                 orderIds -> {
                     throw new AssertionError("취소 프로젝트의 결제 판정을 조회하면 안 됩니다.");
                 },
@@ -310,17 +331,256 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                     return List.of(new ProjectPaymentCancellationResult(1_008L, COMPLETED));
                 },
                 projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        ProjectSettlementRunResult first = runService.run(command());
+        ProjectSettlementRunResult second = runService.run(command());
+
+        assertThat(orderReads).hasValue(1);
+        assertThat(observedIdempotencyKeys)
+                .singleElement()
+                .satisfies(idempotencyKey -> assertThat(idempotencyKey).isNotBlank());
+        assertThat(first.projectResults()).containsExactlyElementsOf(second.projectResults());
+    }
+
+    @Test
+    @DisplayName("결제 취소 명령의 원본을 Payment 호출 전에 저장하고 응답 결과를 반영한다")
+    void persistsCancellationCommandBeforeGatewayAndRecordsResult() {
+        long projectId = 140L;
+        long orderId = 1_140L;
+        AtomicReference<String> observedIdempotencyKey = new AtomicReference<>();
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(projectId, 240L, ProjectOutcomeStatus.FAILED)),
+                projectIds -> List.of(new ProjectOrders(projectId, List.of(orderId))),
+                orderIds -> {
+                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                },
+                requests -> {
+                    ProjectPaymentCancellationCommand stored = cancellationCommandService
+                            .findAllByProjectIdIn(Set.of(projectId))
+                            .getFirst();
+                    assertThat(stored.projectId()).isEqualTo(projectId);
+                    assertThat(stored.orderId()).isEqualTo(orderId);
+                    assertThat(stored.reason()).isEqualTo(PROJECT_FAILED);
+                    assertThat(stored.status())
+                            .isEqualTo(ProjectPaymentCancellationCommandStatus.REQUESTED);
+                    assertThat(stored.idempotencyKey()).isNotBlank();
+                    observedIdempotencyKey.set(requests.getFirst().idempotencyKey());
+                    assertThat(stored.idempotencyKey()).isEqualTo(observedIdempotencyKey.get());
+                    return List.of(new ProjectPaymentCancellationResult(orderId, COMPLETED));
+                },
+                projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
         runService.run(command());
-        runService.run(command());
 
-        assertThat(observedIdempotencyKeys)
-                .hasSize(2)
-                .allSatisfy(idempotencyKey -> assertThat(idempotencyKey).isNotBlank());
+        assertThat(cancellationCommandService.findAllByProjectIdIn(Set.of(projectId)))
+                .singleElement()
+                .satisfies(command -> {
+                    assertThat(command.idempotencyKey()).isEqualTo(observedIdempotencyKey.get());
+                    assertThat(command.status())
+                            .isEqualTo(ProjectPaymentCancellationCommandStatus.COMPLETED);
+                });
+    }
+
+    @Test
+    @DisplayName("부분 처리 중 결과는 완료한 주문을 건너뛰고 같은 멱등키로 재개한다")
+    void resumesOnlyUnfinishedCancellationCommandsWithSameIdempotencyKey() {
+        long projectId = 141L;
+        long completedOrderId = 1_141L;
+        long processingOrderId = 1_142L;
+        AtomicInteger orderReads = new AtomicInteger();
+        AtomicInteger gatewayCalls = new AtomicInteger();
+        AtomicReference<String> processingIdempotencyKey = new AtomicReference<>();
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(projectId, 241L, ProjectOutcomeStatus.CANCELLED)),
+                projectIds -> {
+                    orderReads.incrementAndGet();
+                    return List.of(new ProjectOrders(
+                            projectId,
+                            List.of(completedOrderId, processingOrderId)
+                    ));
+                },
+                orderIds -> {
+                    throw new AssertionError("취소 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                },
+                requests -> {
+                    if (gatewayCalls.getAndIncrement() == 0) {
+                        processingIdempotencyKey.set(requests.stream()
+                                .filter(request -> request.orderId().equals(processingOrderId))
+                                .findFirst()
+                                .orElseThrow()
+                                .idempotencyKey());
+                        return List.of(
+                                new ProjectPaymentCancellationResult(completedOrderId, COMPLETED),
+                                new ProjectPaymentCancellationResult(processingOrderId, PROCESSING)
+                        );
+                    }
+                    assertThat(requests)
+                            .extracting(
+                                    ProjectPaymentCancellationRequest::orderId,
+                                    ProjectPaymentCancellationRequest::idempotencyKey
+                            )
+                            .containsExactly(tuple(
+                                    processingOrderId,
+                                    processingIdempotencyKey.get()
+                            ));
+                    return List.of(new ProjectPaymentCancellationResult(
+                            processingOrderId,
+                            COMPLETED
+                    ));
+                },
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        ProjectSettlementRunResult first = runService.run(command());
+        ProjectSettlementRunResult second = runService.run(command());
+
+        assertThat(orderReads).hasValue(1);
+        assertThat(gatewayCalls).hasValue(2);
+        assertThat(first.projectResults())
+                .extracting(ProjectOutcomeProcessingResult::processingStatus)
+                .containsExactly(ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_PROCESSING);
+        assertThat(second.projectResults())
+                .extracting(ProjectOutcomeProcessingResult::processingStatus)
+                .containsExactly(ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_COMPLETED);
+    }
+
+    @Test
+    @DisplayName("결과를 확정할 수 없는 호출은 UNKNOWN으로 남기고 같은 멱등키로 재개한다")
+    void resumesUnknownCancellationAfterGatewayFailure() {
+        long projectId = 142L;
+        long orderId = 1_143L;
+        AtomicInteger orderReads = new AtomicInteger();
+        AtomicInteger gatewayCalls = new AtomicInteger();
+        List<String> observedIdempotencyKeys = new ArrayList<>();
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(projectId, 242L, ProjectOutcomeStatus.FAILED)),
+                projectIds -> {
+                    orderReads.incrementAndGet();
+                    return List.of(new ProjectOrders(projectId, List.of(orderId)));
+                },
+                orderIds -> {
+                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                },
+                requests -> {
+                    observedIdempotencyKeys.add(requests.getFirst().idempotencyKey());
+                    if (gatewayCalls.getAndIncrement() == 0) {
+                        throw new IllegalStateException("Payment 응답을 확인할 수 없습니다.");
+                    }
+                    return List.of(new ProjectPaymentCancellationResult(orderId, COMPLETED));
+                },
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        assertThatThrownBy(() -> runService.run(command()))
+                .isInstanceOf(SettlementException.class);
+        assertThat(cancellationCommandService.findAllByProjectIdIn(Set.of(projectId)))
+                .extracting(ProjectPaymentCancellationCommand::status)
+                .containsExactly(ProjectPaymentCancellationCommandStatus.UNKNOWN);
+
+        ProjectSettlementRunResult recovered = runService.run(command());
+
+        assertThat(orderReads).hasValue(1);
+        assertThat(gatewayCalls).hasValue(2);
+        assertThat(observedIdempotencyKeys).hasSize(2);
         assertThat(observedIdempotencyKeys.getLast())
                 .isEqualTo(observedIdempotencyKeys.getFirst());
+        assertThat(recovered.projectResults())
+                .extracting(ProjectOutcomeProcessingResult::processingStatus)
+                .containsExactly(ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_COMPLETED);
+    }
+
+    @Test
+    @DisplayName("최종 실패한 결제 취소 명령은 자동 재호출하지 않는다")
+    void doesNotAutomaticallyRetryFinalFailedCancellation() {
+        long projectId = 143L;
+        long orderId = 1_144L;
+        AtomicInteger orderReads = new AtomicInteger();
+        AtomicInteger gatewayCalls = new AtomicInteger();
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(projectId, 243L, ProjectOutcomeStatus.FAILED)),
+                projectIds -> {
+                    orderReads.incrementAndGet();
+                    return List.of(new ProjectOrders(projectId, List.of(orderId)));
+                },
+                orderIds -> {
+                    throw new AssertionError("실패 프로젝트의 결제 판정을 조회하면 안 됩니다.");
+                },
+                requests -> {
+                    gatewayCalls.incrementAndGet();
+                    return List.of(new ProjectPaymentCancellationResult(
+                            orderId,
+                            ProjectPaymentCancellationStatus.FINAL_FAILED
+                    ));
+                },
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        ProjectSettlementRunResult first = runService.run(command());
+        ProjectSettlementRunResult second = runService.run(command());
+
+        assertThat(orderReads).hasValue(1);
+        assertThat(gatewayCalls).hasValue(1);
+        assertThat(first.projectResults()).containsExactlyElementsOf(second.projectResults());
+        assertThat(second.projectResults())
+                .extracting(ProjectOutcomeProcessingResult::processingStatus)
+                .containsExactly(ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_FINAL_FAILED);
+    }
+
+    @Test
+    @DisplayName("결제 취소가 시작된 프로젝트가 성공으로 관찰되면 외부 호출 없이 충돌로 남긴다")
+    void rejectsSucceededOutcomeAfterCancellationStarted() {
+        long projectId = 144L;
+        long orderId = 1_145L;
+        AtomicReference<ProjectOutcomeStatus> observedStatus =
+                new AtomicReference<>(ProjectOutcomeStatus.CANCELLED);
+        AtomicInteger orderReads = new AtomicInteger();
+        AtomicInteger gatewayCalls = new AtomicInteger();
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(projectId, 244L, observedStatus.get())),
+                projectIds -> {
+                    orderReads.incrementAndGet();
+                    return List.of(new ProjectOrders(projectId, List.of(orderId)));
+                },
+                orderIds -> {
+                    throw new AssertionError("결제 취소 후 성공으로 바뀐 프로젝트의 Payment를 조회하면 안 됩니다.");
+                },
+                requests -> {
+                    gatewayCalls.incrementAndGet();
+                    return List.of(new ProjectPaymentCancellationResult(orderId, COMPLETED));
+                },
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        runService.run(command());
+        observedStatus.set(ProjectOutcomeStatus.SUCCEEDED);
+        ProjectSettlementRunResult conflicted = runService.run(command());
+
+        assertThat(orderReads).hasValue(1);
+        assertThat(gatewayCalls).hasValue(1);
+        assertThat(conflicted.confirmedSettlements()).isEmpty();
+        assertThat(conflicted.projectResults())
+                .extracting(
+                        ProjectOutcomeProcessingResult::projectId,
+                        ProjectOutcomeProcessingResult::processingStatus
+                )
+                .containsExactly(tuple(
+                        projectId,
+                        ProjectOutcomeProcessingStatus.OUTCOME_CONFLICT
+                ));
     }
 
     @Test
@@ -340,6 +600,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                         )
                 ),
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
@@ -373,6 +634,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 paymentReader,
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 Clock.fixed(
                         LocalDateTime.of(2026, 7, 23, 10, 0).toInstant(ZoneOffset.UTC),
                         ZoneOffset.UTC
@@ -440,6 +702,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 paymentReader,
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 Clock.fixed(
                         LocalDateTime.of(2026, 7, 23, 10, 0).toInstant(ZoneOffset.UTC),
                         ZoneOffset.UTC
@@ -480,6 +743,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 orderIds -> List.of(PaymentAssessment.ready(1_011L, Money.wons(100_000))),
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
         initialRunService.run(command());
@@ -496,6 +760,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 orderIds -> List.of(PaymentAssessment.ready(1_012L, Money.wons(200_000))),
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 
@@ -550,6 +815,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 },
                 noCancellationExpected(),
                 projectSettlementService,
+                cancellationCommandService,
                 fixedClock()
         );
 

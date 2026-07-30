@@ -42,6 +42,9 @@ class ProjectSettlementRunPayoutTest {
                 PaymentAssessment.ready(1_001L, Money.wons(100_000))
         );
         ProjectSettlementService settlementService = mock(ProjectSettlementService.class);
+        ProjectPaymentCancellationCommandService cancellationCommandService =
+                mock(ProjectPaymentCancellationCommandService.class);
+        when(cancellationCommandService.findAllByProjectIdIn(any())).thenReturn(List.of());
         when(settlementService.confirm(any())).thenReturn(new ConfirmedProjectSettlement(
                 101L,
                 201L,
@@ -67,6 +70,7 @@ class ProjectSettlementRunPayoutTest {
                 paymentReader,
                 requests -> List.of(),
                 settlementService,
+                cancellationCommandService,
                 Clock.fixed(Instant.parse("2026-07-26T01:00:00Z"), ZoneOffset.UTC),
                 Optional.of(payoutExecutor)
         );

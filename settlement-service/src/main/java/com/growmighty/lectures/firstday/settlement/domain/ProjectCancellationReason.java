@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.settlement.application.port;
+package com.growmighty.lectures.firstday.settlement.domain;
 
 public enum ProjectCancellationReason {
     PROJECT_FAILED,

@@ -2,8 +2,8 @@ package com.growmighty.lectures.firstday.settlement.application;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE;
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectCancellationReason.PROJECT_CANCELLED;
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectCancellationReason.PROJECT_FAILED;
+import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
+import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_FAILED;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.application.port.PaymentAssessment;
@@ -16,9 +16,11 @@ import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutco
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationGateway;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationRequest;
 import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationResult;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.Money;
 import com.growmighty.lectures.firstday.settlement.domain.PayoutSchedulePolicy;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommand;
+import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommandStatus;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -44,6 +46,7 @@ public final class ProjectSettlementRunService {
     private final PaymentAssessmentReader paymentAssessmentReader;
     private final ProjectPaymentCancellationGateway paymentCancellationGateway;
     private final ProjectSettlementService projectSettlementService;
+    private final ProjectPaymentCancellationCommandService cancellationCommandService;
     private final Clock clock;
     private final Optional<PayoutExecutor> payoutExecutor;
 
@@ -53,6 +56,7 @@ public final class ProjectSettlementRunService {
             PaymentAssessmentReader paymentAssessmentReader,
             ProjectPaymentCancellationGateway paymentCancellationGateway,
             ProjectSettlementService projectSettlementService,
+            ProjectPaymentCancellationCommandService cancellationCommandService,
             Clock clock
     ) {
         this(
@@ -61,6 +65,7 @@ public final class ProjectSettlementRunService {
                 paymentAssessmentReader,
                 paymentCancellationGateway,
                 projectSettlementService,
+                cancellationCommandService,
                 clock,
                 Optional.empty()
         );
@@ -73,6 +78,7 @@ public final class ProjectSettlementRunService {
             PaymentAssessmentReader paymentAssessmentReader,
             ProjectPaymentCancellationGateway paymentCancellationGateway,
             ProjectSettlementService projectSettlementService,
+            ProjectPaymentCancellationCommandService cancellationCommandService,
             Clock clock,
             Optional<PayoutExecutor> payoutExecutor
     ) {
@@ -81,6 +87,7 @@ public final class ProjectSettlementRunService {
         this.paymentAssessmentReader = paymentAssessmentReader;
         this.paymentCancellationGateway = paymentCancellationGateway;
         this.projectSettlementService = projectSettlementService;
+        this.cancellationCommandService = cancellationCommandService;
         this.clock = clock;
         this.payoutExecutor = payoutExecutor;
     }
@@ -115,8 +122,11 @@ public final class ProjectSettlementRunService {
         }
 
         Map<Long, ConfirmedProjectSettlement> existingSettlements = findExistingSettlements(outcomes);
+        Map<Long, List<ProjectPaymentCancellationCommand>> existingCancellationCommands =
+                findExistingCancellationCommands(outcomes);
         List<ProjectOutcome> pendingOutcomes = outcomes.stream()
                 .filter(outcome -> !existingSettlements.containsKey(outcome.projectId()))
+                .filter(outcome -> !existingCancellationCommands.containsKey(outcome.projectId()))
                 .toList();
         Map<Long, ProjectOrders> ordersByProjectId = pendingOutcomes.isEmpty()
                 ? Map.of()
@@ -127,10 +137,29 @@ public final class ProjectSettlementRunService {
                 ProjectOutcomeStatus.SUCCEEDED
         );
         Map<Long, PaymentAssessment> assessmentsByOrderId = findPaymentAssessments(successfulOrderIds);
-        Map<Long, ProjectPaymentCancellationResult> cancellationsByOrderId = cancelProjectPayments(
+        List<ProjectPaymentCancellationCommand> newCancellationCommands =
+                prepareCancellationCommands(
                 pendingOutcomes,
                 ordersByProjectId
         );
+        List<ProjectOutcome> validatedOutcomes = outcomes;
+        List<ProjectPaymentCancellationCommand> cancellationCommands = new ArrayList<>();
+        existingCancellationCommands.values().stream()
+                .flatMap(List::stream)
+                .filter(cancellationCommand -> !existingSettlements.containsKey(
+                        cancellationCommand.projectId()
+                ))
+                .filter(cancellationCommand -> shouldContinueCancellation(
+                        cancellationCommand,
+                        validatedOutcomes
+                ))
+                .forEach(cancellationCommands::add);
+        cancellationCommands.addAll(newCancellationCommands);
+        Map<Long, List<ProjectPaymentCancellationCommand>> cancellationsByProjectId =
+                cancelProjectPayments(cancellationCommands).stream()
+                        .collect(Collectors.groupingBy(
+                                ProjectPaymentCancellationCommand::projectId
+                        ));
 
         List<ConfirmedProjectSettlement> confirmedSettlements = new ArrayList<>();
         List<ProjectOutcomeProcessingResult> projectResults = new ArrayList<>();
@@ -138,7 +167,8 @@ public final class ProjectSettlementRunService {
             ConfirmedProjectSettlement existingSettlement = existingSettlements.get(outcome.projectId());
             if (existingSettlement != null) {
                 boolean outcomeMatchesSettlement = outcome.status() == ProjectOutcomeStatus.SUCCEEDED
-                        && outcome.creatorId().equals(existingSettlement.creatorId());
+                        && outcome.creatorId().equals(existingSettlement.creatorId())
+                        && !existingCancellationCommands.containsKey(outcome.projectId());
                 ConfirmedProjectSettlement restored = outcomeMatchesSettlement
                         ? executePayout(existingSettlement)
                         : existingSettlement;
@@ -152,13 +182,26 @@ public final class ProjectSettlementRunService {
                 ));
                 continue;
             }
+            List<ProjectPaymentCancellationCommand> projectCancellationCommands =
+                    existingCancellationCommands.getOrDefault(outcome.projectId(), List.of());
+            if (!projectCancellationCommands.isEmpty()
+                    && hasCancellationConflict(outcome, projectCancellationCommands)) {
+                projectResults.add(new ProjectOutcomeProcessingResult(
+                        outcome.projectId(),
+                        outcome.status(),
+                        ProjectOutcomeProcessingStatus.OUTCOME_CONFLICT
+                ));
+                continue;
+            }
             if (outcome.status() != ProjectOutcomeStatus.SUCCEEDED) {
                 projectResults.add(new ProjectOutcomeProcessingResult(
                         outcome.projectId(),
                         outcome.status(),
                         cancellationProcessingStatus(
-                                ordersByProjectId.get(outcome.projectId()),
-                                cancellationsByOrderId
+                                cancellationsByProjectId.getOrDefault(
+                                        outcome.projectId(),
+                                        List.of()
+                                )
                         )
                 ));
                 continue;
@@ -217,6 +260,19 @@ public final class ProjectSettlementRunService {
                     .ifPresent(settlement -> existingSettlements.put(outcome.projectId(), settlement));
         }
         return Map.copyOf(existingSettlements);
+    }
+
+    private Map<Long, List<ProjectPaymentCancellationCommand>> findExistingCancellationCommands(
+            List<ProjectOutcome> outcomes
+    ) {
+        Set<Long> projectIds = outcomes.stream()
+                .map(ProjectOutcome::projectId)
+                .collect(Collectors.toUnmodifiableSet());
+        return cancellationCommandService.findAllByProjectIdIn(projectIds).stream()
+                .collect(Collectors.groupingBy(
+                        ProjectPaymentCancellationCommand::projectId,
+                        Collectors.toUnmodifiableList()
+                ));
     }
 
     private ConfirmedProjectSettlement executePayout(ConfirmedProjectSettlement settlement) {
@@ -298,52 +354,102 @@ public final class ProjectSettlementRunService {
         return Map.copyOf(assessmentByOrderId);
     }
 
-    private Map<Long, ProjectPaymentCancellationResult> cancelProjectPayments(
+    private List<ProjectPaymentCancellationCommand> prepareCancellationCommands(
             List<ProjectOutcome> outcomes,
             Map<Long, ProjectOrders> ordersByProjectId
     ) {
-        List<ProjectPaymentCancellationRequest> requests = outcomes.stream()
+        List<PrepareProjectPaymentCancellationCommand> commands = outcomes.stream()
                 .filter(outcome -> outcome.status() != ProjectOutcomeStatus.SUCCEEDED)
                 .flatMap(outcome -> ordersByProjectId.get(outcome.projectId()).orderIds().stream()
-                        .map(orderId -> cancellationRequest(outcome, orderId)))
+                        .map(orderId -> prepareCancellationCommand(outcome, orderId)))
+                .toList();
+        return cancellationCommandService.prepare(commands);
+    }
+
+    private List<ProjectPaymentCancellationCommand> cancelProjectPayments(
+            List<ProjectPaymentCancellationCommand> commands
+    ) {
+        List<ProjectPaymentCancellationCommand> commandsToRequest = commands.stream()
+                .filter(command -> command.status().shouldRequestResult())
+                .toList();
+        List<ProjectPaymentCancellationRequest> requests = commandsToRequest.stream()
+                .map(ProjectSettlementRunService::cancellationRequest)
                 .toList();
         if (requests.isEmpty()) {
-            return Map.of();
+            return commands;
         }
         List<ProjectPaymentCancellationResult> results;
         try {
             results = List.copyOf(paymentCancellationGateway.cancel(requests));
-        } catch (SettlementException exception) {
-            throw exception;
+            List<ProjectPaymentCancellationCommand> updated =
+                    cancellationCommandService.recordResults(commandsToRequest, results);
+            Map<Long, ProjectPaymentCancellationCommand> updatedByOrderId = updated.stream()
+                    .collect(Collectors.toMap(
+                            ProjectPaymentCancellationCommand::orderId,
+                            command -> command
+                    ));
+            return commands.stream()
+                    .map(command -> updatedByOrderId.getOrDefault(command.orderId(), command))
+                    .toList();
         } catch (RuntimeException exception) {
+            cancellationCommandService.markUnknown(commandsToRequest);
+            if (exception instanceof SettlementException settlementException) {
+                throw settlementException;
+            }
             throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
         }
-        Set<Long> requestedOrderIds = requests.stream()
-                .map(ProjectPaymentCancellationRequest::orderId)
-                .collect(Collectors.toUnmodifiableSet());
-        Map<Long, ProjectPaymentCancellationResult> resultByOrderId = new HashMap<>();
-        for (ProjectPaymentCancellationResult result : results) {
-            if (result == null || resultByOrderId.put(result.orderId(), result) != null) {
-                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
-            }
-        }
-        if (!resultByOrderId.keySet().equals(requestedOrderIds)) {
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
-        }
-        return Map.copyOf(resultByOrderId);
     }
 
-    private static ProjectPaymentCancellationRequest cancellationRequest(
+    private static PrepareProjectPaymentCancellationCommand prepareCancellationCommand(
             ProjectOutcome outcome,
             Long orderId
     ) {
         String source = "project-payment-cancellation:"
                 + outcome.projectId() + ":" + outcome.status() + ":" + orderId;
-        return new ProjectPaymentCancellationRequest(
+        return new PrepareProjectPaymentCancellationCommand(
+                outcome.projectId(),
                 orderId,
-                outcome.status() == ProjectOutcomeStatus.FAILED ? PROJECT_FAILED : PROJECT_CANCELLED,
+                cancellationReason(outcome.status()),
                 UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8)).toString()
         );
+    }
+
+    private static ProjectPaymentCancellationRequest cancellationRequest(
+            ProjectPaymentCancellationCommand command
+    ) {
+        return new ProjectPaymentCancellationRequest(
+                command.orderId(),
+                command.reason(),
+                command.idempotencyKey()
+        );
+    }
+
+    private static boolean shouldContinueCancellation(
+            ProjectPaymentCancellationCommand command,
+            List<ProjectOutcome> outcomes
+    ) {
+        return outcomes.stream()
+                .filter(outcome -> outcome.projectId().equals(command.projectId()))
+                .anyMatch(outcome -> outcome.status() != ProjectOutcomeStatus.SUCCEEDED
+                        && command.reason() == cancellationReason(outcome.status()));
+    }
+
+    private static boolean hasCancellationConflict(
+            ProjectOutcome outcome,
+            List<ProjectPaymentCancellationCommand> commands
+    ) {
+        return outcome.status() == ProjectOutcomeStatus.SUCCEEDED
+                || commands.stream().anyMatch(
+                        command -> command.reason() != cancellationReason(outcome.status())
+                );
+    }
+
+    private static ProjectCancellationReason cancellationReason(ProjectOutcomeStatus status) {
+        return switch (status) {
+            case FAILED -> PROJECT_FAILED;
+            case CANCELLED -> PROJECT_CANCELLED;
+            case SUCCEEDED -> throw new IllegalArgumentException("성공 프로젝트는 결제 취소 사유가 없습니다.");
+        };
     }
 
     private static List<Money> finalEffectivePaymentAmounts(
@@ -366,22 +472,17 @@ public final class ProjectSettlementRunService {
     }
 
     private static ProjectOutcomeProcessingStatus cancellationProcessingStatus(
-            ProjectOrders projectOrders,
-            Map<Long, ProjectPaymentCancellationResult> cancellationsByOrderId
+            List<ProjectPaymentCancellationCommand> commands
     ) {
-        if (projectOrders.orderIds().isEmpty()) {
-            return ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_COMPLETED;
-        }
-        return projectOrders.orderIds().stream()
-                .map(cancellationsByOrderId::get)
-                .map(ProjectPaymentCancellationResult::status)
+        return commands.stream()
+                .map(ProjectPaymentCancellationCommand::status)
                 .map(ProjectSettlementRunService::processingStatus)
                 .max(Comparator.comparingInt(ProjectSettlementRunService::cancellationPriority))
                 .orElse(ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_COMPLETED);
     }
 
     private static ProjectOutcomeProcessingStatus processingStatus(
-            ProjectPaymentCancellationStatus status
+            ProjectPaymentCancellationCommandStatus status
     ) {
         return switch (status) {
             case COMPLETED, ALREADY_COMPLETED, NO_REFUND_REQUIRED ->
@@ -390,7 +491,7 @@ public final class ProjectSettlementRunService {
             case RETRYABLE_FAILED ->
                     ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_RETRYABLE_FAILED;
             case FINAL_FAILED -> ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_FINAL_FAILED;
-            case UNKNOWN -> ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_UNKNOWN;
+            case REQUESTED, UNKNOWN -> ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_UNKNOWN;
         };
     }
 
