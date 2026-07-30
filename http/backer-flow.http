@@ -12,8 +12,9 @@
 ###
 ### 알려진 차단 요인 — 고쳐지기 전까지 "후원 생성" 이후 단계는 실패한다(별도 이슈로 등록, 여기서
 ### 직접 손대지 않음):
-###   - #154: OrderController 가 /orders 에 매핑돼 게이트웨이 /api/v1/orders/** 라우트가 404
-###   - #155: RewardApiData.id 필드명이 project-service 응답의 rewardId 와 달라 주문 생성 500
+###   - #188: order-service 가 payment-service 의 prepare 만 호출하고 confirm 은 아무도 호출하지
+###     않아, 주문이 PAID 로 전이되지 않고 항상 PAYMENT_PROCESSING 에서 멈춘다. 취소도 이 상태에서는
+###     막혀 있어 8번(후원 취소)도 실패한다.
 
 ### 1. 회원가입
 < {%
