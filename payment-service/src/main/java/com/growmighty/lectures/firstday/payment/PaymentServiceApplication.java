@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties(PaymentRecoveryProperties.class)
 @SpringBootApplication(scanBasePackages = {
     "com.growmighty.lectures.firstday.payment",
+    "com.growmighty.lectures.firstday.refund",
     "com.growmighty.lectures.firstday.common"   // 이게 없으면 GlobalExceptionHandler가 빈으로 안 뜬다
 })
 public class PaymentServiceApplication {
