@@ -289,7 +289,25 @@ public final class ProjectSettlementRunService {
         if (!ordersByProjectId.keySet().equals(projectIds)) {
             throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
         }
+        validateSuccessfulProjectOrders(outcomes, ordersByProjectId);
         return Map.copyOf(ordersByProjectId);
+    }
+
+    private static void validateSuccessfulProjectOrders(
+            List<ProjectOutcome> outcomes,
+            Map<Long, ProjectOrders> ordersByProjectId
+    ) {
+        outcomes.stream()
+                .filter(outcome -> outcome.status() == ProjectOutcomeStatus.SUCCEEDED)
+                .map(ProjectOutcome::projectId)
+                .map(ordersByProjectId::get)
+                .filter(projectOrders -> projectOrders.orders().isEmpty()
+                        || projectOrders.orders().stream()
+                        .noneMatch(order -> order.paymentAmount().amount().signum() > 0))
+                .findAny()
+                .ifPresent(ignored -> {
+                    throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+                });
     }
 
     private List<ProjectPaymentCancellationCommand> prepareCancellationCommands(

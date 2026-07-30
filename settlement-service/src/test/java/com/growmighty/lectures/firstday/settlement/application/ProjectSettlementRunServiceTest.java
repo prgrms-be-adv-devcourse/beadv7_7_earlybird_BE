@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.COMPLETED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.PROCESSING;
 import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
@@ -122,6 +123,165 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("요청한 프로젝트의 Order 결과가 누락되면 계약 오류로 거부한다")
+    void rejectsMissingProjectOrderResult() {
+        assertOrderContractViolation(
+                () -> List.of(
+                        new ProjectOutcome(301L, 401L, ProjectOutcomeStatus.SUCCEEDED),
+                        new ProjectOutcome(302L, 402L, ProjectOutcomeStatus.SUCCEEDED)
+                ),
+                projectIds -> List.of(projectOrders(301L, 3_001L))
+        );
+    }
+
+    @Test
+    @DisplayName("Order가 같은 프로젝트 결과를 중복 반환하면 계약 오류로 거부한다")
+    void rejectsDuplicateProjectOrderResult() {
+        assertOrderContractViolation(
+                () -> List.of(new ProjectOutcome(303L, 403L, ProjectOutcomeStatus.SUCCEEDED)),
+                projectIds -> List.of(
+                        projectOrders(303L, 3_002L),
+                        projectOrders(303L, 3_003L)
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("Order가 요청하지 않은 프로젝트 결과를 반환하면 계약 오류로 거부한다")
+    void rejectsUnexpectedProjectOrderResult() {
+        assertOrderContractViolation(
+                () -> List.of(new ProjectOutcome(304L, 404L, ProjectOutcomeStatus.SUCCEEDED)),
+                projectIds -> List.of(projectOrders(999L, 3_004L))
+        );
+    }
+
+    @Test
+    @DisplayName("여러 프로젝트에 같은 주문 식별자가 포함되면 계약 오류로 거부한다")
+    void rejectsDuplicateOrderIdAcrossProjects() {
+        assertOrderContractViolation(
+                () -> List.of(
+                        new ProjectOutcome(305L, 405L, ProjectOutcomeStatus.SUCCEEDED),
+                        new ProjectOutcome(306L, 406L, ProjectOutcomeStatus.SUCCEEDED)
+                ),
+                projectIds -> List.of(
+                        projectOrders(305L, 3_005L),
+                        projectOrders(306L, 3_005L)
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("성공 프로젝트의 주문 목록이 비어 있으면 계약 오류로 거부한다")
+    void rejectsEmptyOrdersForSuccessfulProject() {
+        assertOrderContractViolation(
+                () -> List.of(new ProjectOutcome(307L, 407L, ProjectOutcomeStatus.SUCCEEDED)),
+                projectIds -> List.of(projectOrders(307L))
+        );
+    }
+
+    @Test
+    @DisplayName("성공 프로젝트의 주문 결제금액 합계가 0원이면 계약 오류로 거부한다")
+    void rejectsZeroTotalPaymentAmountForSuccessfulProject() {
+        assertOrderContractViolation(
+                () -> List.of(new ProjectOutcome(308L, 408L, ProjectOutcomeStatus.SUCCEEDED)),
+                projectIds -> List.of(new ProjectOrders(
+                        308L,
+                        List.of(
+                                new OrderPayment(3_006L, Money.wons(0)),
+                                new OrderPayment(3_007L, Money.wons(0))
+                        )
+                ))
+        );
+    }
+
+    @Test
+    @DisplayName("Order 계약 오류가 있으면 정상 프로젝트 정산과 결제 취소를 일부 실행하지 않는다")
+    void preventsPartialFinancialProcessingWhenOrderContractIsInvalid() {
+        long successfulProjectId = 309L;
+        long failedProjectId = 310L;
+        creatorPayoutProfileRepository.save(
+                payoutReadyProfile(409L, "seller-409", "********0409")
+        );
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                () -> List.of(
+                        new ProjectOutcome(successfulProjectId, 409L, ProjectOutcomeStatus.SUCCEEDED),
+                        new ProjectOutcome(failedProjectId, 410L, ProjectOutcomeStatus.FAILED),
+                        new ProjectOutcome(311L, 411L, ProjectOutcomeStatus.SUCCEEDED)
+                ),
+                projectIds -> List.of(
+                        projectOrders(successfulProjectId, 3_008L),
+                        projectOrders(failedProjectId, 3_009L),
+                        projectOrders(311L)
+                ),
+                requests -> {
+                    throw new AssertionError("계약 검증 전에 결제 취소를 요청하면 안 됩니다.");
+                },
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        assertThatThrownBy(() -> runService.run(command()))
+                .isInstanceOfSatisfying(
+                        SettlementException.class,
+                        exception -> assertThat(exception.errorCode())
+                                .isEqualTo(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE)
+                );
+        assertThat(projectSettlementService.findConfirmedByProjectId(successfulProjectId)).isEmpty();
+        assertThat(cancellationCommandService.findAllByProjectIdIn(Set.of(failedProjectId)))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("신규 Order 계약 오류는 앞서 확정된 프로젝트 정산을 롤백하지 않는다")
+    void preservesExistingSettlementWhenNewOrderContractIsInvalid() {
+        long existingProjectId = 312L;
+        long existingCreatorId = 412L;
+        creatorPayoutProfileRepository.save(payoutReadyProfile(
+                existingCreatorId,
+                "seller-412",
+                "********0412"
+        ));
+        ProjectSettlementRunService initialRunService = new ProjectSettlementRunService(
+                () -> List.of(new ProjectOutcome(
+                        existingProjectId,
+                        existingCreatorId,
+                        ProjectOutcomeStatus.SUCCEEDED
+                )),
+                projectIds -> List.of(projectOrders(existingProjectId, 3_010L)),
+                noCancellationExpected(),
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+        initialRunService.run(command());
+        ProjectSettlementRunService invalidRunService = new ProjectSettlementRunService(
+                () -> List.of(
+                        new ProjectOutcome(
+                                existingProjectId,
+                                existingCreatorId,
+                                ProjectOutcomeStatus.SUCCEEDED
+                        ),
+                        new ProjectOutcome(313L, 413L, ProjectOutcomeStatus.SUCCEEDED)
+                ),
+                projectIds -> List.of(projectOrders(313L)),
+                noCancellationExpected(),
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        assertThatThrownBy(() -> invalidRunService.run(command()))
+                .isInstanceOfSatisfying(
+                        SettlementException.class,
+                        exception -> assertThat(exception.errorCode())
+                                .isEqualTo(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE)
+                );
+        assertThat(projectSettlementService.findConfirmedByProjectId(existingProjectId))
+                .isPresent();
+    }
+
+    @Test
     @DisplayName("성공 주문 금액은 정산하고 실패·취소 주문 식별자는 결제 취소에 사용한다")
     void routesProjectOutcomesToSettlementOrPaymentCancellation() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(211L, "seller-211", "********0211"));
@@ -201,12 +361,17 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 );
     }
 
-    @Test
-    @DisplayName("주문이 없는 실패 프로젝트는 Payment를 호출하지 않고 결제 취소 완료로 처리한다")
-    void completesFailedProjectWithoutOrdersAsNoOp() {
+    @ParameterizedTest
+    @EnumSource(
+            value = ProjectOutcomeStatus.class,
+            names = {"FAILED", "CANCELLED"}
+    )
+    @DisplayName("주문이 없는 실패·취소 프로젝트는 Payment를 호출하지 않고 완료로 처리한다")
+    void completesUnsuccessfulProjectWithoutOrdersAsNoOp(ProjectOutcomeStatus outcomeStatus) {
+        long projectId = outcomeStatus == ProjectOutcomeStatus.FAILED ? 117L : 118L;
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
-                () -> List.of(new ProjectOutcome(117L, 217L, ProjectOutcomeStatus.FAILED)),
-                projectIds -> List.of(projectOrders(117L)),
+                () -> List.of(new ProjectOutcome(projectId, 217L, outcomeStatus)),
+                projectIds -> List.of(projectOrders(projectId)),
                 requests -> {
                     throw new AssertionError("빈 결제 취소 목록을 호출하면 안 됩니다.");
                 },
@@ -223,7 +388,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                         ProjectOutcomeProcessingResult::processingStatus
                 )
                 .containsExactly(tuple(
-                        117L,
+                        projectId,
                         ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_COMPLETED
                 ));
         assertThat(result.confirmedSettlements()).isEmpty();
@@ -750,6 +915,27 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                         .map(orderId -> new OrderPayment(orderId, Money.wons(100_000)))
                         .toList()
         );
+    }
+
+    private void assertOrderContractViolation(
+            ProjectOutcomeReader outcomeReader,
+            ProjectOrderReader orderReader
+    ) {
+        ProjectSettlementRunService runService = new ProjectSettlementRunService(
+                outcomeReader,
+                orderReader,
+                noCancellationExpected(),
+                projectSettlementService,
+                cancellationCommandService,
+                fixedClock()
+        );
+
+        assertThatThrownBy(() -> runService.run(command()))
+                .isInstanceOfSatisfying(
+                        SettlementException.class,
+                        exception -> assertThat(exception.errorCode())
+                                .isEqualTo(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE)
+                );
     }
 
     private static Stream<Arguments> cancellationStatusMappings() {
