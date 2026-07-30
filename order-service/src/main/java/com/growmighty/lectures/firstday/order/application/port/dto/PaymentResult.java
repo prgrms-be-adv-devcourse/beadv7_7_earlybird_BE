@@ -10,6 +10,7 @@ public record PaymentResult(
     public enum Status {
         SUCCESS,
         FAILURE,
+        PENDING,
         UNKNOWN
     }
 
@@ -23,5 +24,9 @@ public record PaymentResult(
 
     public static PaymentResult unknown(BigDecimal amount) {
         return new PaymentResult(null, amount, Status.UNKNOWN);
+    }
+
+    public static PaymentResult pending(BigDecimal amount) {
+        return new PaymentResult(null, amount, Status.PENDING);
     }
 }

@@ -1,10 +1,13 @@
 package com.growmighty.lectures.firstday.order.infrastructure.client;
 
+import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.RewardApiData;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.StockChangeBody;
+import feign.FeignException;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,7 +37,23 @@ public interface RewardFeignClient extends RewardPort {
     // 이 번역 계층 덕에 리워드의 응답 형태가 바뀌어도 여파가 이 파일에서 멈춘다.
     @Override
     default RewardSnapshot getReward(Long rewardId) {
-        RewardApiData data = fetchReward(rewardId).data();
+        ApiResponse<RewardApiData> response;
+        try {
+            response = fetchReward(rewardId);
+        } catch (FeignException.NotFound e) {
+            throw new EntityNotFoundException("Reward not found. rewardId=" + rewardId);
+        }
+        if (response == null) {
+            throw new ServiceUnavailableException("Reward response is empty. rewardId=" + rewardId);
+        }
+        if (!response.success() || response.data() == null) {
+            throw new EntityNotFoundException("Reward not found. rewardId=" + rewardId);
+        }
+
+        RewardApiData data = response.data();
+        if (data.rewardId() == null || data.projectId() == null || data.name() == null || data.price() == null) {
+            throw new ServiceUnavailableException("Reward response is invalid. rewardId=" + rewardId);
+        }
         return new RewardSnapshot(
                 data.rewardId(),
                 data.projectId(),

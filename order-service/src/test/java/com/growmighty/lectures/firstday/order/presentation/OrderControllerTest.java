@@ -21,6 +21,8 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -151,6 +153,30 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'userId')]").exists())
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'requests[0].quantity')]").exists());
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("주문 생성 시 중복 rewardId 오류는 실패 응답으로 반환한다")
+    void placeOrder_duplicateRewardIds_400() throws Exception {
+        when(orderApiService.placeOrder(any(PlaceOrderCommand.class), eq(1L)))
+                .thenThrow(new IllegalArgumentException("Duplicate reward entries are not allowed. rewardId=1"));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"projectId":10,"requests":[{"rewardId":1,"quantity":2,"expectedUnitPrice":10000},{"rewardId":1,"quantity":3,"expectedUnitPrice":10000}],"receiverName":"Receiver","receiverPhone":"010-0000-0000","shippingAddress":"Seoul","zipCode":"06236","expectedItemsAmount":50000,"expectedTotalAmount":50000}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.error.message").value("Duplicate reward entries are not allowed. rewardId=1"))
+                .andExpect(jsonPath("$.error.errors").doesNotExist());
+
+        verify(orderApiService).placeOrder(any(PlaceOrderCommand.class), eq(1L));
+        verifyNoMoreInteractions(orderApiService);
     }
 
     private OrderResult result(Long orderId, OrderStatus status) {

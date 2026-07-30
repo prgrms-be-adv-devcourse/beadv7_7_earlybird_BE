@@ -7,7 +7,7 @@ public record RewardSnapshot(
         Long projectId,
         String name,
         BigDecimal price,
-        int remainingQuantity,
+        Integer remainingQuantity,
         boolean orderable
 ) {
 }
