@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.payment.domain;
 
-public enum PaymentStatusOutboxtatus {
+public enum PaymentStatusOutboxStatus {
     PENDING,
     SENT
 }

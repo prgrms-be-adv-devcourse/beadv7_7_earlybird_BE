@@ -39,7 +39,7 @@ public class PaymentStatusOutbox extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private PaymentStatusOutboxtatus status;
+    private PaymentStatusOutboxStatus status;
 
     @Column(nullable = false)
     private int retryCount;
@@ -54,7 +54,7 @@ public class PaymentStatusOutbox extends BaseEntity {
         this.paymentId = paymentId;
         this.orderId = orderId;
         this.paymentStatus = paymentStatus;
-        this.status = PaymentStatusOutboxtatus.PENDING;
+        this.status = PaymentStatusOutboxStatus.PENDING;
         this.retryCount = 0;
     }
 
@@ -67,11 +67,11 @@ public class PaymentStatusOutbox extends BaseEntity {
     }
 
     public void markSent() {
-        if (this.status == PaymentStatusOutboxtatus.SENT) {
+        if (this.status == PaymentStatusOutboxStatus.SENT) {
             return;
         }
 
-        this.status = PaymentStatusOutboxtatus.SENT;
+        this.status = PaymentStatusOutboxStatus.SENT;
         this.sentAt = LocalDateTime.now();
     }
 
@@ -80,6 +80,6 @@ public class PaymentStatusOutbox extends BaseEntity {
     }
 
     public boolean isPending() {
-        return this.status == PaymentStatusOutboxtatus.PENDING;
+        return this.status == PaymentStatusOutboxStatus.PENDING;
     }
 }
