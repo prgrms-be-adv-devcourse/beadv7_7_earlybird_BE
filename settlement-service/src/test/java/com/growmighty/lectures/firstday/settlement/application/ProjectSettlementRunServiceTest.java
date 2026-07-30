@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
-import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.COMPLETED;
 import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.PROCESSING;
 import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
@@ -225,7 +226,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 .isInstanceOfSatisfying(
                         SettlementException.class,
                         exception -> assertThat(exception.errorCode())
-                                .isEqualTo(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE)
+                                .isEqualTo(ORDER_PAYMENT_INPUTS_UNAVAILABLE)
                 );
         assertThat(projectSettlementService.findConfirmedByProjectId(successfulProjectId)).isEmpty();
         assertThat(cancellationCommandService.findAllByProjectIdIn(Set.of(failedProjectId)))
@@ -275,7 +276,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 .isInstanceOfSatisfying(
                         SettlementException.class,
                         exception -> assertThat(exception.errorCode())
-                                .isEqualTo(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE)
+                                .isEqualTo(ORDER_PAYMENT_INPUTS_UNAVAILABLE)
                 );
         assertThat(projectSettlementService.findConfirmedByProjectId(existingProjectId))
                 .isPresent();
@@ -576,7 +577,11 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
         );
 
         assertThatThrownBy(() -> runService.run(command()))
-                .isInstanceOf(SettlementException.class);
+                .isInstanceOfSatisfying(
+                        SettlementException.class,
+                        exception -> assertThat(exception.errorCode())
+                                .isEqualTo(PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE)
+                );
         assertThat(cancellationCommandService.findAllByProjectIdIn(Set.of(projectId)))
                 .extracting(ProjectPaymentCancellationCommand::status)
                 .containsExactly(ProjectPaymentCancellationCommandStatus.UNKNOWN);
@@ -934,7 +939,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
                 .isInstanceOfSatisfying(
                         SettlementException.class,
                         exception -> assertThat(exception.errorCode())
-                                .isEqualTo(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE)
+                                .isEqualTo(ORDER_PAYMENT_INPUTS_UNAVAILABLE)
                 );
     }
 

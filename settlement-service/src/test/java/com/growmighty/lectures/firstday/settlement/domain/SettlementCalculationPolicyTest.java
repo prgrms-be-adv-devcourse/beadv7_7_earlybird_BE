@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class SettlementCalculationPolicyTest {
 
     @Test
-    @DisplayName("최종 유효 결제 금액으로 프로젝트 정산 금액을 계산한다")
+    @DisplayName("Order의 주문 결제금액으로 프로젝트 정산 금액을 계산한다")
     void calculatesProjectSettlementAmounts() {
         SettlementCalculationPolicy policy = SettlementCalculationPolicy.current();
 

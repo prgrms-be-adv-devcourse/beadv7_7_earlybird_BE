@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
-import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE;
 import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
 import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_FAILED;
@@ -195,23 +196,23 @@ public final class ProjectSettlementRunService {
                 continue;
             }
             ProjectOrders projectOrders = ordersByProjectId.get(outcome.projectId());
-            List<Money> paymentAmounts;
+            List<Money> orderPaymentAmounts;
             try {
-                paymentAmounts = finalEffectivePaymentAmounts(projectOrders);
+                orderPaymentAmounts = orderPaymentAmounts(projectOrders);
             } catch (SettlementException exception) {
                 throw exception;
             } catch (RuntimeException exception) {
-                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
+                throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE, exception);
             }
             try {
-                paymentAmounts = List.copyOf(paymentAmounts);
+                orderPaymentAmounts = List.copyOf(orderPaymentAmounts);
             } catch (NullPointerException exception) {
-                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+                throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
             }
             ConfirmProjectSettlementCommand confirmCommand = new ConfirmProjectSettlementCommand(
                     outcome.projectId(),
                     outcome.creatorId(),
-                    paymentAmounts,
+                    orderPaymentAmounts,
                     command.scheduledDate(),
                     command.confirmedAt()
             );
@@ -271,23 +272,23 @@ public final class ProjectSettlementRunService {
         } catch (SettlementException exception) {
             throw exception;
         } catch (RuntimeException exception) {
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
+            throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE, exception);
         }
         Map<Long, ProjectOrders> ordersByProjectId = new HashMap<>();
         Set<Long> allOrderIds = new HashSet<>();
         for (ProjectOrders projectOrders : orderResults) {
             if (projectOrders == null
                     || ordersByProjectId.put(projectOrders.projectId(), projectOrders) != null) {
-                throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+                throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
             }
             for (OrderPayment order : projectOrders.orders()) {
                 if (!allOrderIds.add(order.orderId())) {
-                    throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+                    throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
                 }
             }
         }
         if (!ordersByProjectId.keySet().equals(projectIds)) {
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+            throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
         }
         validateSuccessfulProjectOrders(outcomes, ordersByProjectId);
         return Map.copyOf(ordersByProjectId);
@@ -306,7 +307,7 @@ public final class ProjectSettlementRunService {
                         .noneMatch(order -> order.paymentAmount().amount().signum() > 0))
                 .findAny()
                 .ifPresent(ignored -> {
-                    throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE);
+                    throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
                 });
     }
 
@@ -353,7 +354,7 @@ public final class ProjectSettlementRunService {
             if (exception instanceof SettlementException settlementException) {
                 throw settlementException;
             }
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
+            throw new SettlementException(PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE, exception);
         }
     }
 
@@ -409,7 +410,7 @@ public final class ProjectSettlementRunService {
         };
     }
 
-    private static List<Money> finalEffectivePaymentAmounts(ProjectOrders projectOrders) {
+    private static List<Money> orderPaymentAmounts(ProjectOrders projectOrders) {
         return projectOrders.orders().stream()
                 .map(OrderPayment::paymentAmount)
                 .toList();

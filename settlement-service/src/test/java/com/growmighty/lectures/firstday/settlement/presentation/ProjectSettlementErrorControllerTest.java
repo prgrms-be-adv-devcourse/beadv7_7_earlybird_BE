@@ -114,7 +114,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     @Test
     @DisplayName("Order가 완전한 주문 결제 금액을 제공하지 못하면 재시도 가능한 오류로 응답한다")
-    void rejectsSettlementWhenFinalEffectivePaymentAmountsAreUnavailable() throws Exception {
+    void rejectsSettlementWhenOrderPaymentInputsAreUnavailable() throws Exception {
         long creatorId = 92L;
         creatorPayoutProfileRepository.save(payoutReadyProfile(creatorId));
         externalDataAdapter.respondWith(92L, creatorId, List.of());
@@ -130,7 +130,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("최종 유효 결제 금액을 확인할 수 없습니다."));
+                .andExpect(jsonPath("$.error.message").value("주문 결제금액을 확인할 수 없습니다."));
     }
 
     @Test
@@ -153,7 +153,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("최종 유효 결제 금액을 확인할 수 없습니다."))
+                .andExpect(jsonPath("$.error.message").value("주문 결제금액을 확인할 수 없습니다."))
                 .andExpect(content().string(not(containsString("order adapter secret"))));
     }
 

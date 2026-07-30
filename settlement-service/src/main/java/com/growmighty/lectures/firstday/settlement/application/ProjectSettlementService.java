@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.application;
 
-import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PAYOUT_PROFILE_NOT_READY;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.SETTLEMENT_DATA_INCONSISTENT;
 
@@ -44,9 +44,9 @@ public class ProjectSettlementService {
         SettlementCalculationPolicy calculationPolicy = SettlementCalculationPolicy.current();
         SettlementBreakdown breakdown;
         try {
-            breakdown = calculationPolicy.calculate(command.finalEffectivePaymentAmounts());
+            breakdown = calculationPolicy.calculate(command.orderPaymentAmounts());
         } catch (IllegalArgumentException exception) {
-            throw new SettlementException(FINAL_EFFECTIVE_PAYMENT_AMOUNTS_UNAVAILABLE, exception);
+            throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE, exception);
         }
         if (!payoutProfile.canReceivePayout()) {
             throw new SettlementException(PAYOUT_PROFILE_NOT_READY);
