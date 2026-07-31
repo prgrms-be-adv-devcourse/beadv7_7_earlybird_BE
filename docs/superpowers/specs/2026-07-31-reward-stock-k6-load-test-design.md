@@ -36,6 +36,15 @@ JUnit과는 별개로 실측 트래픽으로도 재확인한다.
   이 헤더가 필요 없다.
 - 도구: k6. 스크립트 위치: `project-service/k6/reward-stock-load-test.js`
 
+**order-service는 우회한다.** 실제 운영에서는 order-service가 후원(주문) 생성 시
+`RewardFeignClient`를 통해 이 내부 API를 호출하지만(`RewardInternalController`
+주석 참고), 이번 테스트는 k6가 그 호출자 역할을 대신해 `decrease-stock`을 직접
+두드린다. order-service까지 태우면 실제 주문 생성 → 결제(payment-service, 현재
+스텁 구현) → reward 차감까지 체인이 늘어나서 "재고 차감 자체의 처리량"이 아니라
+체인 전체의 병목(특히 스텁 payment 지연)이 섞여 순수 TPS를 재기 어려워진다. 또한
+order-service는 project-service 스코프 밖(다른 팀원 담당)이라 이번 작업에서
+건드리지 않는다.
+
 ## 테스트 데이터 준비 (`setup()`)
 
 1. `POST /api/v1/projects` (`X-User-Id: 1`, `X-User-Role: CREATOR`) —
