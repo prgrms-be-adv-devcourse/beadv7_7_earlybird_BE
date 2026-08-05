@@ -57,6 +57,26 @@ Settlement core는 Order 주문별 결제금액을 소비해 성공 정산과 �
 
 실제 PG HTTP 연동, 자격 증명, 암호화 요청, smoke test와 webhook 구현은 제거했다. 지급 요청은 애플리케이션의 기존 선저장·결과 반영 트랜잭션 흐름을 그대로 지나지만 외부 네트워크나 실제 송금은 발생하지 않는다. 서비스 시작 로그에도 더미 지급대행임을 명시한다.
 
+## 패키지 구조
+
+Settlement는 DDD 4계층을 최상위 패키지로 사용한다.
+
+```text
+settlement
+├── presentation    HTTP controller, DTO, 오류 응답, 보안
+├── application     유스케이스 조율과 외부 통신 port
+│   ├── run         월별 프로젝트 결과 처리
+│   ├── settlement  성공 프로젝트 정산 확정
+│   ├── payout      지급대행 실행
+│   ├── cancellation 실패·취소 프로젝트 결제 취소
+│   ├── query       창작자·관리자 조회
+│   └── port        Project·Order·Payment·지급대행 seam
+├── domain          기술에 독립적인 model과 repository interface
+└── infrastructure  HTTP·dummy adapter, JPA 영속성, 기술 설정
+```
+
+의존 방향은 `presentation → application → domain`이며, `infrastructure`는 application port와 domain repository를 구현한다. Spring MVC·Security 설정은 presentation에, 클라이언트·JPA·시간 설정은 infrastructure에 두어 별도의 다섯 번째 `config` 계층을 만들지 않는다.
+
 ## 로컬 검증
 
 저장소 루트에서 Docker를 실행한 뒤 Settlement 테스트를 수행한다. MySQL 통합 테스트는 Testcontainers를 사용한다.
@@ -100,15 +120,7 @@ Content-Type: application/json
 
 Config server의 기존 값은 변경하지 않는다. 외부 요청자가 더미 지급 결과를 조작하는 공개 API는 제공하지 않으며 시나리오 설정은 로컬 실행과 테스트 seam으로만 사용한다.
 
-## 후속 문서·구현 동기화
+## 후속 작업
 
-1. [ADR-0006](../../docs/adr/0006-source-project-settlement-amounts-from-order.md): Order가 프로젝트별 주문 결제금액을 제공
-2. [이슈 11](../../.scratch/project-settlement/issues/11-expose-payment-inputs-by-order.md): superseded된 Payment 금액 조회 이력
-3. [이슈 12](../../.scratch/project-settlement/issues/12-expose-order-project-payment-inputs.md): Order가 프로젝트별 `orderId`, `paymentAmount` 목록을 제공
-4. [이슈 13](../../.scratch/project-settlement/issues/13-expose-idempotent-payment-cancellation.md): Payment 단건 `orderId` 전액 환불 happy-case 소비와 후속 멱등 provider 계약
-5. [이슈 14](../../.scratch/project-settlement/issues/14-orchestrate-project-outcome-settlement.md): Settlement의 성공 정산과 실패·취소 결제 취소 오케스트레이션
-6. [이슈 15](../../.scratch/project-settlement/issues/15-harden-project-settlement-internal-contracts.md): 내부 계약 인증·추적·오류·호환성 정비
-7. [이슈 16](../../.scratch/project-settlement/issues/16-verify-project-outcome-flow-e2e.md): 전체 흐름 E2E와 운영 전환 검증
-8. [이슈 17](../../.scratch/project-settlement/issues/17-automate-dummy-payout-reconciliation.md): 더미 지급 결과 진행과 재시도 자동화
-
-이슈 05의 더미 지급대행이 완료되어 이슈 17의 선행 조건이 해소됐다. Config server 변경은 별도 승인 전까지 수행하지 않는다.
+- 현재 우선순위와 남은 작업은 [프로젝트 정산 후속 구조 이슈](../../.scratch/project-settlement/spec.md#후속-구조-이슈)에서 추적한다.
+- 파일별 책임과 제거 판단은 [Settlement 파일 인벤토리](../../docs/settlement-file-inventory.md)를 따른다.

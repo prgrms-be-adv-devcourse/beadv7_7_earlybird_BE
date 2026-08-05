@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
-import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.math.BigDecimal;

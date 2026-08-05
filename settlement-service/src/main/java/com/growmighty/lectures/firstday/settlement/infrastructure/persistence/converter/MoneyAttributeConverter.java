@@ -1,6 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.converter;
 
-import com.growmighty.lectures.firstday.settlement.domain.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 import java.math.BigDecimal;

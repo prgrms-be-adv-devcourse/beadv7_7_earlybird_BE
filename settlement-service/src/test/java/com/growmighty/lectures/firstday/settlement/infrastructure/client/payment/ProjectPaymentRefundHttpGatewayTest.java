@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.COMPLETED;
-import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
-import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_FAILED;
+import static com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus.COMPLETED;
+import static com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason.PROJECT_CANCELLED;
+import static com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason.PROJECT_FAILED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.ExpectedCount.once;
@@ -14,10 +14,10 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationGateway;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationRequest;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationResult;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationRequest;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationResult;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason;
 import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;

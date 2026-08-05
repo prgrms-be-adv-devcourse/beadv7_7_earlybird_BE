@@ -10,9 +10,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
 import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;

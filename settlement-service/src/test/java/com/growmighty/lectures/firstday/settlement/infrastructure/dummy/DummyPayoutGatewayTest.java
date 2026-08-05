@@ -3,11 +3,11 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.growmighty.lectures.firstday.settlement.application.port.PayoutGatewayException;
-import com.growmighty.lectures.firstday.settlement.application.port.PayoutGatewayResult;
-import com.growmighty.lectures.firstday.settlement.application.port.ScheduledPayoutRequest;
-import com.growmighty.lectures.firstday.settlement.domain.Money;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutAttemptStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGatewayException;
+import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGatewayResult;
+import com.growmighty.lectures.firstday.settlement.application.port.payout.ScheduledPayoutRequest;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
 import java.time.LocalDate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

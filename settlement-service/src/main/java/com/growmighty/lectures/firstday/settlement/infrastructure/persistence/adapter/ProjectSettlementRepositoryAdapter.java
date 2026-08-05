@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter;
 
-import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.ProjectSettlementJpaEntity;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectSettlementRepository;
 import java.util.List;

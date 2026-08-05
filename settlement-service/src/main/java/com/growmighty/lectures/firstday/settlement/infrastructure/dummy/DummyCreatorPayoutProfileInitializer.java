@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
