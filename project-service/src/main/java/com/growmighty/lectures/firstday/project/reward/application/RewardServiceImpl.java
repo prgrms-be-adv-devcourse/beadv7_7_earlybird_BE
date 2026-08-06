@@ -8,18 +8,15 @@ import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.response.RewardResponse;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
-import com.growmighty.lectures.firstday.project.reward.domain.StockChangeLog;
-import com.growmighty.lectures.firstday.project.reward.domain.StockChangeOperation;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
-import com.growmighty.lectures.firstday.project.reward.infrastructure.StockChangeLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -33,7 +30,7 @@ public class RewardServiceImpl implements RewardService {
     // ProjectServiceImpl이 반대로 RewardService(ObjectProvider<RewardService>)를 필요로 해서
     // 생기는 순환 빈 의존을 끊기 위해 ObjectProvider로 지연 조회한다.
     private final ObjectProvider<ProjectService> projectServiceProvider;
-    private final StockChangeLogRepository stockChangeLogRepository;
+    private final RewardStockTransactionExecutor rewardStockTransactionExecutor;
 
     @Override
     @Transactional
@@ -167,26 +164,19 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * @Retryable이 @Transactional을 감싸도록 순서가 보장돼야 한다(ProjectServiceApplication의 @EnableRetry order 설정).
-     * 그래야 낙관적 락 충돌로 커밋이 실패했을 때 매 재시도가 새 트랜잭션에서 엔티티를 다시 읽어온다.
-     * 프로젝트가 지금 이 순간 열려있는지(ProjectStatusView.open())도 같이 확인한다 — 마감 배치가 아직
-     * 안 돈 상태에서도 마감시각이 지났으면 즉시 주문을 막기 위함(마감 배치 주기와 무관하게 동작).
+     * 재시도 루프(@Retryable)와 트랜잭션 경계(@Transactional)를 물리적으로 다른 빈으로 분리했다 —
+     * rewardStockTransactionExecutor가 별도 프록시라, 재시도마다 이 래퍼가 그 프록시를 다시 호출해야만
+     * 매 attempt가 새 트랜잭션에서 엔티티를 다시 읽어온다는 게 self-invocation 걱정 없이 구조로 보장된다.
+     * 이 메서드 자체는 propagation=NOT_SUPPORTED로 트랜잭션 없이 실행돼야 한다 — 클래스 레벨
+     * @Transactional(readOnly=true)가 기본 적용되는데, 그걸 그대로 두면 이 메서드가 다시 트랜잭션을
+     * 걸치게 돼 분리한 의미가 없어진다.
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void decreaseStock(Long rewardId, int quantity, Long orderId) {
-        if (!tryRegisterStockChange(orderId, rewardId, StockChangeOperation.DECREASE)) {
-            return; // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
-        }
-        Reward reward = getRewardEntity(rewardId);
-        findProjectStatus(reward.getProjectId())
-            .filter(ProjectStatusView::open)
-            .orElseThrow(() -> new IllegalStateException(
-                "마감되었거나 진행중이 아닌 프로젝트의 리워드는 주문할 수 없습니다. rewardId=" + rewardId));
-        reward.decreaseStock(quantity);
+        rewardStockTransactionExecutor.decreaseStock(rewardId, quantity, orderId);
     }
-
     /**
      * decreaseStock/restoreStock이 파라미터 시그니처(Long, int, Long)가 같아서, operation별로 서로
      * 다른 @Recover를 시그니처 자동 매칭에 맡기면 둘 다 먼저 선언된 쪽만 호출되는 문제가 있었다.
@@ -208,16 +198,13 @@ public class RewardServiceImpl implements RewardService {
     /**
      * decreaseStock과 같은 이유로 @Retryable — 동시 취소·환불로 여러 restoreStock 요청이
      * 같은 리워드에 몰리면 낙관적 락 충돌이 날 수 있어, 재시도 없이는 정상적인 동시 복원 요청도
-     * 그냥 실패해버린다.
+     * 그냥 실패해버린다. decreaseStock과 같은 이유로 재시도 루프/트랜잭션 경계를 분리했다.
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverRestoreStockConflict")
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void restoreStock(Long rewardId, int quantity, Long orderId) {
-        if (!tryRegisterStockChange(orderId, rewardId, StockChangeOperation.RESTORE)) {
-            return; // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
-        }
-        getRewardEntity(rewardId).restoreStock(quantity);
+        rewardStockTransactionExecutor.restoreStock(rewardId, quantity, orderId);
     }
 
     /** recoverDecreaseStockConflict와 동일한 instanceof 분기 패턴 — restoreStock 전용 메시지. */
@@ -229,22 +216,6 @@ public class RewardServiceImpl implements RewardService {
                     + ", orderId=" + orderId);
         }
         throw e;
-    }
-
-    /**
-     * (orderId, rewardId, operation) 조합을 stock_change_logs에 기록한다 — 유니크 제약 위반이면
-     * 이미 처리된 요청이라는 뜻이라 false를 돌려줘 호출자가 재고 변경을 건너뛰게 한다. 같은
-     * @Transactional 안에서 호출되므로 이 로그 INSERT와 뒤이은 재고 변경은 원자적으로 커밋/롤백된다
-     * — 낙관적 락 충돌로 트랜잭션 전체가 롤백되면 이 로그도 함께 사라지고, @Retryable 재시도마다
-     * 로그 INSERT부터 다시 수행된다(#195, 설계 문서의 "선-INSERT 후 예외 포착" 결정).
-     */
-    private boolean tryRegisterStockChange(Long orderId, Long rewardId, StockChangeOperation operation) {
-        try {
-            stockChangeLogRepository.save(StockChangeLog.of(orderId, rewardId, operation));
-            return true;
-        } catch (DataIntegrityViolationException e) {
-            return false;
-        }
     }
 
     /** ProjectServiceImpl.validateOwnership과 동일한 관례 — 리워드는 자기 creatorId가 없어 부모 프로젝트 걸 본다. */

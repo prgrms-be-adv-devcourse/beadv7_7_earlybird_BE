@@ -71,9 +71,16 @@ class RewardServiceImplRetryTest {
         }
 
         @Bean
+        RewardStockTransactionExecutor rewardStockTransactionExecutor(
+                RewardRepository rewardRepository, ObjectProvider<ProjectService> projectServiceProvider,
+                StockChangeLogRepository stockChangeLogRepository) {
+            return new RewardStockTransactionExecutor(rewardRepository, projectServiceProvider, stockChangeLogRepository);
+        }
+
+        @Bean
         RewardService rewardService(RewardRepository rewardRepository, ObjectProvider<ProjectService> projectServiceProvider,
-                                     StockChangeLogRepository stockChangeLogRepository) {
-            return new RewardServiceImpl(rewardRepository, projectServiceProvider, stockChangeLogRepository);
+                                     RewardStockTransactionExecutor rewardStockTransactionExecutor) {
+            return new RewardServiceImpl(rewardRepository, projectServiceProvider, rewardStockTransactionExecutor);
         }
     }
 
