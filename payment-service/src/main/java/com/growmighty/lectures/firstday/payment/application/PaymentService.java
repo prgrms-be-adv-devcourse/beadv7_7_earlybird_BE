@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentGateway  paymentGateway; //취소 메서드 수정후 삭제 예정
-    private final PaymentApprovalSagaService paymentApprovalSagaService;
+    private final PaymentApprovalSagaOrchestrator paymentApprovalSagaService;
 
     @Transactional
     public PaymentPreparationInfo prepare(

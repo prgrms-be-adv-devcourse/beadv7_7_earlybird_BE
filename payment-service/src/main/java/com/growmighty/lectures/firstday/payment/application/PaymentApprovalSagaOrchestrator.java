@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
-public class PaymentApprovalSagaService {
+public class PaymentApprovalSagaOrchestrator {
 
     private final PaymentConfirmationService paymentConfirmationService;
     private final PaymentGateway paymentGateway;
