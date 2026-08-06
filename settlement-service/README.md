@@ -74,11 +74,10 @@ dummy 입력은 성공 프로젝트 1건과 100,000원 주문 1건을 제공한�
 | `GET` | `/api/v1/settlements/all` | `ADMIN` | 전체 프로젝트 정산 내역 목록 |
 | `GET` | `/api/v1/settlements/all/{settlementId}` | `ADMIN` | 프로젝트 정산 상세와 지급 시도 목록 |
 
-월 실행 요청은 Settlement 서비스에 직접 호출하는 내부 API다.
+인증·인가는 Gateway가 담당하고 Settlement는 전달된 사용자 식별자를 신뢰한다. 월 실행 요청은 내부 API다.
 
 ```http
 POST /internal/v1/settlements/runs
-Authorization: Bearer <ADMIN_JWT>
 Content-Type: application/json
 
 {
@@ -109,18 +108,10 @@ Config Server 설정은 이 모듈의 요청 범위가 아니므로 여기서 �
 
 ```text
 settlement
-├── presentation     HTTP API, DTO, 보안, 오류 응답
+├── presentation     HTTP API, DTO, 오류 응답
 ├── application      유스케이스와 외부 통신 port
 ├── domain           도메인 모델과 repository interface
 └── infrastructure   HTTP·dummy adapter, JPA 구현, 기술 설정
 ```
 
 의존 방향은 `presentation → application → domain`이며 infrastructure가 application port와 domain repository를 구현한다.
-
-## 관련 문서
-
-- [Settlement 컨텍스트](../../CONTEXT.md)
-- [프로젝트 정산 시나리오](../../docs/domain/settlement-service-scenarios.md)
-- [외부 모듈 계약](../../.scratch/project-settlement/cross-module-data-contracts.md)
-- [ADR-0006: 정산 금액은 Order에서 가져온다](../../docs/adr/0006-source-project-settlement-amounts-from-order.md)
-- [후속 구조 이슈](../../.scratch/project-settlement/spec.md#후속-구조-이슈)
