@@ -41,7 +41,7 @@ public class TossPaymentGateway implements PaymentGateway {
                 .body(TossPaymentResponse.class);
 
             if (response == null || !"DONE".equals(response.status())) {
-                throw new com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayException(
+                throw new PaymentGatewayException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     PaymentGatewayFailureType.UNCERTAIN,
                     "토스 승인 결과를 확인할 수 없습니다."
@@ -98,15 +98,16 @@ public class TossPaymentGateway implements PaymentGateway {
 
     }
 
-    private com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayException
-    toPaymentGatewayException(
+    //상태 유형 결정 메서드
+    private PaymentGatewayException toPaymentGatewayException(
         RestClientResponseException exception
     ) {
         try {
-            TossErrorResponse error = objectMapper.readValue(
+            TossErrorResponse errorResponse = objectMapper.readValue(
                 exception.getResponseBodyAsString(),
                 TossErrorResponse.class
             );
+
 
             HttpStatus status = exception.getStatusCode().is5xxServerError()
                 ? HttpStatus.SERVICE_UNAVAILABLE
@@ -114,8 +115,8 @@ public class TossPaymentGateway implements PaymentGateway {
 
             return new PaymentGatewayException(
                 status,
-                PaymentGatewayFailureType.UNCERTAIN,
-                error.message()
+                resolveFailureType(exception, errorResponse),
+                errorResponse.message()
             );
         } catch (JsonProcessingException ignored) {
             return new PaymentGatewayException(
@@ -124,5 +125,22 @@ public class TossPaymentGateway implements PaymentGateway {
                 "토스 결제 승인 중 알 수 없는 오류가 발생했습니다."
             );
         }
+    }
+
+    private PaymentGatewayFailureType resolveFailureType(
+        RestClientResponseException exception,
+        TossErrorResponse errorResponse
+    ) {
+        int statusCode = exception.getStatusCode().value();
+
+        if (exception.getStatusCode().is5xxServerError()
+            || statusCode == HttpStatus.REQUEST_TIMEOUT.value()
+            || statusCode == HttpStatus.TOO_MANY_REQUESTS.value()
+            || "ALREADY_PROCESSED_PAYMENT".equals(errorResponse.code())
+        ) {
+            return PaymentGatewayFailureType.UNCERTAIN;
+        }
+
+        return PaymentGatewayFailureType.DEFINITIVE;
     }
 }
