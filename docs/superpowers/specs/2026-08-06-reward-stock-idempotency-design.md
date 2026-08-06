@@ -22,15 +22,19 @@ project-service는 이미 처리를 마쳤는데 order-service는 실패로 착�
 
 ## 스코프
 
-**project-service만** 다룬다. order-service가 실제로 멱등키(`orderId`)를 실어 보내도록 고치는 작업은 담당자가
-다른 서비스(강대혁 소유 아님)라 이번 범위 밖이며, 별도 GitHub 이슈로 넘긴다.
-
-이 스코프 결정의 함의를 명확히 해둔다: **`orderId`를 캐치(caller가 보내는 상관관계 식별자) 없이 멱등성을
-보장하는 것은 원천적으로 불가능하다.** `rewardId`+`quantity`만으로 중복을 판별하려 하면, 서로 다른 두 주문이
+**project-service 구현이 먼저 나간다.** `orderId`를 캐치(caller가 보내는 상관관계 식별자) 없이 멱등성을
+보장하는 것은 원천적으로 불가능하다 — `rewardId`+`quantity`만으로 중복을 판별하려 하면, 서로 다른 두 주문이
 우연히 같은 리워드를 같은 수량으로 주문한 정상 케이스(인기 리워드일수록 흔함)를 중복으로 오인해 재고를 누락
-차감하는 실제 버그가 된다. 따라서 이번 작업은 **project-service 쪽 배선(수신·판별 로직)을 미리 구현**해두는
-것이고, order-service가 후속 작업으로 `orderId`를 실어 보내기 전까지는 실질 효과가 없다 — board-service의
-`getCreator` 계약을 project-service 구현 전에 미리 넣어둔 것과 같은 성격의 선행 작업이다.
+차감하는 실제 버그가 된다. 그래서 `StockChangeRequest.orderId`는 **필수(`@NotNull`)**로 설계한다 —
+nullable로 두고 하위 호환 경로를 남기지 않는다.
+
+**이건 계약을 깨는 변경이다.** order-service의 `RewardFeignClient.sendDecreaseStock`/`sendRestoreStock`은
+아직 `orderId`를 보내지 않는다(담당자가 다른 서비스라 이번 스코프 밖). project-service의 이 변경이 먼저
+배포되면, order-service가 따라오기 전까지 모든 `decrease-stock`/`restore-stock` 호출이 `orderId` 누락으로
+400 검증 실패 — 실제 주문/취소 흐름이 깨진다. 그래서 이 설계 문서와 함께 **order-service 쪽에 `orderId`를
+실어 보내달라는 GitHub 이슈를 이번에 같이 등록**해 담당자에게 알리고, 두 변경이 실제로는 순차적으로(또는
+가능한 한 가깝게) 배포되도록 조율한다 — board-service가 `getCreator` 계약을 project-service 구현 전에
+미리 넣어둔 것과 반대 방향의(우리가 먼저 계약을 요구하는) 같은 성격의 크로스 서비스 조율이다.
 
 ## 멱등키
 
@@ -77,11 +81,12 @@ public class StockChangeLog extends BaseEntity {
 ```java
 public record StockChangeRequest(
     @NotNull @Positive Integer quantity,
-    Long orderId  // nullable — order-service가 이 필드를 채워 보내기 전까지는 항상 null
+    @NotNull Long orderId
 ) {}
 ```
 
-`orderId`가 없으면(`null`) 멱등성 체크를 건너뛰고 오늘과 동일하게 바로 적용한다 — 하위 호환.
+order-service가 아직 이 필드를 보내지 않으므로, order-service 쪽 변경이 배포되기 전까지는 이 API를 호출하는
+모든 요청이 400으로 거부된다 — 위 "스코프" 절의 배포 조율이 필요한 이유.
 
 ### `RewardServiceImpl.decreaseStock` / `restoreStock` 변경
 
@@ -92,12 +97,10 @@ public record StockChangeRequest(
            backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
 @Transactional
 public void decreaseStock(Long rewardId, int quantity, Long orderId) {
-    if (orderId != null) {
-        try {
-            stockChangeLogRepository.save(new StockChangeLog(orderId, rewardId, StockChangeOperation.DECREASE));
-        } catch (DataIntegrityViolationException e) {
-            return; // 이미 처리된 요청 — 조용히 종료(200 no-op)
-        }
+    try {
+        stockChangeLogRepository.save(new StockChangeLog(orderId, rewardId, StockChangeOperation.DECREASE));
+    } catch (DataIntegrityViolationException e) {
+        return; // 이미 처리된 요청 — 조용히 종료(200 no-op)
     }
     Reward reward = getRewardEntity(rewardId);
     findProjectStatus(reward.getProjectId())
@@ -107,18 +110,18 @@ public void decreaseStock(Long rewardId, int quantity, Long orderId) {
 }
 ```
 
-`restoreStock`도 대칭으로 동일한 패턴을 적용한다.
+`restoreStock`도 대칭으로 동일한 패턴을 적용한다. `RewardService` 인터페이스와 `RewardInternalController`의
+호출부(`rewardService.decreaseStock(rewardId, request.quantity(), request.orderId())`)도 시그니처에 맞춰
+같이 바뀐다.
 
 ## 데이터 흐름
 
 ```
-1. orderId == null → 멱등성 체크 건너뜀 → 기존 로직 그대로 (하위 호환 경로)
-2. orderId != null:
-   a. StockChangeLog INSERT 시도 (같은 트랜잭션 안)
-      → 유니크 제약 위반 시 DataIntegrityViolationException
-   b. 예외 발생 → catch → 즉시 return (이미 처리된 요청, 200 no-op)
-   c. 예외 없음 → 최초 요청 → Reward.decreaseStock/restoreStock 진행
-3. 커밋 시 로그 INSERT + 재고 변경이 원자적으로 함께 반영된다.
+1. StockChangeLog INSERT 시도 (같은 트랜잭션 안)
+   → 유니크 제약 위반 시 DataIntegrityViolationException
+2. 예외 발생 → catch → 즉시 return (이미 처리된 요청, 200 no-op)
+3. 예외 없음 → 최초 요청 → Reward.decreaseStock/restoreStock 진행
+4. 커밋 시 로그 INSERT + 재고 변경이 원자적으로 함께 반영된다.
    낙관적 락 충돌(ObjectOptimisticLockingFailureException) 시 트랜잭션 전체(로그 포함)가
    롤백되고 @Retryable이 재시도 — 재시도마다 로그 INSERT부터 다시 수행되므로 일관성이 깨지지 않는다.
 ```
@@ -138,13 +141,14 @@ public void decreaseStock(Long rewardId, int quantity, Long orderId) {
   `@Recover`(`recoverDecreaseStockConflict`/`recoverRestoreStockConflict`)는
   `ObjectOptimisticLockingFailureException` 전용이라 이 예외와는 무관 — 완전히 별개 경로이며 기존
   재시도/복구 로직에 영향 없음.
-- `orderId == null`인 기존 호출 경로는 시그니처·동작이 그대로라 회귀 없음.
+- `orderId`가 없는 요청은 Bean Validation(`@NotNull`)에서 400으로 거부된다 — order-service가 아직
+  이 필드를 안 보내는 동안은 이 API 호출 전체가 실패하므로, 배포 조율 없이 이 변경만 먼저 나가면 안 된다.
 
 ## 테스트
 
 - `RewardServiceImplTest` 단위 테스트 추가:
   - 같은 `(orderId, rewardId, DECREASE)`로 2번 호출 → `remainingQuantity`는 1번만 줄어들고 예외 없음
-  - `orderId == null` → 기존 동작 그대로 적용(회귀 방지)
+  - `orderId` 누락 요청 → `RewardInternalController` 레벨에서 400(`@Valid` 검증 실패)
   - 같은 `(orderId, rewardId)`에 대해 decrease 후 restore → 둘 다 정상 적용(별개 `operation`이라 충돌 안 함)
 - `RewardConcurrencyIntegrationTest`와 같은 패턴(진짜 MySQL/Testcontainers, 진짜 스레드)으로 동시성 테스트
   추가: 같은 `(orderId, rewardId, DECREASE)`로 N개 스레드가 동시에 `decreaseStock` 호출 → 재고는 정확히
@@ -156,4 +160,10 @@ public void decreaseStock(Long rewardId, int quantity, Long orderId) {
   `OrderApiService.reserveStock`/`releaseStock`) — 별도 GitHub 이슈로 분리, 이번 스코프 밖.
 - Feign 기본 `Retryer` 정책 자체를 손보는 것(예: `CircuitBreakerFactory`로 감싸는 리팩토링) — order-service
   담당 영역이라 이번 범위 밖.
-- `StockChangeLog` 테이블의 보관 기간/정리(retention) 정책 — 지금 규모에서는 불필요, 필요해지면 별도 논의.
+- `StockChangeLog` 테이블의 보관 기간/정리(retention) 정책 — **의도적으로 트레이드오프로 남겨둔다.**
+  로그는 실제로 성공한 재고 변경 건수만큼만 쌓이고(실패·재시도는 트랜잭션 롤백으로 로그도 함께 사라짐),
+  유니크 제약 인덱스 조회는 행이 늘어나도 로그 시간(`O(log n)`)으로 스케일해 조회 성능 저하는 없다 —
+  이 프로젝트 규모(데모/평가용)에서는 디스크 용량도 문제될 수준이 아니다. 반면 지금 정리 정책까지
+  설계하면 "언제 지워도 안전한가"(예: 프로젝트 정산 완료 여부) 판단 로직과 배치 스케줄러가 추가로
+  필요해져 복잡도만 늘어난다. 그래서 지금은 무기한 보관하고, 실제로 용량/성능 문제가 관측되면 그때
+  별도로 설계한다.
