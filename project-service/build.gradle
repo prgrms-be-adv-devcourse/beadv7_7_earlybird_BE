@@ -2,6 +2,17 @@ plugins {
     id 'org.springframework.boot'   // 실행 가능한 서비스이므로 Boot 플러그인 적용 (버전은 루트에 등록됨)
 }
 
+dependencyManagement {
+    imports {
+        // Spring AI(OpenAI 임베딩)는 프로젝트 전체가 아니라 project-service만 쓰므로 루트가 아니라
+        // 여기서 BOM을 받는다. Boot 4.1과 호환되는 최신 GA 버전 — 첫 의존성 resolve 시 실패하면
+        // Maven Central에 없는 마일스톤/스냅샷일 수 있으니, 그 경우 루트 build.gradle의
+        // `repositories { mavenCentral() }` 옆에 `maven { url 'https://repo.spring.io/milestone' }`를
+        // 추가한다.
+        mavenBom 'org.springframework.ai:spring-ai-bom:1.0.0'
+    }
+}
+
 dependencies {
     implementation project(':common')
 
@@ -39,4 +50,10 @@ dependencies {
     // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
     // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+
+    // 프로젝트 키워드 검색(nori) — 프레임워크 기본 통합(ElasticsearchOperations) 사용, 커스텀 HTTP 클라이언트 없음.
+    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+
+    // 실제 nori가 포함된 ES(로컬 infrastructure/elasticsearch/Dockerfile과 동일 이미지)로 색인/검색을 검증.
+    testImplementation 'org.testcontainers:elasticsearch'
 }
