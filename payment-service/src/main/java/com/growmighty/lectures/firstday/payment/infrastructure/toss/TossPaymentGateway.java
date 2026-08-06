@@ -8,6 +8,9 @@ import com.growmighty.lectures.firstday.payment.application.exception.PaymentGat
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossConfirmRequest;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossErrorResponse;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossPaymentResponse;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.retry.Retry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -18,6 +21,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.math.BigDecimal;
+import java.util.function.Supplier;
 
 @Component
 @RequiredArgsConstructor
@@ -28,13 +32,36 @@ import java.math.BigDecimal;
 public class TossPaymentGateway implements PaymentGateway {
     private final RestClient tossRestClient;
     private final ObjectMapper objectMapper;
+    private final Retry paymentApprovalRetry;
+    private final CircuitBreaker paymentApprovalCircuitBreaker;
 
     @Override
     public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
+        Supplier<PgApproval> approvalSupplier = () -> requestApproval(paymentKey, pgOrderId, amount, idempotencyKey);
+        Supplier<PgApproval> retrySupplier = Retry.decorateSupplier(paymentApprovalRetry, approvalSupplier);
+        Supplier<PgApproval> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentApprovalCircuitBreaker, retrySupplier);
+
+        try {
+            return circuitBreakerSupplier.get();
+        } catch (CallNotPermittedException exception) {
+            throw new PaymentGatewayException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                PaymentGatewayFailureType.UNCERTAIN,
+                "토스 결제 승인 요청이 일시적으로 차단되었습니다."
+            );
+        }
+    }
+
+    private PgApproval requestApproval(
+        String paymentKey,
+        String pgOrderId,
+        BigDecimal amount,
+        String idempotencyKey
+    ) {
         try {
             TossPaymentResponse response = tossRestClient.post()
                 .uri("/v1/payments/confirm")
-                .header("Idempotency-key", idempotencyKey)
+                .header("idempotency-key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new TossConfirmRequest(paymentKey, pgOrderId, amount))
                 .retrieve()
@@ -47,23 +74,22 @@ public class TossPaymentGateway implements PaymentGateway {
                     "토스 승인 결과를 확인할 수 없습니다."
                 );
             }
+
             return new PgApproval(
                 response.paymentKey(),
                 response.orderId(),
                 response.totalAmount()
             );
-        } catch (RestClientResponseException e) {
-            throw toPaymentGatewayException(e);
-        } catch (ResourceAccessException e) {
+        } catch (RestClientResponseException exception) {
+            throw toPaymentGatewayException(exception);
+        } catch (ResourceAccessException exception) {
             throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 PaymentGatewayFailureType.UNCERTAIN,
                 "토스 결제 서버에 연결할 수 없습니다."
             );
         }
-
     }
-
     @Override
     public PgPayment getPayment(String paymentKey) {
         try {
