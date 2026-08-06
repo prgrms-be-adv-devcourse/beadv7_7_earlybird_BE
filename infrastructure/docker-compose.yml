@@ -2,7 +2,10 @@ x-service-defaults: &service-defaults
   environment:
     SPRING_PROFILES_ACTIVE: docker
     # 로컬 application.yml 의 config-server 주소(localhost)를 컨테이너 네트워크용으로 덮어쓴다.
-    SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+    # optional: 을 쓰지 않는다 — config fetch 가 실패해도 조용히 스프링 기본값(엉뚱한 포트/Eureka 주소)으로
+    # 뜨는 걸 막기 위해서다. fail-fast+retry(각 서비스 application.yml)가 재시도하다 그래도 실패하면
+    # 컨테이너가 죽고 restart: unless-stopped 가 재시작해 config-server 가 뜬 뒤 다시 시도하게 한다 (#192).
+    SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
   # logging.file.name(config repo)이 이미 spring.application.name으로 파일명을 구분해주므로,
   # 모든 서비스가 같은 호스트 디렉터리를 공유해도 로그 파일끼리 덮어쓰지 않는다.
   volumes:
@@ -140,7 +143,7 @@ services:
     # JWT 검증 키 — user-service 와 반드시 같은 값이어야 한다 (#164).
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
       JWT_SECRET: ${JWT_SECRET}
     ports:
       - "8000:8000"
@@ -183,7 +186,7 @@ services:
     # 두면 빈 문자열이 주입되어 FakePaymentGateway/TossPaymentGateway 둘 다 안 만들어지고 기동이 깨진다.
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-fake}
       PAYMENT_TOSS_SECRET_KEY: ${PAYMENT_TOSS_SECRET_KEY:-}
       PAYMENT_SECURITY_ENCRYPTION_KEY: ${PAYMENT_SECURITY_ENCRYPTION_KEY}
@@ -203,7 +206,7 @@ services:
     # JWT 발급 키 — gateway-server 와 반드시 같은 값이어야 한다 (#164).
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
       JWT_SECRET: ${JWT_SECRET}
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
@@ -254,7 +257,7 @@ services:
     # 값이 없으면(로컬 .env 미설정) 빈 문자열로 들어가고, board-service.yml 의 ":" 기본값이 마저 받아준다.
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
       GMAIL_USERNAME: ${GMAIL_USERNAME:-}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.

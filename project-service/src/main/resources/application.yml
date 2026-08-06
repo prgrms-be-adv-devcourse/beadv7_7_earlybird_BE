@@ -4,5 +4,14 @@ spring:
     name: project-service          # config-server 에서 내 설정 파일(project-service.yml)을 찾는 열쇠
   config:
     # 부팅할 때 config-server 에서 설정을 "수입"해 온다.
-    # optional: 은 config-server 가 꺼져 있어도 일단 뜨게 하는 보험.
-    import: optional:configserver:http://localhost:8888
+    # optional: 을 쓰지 않는다 — fetch 실패를 조용히 무시하고 스프링 기본값(엉뚱한 포트 등)으로
+    # 뜨는 대신, 아래 fail-fast+retry 로 재시도하다가 그래도 안 되면 기동 자체를 실패시킨다 (#192).
+    import: configserver:http://localhost:8888
+  cloud:
+    config:
+      fail-fast: true
+      retry:
+        max-attempts: 6
+        initial-interval: 3000
+        multiplier: 1.5
+        max-interval: 10000

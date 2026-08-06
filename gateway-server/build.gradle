@@ -30,5 +30,9 @@ dependencies {
     // JWT 검증 — ReactiveJwtDecoder, SecurityWebFilterChain 등 Spring Security 리액티브 리소스 서버 지원.
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 
+    // config-server fetch 실패 시 재시도(spring.cloud.config.retry.*)에 필요 — 클래스패스에 없으면
+    // ConfigClientRetryBootstrapper 가 조건 불충족으로 스킵되어 fail-fast 가 재시도 없이 즉시 실패한다 (#192).
+    implementation 'org.springframework.retry:spring-retry'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-webflux-test'
 }
