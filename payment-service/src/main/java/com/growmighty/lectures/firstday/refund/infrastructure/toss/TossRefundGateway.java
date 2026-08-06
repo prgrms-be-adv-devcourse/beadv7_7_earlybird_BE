@@ -2,9 +2,9 @@ package com.growmighty.lectures.firstday.refund.infrastructure.toss;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossErrorResponse;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossPaymentResponse;
-import com.growmighty.lectures.firstday.refund.application.exception.RefundGatewayException;
 import com.growmighty.lectures.firstday.refund.application.port.RefundGateway;
 import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import com.growmighty.lectures.firstday.refund.infrastructure.dto.TossCancelRequest;
@@ -45,16 +45,16 @@ public class TossRefundGateway implements RefundGateway {
                 throw new IllegalStateException("토스 결제가 취소 상태가 아닙니다. status = " + response.status());
             }
         } catch (RestClientResponseException e) {
-            throw toTossPaymentException(e);
+            throw toRefundGatewayException(e);
         } catch (ResourceAccessException e) {
-            throw new RefundGatewayException(
+            throw new BusinessException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "토스 결제 서버에 연결할 수 없습니다."
             );
         }
     }
 
-    private RefundGatewayException toTossPaymentException (RestClientResponseException exception) {
+    private BusinessException toRefundGatewayException(RestClientResponseException exception) {
         try {
             TossErrorResponse errorResponse = objectMapper.readValue(exception.getResponseBodyAsString(), TossErrorResponse.class);
 
@@ -62,12 +62,12 @@ public class TossRefundGateway implements RefundGateway {
                 ? HttpStatus.SERVICE_UNAVAILABLE
                 : HttpStatus.CONFLICT;
 
-            return new RefundGatewayException(
+            return new BusinessException(
                 status,
                 errorResponse.message()
             );
         } catch (JsonProcessingException ignored) {
-            return new RefundGatewayException(
+            return new BusinessException(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "토스 환불 처리 중 알 수 없는 오류가 발생했습니다."
             );
