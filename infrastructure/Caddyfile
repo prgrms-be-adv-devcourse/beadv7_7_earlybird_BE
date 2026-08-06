@@ -1,3 +1,9 @@
 earlybird-team5-api.duckdns.org {
-	reverse_proxy gateway-server:8000
+	handle_path /api/* {
+		reverse_proxy gateway-server:8000
+	}
+
+	handle {
+		reverse_proxy fe:80
+	}
 }
