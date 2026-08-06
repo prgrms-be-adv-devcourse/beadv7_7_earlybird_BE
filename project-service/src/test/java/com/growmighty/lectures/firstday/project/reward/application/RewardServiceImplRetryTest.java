@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.project.project.application.ProjectStatu
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.StockChangeLogRepository;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.response.RewardResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,8 +66,14 @@ class RewardServiceImplRetryTest {
         }
 
         @Bean
-        RewardService rewardService(RewardRepository rewardRepository, ObjectProvider<ProjectService> projectServiceProvider) {
-            return new RewardServiceImpl(rewardRepository, projectServiceProvider);
+        StockChangeLogRepository stockChangeLogRepository() {
+            return mock(StockChangeLogRepository.class);
+        }
+
+        @Bean
+        RewardService rewardService(RewardRepository rewardRepository, ObjectProvider<ProjectService> projectServiceProvider,
+                                     StockChangeLogRepository stockChangeLogRepository) {
+            return new RewardServiceImpl(rewardRepository, projectServiceProvider, stockChangeLogRepository);
         }
     }
 

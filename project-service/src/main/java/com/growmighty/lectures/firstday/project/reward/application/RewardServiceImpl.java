@@ -8,9 +8,13 @@ import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.response.RewardResponse;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.reward.domain.StockChangeLog;
+import com.growmighty.lectures.firstday.project.reward.domain.StockChangeOperation;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.StockChangeLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
@@ -29,6 +33,7 @@ public class RewardServiceImpl implements RewardService {
     // ProjectServiceImpl이 반대로 RewardService(ObjectProvider<RewardService>)를 필요로 해서
     // 생기는 순환 빈 의존을 끊기 위해 ObjectProvider로 지연 조회한다.
     private final ObjectProvider<ProjectService> projectServiceProvider;
+    private final StockChangeLogRepository stockChangeLogRepository;
 
     @Override
     @Transactional
@@ -170,7 +175,10 @@ public class RewardServiceImpl implements RewardService {
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
     @Transactional
-    public void decreaseStock(Long rewardId, int quantity) {
+    public void decreaseStock(Long rewardId, int quantity, Long orderId) {
+        if (!tryRegisterStockChange(orderId, rewardId, StockChangeOperation.DECREASE)) {
+            return; // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
+        }
         Reward reward = getRewardEntity(rewardId);
         findProjectStatus(reward.getProjectId())
             .filter(ProjectStatusView::open)
@@ -180,18 +188,19 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * decreaseStock/restoreStock이 파라미터 시그니처(Long, int)가 같아서, operation별로 서로 다른
-     * @Recover를 시그니처 자동 매칭에 맡기면 둘 다 먼저 선언된 쪽만 호출되는 문제가 있었다.
+     * decreaseStock/restoreStock이 파라미터 시그니처(Long, int, Long)가 같아서, operation별로 서로
+     * 다른 @Recover를 시그니처 자동 매칭에 맡기면 둘 다 먼저 선언된 쪽만 호출되는 문제가 있었다.
      * @Retryable의 recover 속성으로 이름을 직접 지정해 그 모호성을 없앴는데, recover 속성은
      * 메서드 하나만 가리킬 수 있어서 "락 충돌 전용 + catch-all" 2단 구조를 그대로 못 쓴다 — 대신
      * 이 메서드 하나가 RuntimeException을 폭넓게 받고 instanceof로 분기한다. else(원본 재던지기)가
      * 없으면 retryFor에 없는 예외(재고 부족 등)까지 여기로 흘러들어와 매칭 실패로 500이 되므로 필수.
      */
     @Recover
-    public void recoverDecreaseStockConflict(RuntimeException e, Long rewardId, int quantity) {
+    public void recoverDecreaseStockConflict(RuntimeException e, Long rewardId, int quantity, Long orderId) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
-                "재고 차감 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
+                "재고 차감 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity
+                    + ", orderId=" + orderId);
         }
         throw e;
     }
@@ -204,18 +213,38 @@ public class RewardServiceImpl implements RewardService {
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverRestoreStockConflict")
     @Transactional
-    public void restoreStock(Long rewardId, int quantity) {
+    public void restoreStock(Long rewardId, int quantity, Long orderId) {
+        if (!tryRegisterStockChange(orderId, rewardId, StockChangeOperation.RESTORE)) {
+            return; // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
+        }
         getRewardEntity(rewardId).restoreStock(quantity);
     }
 
     /** recoverDecreaseStockConflict와 동일한 instanceof 분기 패턴 — restoreStock 전용 메시지. */
     @Recover
-    public void recoverRestoreStockConflict(RuntimeException e, Long rewardId, int quantity) {
+    public void recoverRestoreStockConflict(RuntimeException e, Long rewardId, int quantity, Long orderId) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
-                "재고 복원 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
+                "재고 복원 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity
+                    + ", orderId=" + orderId);
         }
         throw e;
+    }
+
+    /**
+     * (orderId, rewardId, operation) 조합을 stock_change_logs에 기록한다 — 유니크 제약 위반이면
+     * 이미 처리된 요청이라는 뜻이라 false를 돌려줘 호출자가 재고 변경을 건너뛰게 한다. 같은
+     * @Transactional 안에서 호출되므로 이 로그 INSERT와 뒤이은 재고 변경은 원자적으로 커밋/롤백된다
+     * — 낙관적 락 충돌로 트랜잭션 전체가 롤백되면 이 로그도 함께 사라지고, @Retryable 재시도마다
+     * 로그 INSERT부터 다시 수행된다(#195, 설계 문서의 "선-INSERT 후 예외 포착" 결정).
+     */
+    private boolean tryRegisterStockChange(Long orderId, Long rewardId, StockChangeOperation operation) {
+        try {
+            stockChangeLogRepository.save(StockChangeLog.of(orderId, rewardId, operation));
+            return true;
+        } catch (DataIntegrityViolationException e) {
+            return false;
+        }
     }
 
     /** ProjectServiceImpl.validateOwnership과 동일한 관례 — 리워드는 자기 creatorId가 없어 부모 프로젝트 걸 본다. */

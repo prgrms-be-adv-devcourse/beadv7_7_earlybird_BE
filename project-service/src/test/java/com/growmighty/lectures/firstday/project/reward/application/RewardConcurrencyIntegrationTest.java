@@ -52,7 +52,10 @@ class RewardConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
             tasks.add(() -> rewardService.decreaseQuantity(rewardId, 1));
         }
         for (int i = 0; i < backerThreads; i++) {
-            tasks.add(() -> rewardService.decreaseStock(rewardId, 1));
+            long orderId = i; // 스레드마다 다른 후원(주문)이라 orderId도 달라야 한다 — 안 그러면
+                               // 새 멱등성 체크가 2번째부터를 전부 "중복 요청"으로 오인해 no-op 처리하고,
+                               // 이 테스트가 원래 검증하려는 "동시 요청 각각이 실제로 반영되는지"가 깨진다.
+            tasks.add(() -> rewardService.decreaseStock(rewardId, 1, orderId));
         }
 
         Throwable[] results = runAllConcurrently(tasks);
@@ -83,7 +86,8 @@ class RewardConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
             tasks.add(() -> rewardService.update(rewardId, 1L, increaseByOne));
         }
         for (int i = 0; i < backerThreads; i++) {
-            tasks.add(() -> rewardService.decreaseStock(rewardId, 1));
+            long orderId = i;
+            tasks.add(() -> rewardService.decreaseStock(rewardId, 1, orderId));
         }
 
         Throwable[] results = runAllConcurrently(tasks);
