@@ -29,8 +29,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers
 // 내장 DB 가 아니면 Boot 가 ddl-auto 를 기본 none 으로 두므로, 테스트 스키마 생성을 명시한다.
@@ -86,7 +88,7 @@ class OrderRepositoryTests {
         Long rewardId = 10L;
         Order order = Order.create(null, userId, projectId,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(179000), projectId, rewardId, 1)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
+                "Receiver", "010-0000-0000", "Seoul", "06236", UUID.randomUUID());
 
         assertThat(order.getId()).isNull();
 
@@ -117,7 +119,7 @@ class OrderRepositoryTests {
 
         Order order = Order.create(null, 1L, existingProjectId,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), existingProjectId, 10L, 1)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
+                "Receiver", "010-0000-0000", "Seoul", "06236", UUID.randomUUID());
 
         orderRepository.save(order);
         entityManager.flush();
@@ -127,6 +129,31 @@ class OrderRepositoryTests {
         assertThat(orderRepository.existsByProjectId(otherProjectId)).isFalse();
     }
 
+    @Disabled
+    @Test
+    @DisplayName("same user and idempotency key cannot create duplicate orders")
+    void sameUserAndIdempotencyKey_uniqueConstraint() {
+        UUID key = UUID.randomUUID();
+        orderRepository.saveAndFlush(order(1L, key));
+        entityManager.clear();
+
+        assertThatThrownBy(() -> orderRepository.saveAndFlush(order(1L, key)))
+                .isInstanceOf(RuntimeException.class);
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("different users may persist the same idempotency key")
+    void differentUsersSameIdempotencyKey_allowed() {
+        UUID key = UUID.randomUUID();
+
+        orderRepository.saveAndFlush(order(1L, key));
+        orderRepository.saveAndFlush(order(2L, key));
+
+        assertThat(orderRepository.findByUserIdAndOrderIdempotencyKey(1L, key)).isPresent();
+        assertThat(orderRepository.findByUserIdAndOrderIdempotencyKey(2L, key)).isPresent();
+    }
+
     private Order saveAndReload(Order order) {
         Order saved = orderRepository.saveAndFlush(order);
         entityManager.clear();
@@ -134,9 +161,13 @@ class OrderRepositoryTests {
     }
 
     private Order order() {
-        return Order.create(null, 1L, 100L,
+        return order(1L, UUID.randomUUID());
+    }
+
+    private Order order(Long userId, UUID orderIdempotencyKey) {
+        return Order.create(null, userId, 100L,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 100L, 10L, 1)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
+                "Receiver", "010-0000-0000", "Seoul", "06236", orderIdempotencyKey);
     }
 
     private RewardPort rewardPort() {

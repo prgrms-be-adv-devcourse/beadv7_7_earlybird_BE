@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 public record PlaceOrderRequest(
         @NotNull Long userId,
@@ -20,7 +21,8 @@ public record PlaceOrderRequest(
         @NotBlank String shippingAddress,
         @NotBlank String zipCode,
         @NotNull BigDecimal expectedItemsAmount,
-        @NotNull BigDecimal expectedTotalAmount
+        @NotNull BigDecimal expectedTotalAmount,
+        @NotNull UUID orderIdempotencyKey
 ) {
     public record OrderItemRequest(
             @NotNull Long rewardId,
@@ -38,6 +40,6 @@ public record PlaceOrderRequest(
                 .map(r -> new OrderLine(r.rewardId(), r.quantity(), r.expectedUnitPrice()))
                 .toList();
         return new PlaceOrderCommand(userId, projectId, lines, receiverName, receiverPhone, shippingAddress, zipCode,
-                expectedItemsAmount, expectedTotalAmount);
+                expectedItemsAmount, expectedTotalAmount, orderIdempotencyKey);
     }
 }

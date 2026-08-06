@@ -11,9 +11,12 @@ import org.hibernate.type.SqlTypes;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
-@Table(name = "orders")
+@Table(name = "orders", uniqueConstraints = @UniqueConstraint(
+        name = "uk_orders_user_id_idempotency_key",
+        columnNames = {"user_id", "order_idempotency_key"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
@@ -26,6 +29,9 @@ public class Order extends BaseEntity {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    @Column(name = "order_idempotency_key", nullable = false, updatable = false)
+    private UUID orderIdempotencyKey;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
@@ -64,9 +70,11 @@ public class Order extends BaseEntity {
     private String zipCode;
 
     private Order(Long id, Long userId, Long projectId, List<OrderItem> items,
-                  String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
+                  String receiverName, String receiverPhone, String shippingAddress, String zipCode,
+                  UUID orderIdempotencyKey) {
         validateItems(items);
         validateShippingInfo(receiverName, receiverPhone, shippingAddress, zipCode);
+        validateOrderIdempotencyKey(orderIdempotencyKey);
         this.id = id;
         items.forEach(this::addOrderItem);
         this.userId = userId;
@@ -75,13 +83,22 @@ public class Order extends BaseEntity {
         this.receiverPhone = receiverPhone;
         this.shippingAddress = shippingAddress;
         this.zipCode = zipCode;
+        this.orderIdempotencyKey = orderIdempotencyKey;
         this.status = OrderStatus.CREATED;
         recalculateAmounts();
     }
 
     public static Order create(Long id, Long userId, Long projectId, List<OrderItem> items,
-                               String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        return new Order(id, userId, projectId, items, receiverName, receiverPhone, shippingAddress, zipCode);
+                               String receiverName, String receiverPhone, String shippingAddress, String zipCode,
+                               UUID orderIdempotencyKey) {
+        return new Order(id, userId, projectId, items, receiverName, receiverPhone, shippingAddress, zipCode,
+                orderIdempotencyKey);
+    }
+
+    private void validateOrderIdempotencyKey(UUID orderIdempotencyKey) {
+        if (orderIdempotencyKey == null) {
+            throw new IllegalArgumentException("orderIdempotencyKey is required.");
+        }
     }
 
     private void validateItems(List<OrderItem> items) {
