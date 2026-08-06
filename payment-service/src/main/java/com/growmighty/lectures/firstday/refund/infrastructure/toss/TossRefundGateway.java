@@ -2,9 +2,9 @@ package com.growmighty.lectures.firstday.refund.infrastructure.toss;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.growmighty.lectures.firstday.payment.infrastructure.toss.TossPaymentException;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossErrorResponse;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossPaymentResponse;
+import com.growmighty.lectures.firstday.refund.application.exception.RefundGatewayException;
 import com.growmighty.lectures.firstday.refund.application.port.RefundGateway;
 import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import com.growmighty.lectures.firstday.refund.infrastructure.dto.TossCancelRequest;
@@ -47,15 +47,14 @@ public class TossRefundGateway implements RefundGateway {
         } catch (RestClientResponseException e) {
             throw toTossPaymentException(e);
         } catch (ResourceAccessException e) {
-            throw new TossPaymentException(
+            throw new RefundGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "TOSS_NETWORK_ERROR",
                 "토스 결제 서버에 연결할 수 없습니다."
             );
         }
     }
 
-    private TossPaymentException toTossPaymentException (RestClientResponseException exception) {
+    private RefundGatewayException toTossPaymentException (RestClientResponseException exception) {
         try {
             TossErrorResponse errorResponse = objectMapper.readValue(exception.getResponseBodyAsString(), TossErrorResponse.class);
 
@@ -63,15 +62,13 @@ public class TossRefundGateway implements RefundGateway {
                 ? HttpStatus.SERVICE_UNAVAILABLE
                 : HttpStatus.CONFLICT;
 
-            return new TossPaymentException(
+            return new RefundGatewayException(
                 status,
-                errorResponse.code(),
                 errorResponse.message()
             );
         } catch (JsonProcessingException ignored) {
-            return new TossPaymentException(
+            return new RefundGatewayException(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                "TOSS_UNKNOWN_ERROR",
                 "토스 환불 처리 중 알 수 없는 오류가 발생했습니다."
             );
         }

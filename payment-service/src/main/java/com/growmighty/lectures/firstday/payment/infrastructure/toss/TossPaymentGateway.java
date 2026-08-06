@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.payment.infrastructure.toss;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayException;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayFailureType;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossConfirmRequest;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossErrorResponse;
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossPaymentResponse;
@@ -38,25 +40,24 @@ public class TossPaymentGateway implements PaymentGateway {
                 .retrieve()
                 .body(TossPaymentResponse.class);
 
-            if (response == null) {
-                throw new IllegalStateException("토스 승인 응답이 비어있습니다.");
+            if (response == null || !"DONE".equals(response.status())) {
+                throw new com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    PaymentGatewayFailureType.UNCERTAIN,
+                    "토스 승인 결과를 확인할 수 없습니다."
+                );
             }
-
-            if (!"DONE".equals(response.status())) {
-                throw new IllegalStateException("토스 결제가 완료 상태가 아닙니다. status = " + response.status());
-            }
-
             return new PgApproval(
                 response.paymentKey(),
                 response.orderId(),
                 response.totalAmount()
             );
         } catch (RestClientResponseException e) {
-            throw toTossPaymentException(e);
+            throw toPaymentGatewayException(e);
         } catch (ResourceAccessException e) {
-            throw new TossPaymentException(
+            throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "TOSS_NETWORK_ERROR",
+                PaymentGatewayFailureType.UNCERTAIN,
                 "토스 결제 서버에 연결할 수 없습니다."
             );
         }
@@ -82,11 +83,11 @@ public class TossPaymentGateway implements PaymentGateway {
                 PgPaymentStatus.fromTossStatus(response.status())
             );
         } catch (RestClientResponseException e) {
-            throw toTossPaymentException(e);
+            throw toPaymentGatewayException(e);
         } catch (ResourceAccessException e) {
-            throw new TossPaymentException(
+            throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "TOSS_NETWORK_ERROR",
+                PaymentGatewayFailureType.UNCERTAIN,
                 "토스 결제 서버에 연결할 수 없습니다."
             );
         }
@@ -97,7 +98,8 @@ public class TossPaymentGateway implements PaymentGateway {
 
     }
 
-    private TossPaymentException toTossPaymentException(
+    private com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayException
+    toPaymentGatewayException(
         RestClientResponseException exception
     ) {
         try {
@@ -110,15 +112,15 @@ public class TossPaymentGateway implements PaymentGateway {
                 ? HttpStatus.SERVICE_UNAVAILABLE
                 : HttpStatus.CONFLICT;
 
-            return new TossPaymentException(
+            return new PaymentGatewayException(
                 status,
-                error.code(),
+                PaymentGatewayFailureType.UNCERTAIN,
                 error.message()
             );
         } catch (JsonProcessingException ignored) {
-            return new TossPaymentException(
+            return new PaymentGatewayException(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                "TOSS_UNKNOWN_ERROR",
+                PaymentGatewayFailureType.UNCERTAIN,
                 "토스 결제 승인 중 알 수 없는 오류가 발생했습니다."
             );
         }
