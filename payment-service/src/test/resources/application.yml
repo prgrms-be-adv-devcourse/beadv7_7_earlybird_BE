@@ -1,0 +1,19 @@
+# 테스트 전용 설정 — @DataJpaTest 등 슬라이스 테스트도 config-server 없이 독립 실행돼야 한다.
+# (test/resources 의 application.yml 이 main 의 것을 덮어쓰므로 여기서 자립적으로 채운다.)
+# 참고: @DataJpaTest(properties = {...})로 개별 테스트 클래스에서 주는 프로퍼티는 config data
+# import가 이미 끝난 뒤에 적용되어 spring.cloud.config.enabled=false 를 그렇게 주는 것만으로는
+# fail-fast 를 못 막는다 — 반드시 이 파일처럼 이른 시점에 로드되는 test/resources 쪽에 있어야 한다.
+spring:
+  application:
+    name: payment-service
+  cloud:
+    config:
+      # 테스트에선 config-server 에 접속하지 않는다.
+      enabled: false
+      import-check:
+        enabled: false
+
+# 테스트에선 Eureka 등록/조회를 시도하지 않는다 (명부 서버가 떠 있지 않음).
+eureka:
+  client:
+    enabled: false
