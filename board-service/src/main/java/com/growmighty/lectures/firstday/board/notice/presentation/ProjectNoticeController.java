@@ -16,29 +16,29 @@ import java.util.List;
 
 /** 창작자 공지(새 소식) API. TODO(팀): 인증 도입 후 창작자 본인 검증 추가 */
 @RestController
+@RequestMapping("/api/v1/notices")
 @RequiredArgsConstructor
 public class ProjectNoticeController {
     private final ProjectNoticeService noticeService;
 
-    @PostMapping("/projects/{projectId}/notices")
-    public ProjectNoticeResponse register(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
+    @PostMapping
+    public ProjectNoticeResponse register(@RequestParam Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
                                     @Valid @RequestBody ProjectNoticeRequest request) {
         return ProjectNoticeResponse.from(
             noticeService.register(new RegisterProjectNoticeCommand(projectId, authorId, request.title(), request.content())));
     }
 
-    @GetMapping("/projects/{projectId}/notices")
-    public List<ProjectNoticeResponse> getByProject(@PathVariable Long projectId) {
+    @GetMapping
+    public List<ProjectNoticeResponse> getByProject(@RequestParam Long projectId) {
         return ProjectNoticeResponse.from(noticeService.getByProject(projectId));
     }
 
-    // projectId는 프론트가 이미 같은 페이지 컨텍스트에서 들고 있는 값을 URL 구조상으로만 맞춘 것 — 별도 검증 없이 noticeId로 단건을 특정한다.
-    @GetMapping("/projects/{projectId}/notices/{noticeId}")
+    @GetMapping("/{noticeId}")
     public ProjectNoticeResponse getNotice(@PathVariable Long noticeId) {
         return ProjectNoticeResponse.from(noticeService.getNotice(noticeId));
     }
 
-    @PatchMapping("/projects/{projectId}/notices/{noticeId}")
+    @PatchMapping("/{noticeId}")
     public ProjectNoticeResponse update(@PathVariable Long noticeId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                                   @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole,
                                   @Valid @RequestBody ProjectNoticeRequest request) {
@@ -46,7 +46,7 @@ public class ProjectNoticeController {
             noticeService.update(new UpdateProjectNoticeCommand(noticeId, requesterId, requesterRole, request.title(), request.content())));
     }
 
-    @DeleteMapping("/projects/{projectId}/notices/{noticeId}")
+    @DeleteMapping("/{noticeId}")
     public Void delete(@PathVariable Long noticeId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                         @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         noticeService.delete(new DeleteProjectNoticeCommand(noticeId, requesterId, requesterRole));
