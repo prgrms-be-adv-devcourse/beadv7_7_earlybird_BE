@@ -53,3 +53,10 @@ jobs:
               docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml build "$svc"
             done
             docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d
+            # caddy bind-mounts Caddyfile by host path (./Caddyfile:/etc/caddy/Caddyfile:ro) -
+            # that path string never changes even when git pull replaces the file's contents, so
+            # plain `up -d` never sees a reason to recreate the container and caddy keeps serving
+            # whatever config it last loaded. Force it every deploy so routing changes always take
+            # effect (bit us in production: FE cutover shipped but Caddyfile's new /api split sat
+            # unloaded until a manual force-recreate).
+            docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d --force-recreate caddy
