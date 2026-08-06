@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.settlement.presentation;
 
-import static com.growmighty.lectures.firstday.settlement.presentation.TestJwtTokens.adminBearerToken;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,7 +37,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -73,7 +71,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         externalDataAdapter.respondWith(91L, 91L, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -101,7 +98,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         externalDataAdapter.respondWith(96L, creatorId, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -122,7 +118,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         externalDataAdapter.respondWith(92L, creatorId, List.of());
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -145,7 +140,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         );
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -165,7 +159,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         externalDataAdapter.failTargetReadWith(new IllegalStateException("project adapter secret"));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -197,7 +190,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -257,7 +249,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .header(HttpHeaders.AUTHORIZATION, adminBearerToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
