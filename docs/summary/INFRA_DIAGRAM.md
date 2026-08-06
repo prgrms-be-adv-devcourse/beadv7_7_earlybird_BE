@@ -63,7 +63,7 @@ flowchart TD
 ```mermaid
 flowchart TD
   USER2["사용자 브라우저"]
-  DNS["DuckDNS<br/>earlybird-team5-api.duckdns.org"]
+  DNS["DuckDNS<br/>earlybird-team5.duckdns.org"]
 
   subgraph EC2["EC2 · 2 vCPU · 수업 시간(9–18시)만 기동"]
     direction TB

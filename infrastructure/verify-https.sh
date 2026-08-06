@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-DOMAIN="${1:-earlybird-team5-api.duckdns.org}"
+DOMAIN="${1:-earlybird-team5.duckdns.org}"
 FAIL=0
 
 echo "1) HTTP -> HTTPS 리다이렉트 확인"
