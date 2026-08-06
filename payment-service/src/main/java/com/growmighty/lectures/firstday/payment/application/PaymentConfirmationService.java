@@ -31,8 +31,8 @@ public class PaymentConfirmationService {
     private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     /**
-     * PG 승인 전에 결제를 CONFIRMING 상태로 선점,
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
+     * 승인 멱등키와 결제정보를 반환하고, Ready -> Confirming 상태를 선점하는 메서드
      */
     @Transactional
     public PaymentConfirmationTarget startConfirmation(String paymentKey, String pgOrderId, BigDecimal requestedAmount) {
@@ -66,10 +66,7 @@ public class PaymentConfirmationService {
      * PG 승인 응답을 검증한 후 결제를 PAID 상태로 완료
      */
     @Transactional
-    public PaymentInfo completeConfirmation(
-        Long paymentId,
-        String requestedPaymentKey,
-        PaymentGateway.PgApproval approval) {
+    public PaymentInfo completeConfirmation(Long paymentId, String requestedPaymentKey, PaymentGateway.PgApproval approval) {
         Payment payment = findPayment(paymentId);
 
         if (!requestedPaymentKey.equals(approval.paymentKey())) {
@@ -85,6 +82,19 @@ public class PaymentConfirmationService {
         payment.confirm(approval.paymentKey());
         Payment savedPayment = paymentRepository.save(payment);
         savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 동일 상태 Outbox 중복 저장 방지
+
+        return PaymentInfo.from(savedPayment);
+    }
+
+    /**
+     * 승인 실패,
+     */
+    @Transactional
+    public PaymentInfo failConfirmation(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        payment.fail();
+        Payment savedPayment = paymentRepository.save(payment);
 
         return PaymentInfo.from(savedPayment);
     }
