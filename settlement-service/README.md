@@ -1,91 +1,80 @@
-# Settlement service
+# Settlement Service
 
-성공한 프로젝트의 결제 금액을 프로젝트 단위로 확정해 창작자 지급을 관리하고, 실패하거나 취소된 프로젝트는 관련 결제의 취소를 Payment에 요청한다. Project와 Order가 각각 판정한 결과·귀속을 Settlement가 식별자로 연결하되 그 판단을 다시 수행하지 않는다.
+프로젝트 결과에 따라 성공 프로젝트의 **프로젝트 정산과 창작자 지급**을 관리하고, 실패·취소 프로젝트의 **결제 취소**를 Payment에 요청한다.
 
-## 목표 실행 흐름
+Settlement는 다른 서비스의 판단을 대신하지 않는다.
+
+- Project: `projectId`, `creatorId`, 결과(`SUCCEEDED`, `FAILED`, `CANCELLED`)
+- Order: 프로젝트별 `orders(orderId, paymentAmount)`
+- Payment: 실패·취소 주문의 전액 환불 필요 여부와 처리 결과
+- Settlement: 성공 프로젝트의 금액 계산·확정, 지급 의무·지급 시도, 결제 취소 명령
+
+## 처리 흐름
 
 ```mermaid
 sequenceDiagram
-    participant Settlement
-    participant Project
-    participant Order
-    participant Payment
-    participant PG
+    participant S as Settlement
+    participant P as Project
+    participant O as Order
+    participant Pay as Payment
+    participant PG as Dummy payout
 
-    Settlement->>Project: 처리 대상 프로젝트 조회
-    Project-->>Settlement: projectId, creatorId, 프로젝트 결과
-    Settlement->>Order: 신규 projectIds의 주문 결제금액 일괄 조회
-    Order-->>Settlement: projectId별 orders(orderId, paymentAmount)
-    loop 프로젝트마다
-        alt 성공 프로젝트이고 주문 금액 계약이 완전함
-            Settlement->>Settlement: 프로젝트 정산과 지급 의무 생성
-            Settlement->>PG: 예약 지급 요청
-            PG-->>Settlement: 지급 결과
-        else 실패·취소 프로젝트
-            Settlement->>Payment: orderId별 단건 전액 환불 요청
-            Payment-->>Settlement: 주문별 COMPLETED
-        else 주문 금액 계약 오류
-            Settlement-->>Settlement: 부분 금액으로 확정하지 않음
-        end
+    S->>P: 결과별 프로젝트 조회
+    P-->>S: projectId, creatorId, status
+    S->>O: 프로젝트별 주문 조회
+    O-->>S: orders(orderId, paymentAmount)
+    alt SUCCEEDED
+        S->>S: 프로젝트 정산과 지급 의무 확정
+        S->>PG: 예약 지급 요청
+    else FAILED or CANCELLED
+        S->>Pay: orderId별 전액 환불 요청
     end
 ```
 
-- Project가 프로젝트 완료와 성공·실패·취소 결과를 판정한다.
-- Settlement는 Project에서 받은 `projectId` 목록을 Order에 전달한다.
-- 이미 확정된 프로젝트는 로컬 정산과 지급 의무를 먼저 복원해 Order 조회 대상에서 제외한다. 이후 `FAILED`·`CANCELLED`로 관찰되면 기존 정산을 유지하고 결과 전환 충돌로 처리한다.
-- Order는 주문의 단일 프로젝트 귀속과 주문별 `paymentAmount`를 소유하고 `projectId`별 `orderId`, `paymentAmount` 목록을 제공한다.
-- 성공 프로젝트는 Order가 제공한 주문별 결제금액으로 프로젝트 정산과 지급 의무를 생성하며 Payment에 금액이나 준비 상태를 조회하지 않는다.
-- 실패·취소 프로젝트는 프로젝트 정산과 지급 의무를 만들지 않고, Order에서 받은 `orderId`로 Payment에 프로젝트 결제 취소를 요청한다. 전액 환불 필요 여부와 실행 결과는 Payment가 소유한다.
-- Settlement는 Payment 호출 전에 주문별 `projectId`·`orderId`·프로젝트 결과 사유·멱등키를 저장하고 호출 뒤 마지막 관찰 결과를 반영한다. 현재 단건 Payment interface는 멱등키를 받지 않으므로 happy case의 `COMPLETED`만 재호출하지 않으며, 멱등 재개와 부분 실패 복구를 완료했다고 표현하지 않는다.
-- Settlement는 결제·취소·환불 상태를 다시 판정하거나 결제 단위 정산 원장을 저장하지 않는다. 결제 취소 명령 기록은 재실행을 위한 최소 오케스트레이션 정보다.
-- 창작자 지급은 Payment를 거치지 않고 Settlement가 PG에 직접 지급대행을 요청한다.
+성공 정산 금액은 Payment가 아니라 Order의 주문 결제금액에서 계산한다. 현행 정책은 결제·정산 대행 수수료 4%, 플랫폼 수수료 4%, 각 수수료의 부가세 10%이며 공제액은 원 미만을 버린다.
 
-현재 도메인 언어와 경계의 기준은 작업공간의 [Settlement CONTEXT](../../CONTEXT.md), [ADR-0006](../../docs/adr/0006-source-project-settlement-amounts-from-order.md)과 [내부 입력 계약](../../.scratch/project-settlement/cross-module-data-contracts.md)이다. ADR-0005의 성공 프로젝트 Payment 조회 결정은 ADR-0006으로 대체됐다.
+재실행 시 이미 확정된 프로젝트 정산과 완료된 결제 취소를 재사용한다. 기존 결과와 새 Project 결과가 충돌하면 저장된 원본을 바꾸지 않고 `OUTCOME_CONFLICT`로 반환한다.
 
-## 현재 구현 상태
+## 현재 구현 범위
 
-| Seam | 현재 구현 | 목표 대비 상태 |
-|---|---|---|
-| 프로젝트 처리 대상 | Project HTTP adapter가 `SUCCEEDED`·`FAILED`·`CANCELLED`를 각각 조회해 상태 일치와 응답 내·상태 간 중복을 검증하고 `ProjectOutcomeReader`로 전달한다. dummy는 `SUCCEEDED`만 반환한다. | Project 결과 조회와 결과별 분기 완료 |
-| 프로젝트별 주문 결제금액 | `ProjectOrderReader`의 운영 HTTP adapter가 `POST /internal/v1/orders/by-projects/query`를 호출해 `projectId별 orders(orderId, paymentAmount)`로 변환한다. 요청 프로젝트의 누락·중복·예상 밖 결과, 전역 주문 중복과 성공 프로젝트의 빈 목록·0원 합계를 정산 전에 거부하며 dummy도 같은 port를 사용한다. | 합의된 Order 계약 기준 소비 adapter·제한시간·실제 HTTP 검증 완료. 제공자 구현 완료는 사용자 가정이며 서비스 간 E2E는 별도 검증 필요 |
-| 성공 정산 금액 입력 | 성공 프로젝트는 Order의 주문별 `paymentAmount`를 직접 계산 정책에 전달한다. Payment에는 금액이나 준비 상태를 조회하지 않는다. | Order 금액 소비 전환 완료 |
-| 프로젝트 정산 확정 | 프로젝트별 정산과 지급 의무를 한 DB 트랜잭션에서 생성한다. 재실행은 기존 정산·지급 의무를 외부 조회 전에 복원하며 성공 결과는 `SETTLEMENT_ALREADY_CONFIRMED`, 실패·취소 결과는 `OUTCOME_CONFLICT`로 반환한다. 저장된 결제 취소 명령 뒤 성공으로 바뀌는 역방향 전환도 충돌로 차단한다. | 성공 정산과 양방향 결과 전환 충돌 검증 완료 |
-| 실패·취소 프로젝트 결제 취소 | 실행 서비스가 Order에서 받은 `orderId`로 주문별 명령을 선저장한 뒤 `ProjectPaymentCancellationGateway`를 호출한다. 운영 HTTP adapter는 Payment 단건 `POST /internal/v1/payments/orders/{orderId}/refund`를 순차 호출하고 `PROJECT_FAILED → GOAL_FAILED`, `PROJECT_CANCELLED → USER_CANCEL`로 호환 변환해 신뢰할 수 있는 `COMPLETED`만 반영한다. | 단건 happy-case adapter·제한시간·실제 HTTP 검증 완료. provider 멱등키·batch·부분 실패 복구는 지원되지 않으며 실제 서비스 간 E2E는 별도 검증 필요 |
-| 지급대행 | `PayoutGateway` 포트를 구현한 결정적 dummy adapter가 항상 등록된다. 기본값은 `COMPLETED`이고 같은 멱등키는 같은 지급 식별자와 결과로 수렴한다. | 실제 송금 없이 예약 지급 흐름 실행 가능 |
+- Project·Order·Payment 연동은 HTTP adapter와 테스트용 dummy adapter를 제공한다.
+- 지급대행은 항상 결정적 dummy adapter를 사용하며 실제 송금은 발생하지 않는다.
+- Payment adapter는 주문별 단건 환불 happy case를 지원한다. 제공자 멱등키, batch 요청, 부분 실패 복구, 실제 서비스 간 E2E는 아직 지원하지 않는다.
+- 정산 실행은 현재 관리자용 동기 HTTP 요청이다. Kafka 입력 수집과 Spring Batch 월 정산은 후속 범위다.
 
-Settlement core는 Order 주문별 결제금액을 소비해 성공 정산과 실패·취소 결제 취소로 분기한다. 운영 Order 조회와 Payment 단건 환불 adapter는 사용자가 제공 완료로 가정한 계약을 기준으로 연결했다. 목표 happy-case 흐름의 실제 완료 여부는 이슈 16에서 실제 제공자·소비자 계약을 함께 검증해야 한다.
+## 실행과 테스트
 
-실제 PG HTTP 연동, 자격 증명, 암호화 요청, smoke test와 webhook 구현은 제거했다. 지급 요청은 애플리케이션의 기존 선저장·결과 반영 트랜잭션 흐름을 그대로 지나지만 외부 네트워크나 실제 송금은 발생하지 않는다. 서비스 시작 로그에도 더미 지급대행임을 명시한다.
-
-## 패키지 구조
-
-Settlement는 DDD 4계층을 최상위 패키지로 사용한다.
-
-```text
-settlement
-├── presentation    HTTP controller, DTO, 오류 응답, 보안
-├── application     유스케이스 조율과 외부 통신 port
-│   ├── run         월별 프로젝트 결과 처리
-│   ├── settlement  성공 프로젝트 정산 확정
-│   ├── payout      지급대행 실행
-│   ├── cancellation 실패·취소 프로젝트 결제 취소
-│   ├── query       창작자·관리자 조회
-│   └── port        Project·Order·Payment·지급대행 seam
-├── domain          기술에 독립적인 model과 repository interface
-└── infrastructure  HTTP·dummy adapter, JPA 영속성, 기술 설정
-```
-
-의존 방향은 `presentation → application → domain`이며, `infrastructure`는 application port와 domain repository를 구현한다. Spring MVC·Security 설정은 presentation에, 클라이언트·JPA·시간 설정은 infrastructure에 두어 별도의 다섯 번째 `config` 계층을 만들지 않는다.
-
-## 로컬 검증
-
-저장소 루트에서 Docker를 실행한 뒤 Settlement 테스트를 수행한다. MySQL 통합 테스트는 Testcontainers를 사용한다.
+Java 21과 Docker가 필요하다. 저장소 루트에서 테스트한다. DB 통합 테스트는 Testcontainers MySQL을 사용한다.
 
 ```shell
 ./gradlew :settlement-service:test
 ```
 
-월 실행 HTTP 계약은 다음과 같다. 이 경로는 `ADMIN` role의 유효한 JWT가 필요하다.
+애플리케이션 실행에는 Config Server, Eureka, MySQL이 필요하다. 운영 adapter를 사용할 때는 Project, Order, Payment도 실행한다. 전체 기동 순서는 [루트 README](../README.md)를 따른다.
+
+```shell
+./gradlew :settlement-service:bootRun
+```
+
+외부 서비스 없이 입력 adapter를 확인하려면 Project·Order·Payment만 dummy로 바꿀 수 있다. DB와 공통 인프라는 여전히 필요하다.
+
+```shell
+./gradlew :settlement-service:bootRun --args='--settlement.project-target.mode=dummy --settlement.project-order.mode=dummy --settlement.payment-cancellation.mode=dummy'
+```
+
+dummy 입력은 성공 프로젝트 1건과 100,000원 주문 1건을 제공한다. 지급 결과의 기본값은 `COMPLETED`다.
+
+## API
+
+| Method | Path | 권한 | 설명 |
+|---|---|---|---|
+| `POST` | `/internal/v1/settlements/runs` | `ADMIN` | 프로젝트 결과를 조회해 정산 또는 결제 취소 실행 |
+| `GET` | `/api/v1/settlements` | `CREATOR` | 로그인한 창작자의 프로젝트 정산 내역 목록 |
+| `GET` | `/api/v1/settlements/{settlementId}` | `CREATOR` | 로그인한 창작자의 프로젝트 정산 상세 |
+| `GET` | `/api/v1/settlements/all` | `ADMIN` | 전체 프로젝트 정산 내역 목록 |
+| `GET` | `/api/v1/settlements/all/{settlementId}` | `ADMIN` | 프로젝트 정산 상세와 지급 시도 목록 |
+
+월 실행 요청은 Settlement 서비스에 직접 호출하는 내부 API다.
 
 ```http
 POST /internal/v1/settlements/runs
@@ -97,30 +86,41 @@ Content-Type: application/json
 }
 ```
 
-`settlementMonth`는 월 실행 결과와 지급 예정일 계산에 사용하며 Project·Order·Payment의 조회·취소 조건으로 전달하지 않는다.
+외부 조회 API는 게이트웨이 `http://localhost:8000`을 통해 호출한다. Swagger UI는 전체 스택 실행 후 `http://localhost:8000/settlement-service/swagger-ui.html`에서 확인할 수 있다.
 
-## 관련 설정
+## 설정
 
-| 속성 | 현행 기본 의미 |
-|---|---|
-| `settlement.project-target.mode` | 미지정 시 `http`; 테스트에서 `dummy` 선택 가능 |
-| `settlement.project-target.http.base-url` | 기본값 `http://project-service` |
-| `settlement.project-target.http.connect-timeout` | 기본값 1초 |
-| `settlement.project-target.http.read-timeout` | 기본값 3초 |
-| `settlement.project-order.mode` | 미지정 시 `http`; 테스트·로컬에서 `dummy` 선택 가능 |
-| `settlement.project-order.http.base-url` | 기본값 `http://order-service` |
-| `settlement.project-order.http.connect-timeout` | 기본값 1초 |
-| `settlement.project-order.http.read-timeout` | 기본값 3초 |
-| `settlement.payment-cancellation.mode` | 미지정 시 `http`; 테스트·로컬에서 `dummy` 선택 가능 |
-| `settlement.payment-cancellation.http.base-url` | 기본값 `http://payment-service` |
-| `settlement.payment-cancellation.http.connect-timeout` | 기본값 1초 |
-| `settlement.payment-cancellation.http.read-timeout` | 기본값 3초 |
-| `settlement.external-data.mode` | 미지정 시 dummy 지급 프로필 활성화 |
-| `settlement.dummy-payout.scenario` | 미지정 시 `COMPLETED`; 로컬·테스트에서 `REQUESTED`, `IN_PROGRESS`, `RETRYABLE_FAILED`, `NON_RETRYABLE_FAILED`, `UNKNOWN` 선택 가능 |
+| 속성 | 기본값 | 설명 |
+|---|---|---|
+| `settlement.project-target.mode` | `http` | `http` 또는 `dummy` |
+| `settlement.project-target.http.base-url` | `http://project-service` | Project 서비스 주소 |
+| `settlement.project-order.mode` | `http` | `http` 또는 `dummy` |
+| `settlement.project-order.http.base-url` | `http://order-service` | Order 서비스 주소 |
+| `settlement.payment-cancellation.mode` | `http` | `http` 또는 `dummy` |
+| `settlement.payment-cancellation.http.base-url` | `http://payment-service` | Payment 서비스 주소 |
+| `settlement.external-data.mode` | `dummy` | dummy 창작자 지급 프로필 초기화 여부 |
+| `settlement.dummy-payout.scenario` | `COMPLETED` | dummy 지급 결과 시나리오 |
 
-Config server의 기존 값은 변경하지 않는다. 외부 요청자가 더미 지급 결과를 조작하는 공개 API는 제공하지 않으며 시나리오 설정은 로컬 실행과 테스트 seam으로만 사용한다.
+세 HTTP adapter의 기본 연결 제한시간은 1초, 응답 제한시간은 3초다. 지급 시나리오는 `COMPLETED`, `REQUESTED`, `IN_PROGRESS`, `RETRYABLE_FAILED`, `NON_RETRYABLE_FAILED`, `UNKNOWN`을 지원한다.
 
-## 후속 작업
+Config Server 설정은 이 모듈의 요청 범위가 아니므로 여기서 변경하지 않는다.
 
-- 현재 우선순위와 남은 작업은 [프로젝트 정산 후속 구조 이슈](../../.scratch/project-settlement/spec.md#후속-구조-이슈)에서 추적한다.
-- 파일별 책임과 제거 판단은 [Settlement 파일 인벤토리](../../docs/settlement-file-inventory.md)를 따른다.
+## 패키지 구조
+
+```text
+settlement
+├── presentation     HTTP API, DTO, 보안, 오류 응답
+├── application      유스케이스와 외부 통신 port
+├── domain           도메인 모델과 repository interface
+└── infrastructure   HTTP·dummy adapter, JPA 구현, 기술 설정
+```
+
+의존 방향은 `presentation → application → domain`이며 infrastructure가 application port와 domain repository를 구현한다.
+
+## 관련 문서
+
+- [Settlement 컨텍스트](../../CONTEXT.md)
+- [프로젝트 정산 시나리오](../../docs/domain/settlement-service-scenarios.md)
+- [외부 모듈 계약](../../.scratch/project-settlement/cross-module-data-contracts.md)
+- [ADR-0006: 정산 금액은 Order에서 가져온다](../../docs/adr/0006-source-project-settlement-amounts-from-order.md)
+- [후속 구조 이슈](../../.scratch/project-settlement/spec.md#후속-구조-이슈)
