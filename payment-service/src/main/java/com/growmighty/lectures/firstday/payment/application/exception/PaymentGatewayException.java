@@ -14,8 +14,4 @@ public class PaymentGatewayException extends BusinessException {
         super(status, message);
         this.failureType = failureType;
     }
-
-    public PaymentGatewayFailureType getFailureType() {
-        return failureType;
-    }
 }
