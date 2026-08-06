@@ -32,9 +32,7 @@ public class RewardStockTransactionExecutor {
 
     @Transactional
     public void decreaseStock(Long rewardId, int quantity, Long orderId) {
-        if (!tryRegisterStockChange(orderId, rewardId, StockChangeOperation.DECREASE)) {
-            return; // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
-        }
+        registerStockChange(orderId, rewardId, StockChangeOperation.DECREASE);
         Reward reward = getRewardEntity(rewardId);
         findProjectStatus(reward.getProjectId())
             .filter(ProjectStatusView::open)
@@ -45,25 +43,20 @@ public class RewardStockTransactionExecutor {
 
     @Transactional
     public void restoreStock(Long rewardId, int quantity, Long orderId) {
-        if (!tryRegisterStockChange(orderId, rewardId, StockChangeOperation.RESTORE)) {
-            return; // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
-        }
+        registerStockChange(orderId, rewardId, StockChangeOperation.RESTORE);
         getRewardEntity(rewardId).restoreStock(quantity);
     }
 
     /**
-     * (orderId, rewardId, operation) 조합을 stock_change_logs에 기록한다 — 유니크 제약 위반이면
-     * 이미 처리된 요청이라는 뜻이라 false를 돌려줘 호출자가 재고 변경을 건너뛰게 한다.
-     * TODO(#195 후속): 이 catch가 트랜잭션을 rollback-only로 오염시켜 커밋 시점에
-     * UnexpectedRollbackException을 유발하는 별도 버그가 있음 — 아직 미해결.
+     * (orderId, rewardId, operation) 조합을 stock_change_logs에 기록한다. 유니크 제약 위반
+     * (DataIntegrityViolationException)을 여기서 catch하지 않고 그대로 던진다 — 이 시점이면 이미
+     * Hibernate가 flush 실패로 현재 트랜잭션을 rollback-only로 표시한 뒤라, 여기서 catch하고
+     * 메서드가 정상 반환되면 커밋 시도 자체가 UnexpectedRollbackException으로 실패한다. 예외를
+     * 트랜잭션 경계(이 메서드) 밖으로 내보내야 Spring이 정상적인 rollback으로 깔끔하게 마무리하고,
+     * "이미 처리된 요청"이라는 판단은 트랜잭션이 없는 RewardServiceImpl 쪽 try-catch에서 내린다.
      */
-    private boolean tryRegisterStockChange(Long orderId, Long rewardId, StockChangeOperation operation) {
-        try {
-            stockChangeLogRepository.save(StockChangeLog.of(orderId, rewardId, operation));
-            return true;
-        } catch (DataIntegrityViolationException e) {
-            return false;
-        }
+    private void registerStockChange(Long orderId, Long rewardId, StockChangeOperation operation) {
+        stockChangeLogRepository.save(StockChangeLog.of(orderId, rewardId, operation));
     }
 
     private Reward getRewardEntity(Long rewardId) {

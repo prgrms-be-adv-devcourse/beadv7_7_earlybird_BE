@@ -11,6 +11,7 @@ import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailed
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
@@ -169,13 +170,19 @@ public class RewardServiceImpl implements RewardService {
      * 매 attempt가 새 트랜잭션에서 엔티티를 다시 읽어온다는 게 self-invocation 걱정 없이 구조로 보장된다.
      * 이 메서드 자체는 propagation=NOT_SUPPORTED로 트랜잭션 없이 실행돼야 한다 — 클래스 레벨
      * @Transactional(readOnly=true)가 기본 적용되는데, 그걸 그대로 두면 이 메서드가 다시 트랜잭션을
-     * 걸치게 돼 분리한 의미가 없어진다.
+     * 걸치게 돼 분리한 의미가 없어진다. 중복 요청(DataIntegrityViolationException)도 트랜잭션이 이미
+     * 끝난 뒤인 여기서 잡는다 — 트랜잭션 안에서 잡으면 이미 rollback-only로 표시된 트랜잭션을 커밋
+     * 시도하다 UnexpectedRollbackException이 난다(RewardStockTransactionExecutor.registerStockChange 참고).
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void decreaseStock(Long rewardId, int quantity, Long orderId) {
-        rewardStockTransactionExecutor.decreaseStock(rewardId, quantity, orderId);
+        try {
+            rewardStockTransactionExecutor.decreaseStock(rewardId, quantity, orderId);
+        } catch (DataIntegrityViolationException e) {
+            // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
+        }
     }
     /**
      * decreaseStock/restoreStock이 파라미터 시그니처(Long, int, Long)가 같아서, operation별로 서로
@@ -204,7 +211,11 @@ public class RewardServiceImpl implements RewardService {
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverRestoreStockConflict")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void restoreStock(Long rewardId, int quantity, Long orderId) {
-        rewardStockTransactionExecutor.restoreStock(rewardId, quantity, orderId);
+        try {
+            rewardStockTransactionExecutor.restoreStock(rewardId, quantity, orderId);
+        } catch (DataIntegrityViolationException e) {
+            // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
+        }
     }
 
     /** recoverDecreaseStockConflict와 동일한 instanceof 분기 패턴 — restoreStock 전용 메시지. */
