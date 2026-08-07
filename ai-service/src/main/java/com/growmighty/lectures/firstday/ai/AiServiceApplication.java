@@ -4,7 +4,6 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * AI 서비스 — barebone.
  * TODO(조우진): 벡터DB 연동, 문서 검색·추천 로직, 실제 사용할 모델 제공자 확정
  */
 @SpringBootApplication(scanBasePackages = {
