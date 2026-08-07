@@ -9,6 +9,9 @@ import com.growmighty.lectures.firstday.refund.application.exception.RefundGatew
 import com.growmighty.lectures.firstday.refund.application.port.RefundGateway;
 import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import com.growmighty.lectures.firstday.refund.infrastructure.dto.TossCancelRequest;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.retry.Retry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -17,6 +20,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+
+import java.util.function.Supplier;
 
 @Component
 @RequiredArgsConstructor
@@ -27,13 +32,42 @@ import org.springframework.web.client.RestClientResponseException;
 public class TossRefundGateway implements RefundGateway {
     private final RestClient tossRestClient;
     private final ObjectMapper objectMapper;
+    private final Retry paymentRefundRetry;
+    private final CircuitBreaker paymentRefundCircuitBreaker;
 
     @Override
     public void refund(String paymentKey, RefundReason reason, String idempotencyKey) {
+        Supplier<Void> refundSupplier = () -> {
+            requestRefund(paymentKey, reason, idempotencyKey);
+            return null;
+        };
+
+        Supplier<Void> retrySupplier = Retry.decorateSupplier(
+            paymentRefundRetry,
+            refundSupplier
+        );
+
+        Supplier<Void> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(
+            paymentRefundCircuitBreaker,
+            retrySupplier
+        );
+
+        try {
+            circuitBreakerSupplier.get();
+        } catch (CallNotPermittedException exception) {
+            throw new RefundGatewayException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                RefundGatewayFailureType.UNCERTAIN,
+                "토스 환불 요청이 일시적으로 차단되었습니다."
+            );
+        }
+    }
+
+    private void requestRefund(String paymentKey, RefundReason reason, String idempotencyKey) {
         try {
             TossPaymentResponse response = tossRestClient.post()
                 .uri("/v1/payments/{paymentKey}/cancel", paymentKey)
-                .header("Idempotency-Key", idempotencyKey)
+                .header("Idempotency-key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new TossCancelRequest(reason.name()))
                 .retrieve()
@@ -46,10 +80,9 @@ public class TossRefundGateway implements RefundGateway {
                     "토스 환불 결과를 확인할 수 없습니다."
                 );
             }
-
-        } catch (RestClientResponseException e) {
-            throw toRefundGatewayException(e);
-        } catch (ResourceAccessException e) {
+        } catch (RestClientResponseException exception) {
+            throw toRefundGatewayException(exception);
+        } catch (ResourceAccessException exception) {
             throw new RefundGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 RefundGatewayFailureType.UNCERTAIN,
