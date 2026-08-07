@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify the recovery response includes pgOrderId and status and rejects incomplete or duplicate facts.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -5,10 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
-import com.growmighty.lectures.firstday.settlement.domain.Money;
+import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPayment;
+import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrders;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;

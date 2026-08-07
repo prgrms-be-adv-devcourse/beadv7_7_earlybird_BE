@@ -1,7 +1,8 @@
+// TODO(settlement-plan): Keep persistence mapping aligned with the domain breakdown without recalculating values.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
-import com.growmighty.lectures.firstday.settlement.domain.Money;
-import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.converter.MoneyAttributeConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;

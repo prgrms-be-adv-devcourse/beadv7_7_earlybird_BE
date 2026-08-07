@@ -1,0 +1,15 @@
+// TODO(settlement-plan): Keep web-only concerns here and avoid coupling Kafka or batch configuration to MVC.
+package com.growmighty.lectures.firstday.settlement.presentation.config;
+
+import com.growmighty.lectures.firstday.common.exception.GlobalExceptionHandler;
+import com.growmighty.lectures.firstday.common.response.ApiResponseWrappingAdvice;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+
+@Configuration(proxyBeanMethods = false)
+@Import({
+        GlobalExceptionHandler.class,
+        ApiResponseWrappingAdvice.class
+})
+public class SettlementWebConfig {
+}

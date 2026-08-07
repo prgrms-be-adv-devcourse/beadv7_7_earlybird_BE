@@ -1,7 +1,8 @@
+// TODO(settlement-plan): Replace this adapter with project refund Outbox persistence, then delete legacy mappings.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter;
 
-import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommand;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommandRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectPaymentCancellationCommand;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectPaymentCancellationCommandRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.ProjectPaymentCancellationCommandJpaEntity;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectPaymentCancellationCommandRepository;
 import java.util.ArrayList;

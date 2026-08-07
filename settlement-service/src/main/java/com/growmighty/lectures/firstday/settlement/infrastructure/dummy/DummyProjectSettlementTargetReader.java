@@ -1,8 +1,9 @@
+// TODO(settlement-plan): Delete this synchronous Project dummy after event fixtures drive consumer tests.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;

@@ -1,11 +1,12 @@
+// TODO(settlement-plan): Delete this adapter after persisted ProjectEnded and ProjectCancelled facts become authoritative.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.project;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcome;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOutcomeStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeReader;
+import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

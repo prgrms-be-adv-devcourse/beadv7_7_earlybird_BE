@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace this repository with the project refund Outbox repository, then delete it.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository;
 
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.ProjectPaymentCancellationCommandJpaEntity;

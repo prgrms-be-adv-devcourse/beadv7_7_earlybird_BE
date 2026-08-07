@@ -1,9 +1,10 @@
+// TODO(settlement-plan): Delete this direct-refund dummy when the project-level batch event replaces the Payment gateway.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationGateway;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationRequest;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationResult;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationRequest;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationResult;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;

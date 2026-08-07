@@ -1,10 +1,11 @@
+// TODO(settlement-plan): Enforce one obligation per settlement and one successful attempt through mappings and constraints.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import com.growmighty.lectures.firstday.settlement.domain.Money;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutAttempt;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutObligation;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.converter.MoneyAttributeConverter;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;

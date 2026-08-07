@@ -1,7 +1,8 @@
+// TODO(settlement-plan): Keep mapping local and add only the payout-eligible lookup required by monthly execution.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter;
 
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.CreatorPayoutProfileJpaEntity;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataCreatorPayoutProfileRepository;
 import java.util.Objects;
