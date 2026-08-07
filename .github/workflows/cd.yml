@@ -53,3 +53,17 @@ jobs:
               docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml build "$svc"
             done
             docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d
+            # caddy bind-mounts Caddyfile by host path (./Caddyfile:/etc/caddy/Caddyfile:ro) -
+            # that path string never changes even when git pull replaces the file's contents, so
+            # plain `up -d` never sees a reason to recreate the container and caddy keeps serving
+            # whatever config it last loaded. Force a fresh read every deploy so routing changes
+            # always take effect (bit us in production: FE cutover shipped but Caddyfile's new
+            # /api split sat unloaded until a manual restart).
+            #
+            # `docker compose up -d --force-recreate caddy` was tried here first but silently
+            # no-ops under appleboy/ssh-action specifically (works fine run manually over plain
+            # SSH) - see issue #212. `docker restart` re-execs the process and re-reads the
+            # bind-mounted Caddyfile, which is all we actually need; it just won't pick up a
+            # change to caddy's own image/ports/volumes in docker-compose.yml (rare enough to
+            # handle manually if it ever happens).
+            docker restart earlybird-caddy
