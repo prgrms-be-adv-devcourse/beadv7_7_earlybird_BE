@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep the confirmed financial record immutable and create it only from reconciled successful-project payments.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.time.LocalDateTime;

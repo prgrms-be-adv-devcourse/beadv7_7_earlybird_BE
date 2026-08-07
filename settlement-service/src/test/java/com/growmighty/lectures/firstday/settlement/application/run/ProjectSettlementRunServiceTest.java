@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Rewrite around stored facts, Toss reconciliation, one retry, REVIEW_REQUIRED, and batch refund Outbox.
 package com.growmighty.lectures.firstday.settlement.application.run;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;

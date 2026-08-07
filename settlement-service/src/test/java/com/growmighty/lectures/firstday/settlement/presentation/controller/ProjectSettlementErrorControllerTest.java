@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Cover validation, reconciliation review, and event-contract errors through the HTTP interface.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import static org.hamcrest.Matchers.containsString;

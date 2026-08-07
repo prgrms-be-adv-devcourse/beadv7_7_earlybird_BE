@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify creatorId-to-destination eligibility and prohibit payout without an eligible Toss seller.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import static org.assertj.core.api.Assertions.assertThat;

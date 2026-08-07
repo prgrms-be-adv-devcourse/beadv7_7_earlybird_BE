@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Persist stable refPayoutId, provider id, result, and error fields with uniqueness constraints.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;

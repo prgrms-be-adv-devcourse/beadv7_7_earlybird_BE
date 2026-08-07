@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete this synchronous refund result after Payment owns per-order outcomes asynchronously.
 package com.growmighty.lectures.firstday.settlement.application.port.payment;
 
 import java.util.Objects;

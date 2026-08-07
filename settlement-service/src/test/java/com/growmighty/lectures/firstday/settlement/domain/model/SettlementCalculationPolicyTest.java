@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep one pure fee and rounding suite at the calculation interface and remove duplicate caller assertions.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import static org.assertj.core.api.Assertions.assertThat;

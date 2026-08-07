@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep creator list mapping minimal and stable across the Kafka migration.
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import com.growmighty.lectures.firstday.settlement.application.query.CreatorProjectSettlementSummary;

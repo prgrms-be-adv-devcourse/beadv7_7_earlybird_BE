@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Represent Toss-shaped payout outcomes without leaking dummy scenarios into the application interface.
 package com.growmighty.lectures.firstday.settlement.application.payout;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;

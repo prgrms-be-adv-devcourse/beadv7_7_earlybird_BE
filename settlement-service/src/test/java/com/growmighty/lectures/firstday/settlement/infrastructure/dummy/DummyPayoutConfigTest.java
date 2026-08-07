@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify the deterministic dummy remains the active payout adapter without real-network configuration.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import static org.assertj.core.api.Assertions.assertThat;

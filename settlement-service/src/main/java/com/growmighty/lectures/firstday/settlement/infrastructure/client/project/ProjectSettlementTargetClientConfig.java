@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete synchronous Project HTTP wiring after Project event consumers are active.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.project;
 
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeReader;

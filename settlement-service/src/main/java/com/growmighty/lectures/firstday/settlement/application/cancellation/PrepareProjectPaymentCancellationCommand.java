@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace this per-order command input with the project-level ProjectRefundRequested batch payload, then delete it.
 package com.growmighty.lectures.firstday.settlement.application.cancellation;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason;

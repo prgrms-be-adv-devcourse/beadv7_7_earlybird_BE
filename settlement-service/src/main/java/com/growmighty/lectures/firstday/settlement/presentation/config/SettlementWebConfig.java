@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep web-only concerns here and avoid coupling Kafka or batch configuration to MVC.
 package com.growmighty.lectures.firstday.settlement.presentation.config;
 
 import com.growmighty.lectures.firstday.common.exception.GlobalExceptionHandler;

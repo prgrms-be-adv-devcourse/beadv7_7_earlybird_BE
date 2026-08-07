@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify Toss-compatible destination, refPayoutId, schedule, KRW amount, description, and metadata validation.
 package com.growmighty.lectures.firstday.settlement.application.port.payout;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

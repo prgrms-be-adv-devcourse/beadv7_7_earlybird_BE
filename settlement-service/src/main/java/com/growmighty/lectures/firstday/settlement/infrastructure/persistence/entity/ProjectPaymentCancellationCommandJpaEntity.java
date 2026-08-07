@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace this per-order command entity with a project refund Outbox entity, then delete it.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;

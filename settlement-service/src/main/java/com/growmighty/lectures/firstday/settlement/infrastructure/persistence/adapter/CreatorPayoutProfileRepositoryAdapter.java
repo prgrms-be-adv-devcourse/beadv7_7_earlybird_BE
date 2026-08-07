@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep mapping local and add only the payout-eligible lookup required by monthly execution.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;

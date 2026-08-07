@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Retain only recovery endpoint timeout and base URL settings actually used by the Feign adapter.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import java.net.URI;

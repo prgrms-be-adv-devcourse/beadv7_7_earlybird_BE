@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Reuse shared settlement query mapping while enforcing creator ownership in one place.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_NOT_FOUND;

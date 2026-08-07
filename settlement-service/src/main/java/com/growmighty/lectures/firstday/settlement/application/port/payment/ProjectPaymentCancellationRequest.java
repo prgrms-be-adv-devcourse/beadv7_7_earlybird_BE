@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete this per-order HTTP request after the project-level batch refund event is introduced.
 package com.growmighty.lectures.firstday.settlement.application.port.payment;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason;

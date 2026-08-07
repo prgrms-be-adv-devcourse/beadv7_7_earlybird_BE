@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete this direct-refund dummy when the project-level batch event replaces the Payment gateway.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;

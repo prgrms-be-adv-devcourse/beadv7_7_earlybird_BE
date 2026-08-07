@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify obligation state and payout attempt persistence remain atomic across gateway outcomes.
 package com.growmighty.lectures.firstday.settlement.application.payout;
 
 import static org.assertj.core.api.Assertions.assertThat;

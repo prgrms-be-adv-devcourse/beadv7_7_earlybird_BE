@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Make KRW scale validation explicit instead of relying on setScale exceptions; keep arithmetic pure.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.math.BigDecimal;

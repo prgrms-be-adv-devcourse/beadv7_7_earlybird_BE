@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep creator detail independent of PG and Kafka metadata.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;

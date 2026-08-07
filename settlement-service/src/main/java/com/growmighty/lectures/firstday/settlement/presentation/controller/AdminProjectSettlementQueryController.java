@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Expose new reconciliation and payout states only through the existing admin query interface.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import com.growmighty.lectures.firstday.settlement.application.query.AdminProjectSettlementQueryService;

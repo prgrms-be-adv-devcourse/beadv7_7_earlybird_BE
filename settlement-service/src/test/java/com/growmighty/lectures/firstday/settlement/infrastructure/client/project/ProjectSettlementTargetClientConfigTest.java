@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete synchronous Project HTTP wiring tests after Kafka consumers become authoritative.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.project;
 
 import static org.assertj.core.api.Assertions.assertThat;

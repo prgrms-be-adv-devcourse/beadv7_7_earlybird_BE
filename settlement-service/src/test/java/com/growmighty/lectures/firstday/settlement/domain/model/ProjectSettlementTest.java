@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify immutable confirmation from reconciled positive inputs and one settlement per project.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import static org.assertj.core.api.Assertions.assertThat;

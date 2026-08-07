@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete direct Payment HTTP wiring after the batch refund Kafka producer is active.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
 import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;

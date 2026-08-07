@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify complete recovery mapping and centralize contract-failure cases at the adapter interface.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import static org.assertj.core.api.Assertions.assertThat;

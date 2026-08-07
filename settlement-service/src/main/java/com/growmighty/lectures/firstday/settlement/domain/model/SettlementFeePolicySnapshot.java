@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Preserve confirmed rates as an immutable snapshot and avoid provider-specific fee fields.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.math.BigDecimal;

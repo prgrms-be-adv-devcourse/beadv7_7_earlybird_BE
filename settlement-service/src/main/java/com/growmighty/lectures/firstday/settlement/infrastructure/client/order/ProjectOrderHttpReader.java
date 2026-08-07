@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Parse pgOrderId, amount, and status; centralize complete-response validation for reconciliation recovery.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;

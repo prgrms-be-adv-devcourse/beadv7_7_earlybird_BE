@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Add pgOrderId and payment status so Kafka facts and Feign recovery share one validated payment shape.
 package com.growmighty.lectures.firstday.settlement.application.port.order;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;

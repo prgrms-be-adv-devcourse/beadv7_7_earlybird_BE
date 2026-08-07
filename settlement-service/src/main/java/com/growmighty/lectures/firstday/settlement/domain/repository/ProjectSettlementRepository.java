@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Support idempotent project confirmation and query reuse without exposing JPA entities.
 package com.growmighty.lectures.firstday.settlement.domain.repository;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete this adapter after ProjectRefundRequested Outbox publishing replaces synchronous refunds.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE;

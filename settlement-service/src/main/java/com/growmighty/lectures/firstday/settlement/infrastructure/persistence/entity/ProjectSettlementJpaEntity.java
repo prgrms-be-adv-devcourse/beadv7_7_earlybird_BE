@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep confirmed amounts immutable in practice and preserve one settlement per project.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;

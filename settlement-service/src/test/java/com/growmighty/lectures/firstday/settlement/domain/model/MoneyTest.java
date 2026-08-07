@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify explicit whole-KRW validation, non-negative arithmetic, equality, and underflow rejection.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import static org.assertj.core.api.Assertions.assertThat;

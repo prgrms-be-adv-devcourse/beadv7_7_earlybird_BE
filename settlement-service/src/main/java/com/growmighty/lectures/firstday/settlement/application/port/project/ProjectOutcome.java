@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace synchronous query DTO usage with the persisted Project event fact shape.
 package com.growmighty.lectures.firstday.settlement.application.port.project;
 
 public record ProjectOutcome(

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Map Toss payout statuses once at this seam and keep domain payout statuses transport-independent.
 package com.growmighty.lectures.firstday.settlement.application.port.payout;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;

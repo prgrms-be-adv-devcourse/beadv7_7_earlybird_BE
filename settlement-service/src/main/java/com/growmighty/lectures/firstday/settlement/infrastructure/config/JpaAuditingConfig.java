@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep auditing generic for new Inbox, Outbox, fact, and run entities without entity-specific wiring.
 package com.growmighty.lectures.firstday.settlement.infrastructure.config;
 
 import org.springframework.context.annotation.Configuration;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Cover reconciliation, event-contract, and REVIEW_REQUIRED errors and delete legacy HTTP cancellation cases.
 package com.growmighty.lectures.firstday.settlement.application.error;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Concentrate obligation and attempt rehydration here and enforce duplicate-payout lookup semantics.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;

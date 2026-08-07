@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace this per-order cancellation aggregate with a project-level refund Outbox record, then delete it.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.util.Objects;

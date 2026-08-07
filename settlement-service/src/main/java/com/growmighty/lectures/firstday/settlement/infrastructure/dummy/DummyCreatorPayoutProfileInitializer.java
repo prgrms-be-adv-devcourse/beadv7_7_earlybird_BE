@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Seed deterministic creatorId-to-Toss destination fixtures without storing raw account data.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;

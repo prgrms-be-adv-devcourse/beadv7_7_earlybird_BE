@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify ProjectEnded and ProjectCancelled envelopes, final states, ordering keys, and duplicate handling.
 package com.growmighty.lectures.firstday.settlement.application.port.project;
 
 import static org.assertj.core.api.Assertions.assertThat;

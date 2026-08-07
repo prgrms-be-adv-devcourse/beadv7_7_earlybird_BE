@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Consolidate repeated aggregate-to-query mapping and include new run or payout states without N+1 reads.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_NOT_FOUND;

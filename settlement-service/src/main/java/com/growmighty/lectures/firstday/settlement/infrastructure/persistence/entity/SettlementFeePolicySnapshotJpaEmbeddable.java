@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Persist the confirmed rate snapshot exactly and remove no-longer-used policy fields.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;

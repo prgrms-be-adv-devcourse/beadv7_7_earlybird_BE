@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Map REVIEW_REQUIRED and input-contract failures consistently without transport-specific branches.
 package com.growmighty.lectures.firstday.settlement.presentation.error;
 
 import com.growmighty.lectures.firstday.common.response.ApiResponse;

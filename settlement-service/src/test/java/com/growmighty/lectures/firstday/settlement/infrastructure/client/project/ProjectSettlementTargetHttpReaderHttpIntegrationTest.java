@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace this test with Project event consumer contract and persistence coverage.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.project;
 
 import static org.assertj.core.api.Assertions.assertThat;

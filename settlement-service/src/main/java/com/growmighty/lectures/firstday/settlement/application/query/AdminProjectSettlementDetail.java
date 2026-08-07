@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep the admin query record stable and add only review or payout fields required by the controller.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;

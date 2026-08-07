@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify Toss-shaped deterministic results and idempotent refPayoutId behavior for every supported scenario.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import static org.assertj.core.api.Assertions.assertThat;

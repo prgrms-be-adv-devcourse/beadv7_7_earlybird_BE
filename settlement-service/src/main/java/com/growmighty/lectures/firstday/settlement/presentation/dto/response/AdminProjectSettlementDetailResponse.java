@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Map new payout or review state without exposing provider payloads or persistence entities.
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import com.growmighty.lectures.firstday.settlement.application.query.AdminProjectSettlementDetail;

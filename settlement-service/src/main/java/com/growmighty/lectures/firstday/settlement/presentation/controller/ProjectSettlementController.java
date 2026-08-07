@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Route manual requests to the same idempotent monthly-run interface used by the scheduler.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import com.growmighty.lectures.firstday.settlement.application.run.ProjectSettlementRunService;

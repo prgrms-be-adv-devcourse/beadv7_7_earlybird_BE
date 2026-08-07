@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace this per-order command repository with a project refund Outbox repository, then delete it.
 package com.growmighty.lectures.firstday.settlement.domain.repository;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectPaymentCancellationCommand;

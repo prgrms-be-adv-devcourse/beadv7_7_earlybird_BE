@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace direct-refund contracts with one complete ProjectRefundRequested batch event contract.
 package com.growmighty.lectures.firstday.settlement.application.port.payment;
 
 import static com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason.PROJECT_CANCELLED;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Return deterministic Toss-shaped payout results keyed by refPayoutId and preserve idempotent retries.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGateway;

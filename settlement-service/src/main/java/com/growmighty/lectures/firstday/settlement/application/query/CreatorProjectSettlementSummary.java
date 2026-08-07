@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep creator summary fields minimal and avoid duplicating calculation logic.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete this test with the direct Payment HTTP adapter after batch event publishing lands.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
 import com.growmighty.lectures.firstday.settlement.infrastructure.client.order.ProjectOrderClientConfig;

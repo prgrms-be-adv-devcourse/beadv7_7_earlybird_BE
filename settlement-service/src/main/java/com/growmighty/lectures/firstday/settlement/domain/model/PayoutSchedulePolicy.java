@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Use one Asia/Seoul scheduling rule shared by automatic and manual monthly runs.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.time.DayOfWeek;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify payout starts only after full PG reconciliation and remains idempotent across reruns.
 package com.growmighty.lectures.firstday.settlement.application.run;
 
 import com.growmighty.lectures.firstday.settlement.application.cancellation.ProjectPaymentCancellationCommandService;

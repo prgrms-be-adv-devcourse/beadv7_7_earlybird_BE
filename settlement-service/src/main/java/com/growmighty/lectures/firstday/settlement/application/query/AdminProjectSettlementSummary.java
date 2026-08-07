@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep summary fields minimal and derive status in the query module.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;

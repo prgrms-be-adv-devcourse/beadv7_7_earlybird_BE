@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Carry refPayoutId, destination, schedule, KRW amount, description, and metadata in Toss-compatible form.
 package com.growmighty.lectures.firstday.settlement.application.port.payout;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep calculation and confirmation transactional; move event consumption, reconciliation, and payout I/O outside.
 package com.growmighty.lectures.firstday.settlement.application.settlement;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;

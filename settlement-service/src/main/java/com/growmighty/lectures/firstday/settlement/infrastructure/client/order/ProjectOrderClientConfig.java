@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep only the Feign recovery adapter wiring and remove normal-run HTTP selection after Kafka migration.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrderReader;

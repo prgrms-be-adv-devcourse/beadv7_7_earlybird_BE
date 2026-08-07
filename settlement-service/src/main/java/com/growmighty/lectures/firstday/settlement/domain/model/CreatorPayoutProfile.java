@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Make creatorId-to-Toss destination eligibility explicit while keeping bank data out of payout requests.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.time.LocalDateTime;

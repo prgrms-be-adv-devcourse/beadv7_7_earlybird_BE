@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace legacy cancellation result mapping with monthly run status and review summary mapping.
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import static com.growmighty.lectures.firstday.settlement.application.run.ProjectOutcomeProcessingStatus.OUTCOME_CONFLICT;

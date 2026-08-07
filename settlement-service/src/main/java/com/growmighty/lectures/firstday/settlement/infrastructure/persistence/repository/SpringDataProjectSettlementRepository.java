@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep project and creator query methods focused on confirmed settlement reads.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository;
 
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.ProjectSettlementJpaEntity;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace the old order shape with orderId, pgOrderId, projectId, amount, status, and uniqueness checks.
 package com.growmighty.lectures.firstday.settlement.application.port.order;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

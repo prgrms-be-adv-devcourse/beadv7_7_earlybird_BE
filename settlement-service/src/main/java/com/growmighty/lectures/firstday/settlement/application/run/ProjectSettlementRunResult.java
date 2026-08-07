@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Expose the monthly run status and reconciliation summary without leaking internal projections.
 package com.growmighty.lectures.firstday.settlement.application.run;
 
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmedProjectSettlement;

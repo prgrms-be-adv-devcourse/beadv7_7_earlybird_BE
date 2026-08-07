@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Add Inbox, facts, run, reconciliation, Outbox, pgOrderId, and payout idempotency constraint coverage.
 package com.growmighty.lectures.firstday.settlement.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;

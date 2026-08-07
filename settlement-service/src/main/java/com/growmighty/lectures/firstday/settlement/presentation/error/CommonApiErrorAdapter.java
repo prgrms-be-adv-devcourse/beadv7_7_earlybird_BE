@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Reuse common error responses while mapping new reconciliation and event-contract errors once.
 package com.growmighty.lectures.firstday.settlement.presentation.error;
 
 import com.growmighty.lectures.firstday.common.response.ApiResponse;

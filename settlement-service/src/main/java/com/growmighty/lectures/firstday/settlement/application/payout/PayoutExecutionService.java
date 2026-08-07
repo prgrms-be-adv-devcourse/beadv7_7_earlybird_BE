@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Use stable refPayoutId values and make payout retries converge on one successful attempt per obligation.
 package com.growmighty.lectures.firstday.settlement.application.payout;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.SETTLEMENT_DATA_INCONSISTENT;

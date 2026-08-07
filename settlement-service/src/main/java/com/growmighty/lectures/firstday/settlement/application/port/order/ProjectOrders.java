@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Validate project ownership, unique orderId and pgOrderId, amount, and payment status in one place.
 package com.growmighty.lectures.firstday.settlement.application.port.order;
 
 import java.util.HashSet;

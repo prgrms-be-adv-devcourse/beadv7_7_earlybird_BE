@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Ensure web slices stay isolated when new Inbox, Outbox, fact, and batch configuration is added.
 package com.growmighty.lectures.firstday.settlement.infrastructure.config;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep tests at the confirmation interface using reconciled payments; remove transport-shaped setup.
 package com.growmighty.lectures.firstday.settlement.application.settlement;
 
 import static org.assertj.core.api.Assertions.assertThat;

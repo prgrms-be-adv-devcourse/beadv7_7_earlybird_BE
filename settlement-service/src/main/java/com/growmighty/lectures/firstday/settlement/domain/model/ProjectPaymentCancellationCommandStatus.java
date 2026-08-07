@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete these synchronous command states when batch refund delivery is tracked by Outbox and Inbox.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 public enum ProjectPaymentCancellationCommandStatus {

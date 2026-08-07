@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Enforce one obligation per settlement and one successful attempt through mappings and constraints.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify one successful attempt, unknown-result blocking, and safe retry transitions.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import static org.assertj.core.api.Assertions.assertThat;

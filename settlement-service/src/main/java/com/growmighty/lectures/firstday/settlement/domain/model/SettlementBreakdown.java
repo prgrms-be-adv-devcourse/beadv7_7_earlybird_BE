@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Centralize deduction invariants and remove any duplicate fee arithmetic from application modules.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.util.Objects;

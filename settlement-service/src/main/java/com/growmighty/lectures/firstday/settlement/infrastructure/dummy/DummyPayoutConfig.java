@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep the dummy as the active PayoutGateway adapter and remove unused real-network toggles.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGateway;

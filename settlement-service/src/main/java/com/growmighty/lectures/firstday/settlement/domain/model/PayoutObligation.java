@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Guard one successful payout per settlement and block retries while a previous result is unknown.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.time.LocalDate;

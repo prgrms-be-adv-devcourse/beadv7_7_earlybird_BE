@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify manual requests invoke the same idempotent monthly-run interface as scheduling.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep creator reads stable while hiding run, Inbox, Outbox, and PG reconciliation internals.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;

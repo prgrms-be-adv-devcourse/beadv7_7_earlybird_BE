@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep the list item compact and derive display state from the application query result.
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import com.growmighty.lectures.firstday.settlement.application.query.AdminProjectSettlementSummary;

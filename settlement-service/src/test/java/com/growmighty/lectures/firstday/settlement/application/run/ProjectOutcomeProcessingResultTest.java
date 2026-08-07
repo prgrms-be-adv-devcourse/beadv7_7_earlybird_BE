@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace legacy per-outcome statuses with monthly reconciliation and review result assertions.
 package com.growmighty.lectures.firstday.settlement.application.run;
 
 import static com.growmighty.lectures.firstday.settlement.application.run.ProjectOutcomeProcessingStatus.PAYMENT_CANCELLATION_COMPLETED;

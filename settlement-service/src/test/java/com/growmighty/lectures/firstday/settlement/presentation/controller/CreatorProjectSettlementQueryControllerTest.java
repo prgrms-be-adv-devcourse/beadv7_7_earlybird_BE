@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep creator authorization and response tests stable across the Kafka migration.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;

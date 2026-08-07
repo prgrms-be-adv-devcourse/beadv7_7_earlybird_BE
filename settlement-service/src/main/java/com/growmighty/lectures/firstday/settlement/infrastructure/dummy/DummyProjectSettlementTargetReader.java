@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete this synchronous Project dummy after event fixtures drive consumer tests.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;

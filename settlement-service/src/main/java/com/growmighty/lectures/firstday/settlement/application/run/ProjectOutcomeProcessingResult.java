@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace legacy per-project HTTP processing results with monthly run and reconciliation outcomes.
 package com.growmighty.lectures.firstday.settlement.application.run;
 
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;

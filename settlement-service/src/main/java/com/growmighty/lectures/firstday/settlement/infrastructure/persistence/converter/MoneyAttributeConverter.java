@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Reject fractional KRW explicitly and keep null handling consistent with domain invariants.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.converter;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;

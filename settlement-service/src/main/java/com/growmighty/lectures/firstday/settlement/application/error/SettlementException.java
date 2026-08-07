@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep one application error type while preserving causes from Kafka, reconciliation, and payout adapters.
 package com.growmighty.lectures.firstday.settlement.application.error;
 
 public final class SettlementException extends RuntimeException {

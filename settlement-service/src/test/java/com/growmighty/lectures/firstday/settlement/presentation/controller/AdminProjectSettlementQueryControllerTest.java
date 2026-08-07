@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify admin responses expose review and payout state without leaking PG or event internals.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import static org.hamcrest.Matchers.containsString;

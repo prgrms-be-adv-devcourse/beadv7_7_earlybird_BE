@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify stable refPayoutId reuse, duplicate prevention, retryable failure, and unknown-result blocking.
 package com.growmighty.lectures.firstday.settlement.application.payout;
 
 import static org.assertj.core.api.Assertions.assertThat;

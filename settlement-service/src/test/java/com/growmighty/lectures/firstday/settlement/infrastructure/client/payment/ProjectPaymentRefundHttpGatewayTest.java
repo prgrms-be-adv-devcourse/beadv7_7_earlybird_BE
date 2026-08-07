@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete direct-refund adapter tests after the project-level batch Outbox publisher is covered.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
 import static com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus.COMPLETED;

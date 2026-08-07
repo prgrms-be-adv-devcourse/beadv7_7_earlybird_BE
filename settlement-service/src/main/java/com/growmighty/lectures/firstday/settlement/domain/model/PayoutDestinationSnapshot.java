@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Name the Toss seller destination explicitly and keep only masked, immutable payout target data.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.util.Objects;

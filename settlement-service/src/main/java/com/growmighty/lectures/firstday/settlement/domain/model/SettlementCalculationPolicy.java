@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep all fee rounding and calculation in this pure module and verify it through its public interface.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.math.BigDecimal;

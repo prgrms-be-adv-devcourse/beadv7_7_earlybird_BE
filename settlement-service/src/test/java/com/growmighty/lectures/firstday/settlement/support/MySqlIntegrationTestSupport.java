@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Include new fact, Inbox, Outbox, run, and reconciliation tables in deterministic cleanup and fixtures.
 package com.growmighty.lectures.firstday.settlement.support;
 
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;

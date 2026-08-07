@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Expose confirmed financial and payout state only; hide reconciliation evidence and event metadata.
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import com.growmighty.lectures.firstday.settlement.application.query.CreatorProjectSettlementDetail;

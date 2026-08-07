@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Return settlementMonth, run status, and review summary instead of legacy direct-cancellation outcomes.
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmedProjectSettlement;

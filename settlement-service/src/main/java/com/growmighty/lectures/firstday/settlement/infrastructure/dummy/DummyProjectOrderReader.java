@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Add pgOrderId and status fixtures and reuse the same validation shape as Feign recovery.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPayment;

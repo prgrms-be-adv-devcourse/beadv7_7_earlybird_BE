@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace direct refund command orchestration with one project-level refund Outbox write, then delete this service.
 package com.growmighty.lectures.firstday.settlement.application.cancellation;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.SETTLEMENT_DATA_INCONSISTENT;

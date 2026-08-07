@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Persist stable refPayoutId and the minimum Toss response needed for idempotent retries and audit.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.time.LocalDateTime;

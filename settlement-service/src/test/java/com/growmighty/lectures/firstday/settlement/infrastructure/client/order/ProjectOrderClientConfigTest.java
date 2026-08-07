@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep only recovery-mode Feign wiring and remove normal-run HTTP mode assertions.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import com.growmighty.lectures.firstday.settlement.infrastructure.client.project.ProjectSettlementTargetClientConfig;

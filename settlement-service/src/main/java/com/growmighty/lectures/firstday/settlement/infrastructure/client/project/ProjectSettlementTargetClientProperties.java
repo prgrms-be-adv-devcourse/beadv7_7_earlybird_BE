@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete obsolete Project target HTTP properties after Kafka migration.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.project;
 
 import java.net.URI;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Persist the Toss destination and eligibility state with uniqueness constraints and no raw account data.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep the confirmation result immutable and independent of Kafka and PG transport models.
 package com.growmighty.lectures.firstday.settlement.application.settlement;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;

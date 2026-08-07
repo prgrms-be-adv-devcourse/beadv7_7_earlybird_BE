@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep only scenarios needed to exercise requested, completed, failed, and unknown payout outcomes.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.infrastructure.dummy.DummyPayoutScenario;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete synchronous Project reader tests after event projection tests cover the interface.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.project;
 
 import static org.assertj.core.api.Assertions.assertThat;

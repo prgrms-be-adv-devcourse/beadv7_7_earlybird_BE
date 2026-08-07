@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Replace this HTTP integration test with ProjectRefundRequested producer-consumer contract coverage.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
 import static com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus.COMPLETED;

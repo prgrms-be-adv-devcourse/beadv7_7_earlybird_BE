@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify the recovery response includes pgOrderId and status and rejects incomplete or duplicate facts.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import static org.assertj.core.api.Assertions.assertThat;

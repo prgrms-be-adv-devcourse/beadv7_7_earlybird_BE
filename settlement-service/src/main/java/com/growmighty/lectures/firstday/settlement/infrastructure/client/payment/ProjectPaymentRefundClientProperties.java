@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete obsolete Payment HTTP properties with the direct refund adapter.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
 import java.net.URI;

@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Provide idempotent obligation and attempt lookup needed to prevent duplicate scheduled or manual payouts.
 package com.growmighty.lectures.firstday.settlement.domain.repository;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;

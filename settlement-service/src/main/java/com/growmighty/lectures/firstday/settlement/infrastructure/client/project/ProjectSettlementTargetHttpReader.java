@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Delete this adapter after persisted ProjectEnded and ProjectCancelled facts become authoritative.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.project;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE;
