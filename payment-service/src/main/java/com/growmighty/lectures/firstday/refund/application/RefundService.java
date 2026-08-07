@@ -79,7 +79,8 @@ public class RefundService {
     public void failRefund(Long refundId) {
         Refund refund = findRefund(refundId);
 
-        refund.fail();
-        refundRepository.save(refund);
+        if (refund.reconcileFailed()) { // <-- 이미 정합화된 환불은 no-op
+            refundRepository.save(refund);
+        }
     }
 }

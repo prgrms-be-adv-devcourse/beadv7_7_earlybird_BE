@@ -107,6 +107,19 @@ class RefundServiceTest {
         verifyNoInteractions(paymentRepository);
     }
 
+    // 추가 : 정합화가 먼저 완료한 환불의 실패 처리는 무시
+    @Test
+    void failRefund_ignoresAlreadyCompletedRefund() {
+        Refund refund = requestedRefund();
+        refund.complete();
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+
+        refundService.failRefund(REFUND_ID);
+
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.COMPLETED);
+        verify(refundRepository, never()).save(any());
+    }
+
     @Test
     void startRefund_rejectsNotPaidPayment() {
         Payment payment = Payment.ready(ORDER_ID, AMOUNT);
