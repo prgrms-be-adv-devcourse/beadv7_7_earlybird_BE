@@ -40,8 +40,7 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 - `@Document(indexName = "projects")`
 - 필드: `projectId`(`@Id`), `title`/`summary`/`description`(nori 커스텀 분석기, `@Setting`으로 인덱스에 등록), `embedding`(`dense_vector`, `text-embedding-3-small` 1536차원, `similarity=cosine`)
 
-**신규: `project-service/.../project/infrastructure/search/ProjectSearchRepository.java`**
-- Spring Data Elasticsearch `ElasticsearchRepository<ProjectDocument, Long>` — 기본 CRUD/삭제용. 실제 하이브리드 쿼리는 `ElasticsearchOperations`로 직접 작성(레포지토리 쿼리 메서드로 표현하기엔 kNN+match 조합이 복잡함).
+**(구현 단계에서 채택하지 않음) `ProjectSearchRepository`** — 애초에 `ElasticsearchRepository<ProjectDocument, Long>`로 기본 CRUD/삭제용 레포지토리를 두는 안을 검토했으나, 실제로는 만들지 않았다. `ElasticsearchOperations`가 save/delete/search를 이미 한 인터페이스로 균일하게 제공해서, 그 위에 얇게 감싸는 레포지토리 인터페이스를 추가로 둬도 실질적으로 얻는 게 없었다(YAGNI) — `ProjectSearchAdapter`가 `ElasticsearchOperations`를 처음부터 끝까지 직접 쓴다.
 
 **신규: `project-service/.../project/application/port/ProjectSearchPort.java`** (인터페이스, 기존 `OrderPort` 같은 포트 패턴)
 - `void index(Project project)` — title/summary/description으로 임베딩 생성 후 ES upsert
@@ -80,6 +79,12 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 
 - OpenAI API 키: 사용자 확인상 이미 존재. 실제 키가 `beadv7_7_earlybird_config`에 등록되어 있는지, 팀 내 다른 서비스가 이미 쓰고 있는 값인지는 구현 착수 시점에 재확인이 필요하다(이 문서 작성 시점에는 로컬에서 직접 확인할 방법이 없었음).
 - Spring AI와 Spring Boot 4.1/Spring Cloud 2025.1.2의 버전 호환성은 구현 단계에서 검증한다(2026-08-06 기준 Spring AI가 Boot 4.1을 공식 지원하는지 확인 필요).
+- **`spring.elasticsearch.uris`도 `beadv7_7_earlybird_config`의 `project-service.yml`에 OpenAI 키와 같은 방식으로 추가해야 한다.** 로컬 `application.yml`에는 `spring.application.name`과 config-server import만 있고 실제 URI는 config repo가 공급하는 구조라(`CLAUDE.md` 참고), 이 값이 빠지면 Spring Boot의 ES 클라이언트가 기본값 `http://localhost:9200`으로 조용히 폴백한다 — docker-compose/실제 배포 환경에서는 이게 틀린 주소다(예: docker-compose 내부에서는 `http://elasticsearch:9200`). **이 설정 누락은 기동을 막지 않고 티도 안 난다:** `ProjectSearchIndexInitializer`는 인덱스 생성 실패를 WARN 로그로 흡수하고, `ProjectSearchAdapter.index()`/`remove()`도 실패를 WARN 로그로 흡수한다 — 눈에 보이는 유일한 증상은 키워드 검색이 원인 불명의 503(circuit breaker fallback)을 내거나, 그것도 아니면 그냥 빈 결과/이상한 결과를 조용히 돌려주는 것뿐이다. 배포 담당자는 에러가 없다고 정상 동작을 신뢰하지 말고, 이 값이 실제로 설정됐는지 명시적으로 확인해야 한다.
+
+## 알려진 한계
+
+- **결과 절단(truncation)이 categoryId/status 필터링보다 먼저 일어난다.** `ProjectSearchAdapter.MAX_RESULTS`(200)는 ES 인덱스 전체(categoryId/status 없음)에서 관련도 상위 200개를 자른 뒤에야 MySQL로 넘어가고, MySQL이 그다음에 categoryId/status/role 필터를 적용한다. 그래서 `GET /api/v1/projects?keyword=게임&categoryId=5`처럼 keyword+categoryId를 같이 쓰는 요청은, category-5에 실제로 매치되는 프로젝트가 있어도 그게 ES 전체 인덱스 기준 keyword 상위 200위 안에 못 들면 결과가 0건일 수 있다. non-ADMIN 요청에서는 PENDING_REVIEW/REJECTED 문서도 그 200개 후보 슬롯을 소비하고 나서야 MySQL에서 걸러지므로, 실효 결과 집합이 더 줄어들 수 있다. 이건 ES 문서에 categoryId/status를 안 넣기로 한 설계(YAGNI, 위 아키텍처 절 참고)의 자연스러운 귀결이지 구현 버그가 아니지만, 기존 LIKE 검색 대비 실제로 체감되는 동작 차이라 여기 기록해 둔다. `MAX_RESULTS`를 올리면 이 문제가 일어나는 빈도는 줄지만, 근본적으로 없어지지는 않는다(어차피 top-N 자르기 자체가 categoryId/status를 모르는 채로 일어나므로).
+- **`reindexAllProjects()`는 추가(additive)만 하고 고아 문서를 지우지 않는다.** MySQL에서 이미 삭제된 프로젝트의 ES 문서가 남아 있어도, 전체 재색인은 현재 프로젝트들을 다시 upsert할 뿐 ES에만 남아 있는 고아 문서는 정리하지 않는다. 인지된 한계로 남겨둔다(이번 수정 범위에 포함하지 않음).
 
 ## 범위 밖
 
