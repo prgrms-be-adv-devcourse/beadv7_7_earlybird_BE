@@ -19,12 +19,16 @@ class PaymentApprovalResilienceConfigTest {
 
     private Retry paymentApprovalRetry;
     private CircuitBreaker paymentApprovalCircuitBreaker;
+    private Retry paymentLookupRetry;
+    private CircuitBreaker paymentLookupCircuitBreaker;
 
     @BeforeEach
     void setUp() {
         PaymentApprovalResilienceConfig config = new PaymentApprovalResilienceConfig();
         paymentApprovalRetry = config.paymentApprovalRetry();
         paymentApprovalCircuitBreaker = config.paymentApprovalCircuitBreaker();
+        paymentLookupRetry = config.paymentLookupRetry();
+        paymentLookupCircuitBreaker = config.paymentLookupCircuitBreaker();
     }
 
     // 추가 : 결과 미확정 오류의 최대 재시도 횟수 검증
@@ -75,6 +79,45 @@ class PaymentApprovalResilienceConfigTest {
         }
 
         assertThat(paymentApprovalCircuitBreaker.getState())
+            .isEqualTo(CircuitBreaker.State.OPEN);
+        assertThatThrownBy(supplier::get)
+            .isInstanceOf(CallNotPermittedException.class);
+        assertThat(calls).hasValue(5);
+    }
+
+    // 추가 : 조회 결과 미확정 오류의 최대 재시도 횟수 검증
+    @Test
+    void 조회_결과_미확정_오류는_총_두번_시도한다() {
+        AtomicInteger attempts = new AtomicInteger();
+        Supplier<Void> supplier = Retry.decorateSupplier(paymentLookupRetry, () -> {
+            attempts.incrementAndGet();
+            throw gatewayException(PaymentGatewayFailureType.UNCERTAIN);
+        });
+
+        assertThatThrownBy(supplier::get)
+            .isInstanceOf(PaymentGatewayException.class);
+
+        assertThat(attempts).hasValue(2);
+    }
+
+    // 추가 : 조회 결과 미확정 오류 누적 시 CircuitBreaker 차단 검증
+    @Test
+    void 조회_결과_미확정_오류가_다섯번_누적되면_CircuitBreaker가_열린다() {
+        AtomicInteger calls = new AtomicInteger();
+        Supplier<Void> supplier = CircuitBreaker.decorateSupplier(
+            paymentLookupCircuitBreaker,
+            () -> {
+                calls.incrementAndGet();
+                throw gatewayException(PaymentGatewayFailureType.UNCERTAIN);
+            }
+        );
+
+        for (int index = 0; index < 5; index++) {
+            assertThatThrownBy(supplier::get)
+                .isInstanceOf(PaymentGatewayException.class);
+        }
+
+        assertThat(paymentLookupCircuitBreaker.getState())
             .isEqualTo(CircuitBreaker.State.OPEN);
         assertThatThrownBy(supplier::get)
             .isInstanceOf(CallNotPermittedException.class);
