@@ -1,7 +1,7 @@
 # 얼리버드 인프라 다이어그램
 
 **담당**: 김하나한 — gateway-server · config-server · discovery-server · user-service · CI/CD
-**레포**: beadv7_7_earlybird_BE (develop / main) · **갱신일**: 2026-07-29
+**레포**: beadv7_7_earlybird_BE (develop / main) · **갱신일**: 2026-08-07
 
 ---
 
@@ -17,7 +17,7 @@ flowchart TD
     direction TB
     GW["gateway-server :8000<br/>(유일한 host 노출 포트)"]
 
-    subgraph SVC["비즈니스 서비스 9개 — host 포트 없음"]
+    subgraph SVC["비즈니스 서비스 10개 — host 포트 없음"]
       direction LR
       ORDER["order-service :8080"]
       PROJECT["project-service :8081"]
@@ -28,6 +28,7 @@ flowchart TD
       FILE["file-service :8087"]
       BOARD["board-service :8088"]
       NOTI["notification-service :8089"]
+      AI["ai-service :8090<br/>(barebone)"]
     end
 
     CFG["config-server :8888<br/>(native profile)"]
@@ -70,11 +71,12 @@ flowchart TD
     CADDY["Caddy :80 / :443<br/>TLS 종료 — 유일한 host 노출"]
     GW2["gateway-server :8000<br/>host 포트 없음, 내부망 전용"]
 
-    subgraph SVC2["비즈니스 서비스 8개"]
+    subgraph SVC2["비즈니스 서비스 9개"]
       direction LR
       S1["order · project · payment"]
       S2["user · cart · settlement"]
       S3["file · board · notification"]
+      S4["ai (barebone)"]
     end
 
     CFG2["config-server<br/>production profile"]
@@ -100,7 +102,7 @@ flowchart TD
 
 ## 03. CI/CD 파이프라인
 
-CD는 push가 아니라 **CI 성공 이벤트**에 게이팅되어 있다 — 테스트가 깨진 커밋이 배포되던 사고(#111)를 겪은 뒤 고쳤다. EC2 배포는 11개 이미지를 한 번에 빌드하지 않고 서비스 하나씩 순차로 빌드한다.
+CD는 push가 아니라 **CI 성공 이벤트**에 게이팅되어 있다 — 테스트가 깨진 커밋이 배포되던 사고(#111)를 겪은 뒤 고쳤다. EC2 배포는 12개 이미지를 한 번에 빌드하지 않고 서비스 하나씩 순차로 빌드한다.
 
 ```mermaid
 flowchart LR
@@ -114,7 +116,7 @@ flowchart LR
   CI2 -->|성공| GATE{"workflow_run 게이팅<br/>head_branch == main"}
   GATE --> CD["CD · SSH → EC2<br/>git pull"]
   MANUAL["workflow_dispatch<br/>수동 실행 — 게이트 우회"] -.-> CD
-  CD --> SEQ["순차 재빌드<br/>config → discovery → gateway → caddy<br/>→ 비즈니스 서비스 8개"]
+  CD --> SEQ["순차 재빌드<br/>config → discovery → gateway → caddy<br/>→ 비즈니스 서비스 9개"]
 ```
 
 *출처: `.github/workflows/ci.yml`, `.github/workflows/cd.yml`*
