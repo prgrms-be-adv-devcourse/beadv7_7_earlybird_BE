@@ -18,7 +18,7 @@ public class RefundCancellationSagaOrchestrator {
     public void cancel(Long orderId, RefundReason reason) {
         RefundCancellationTarget target = refundService.startRefund(orderId, reason);
         try {
-            refundGateway.refund(target.paymentKey(), target.reason());
+            refundGateway.refund(target.paymentKey(), target.reason(), target.cancelIdempotencyKey());
 
             refundService.completeRefund(target.refundId());
         } catch (RefundGatewayException exception) {

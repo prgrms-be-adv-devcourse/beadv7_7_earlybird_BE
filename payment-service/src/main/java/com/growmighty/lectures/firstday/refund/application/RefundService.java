@@ -40,7 +40,8 @@ public class RefundService {
         return new RefundCancellationTarget(
             refund.getId(),
             payment.getPaymentKey(),
-            refund.getReason()
+            refund.getReason(),
+            refund.getCancelIdempotencyKey()
         );
     }
 
