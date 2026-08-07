@@ -2,6 +2,8 @@ package com.growmighty.lectures.firstday.payment.config;
 
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayException;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentGatewayFailureType;
+import com.growmighty.lectures.firstday.refund.application.exception.RefundGatewayException;
+import com.growmighty.lectures.firstday.refund.application.exception.RefundGatewayFailureType;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.Retry;
@@ -62,6 +64,35 @@ public class PaymentApprovalResilienceConfig {
             .build();
 
         return CircuitBreaker.of("PaymentLookupCircuitBreaker", circuitBreakerConfig);
+    }
+
+    @Bean
+    public Retry paymentRefundRetry() {
+        RetryConfig retryConfig = RetryConfig.custom()
+            .maxAttempts(3)
+            .waitDuration(Duration.ofSeconds(1))
+            .retryOnException(this::isRefundUncertainFailure)
+            .build();
+
+        return Retry.of("paymentRefundRetry", retryConfig);
+    }
+
+    @Bean
+    public CircuitBreaker paymentRefundCircuitBreaker() {
+        CircuitBreakerConfig circuitBreakerConfig = CircuitBreakerConfig.custom()
+            .slidingWindowSize(10)
+            .minimumNumberOfCalls(5)
+            .failureRateThreshold(50)
+            .waitDurationInOpenState(Duration.ofSeconds(30))
+            .permittedNumberOfCallsInHalfOpenState(2)
+            .recordException(this::isRefundUncertainFailure)
+            .build();
+
+        return CircuitBreaker.of("paymentRefundCircuitBreaker", circuitBreakerConfig);
+    }
+
+    private boolean isRefundUncertainFailure(Throwable throwable) {
+        return throwable instanceof RefundGatewayException exception && exception.getFailureType() == RefundGatewayFailureType.UNCERTAIN;
     }
 
     private boolean isUncertainFailure(Throwable throwable) {
