@@ -28,7 +28,7 @@ jobs:
           envs: GHCR_PAT
           script: |
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
-            git pull
+            git fetch origin && git reset --hard origin/main
             # fe 이미지는 private GHCR 패키지 (조직 정책상 public 전환 불가) - pull 전
             # 로그인 필요. config-server가 이미 같은 방식(PAT)으로 private config repo에
             # 접근하는 것과 동일한 패턴.
