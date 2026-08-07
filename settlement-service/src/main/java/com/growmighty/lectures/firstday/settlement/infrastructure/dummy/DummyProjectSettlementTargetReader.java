@@ -17,6 +17,7 @@ public class DummyProjectSettlementTargetReader implements ProjectOutcomeReader 
     static final long DUMMY_PROJECT_ID = 9_000_001L;
     static final long DUMMY_CREATOR_ID = 9_000_001L;
 
+    // test 목적의 브랜치. pr 테스트 후 제거 예정.
     @Override
     public List<ProjectOutcome> findProjectOutcomes() {
         return List.of(new ProjectOutcome(
