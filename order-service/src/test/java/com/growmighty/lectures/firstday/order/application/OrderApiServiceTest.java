@@ -21,13 +21,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -79,7 +76,7 @@ class OrderApiServiceTest {
                         new OrderLine(10L, 2, BigDecimal.valueOf(10_000)),
                         new OrderLine(20L, 2, BigDecimal.valueOf(15_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
-                BigDecimal.valueOf(50_000), BigDecimal.valueOf(50_000));
+                BigDecimal.valueOf(50_000), BigDecimal.valueOf(50_000), UUID.randomUUID());
 
         OrderResult result = orderApiService.placeOrder(command, 1L);
 
@@ -160,7 +157,7 @@ class OrderApiServiceTest {
     void placeOrder_invalidCommandStopsBeforePersistenceAndRemoteProcessing() {
         PlaceOrderCommand command = new PlaceOrderCommand(1L, 10L, List.of(),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
-                BigDecimal.ZERO, BigDecimal.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, UUID.randomUUID());
 
         assertThatThrownBy(() -> orderApiService.placeOrder(command, 1L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -333,7 +330,7 @@ class OrderApiServiceTest {
                         new OrderLine(10L, 2, BigDecimal.valueOf(10_000)),
                         new OrderLine(10L, 3, BigDecimal.valueOf(10_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
-                BigDecimal.valueOf(50_000), BigDecimal.valueOf(50_000));
+                BigDecimal.valueOf(50_000), BigDecimal.valueOf(50_000), UUID.randomUUID());
 
         assertThatThrownBy(() -> orderApiService.placeOrder(command, 1L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -352,7 +349,7 @@ class OrderApiServiceTest {
                         new OrderLine(10L, 2, BigDecimal.valueOf(10_000)),
                         new OrderLine(10L, 2, BigDecimal.valueOf(10_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
-                BigDecimal.valueOf(40_000), BigDecimal.valueOf(43_000));
+                BigDecimal.valueOf(40_000), BigDecimal.valueOf(43_000), UUID.randomUUID());
 
         assertThatThrownBy(() -> orderApiService.placeOrder(command, 1L))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -377,7 +374,7 @@ class OrderApiServiceTest {
                         new OrderLine(10L, 2, BigDecimal.valueOf(10_000)),
                         new OrderLine(20L, 2, BigDecimal.valueOf(15_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
-                BigDecimal.valueOf(50_000), BigDecimal.valueOf(50_000));
+                BigDecimal.valueOf(50_000), BigDecimal.valueOf(50_000), UUID.randomUUID());
 
         OrderResult result = orderApiService.placeOrder(command, 1L);
 
@@ -423,7 +420,7 @@ class OrderApiServiceTest {
         PlaceOrderCommand command = new PlaceOrderCommand(16L, null,
                 List.of(new OrderLine(94L, 1, BigDecimal.valueOf(10_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
-                BigDecimal.valueOf(10_000), BigDecimal.valueOf(13_000));
+                BigDecimal.valueOf(10_000), BigDecimal.valueOf(13_000), UUID.randomUUID());
 
         OrderResult result = orderApiService.placeOrder(command, 16L);
 
@@ -436,6 +433,82 @@ class OrderApiServiceTest {
                 .containsExactly(org.assertj.core.groups.Tuple.tuple(94L, 1));
         verify(rewardPort).decreaseStock(94L, 1);
         verify(paymentPort).pay(1L, 16L, BigDecimal.valueOf(13_000));
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("order creation uses a valid client-generated idempotency key")
+    void placeOrder_validIdempotencyKey_success() {
+        UUID key = UUID.randomUUID();
+        stubRepository();
+        stubReward();
+        when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.success(99L, BigDecimal.valueOf(23_000)));
+
+        OrderResult result = orderApiService.placeOrder(command(1L, key), 1L);
+
+        assertThat(result.id()).isEqualTo(1L);
+        assertThat(orders.get(1L).getOrderIdempotencyKey()).isEqualTo(key);
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("order creation rejects a missing idempotency key")
+    void placeOrder_missingIdempotencyKey_rejected() {
+        assertThatThrownBy(() -> orderApiService.placeOrder(command(1L, null), 1L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("orderIdempotencyKey is required.");
+
+        verifyNoInteractions(orderRepository, rewardPort, paymentPort);
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("repeated order request returns the existing order without side effects")
+    void placeOrder_sameUserAndKey_returnsExistingOrder() {
+        UUID key = UUID.randomUUID();
+        Order existing = paidOrder(7L, 1L, key);
+        when(orderRepository.findByUserIdAndOrderIdempotencyKey(1L, key)).thenReturn(Optional.of(existing));
+
+        OrderResult result = orderApiService.placeOrder(command(1L, key), 1L);
+
+        assertThat(result.id()).isEqualTo(7L);
+        verify(orderRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(rewardPort, paymentPort);
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("unique constraint violation is handled as a duplicate order request")
+    void placeOrder_concurrentDuplicate_returnsExistingOrder() {
+        UUID key = UUID.randomUUID();
+        Order existing = paidOrder(7L, 1L, key);
+        when(orderRepository.findByUserIdAndOrderIdempotencyKey(1L, key))
+                .thenReturn(Optional.empty(), Optional.of(existing));
+        stubReward();
+        when(orderRepository.saveAndFlush(any(Order.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate"));
+
+        OrderResult result = orderApiService.placeOrder(command(1L, key), 1L);
+
+        assertThat(result.id()).isEqualTo(7L);
+        verify(rewardPort, never()).decreaseStock(any(), any(Integer.class));
+        verifyNoInteractions(paymentPort);
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("different users may reuse the same idempotency key")
+    void placeOrder_differentUsersSameKey_createsSeparateOrders() {
+        UUID key = UUID.randomUUID();
+        stubRepository();
+        stubReward();
+        when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.success(99L, BigDecimal.valueOf(23_000)));
+
+        OrderResult first = orderApiService.placeOrder(command(1L, key), 1L);
+        OrderResult second = orderApiService.placeOrder(command(2L, key), 2L);
+
+        assertThat(first.id()).isNotEqualTo(second.id());
+        assertThat(orders.values()).extracting(Order::getUserId).containsExactlyInAnyOrder(1L, 2L);
     }
 
     private void stubRepository() {
@@ -474,24 +547,32 @@ class OrderApiServiceTest {
     }
 
     private PlaceOrderCommand command(Long userId) {
+        return command(userId, UUID.randomUUID());
+    }
+
+    private PlaceOrderCommand command(Long userId, UUID orderIdempotencyKey) {
         return new PlaceOrderCommand(userId, 10L, List.of(new OrderLine(10L, 2, BigDecimal.valueOf(10_000))),
                 "Receiver", "010-0000-0000", "Seoul", "06236",
-                BigDecimal.valueOf(20_000), BigDecimal.valueOf(23_000));
+                BigDecimal.valueOf(20_000), BigDecimal.valueOf(23_000), orderIdempotencyKey);
     }
 
     private Order processingOrder(Long orderId) {
         Order order = Order.create(orderId, 1L, 1L,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 1L, 10L, 2)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
+                "Receiver", "010-0000-0000", "Seoul", "06236", UUID.randomUUID());
         order.markPaymentRequested();
         order.markPaymentProcessing();
         return order;
     }
 
     private Order paidOrder(Long orderId) {
-        Order order = Order.create(orderId, 1L, 1L,
+        return paidOrder(orderId, 1L, UUID.randomUUID());
+    }
+
+    private Order paidOrder(Long orderId, Long userId, UUID orderIdempotencyKey) {
+        Order order = Order.create(orderId, userId, 1L,
                 List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 1L, 10L, 2)),
-                "Receiver", "010-0000-0000", "Seoul", "06236");
+                "Receiver", "010-0000-0000", "Seoul", "06236", orderIdempotencyKey);
         order.markPaymentRequested();
         order.markPaid();
         return order;

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -35,6 +36,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
     @Override
     public Optional<Order> findByIdWithItems(Long id) {
         return jpaRepository.findByIdWithItems(id);
+    }
+
+    @Override
+    public Optional<Order> findByUserIdAndOrderIdempotencyKey(Long userId, UUID orderIdempotencyKey) {
+        return jpaRepository.findByUserIdAndOrderIdempotencyKey(userId, orderIdempotencyKey);
     }
 
     @Override
