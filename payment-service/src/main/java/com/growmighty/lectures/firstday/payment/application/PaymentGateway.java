@@ -12,8 +12,6 @@ public interface PaymentGateway {
 
     PgPayment getPayment(String paymentKey);
 
-    void cancel(String paymentKey);
-
     record PgApproval(String paymentKey, String pgOrderId, BigDecimal amount) {
     }
 

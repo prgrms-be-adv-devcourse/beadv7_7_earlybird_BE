@@ -18,8 +18,8 @@ public class RefundService {
     private final RefundRepository refundRepository;
 
     @Transactional
-    public RefundCancellationTarget startRefund(Long orderId, RefundReason reason) {
-        Payment payment = findPaidPaymentByOrderId(orderId);
+    public RefundCancellationTarget startRefund(Long paymentId, RefundReason reason) {
+        Payment payment = findPaidPayment(paymentId);
 
         Refund refund = refundRepository.findByPaymentId(payment.getPaymentId())
             .map(existingRefund -> {
@@ -45,9 +45,8 @@ public class RefundService {
         );
     }
 
-    private Payment findPaidPaymentByOrderId(Long orderId) {
-        Payment payment = paymentRepository.findByOrderId(orderId)
-            .orElseThrow(() -> new IllegalStateException("존재하지 않는 결제입니다. " + orderId));
+    private Payment findPaidPayment(Long paymentId) {
+        Payment payment = findPayment(paymentId);
 
         if (!payment.isPaid()) {
             throw new IllegalStateException("PAID 상태의 결제만 환불할 수 있습니다. status = " + payment.getStatus());
