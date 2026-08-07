@@ -48,6 +48,27 @@ class SecurityConfigTest {
     private WebTestClient webTestClient;
 
     @Test
+    @DisplayName("허용된 오리진에서의 프리플라이트 요청은 Access-Control-Allow-Origin 을 받는다 (인증 없이도 통과)")
+    void preflightFromAllowedOrigin_receivesCorsHeaders() {
+        webTestClient.options().uri("/api/v1/users/me")
+                .header("Origin", "http://localhost:5173")
+                .header("Access-Control-Request-Method", "GET")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://localhost:5173");
+    }
+
+    @Test
+    @DisplayName("허용되지 않은 오리진에서의 프리플라이트 요청은 Access-Control-Allow-Origin 이 없다")
+    void preflightFromDisallowedOrigin_receivesNoCorsHeaders() {
+        webTestClient.options().uri("/api/v1/users/me")
+                .header("Origin", "http://evil.example.com")
+                .header("Access-Control-Request-Method", "GET")
+                .exchange()
+                .expectHeader().doesNotExist("Access-Control-Allow-Origin");
+    }
+
+    @Test
     @DisplayName("Authorization 헤더 없이 보호된 경로를 호출하면 401")
     void protectedPath_withoutToken_isUnauthorized() {
         webTestClient.get().uri("/api/v1/users/me")

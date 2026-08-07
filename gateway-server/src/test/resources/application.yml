@@ -18,3 +18,6 @@ eureka:
 jwt:
   secret: A196b/7T15tWsckvVi3uwbzkfgbxZnvVYHTQ5kl+6nQ=
   access-token-expiration-seconds: 3600
+
+cors:
+  allowed-origins: http://localhost:5173
