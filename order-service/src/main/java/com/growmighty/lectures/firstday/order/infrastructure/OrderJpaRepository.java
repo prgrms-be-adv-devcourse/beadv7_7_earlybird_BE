@@ -15,6 +15,9 @@ import java.util.UUID;
 public interface OrderJpaRepository extends JpaRepository<Order, Long> {
     List<Order> findByUserId(Long userId);
 
+    @Query("select distinct o from Order o left join fetch o.items where o.status in :statuses")
+    List<Order> findByStatusInWithItems(@Param("statuses") List<OrderStatus> statuses);
+
     @Query("select distinct o from Order o left join fetch o.items where o.id = :id")
     Optional<Order> findByIdWithItems(@Param("id") Long id);
 

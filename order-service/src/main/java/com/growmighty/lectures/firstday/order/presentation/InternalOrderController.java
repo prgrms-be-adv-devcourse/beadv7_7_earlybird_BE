@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.order.presentation.dto.OrderConsistencyR
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderInspectionRequest;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderInspectionResponse;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderVerification;
+import com.growmighty.lectures.firstday.order.presentation.dto.PaymentStatusRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,11 @@ import java.util.Optional;
 public class InternalOrderController {
 
     private final OrderApiService orderApiService;
+
+    @PutMapping("/{orderId}/payment-status")
+    public void updatePaymentStatus(@PathVariable Long orderId, @Valid @RequestBody PaymentStatusRequest request) {
+        orderApiService.applyPaymentStatus(orderId, request.status());
+    }
 
     /** 후원 시 결제 검증용 정보 호출. TODO(예정): payment와 연동 — 인증 도입 후 검증, 상세 기능 추후 구현 예정 */
     @GetMapping("/{orderId}/inspect")

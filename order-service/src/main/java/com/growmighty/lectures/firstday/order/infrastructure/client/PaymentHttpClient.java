@@ -23,13 +23,8 @@ public class PaymentHttpClient implements PaymentPort {
     @Override
     public PaymentResult pay(Long orderId, Long userId, BigDecimal amount) {
         // TODO(예정, 상세 미정) : 검증 추가?
-        try {
-            ApiResponse<PaymentApiData> response = paymentFeignClient.pay(new PayBody(orderId, amount));
-            return toPaymentResult(response, amount);
-        } catch (RuntimeException e) {
-            log.warn("payment prepare request failed. orderId={}", orderId, e);
-            return PaymentResult.unknown(amount);
-        }
+        ApiResponse<PaymentApiData> response = paymentFeignClient.pay(new PayBody(orderId, amount));
+        return toPaymentResult(response, amount);
     }
 
     @Override

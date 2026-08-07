@@ -18,8 +18,8 @@ import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -37,12 +37,25 @@ import java.util.*;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OrderApiService {
 
     private final OrderRepository orderRepository;
     private final RewardPort rewardPort;
     private final PaymentPort paymentPort;
+    private final OrderRemoteCallExecutor remoteCalls;
+
+    @Autowired
+    public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
+                           OrderRemoteCallExecutor remoteCalls) {
+        this.orderRepository = orderRepository;
+        this.rewardPort = rewardPort;
+        this.paymentPort = paymentPort;
+        this.remoteCalls = remoteCalls;
+    }
+
+    OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
+        this(orderRepository, rewardPort, paymentPort, new OrderRemoteCallExecutor());
+    }
 
     /**
      * 1. 주문 생성 요청 수신
@@ -96,19 +109,6 @@ public class OrderApiService {
 
         Order order = createPendingOrder(command);
 
-        /*
-          Project 서비스에 "재고 확보" 요청
-             - 재고 검증과 확보를 원자적으로 수행
-          재고 확보 실패
-             - status = STOCK_FAILED
-             - 결제 호출하지 않음
-          재고 확보 성공
-             - status = PAYMENT_REQUEST
-          */
-
-
-        // TODO(예정) : 타 도메인 연동 상세 작업 처리
-
         try {
             order = orderRepository.saveAndFlush(order);
         } catch (DataIntegrityViolationException e) {
@@ -117,19 +117,38 @@ public class OrderApiService {
                     .orElseThrow(() -> e);
         }
 
+        List<OrderItem> confirmedItems = new ArrayList<>();
         try {
-            reserveStock(order);
+            reserveStock(order, confirmedItems);
         } catch (RuntimeException e) {
-            // TODO: Project service must provide a multi-reward atomic reservation endpoint to avoid partial deduction.
-            order.markStockReservationFailed();
+            if (remoteCalls.isTechnical(e)) {
+                order.markStockPending();
+                return OrderResult.from(orderRepository.save(order));
+            }
+            compensateStockFailure(order, confirmedItems);
             orderRepository.save(order);
             throw e;
         }
+
         order.markPaymentRequested();
         orderRepository.save(order);
 
-        PaymentResult payment = paymentPort.pay(order.getId(), order.getUserId(), order.getTotalAmount().getValue());
-        applyPaymentResult(order, payment); // TODO: pending 처리 -> 지속적인(일정시간동안) 요청 트랙잭션이 있어야 하는데 방법혼 구상 필요
+        Order paymentOrder = order;
+        PaymentResult payment;
+        try {
+            payment = remoteCalls.execute("payment-pay",
+                    () -> paymentPort.pay(paymentOrder.getId(), paymentOrder.getUserId(),
+                            paymentOrder.getTotalAmount().getValue()));
+        } catch (RuntimeException e) {
+            if (remoteCalls.isTechnical(e)) {
+                order.markPaymentPending();
+                return OrderResult.from(orderRepository.save(order));
+            }
+            compensatePaymentFailure(order);
+            orderRepository.save(order);
+            throw e;
+        }
+        applyPaymentResult(order, payment);
 
         return OrderResult.from(orderRepository.save(order));
     }
@@ -139,6 +158,16 @@ public class OrderApiService {
         Order order = getOrderWithItems(orderId);
         applyPaymentResult(order, paymentResult);
         return OrderResult.from(orderRepository.save(order));
+    }
+
+    public OrderResult applyPaymentStatus(Long orderId, String paymentStatus) {
+        PaymentResult paymentResult = switch (paymentStatus) {
+            case "PAID" -> PaymentResult.success(null, null);
+            case "FAILED", "CANCELLED" -> PaymentResult.failure(null);
+            case "READY", "CONFIRMING" -> PaymentResult.pending(null);
+            default -> throw new IllegalArgumentException("Unsupported payment status=" + paymentStatus);
+        };
+        return applyPaymentResult(orderId, paymentResult);
     }
 
     // 주문 취소
@@ -210,7 +239,8 @@ public class OrderApiService {
     private Order createPendingOrder(PlaceOrderCommand command) {
         List<OrderItem> orderItems = new ArrayList<>();
         for (OrderLine line : command.lines()) {
-            RewardSnapshot reward = rewardPort.getReward(line.rewardId());
+            RewardSnapshot reward = remoteCalls.execute("reward-get",
+                    () -> rewardPort.getReward(line.rewardId()));
             validateRewardSnapshot(line, reward);
             orderItems.add(OrderItem.create(
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
@@ -227,7 +257,17 @@ public class OrderApiService {
 
     // 결제 결과에 대한 처리
     private void applyPaymentResult(Order order, PaymentResult payment) {
-        if (order.getStatus() != OrderStatus.PAYMENT_REQUEST && order.getStatus() != OrderStatus.PAYMENT_PROCESSING) {
+        if (order.getStatus() == OrderStatus.PAID || order.getStatus() == OrderStatus.PAYMENT_FAILED
+                || order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.STOCK_FAILED) {
+            return;
+        }
+        if (order.getStatus() == OrderStatus.PAYMENT_COMPENSATION_PENDING
+                && payment.status() != PaymentResult.Status.FAILURE) {
+            return;
+        }
+        if (order.getStatus() != OrderStatus.PAYMENT_REQUEST && order.getStatus() != OrderStatus.PAYMENT_PROCESSING
+                && order.getStatus() != OrderStatus.PAYMENT_PENDING
+                && order.getStatus() != OrderStatus.PAYMENT_COMPENSATION_PENDING) {
             throw new IllegalStateException("Payment cannot be applied from status=" + order.getStatus());
         }
 
@@ -238,14 +278,13 @@ public class OrderApiService {
             return;
         }
         if (payment.status() == PaymentResult.Status.FAILURE) {
-            order.markPaymentFailed();
-            releaseStock(order);
+            compensatePaymentFailure(order);
             log.info("payment failed. orderId={}", order.getId());
             return;
         }
 
-        if (order.getStatus() == OrderStatus.PAYMENT_REQUEST) {
-            order.markPaymentProcessing();
+        if (order.getStatus() != OrderStatus.PAYMENT_PENDING) {
+            order.markPaymentPending();
         }
         log.warn("payment result is unknown. orderId={}", order.getId());
     }
@@ -320,10 +359,12 @@ public class OrderApiService {
     // 재고 확보 작업 로직 -> 일단 차감 후 다음 단계에서 복원
     // '재고 확보'를 '감소 처리'로 하는 것 자체가 확정은 아님
     // 경우에 따라서 reward 도메인이랑 협의 필요
-    private void reserveStock(Order order) {
+    private void reserveStock(Order order, List<OrderItem> confirmedItems) {
         // UPDATE rewards SET stock = stock - :quantity WHERE id = :rewardId AND stock >= :quantity.
         for (OrderItem item : order.getItems()) {
-            rewardPort.decreaseStock(item.getRewardId(), item.getQuantity());
+            remoteCalls.execute("reward-decrease-stock",
+                    () -> rewardPort.decreaseStock(item.getRewardId(), item.getQuantity(), item.getOrder().getId()));
+            confirmedItems.add(item);
         }
         log.info("재고 확보 오류. orderId={}", order.getId());
     }
@@ -332,7 +373,7 @@ public class OrderApiService {
     private void releaseStock(Order order) {
         // TODO(미정) : 정합성 검증 추가?
         for (OrderItem item : order.getItems()) {
-            rewardPort.restoreStock(item.getRewardId(), item.getQuantity());
+            restoreStock(item);
         }
         log.info("재고 복원 오류. orderId={}", order.getId());
     }
@@ -350,6 +391,94 @@ public class OrderApiService {
     private void verifyCancellationAllowedByProject(Order order) {
         // TODO(미정, 예정) : 주문 취소 가능 여부 검증
         log.info("temporary project cancellation policy allowed. orderId={}, projectIds={}", order.getId(), projectIds(order));
+    }
+
+    private void restoreStock(OrderItem item) {
+        remoteCalls.execute("reward-restore-stock",
+                () -> rewardPort.restoreStock(item.getRewardId(), item.getQuantity(), item.getOrder().getId()));
+    }
+
+    private void compensateStockFailure(Order order, List<OrderItem> confirmedItems) {
+        try {
+            for (OrderItem item : confirmedItems) {
+                restoreStock(item);
+            }
+            order.markStockReservationFailed();
+        } catch (RuntimeException compensationFailure) {
+            order.markStockCompensationPending();
+        }
+    }
+
+    private void compensatePaymentFailure(Order order) {
+        try {
+            releaseStock(order);
+            order.markPaymentFailed();
+        } catch (RuntimeException compensationFailure) {
+            order.markPaymentCompensationPending();
+        }
+    }
+
+    public void recoverPendingOrders() {
+        List<OrderStatus> statuses = List.of(OrderStatus.STOCK_PENDING, OrderStatus.PAYMENT_PENDING,
+                OrderStatus.STOCK_COMPENSATION_PENDING, OrderStatus.PAYMENT_COMPENSATION_PENDING);
+        for (Order order : orderRepository.findByStatusIn(statuses)) {
+            try {
+                recoverPendingOrder(order);
+            } catch (RuntimeException failure) {
+                log.warn("order saga recovery remains pending. orderId={}, status={}",
+                        order.getId(), order.getStatus(), failure);
+            }
+        }
+    }
+
+    private void recoverPendingOrder(Order order) {
+        switch (order.getStatus()) {
+            case STOCK_PENDING -> recoverStock(order);
+            case PAYMENT_PENDING -> recoverPayment(order);
+            case STOCK_COMPENSATION_PENDING -> {
+                releaseStock(order);
+                order.markStockReservationFailed();
+                orderRepository.save(order);
+            }
+            case PAYMENT_COMPENSATION_PENDING -> {
+                releaseStock(order);
+                order.markPaymentFailed();
+                orderRepository.save(order);
+            }
+            default -> { }
+        }
+    }
+
+    private void recoverStock(Order order) {
+        List<OrderItem> confirmedItems = new ArrayList<>();
+        try {
+            reserveStock(order, confirmedItems);
+        } catch (RuntimeException failure) {
+            if (remoteCalls.isTechnical(failure)) {
+                return;
+            }
+            compensateStockFailure(order, confirmedItems);
+            orderRepository.save(order);
+            return;
+        }
+        order.markPaymentRequested();
+        orderRepository.save(order);
+        try {
+            PaymentResult result = remoteCalls.execute("payment-pay",
+                    () -> paymentPort.pay(order.getId(), order.getUserId(), order.getTotalAmount().getValue()));
+            applyPaymentResult(order, result);
+        } catch (RuntimeException failure) {
+            if (remoteCalls.isTechnical(failure)) {
+                order.markPaymentPending();
+            } else {
+                compensatePaymentFailure(order);
+            }
+        }
+        orderRepository.save(order);
+    }
+
+    private void recoverPayment(Order order) {
+        log.warn("payment status lookup by orderId is unavailable; awaiting payment callback. orderId={}", order.getId());
     }
 
     private Order getOrder(Long orderId) {

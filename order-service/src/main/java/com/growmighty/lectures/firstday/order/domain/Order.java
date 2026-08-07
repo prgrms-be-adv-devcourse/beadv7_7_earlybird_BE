@@ -146,26 +146,62 @@ public class Order extends BaseEntity {
     }
 
     public void markStockReservationFailed() {
-        changeStatus(OrderStatus.CREATED, OrderStatus.STOCK_FAILED);
+        if (this.status != OrderStatus.CREATED && this.status != OrderStatus.STOCK_PENDING
+                && this.status != OrderStatus.STOCK_COMPENSATION_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.STOCK_FAILED);
+        }
+        this.status = OrderStatus.STOCK_FAILED;
+    }
+
+    public void markStockPending() {
+        changeStatus(OrderStatus.CREATED, OrderStatus.STOCK_PENDING);
+    }
+
+    public void markStockCompensationPending() {
+        if (this.status != OrderStatus.CREATED && this.status != OrderStatus.STOCK_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.STOCK_COMPENSATION_PENDING);
+        }
+        this.status = OrderStatus.STOCK_COMPENSATION_PENDING;
     }
 
     public void markPaymentRequested() {
-        changeStatus(OrderStatus.CREATED, OrderStatus.PAYMENT_REQUEST);
+        if (this.status != OrderStatus.CREATED && this.status != OrderStatus.STOCK_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_REQUEST);
+        }
+        this.status = OrderStatus.PAYMENT_REQUEST;
     }
 
     public void markPaymentProcessing() {
         changeStatus(OrderStatus.PAYMENT_REQUEST, OrderStatus.PAYMENT_PROCESSING);
     }
 
-    public void markPaymentFailed() {
+    public void markPaymentPending() {
         if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_PENDING);
+        }
+        this.status = OrderStatus.PAYMENT_PENDING;
+    }
+
+    public void markPaymentCompensationPending() {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
+                && this.status != OrderStatus.PAYMENT_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_COMPENSATION_PENDING);
+        }
+        this.status = OrderStatus.PAYMENT_COMPENSATION_PENDING;
+    }
+
+    public void markPaymentFailed() {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
+                && this.status != OrderStatus.PAYMENT_PENDING
+                && this.status != OrderStatus.PAYMENT_COMPENSATION_PENDING) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_FAILED);
         }
         this.status = OrderStatus.PAYMENT_FAILED;
     }
 
     public void markPaid() {
-        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING) {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
+                && this.status != OrderStatus.PAYMENT_PENDING) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAID);
         }
         this.status = OrderStatus.PAID;
