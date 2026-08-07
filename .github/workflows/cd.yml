@@ -27,6 +27,12 @@ jobs:
           command_timeout: '30m'
           envs: GHCR_PAT
           script: |
+            set -e
+            # without this, a failure partway through (e.g. the up -d conflict below) doesn't stop
+            # the script - it just falls through to the next line, and the step's reported result
+            # ends up being whatever the LAST command returned. That's how a broken deploy showed
+            # as "success": `up -d` failed on most services, but the final `docker restart
+            # earlybird-caddy` succeeded, so the run was green while the backend was down.
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
             git fetch origin && git reset --hard origin/main
             # fe 이미지는 private GHCR 패키지 (조직 정책상 public 전환 불가) - pull 전
