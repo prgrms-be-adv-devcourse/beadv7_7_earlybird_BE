@@ -5,7 +5,6 @@ import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -24,7 +23,7 @@ public class RefundRepositoryAdapter implements RefundRepository {
     }
 
     @Override
-    public List<Refund> findByPaymentId(Long paymentId) {
+    public Optional<Refund> findByPaymentId(Long paymentId) {
         return jpaRepository.findByPaymentId(paymentId);
     }
 }

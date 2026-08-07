@@ -19,7 +19,7 @@ public class Refund extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private Long paymentId;
 
     @Column(nullable = false)
@@ -54,15 +54,23 @@ public class Refund extends BaseEntity {
         return new Refund(paymentId, amount, reason);
     }
 
+    public boolean isRequested() {
+        return RefundStatus.REQUESTED == this.status;
+    }
+
     public void complete() {
-        if (this.status == RefundStatus.COMPLETED) {
-            throw new IllegalStateException("이미 완료된 환불입니다.");
+        if (!isRequested()) {
+            throw new IllegalStateException("REQUESTED 상태의 환불만 완료할 수 있습니다. status = " + this.status);
         }
         this.status = RefundStatus.COMPLETED;
         this.completedAt = LocalDateTime.now();
     }
 
     public void fail() {
+        if (!isRequested()) {
+            throw new IllegalStateException("REQUESTED 상태의 환불만 실패 처리할 수 있습니다. status = " + this.status);
+        }
+
         this.status = RefundStatus.FAILED;
     }
 }
