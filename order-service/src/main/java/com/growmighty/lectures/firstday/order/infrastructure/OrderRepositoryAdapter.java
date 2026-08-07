@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -38,6 +39,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
+    public Optional<Order> findByUserIdAndOrderIdempotencyKey(Long userId, UUID orderIdempotencyKey) {
+        return jpaRepository.findByUserIdAndOrderIdempotencyKey(userId, orderIdempotencyKey);
+    }
+
+    @Override
     public boolean existsByProjectId(Long projectId) {
         return jpaRepository.existsByProjectId(projectId);
     }
@@ -58,6 +64,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
     @Override
     public List<Order> findByUserId(Long userId) {
         return jpaRepository.findByUserId(userId);
+    }
+
+    @Override
+    public List<Order> findByStatusIn(List<OrderStatus> statuses) {
+        return jpaRepository.findByStatusInWithItems(statuses);
     }
 
     @Override

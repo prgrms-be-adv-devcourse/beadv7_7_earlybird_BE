@@ -2,9 +2,13 @@ package com.growmighty.lectures.firstday.order.domain;
 
 public enum OrderStatus {
     CREATED,
+    STOCK_PENDING,
     STOCK_FAILED,
     PAYMENT_REQUEST,
     PAYMENT_PROCESSING,
+    PAYMENT_PENDING,
+    STOCK_COMPENSATION_PENDING,
+    PAYMENT_COMPENSATION_PENDING,
     PAYMENT_FAILED,
     PAID,
     CANCELLED

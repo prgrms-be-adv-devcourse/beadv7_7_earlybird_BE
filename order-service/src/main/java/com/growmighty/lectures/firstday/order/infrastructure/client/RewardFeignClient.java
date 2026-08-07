@@ -64,12 +64,12 @@ public interface RewardFeignClient extends RewardPort {
     }
 
     @Override
-    default void decreaseStock(Long rewardId, int quantity) {
-        sendDecreaseStock(rewardId, new StockChangeBody(quantity));
+    default void decreaseStock(Long rewardId, int quantity, Long orderId) {
+        sendDecreaseStock(rewardId, new StockChangeBody(quantity, orderId));
     }
 
     @Override
-    default void restoreStock(Long rewardId, int quantity) {
-        sendRestoreStock(rewardId, new StockChangeBody(quantity));
+    default void restoreStock(Long rewardId, int quantity, Long orderId) {
+        sendRestoreStock(rewardId, new StockChangeBody(quantity, orderId));
     }
 }

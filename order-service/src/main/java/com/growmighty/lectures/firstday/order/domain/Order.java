@@ -11,9 +11,12 @@ import org.hibernate.type.SqlTypes;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
-@Table(name = "orders")
+@Table(name = "orders", uniqueConstraints = @UniqueConstraint(
+        name = "uk_orders_user_id_idempotency_key",
+        columnNames = {"user_id", "order_idempotency_key"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
@@ -26,6 +29,9 @@ public class Order extends BaseEntity {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    @Column(name = "order_idempotency_key", nullable = false, updatable = false)
+    private UUID orderIdempotencyKey;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id ASC")
@@ -64,9 +70,11 @@ public class Order extends BaseEntity {
     private String zipCode;
 
     private Order(Long id, Long userId, Long projectId, List<OrderItem> items,
-                  String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
+                  String receiverName, String receiverPhone, String shippingAddress, String zipCode,
+                  UUID orderIdempotencyKey) {
         validateItems(items);
         validateShippingInfo(receiverName, receiverPhone, shippingAddress, zipCode);
+        validateOrderIdempotencyKey(orderIdempotencyKey);
         this.id = id;
         items.forEach(this::addOrderItem);
         this.userId = userId;
@@ -75,13 +83,22 @@ public class Order extends BaseEntity {
         this.receiverPhone = receiverPhone;
         this.shippingAddress = shippingAddress;
         this.zipCode = zipCode;
+        this.orderIdempotencyKey = orderIdempotencyKey;
         this.status = OrderStatus.CREATED;
         recalculateAmounts();
     }
 
     public static Order create(Long id, Long userId, Long projectId, List<OrderItem> items,
-                               String receiverName, String receiverPhone, String shippingAddress, String zipCode) {
-        return new Order(id, userId, projectId, items, receiverName, receiverPhone, shippingAddress, zipCode);
+                               String receiverName, String receiverPhone, String shippingAddress, String zipCode,
+                               UUID orderIdempotencyKey) {
+        return new Order(id, userId, projectId, items, receiverName, receiverPhone, shippingAddress, zipCode,
+                orderIdempotencyKey);
+    }
+
+    private void validateOrderIdempotencyKey(UUID orderIdempotencyKey) {
+        if (orderIdempotencyKey == null) {
+            throw new IllegalArgumentException("orderIdempotencyKey is required.");
+        }
     }
 
     private void validateItems(List<OrderItem> items) {
@@ -129,26 +146,62 @@ public class Order extends BaseEntity {
     }
 
     public void markStockReservationFailed() {
-        changeStatus(OrderStatus.CREATED, OrderStatus.STOCK_FAILED);
+        if (this.status != OrderStatus.CREATED && this.status != OrderStatus.STOCK_PENDING
+                && this.status != OrderStatus.STOCK_COMPENSATION_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.STOCK_FAILED);
+        }
+        this.status = OrderStatus.STOCK_FAILED;
+    }
+
+    public void markStockPending() {
+        changeStatus(OrderStatus.CREATED, OrderStatus.STOCK_PENDING);
+    }
+
+    public void markStockCompensationPending() {
+        if (this.status != OrderStatus.CREATED && this.status != OrderStatus.STOCK_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.STOCK_COMPENSATION_PENDING);
+        }
+        this.status = OrderStatus.STOCK_COMPENSATION_PENDING;
     }
 
     public void markPaymentRequested() {
-        changeStatus(OrderStatus.CREATED, OrderStatus.PAYMENT_REQUEST);
+        if (this.status != OrderStatus.CREATED && this.status != OrderStatus.STOCK_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_REQUEST);
+        }
+        this.status = OrderStatus.PAYMENT_REQUEST;
     }
 
     public void markPaymentProcessing() {
         changeStatus(OrderStatus.PAYMENT_REQUEST, OrderStatus.PAYMENT_PROCESSING);
     }
 
-    public void markPaymentFailed() {
+    public void markPaymentPending() {
         if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_PENDING);
+        }
+        this.status = OrderStatus.PAYMENT_PENDING;
+    }
+
+    public void markPaymentCompensationPending() {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
+                && this.status != OrderStatus.PAYMENT_PENDING) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_COMPENSATION_PENDING);
+        }
+        this.status = OrderStatus.PAYMENT_COMPENSATION_PENDING;
+    }
+
+    public void markPaymentFailed() {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
+                && this.status != OrderStatus.PAYMENT_PENDING
+                && this.status != OrderStatus.PAYMENT_COMPENSATION_PENDING) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_FAILED);
         }
         this.status = OrderStatus.PAYMENT_FAILED;
     }
 
     public void markPaid() {
-        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING) {
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
+                && this.status != OrderStatus.PAYMENT_PENDING) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAID);
         }
         this.status = OrderStatus.PAID;
