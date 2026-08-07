@@ -46,6 +46,7 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 | file-service | 8087 | 파일 (미구현 스켈레톤) |
 | board-service | 8088 | 커뮤니티 (공지/의견/리뷰) |
 | notification-service | 8089 | 알림 |
+| ai-service | 8090 | AI (barebone — 미구현 스켈레톤) |
 | common | — | 공유 모듈 (`ApiResponse`, `BusinessException` 등) |
 
 `/internal/**` API는 게이트웨이에 라우트가 없다 — 서비스 간 Eureka 직접 호출 전용이며 외부에서 접근 불가.
