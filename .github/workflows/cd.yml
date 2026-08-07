@@ -16,6 +16,8 @@ jobs:
       (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
     steps:
       - uses: appleboy/ssh-action@v1
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -23,9 +25,14 @@ jobs:
           # drone-ssh는 진행 상황과 무관하게 이 시간이 지나면 원격 명령을 강제 종료한다.
           # 기본값 10분으로는 12개 이미지를 전부 재빌드하기엔 여유가 부족하다.
           command_timeout: '30m'
+          envs: GHCR_PAT
           script: |
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
             git pull
+            # fe 이미지는 private GHCR 패키지 (조직 정책상 public 전환 불가) - pull 전
+            # 로그인 필요. config-server가 이미 같은 방식(PAT)으로 private config repo에
+            # 접근하는 것과 동일한 패턴.
+            echo "$GHCR_PAT" | docker login ghcr.io -u krkhnh --password-stdin
             # 단일 `docker compose up -d --build`(buildx bake로 12개 이미지를 전부 병렬
             # 빌드)가 아니라 서비스를 한 번에 하나씩 빌드한다. EC2는 2 vCPU 짜리라
             # Gradle 빌드 12개가 동시에 돌면 CPU 경합이 심해져 sshd조차 응답하지

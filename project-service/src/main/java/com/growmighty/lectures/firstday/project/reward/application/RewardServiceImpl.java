@@ -11,11 +11,13 @@ import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailed
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -29,6 +31,7 @@ public class RewardServiceImpl implements RewardService {
     // ProjectServiceImpl이 반대로 RewardService(ObjectProvider<RewardService>)를 필요로 해서
     // 생기는 순환 빈 의존을 끊기 위해 ObjectProvider로 지연 조회한다.
     private final ObjectProvider<ProjectService> projectServiceProvider;
+    private final RewardStockTransactionExecutor rewardStockTransactionExecutor;
 
     @Override
     @Transactional
@@ -162,36 +165,39 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * @Retryable이 @Transactional을 감싸도록 순서가 보장돼야 한다(ProjectServiceApplication의 @EnableRetry order 설정).
-     * 그래야 낙관적 락 충돌로 커밋이 실패했을 때 매 재시도가 새 트랜잭션에서 엔티티를 다시 읽어온다.
-     * 프로젝트가 지금 이 순간 열려있는지(ProjectStatusView.open())도 같이 확인한다 — 마감 배치가 아직
-     * 안 돈 상태에서도 마감시각이 지났으면 즉시 주문을 막기 위함(마감 배치 주기와 무관하게 동작).
+     * 재시도 루프(@Retryable)와 트랜잭션 경계(@Transactional)를 물리적으로 다른 빈으로 분리했다 —
+     * rewardStockTransactionExecutor가 별도 프록시라, 재시도마다 이 래퍼가 그 프록시를 다시 호출해야만
+     * 매 attempt가 새 트랜잭션에서 엔티티를 다시 읽어온다는 게 self-invocation 걱정 없이 구조로 보장된다.
+     * 이 메서드 자체는 propagation=NOT_SUPPORTED로 트랜잭션 없이 실행돼야 한다 — 클래스 레벨
+     * @Transactional(readOnly=true)가 기본 적용되는데, 그걸 그대로 두면 이 메서드가 다시 트랜잭션을
+     * 걸치게 돼 분리한 의미가 없어진다. 중복 요청(DataIntegrityViolationException)도 트랜잭션이 이미
+     * 끝난 뒤인 여기서 잡는다 — 트랜잭션 안에서 잡으면 이미 rollback-only로 표시된 트랜잭션을 커밋
+     * 시도하다 UnexpectedRollbackException이 난다(RewardStockTransactionExecutor.registerStockChange 참고).
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
-    @Transactional
-    public void decreaseStock(Long rewardId, int quantity) {
-        Reward reward = getRewardEntity(rewardId);
-        findProjectStatus(reward.getProjectId())
-            .filter(ProjectStatusView::open)
-            .orElseThrow(() -> new IllegalStateException(
-                "마감되었거나 진행중이 아닌 프로젝트의 리워드는 주문할 수 없습니다. rewardId=" + rewardId));
-        reward.decreaseStock(quantity);
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void decreaseStock(Long rewardId, int quantity, Long orderId) {
+        try {
+            rewardStockTransactionExecutor.decreaseStock(rewardId, quantity, orderId);
+        } catch (DataIntegrityViolationException e) {
+            // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
+        }
     }
-
     /**
-     * decreaseStock/restoreStock이 파라미터 시그니처(Long, int)가 같아서, operation별로 서로 다른
-     * @Recover를 시그니처 자동 매칭에 맡기면 둘 다 먼저 선언된 쪽만 호출되는 문제가 있었다.
+     * decreaseStock/restoreStock이 파라미터 시그니처(Long, int, Long)가 같아서, operation별로 서로
+     * 다른 @Recover를 시그니처 자동 매칭에 맡기면 둘 다 먼저 선언된 쪽만 호출되는 문제가 있었다.
      * @Retryable의 recover 속성으로 이름을 직접 지정해 그 모호성을 없앴는데, recover 속성은
      * 메서드 하나만 가리킬 수 있어서 "락 충돌 전용 + catch-all" 2단 구조를 그대로 못 쓴다 — 대신
      * 이 메서드 하나가 RuntimeException을 폭넓게 받고 instanceof로 분기한다. else(원본 재던지기)가
      * 없으면 retryFor에 없는 예외(재고 부족 등)까지 여기로 흘러들어와 매칭 실패로 500이 되므로 필수.
      */
     @Recover
-    public void recoverDecreaseStockConflict(RuntimeException e, Long rewardId, int quantity) {
+    public void recoverDecreaseStockConflict(RuntimeException e, Long rewardId, int quantity, Long orderId) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
-                "재고 차감 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
+                "재고 차감 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity
+                    + ", orderId=" + orderId);
         }
         throw e;
     }
@@ -199,21 +205,26 @@ public class RewardServiceImpl implements RewardService {
     /**
      * decreaseStock과 같은 이유로 @Retryable — 동시 취소·환불로 여러 restoreStock 요청이
      * 같은 리워드에 몰리면 낙관적 락 충돌이 날 수 있어, 재시도 없이는 정상적인 동시 복원 요청도
-     * 그냥 실패해버린다.
+     * 그냥 실패해버린다. decreaseStock과 같은 이유로 재시도 루프/트랜잭션 경계를 분리했다.
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverRestoreStockConflict")
-    @Transactional
-    public void restoreStock(Long rewardId, int quantity) {
-        getRewardEntity(rewardId).restoreStock(quantity);
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void restoreStock(Long rewardId, int quantity, Long orderId) {
+        try {
+            rewardStockTransactionExecutor.restoreStock(rewardId, quantity, orderId);
+        } catch (DataIntegrityViolationException e) {
+            // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
+        }
     }
 
     /** recoverDecreaseStockConflict와 동일한 instanceof 분기 패턴 — restoreStock 전용 메시지. */
     @Recover
-    public void recoverRestoreStockConflict(RuntimeException e, Long rewardId, int quantity) {
+    public void recoverRestoreStockConflict(RuntimeException e, Long rewardId, int quantity, Long orderId) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
-                "재고 복원 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity);
+                "재고 복원 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity
+                    + ", orderId=" + orderId);
         }
         throw e;
     }

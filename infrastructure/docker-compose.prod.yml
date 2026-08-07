@@ -25,6 +25,15 @@ services:
       - caddy-config:/config
     depends_on:
       - gateway-server
+      - fe
+    restart: unless-stopped
+
+  # Built and pushed by beadv7_7_earlybird_FE's own GitHub Actions (ghcr.io, tagged :latest and
+  # by commit SHA). Its deploy workflow SSHes in and runs `docker compose pull fe && up -d fe`
+  # against this file. Caddy reverse-proxies everything but /api/* to it - see Caddyfile.
+  fe:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_fe:latest
+    container_name: earlybird-fe
     restart: unless-stopped
 
 volumes:

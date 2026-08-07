@@ -17,30 +17,31 @@ import java.util.List;
 
 /** 리뷰 API */
 @RestController
+@RequestMapping("/api/v1/reviews")
 @RequiredArgsConstructor
 public class ReviewController {
     private final ReviewService reviewService;
 
-    @PostMapping("/projects/{projectId}/reviews")
-    public ReviewResponse register(@PathVariable Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
+    @PostMapping
+    public ReviewResponse register(@RequestParam Long projectId, @RequestHeader(JwtHeaders.USER_ID) Long authorId,
                                     @Valid @RequestBody RegisterReviewRequest request) {
         return ReviewResponse.from(reviewService.register(
             new RegisterReviewCommand(projectId, request.rewardId(), authorId, request.rating(), request.content())));
     }
 
-    @GetMapping("/projects/{projectId}/reviews")
-    public List<ReviewResponse> getByProject(@PathVariable Long projectId) {
+    @GetMapping
+    public List<ReviewResponse> getByProject(@RequestParam Long projectId) {
         return ReviewResponse.from(reviewService.getByProject(projectId));
     }
 
-    @PatchMapping("/projects/{projectId}/reviews/{reviewId}")
+    @PatchMapping("/{reviewId}")
     public ReviewResponse update(@PathVariable Long reviewId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                                   @Valid @RequestBody UpdateReviewRequest request) {
         return ReviewResponse.from(reviewService.update(
             new UpdateReviewCommand(reviewId, requesterId, request.rating(), request.content())));
     }
 
-    @DeleteMapping("/projects/{projectId}/reviews/{reviewId}")
+    @DeleteMapping("/{reviewId}")
     public Void delete(@PathVariable Long reviewId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
                         @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         reviewService.delete(new DeleteReviewCommand(reviewId, requesterId, requesterRole));
