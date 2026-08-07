@@ -309,6 +309,13 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
+    @Override
+    public void reindexAllProjects() {
+        for (Project project : projectRepository.findAll()) {
+            searchPort.index(project);
+        }
+    }
+
     /**
      * 프로젝트가 마감(성공/실패/조기종료)되면 그 리워드들도 비활성화한다. Reward.isOrderable()이
      * 부모 프로젝트 상태를 모르고 자기 active/재고만 보기 때문에, 여기서 안 꺼주면 이미 마감된

@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.respons
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,5 +38,12 @@ public class ProjectInternalController {
     @GetMapping("/{projectId}/creator")
     public ProjectCreatorResponse getCreator(@PathVariable Long projectId) {
         return projectService.getCreator(projectId);
+    }
+
+    /** 관리자 전용: ES 검색 인덱스가 MySQL과 어긋났을 때(장애 복구, 최초 도입) 전체를 다시 색인한다. */
+    @PostMapping("/reindex")
+    public Void reindex() {
+        projectService.reindexAllProjects();
+        return null;
     }
 }
