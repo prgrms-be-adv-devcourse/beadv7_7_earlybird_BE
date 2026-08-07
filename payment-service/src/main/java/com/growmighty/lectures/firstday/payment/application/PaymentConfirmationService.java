@@ -90,13 +90,12 @@ public class PaymentConfirmationService {
      * 승인 실패,
      */
     @Transactional
-    public PaymentInfo failConfirmation(Long paymentId) {
+    public void failConfirmation(Long paymentId) {
         Payment payment = findPayment(paymentId);
 
-        payment.fail();
-        Payment savedPayment = paymentRepository.save(payment);
-
-        return PaymentInfo.from(savedPayment);
+        if (payment.reconcileFailed()) {
+            paymentRepository.save(payment);
+        }
     }
 
     @Transactional(readOnly = true)
