@@ -7,6 +7,15 @@ x-service-defaults: &service-defaults
     # env var 쪽이 성공해도 yml 쪽(localhost:8888)이 컨테이너 안에서 항상 실패해 fail-fast 로
     # 기동이 죽는 문제를 실제로 겪었다 (#192).
     SPRING_PROFILES_ACTIVE: docker
+    # 비즈니스 서비스는 지금까지 -Xmx 없이 떠서, 컨테이너 안에서 보이는 호스트 전체 메모리(8GB)
+    # 기준으로 각자 독립적으로(서로의 존재를 모른 채) 기본 힙 상한(25%)을 잡았다. 서비스 수가
+    # 늘어날수록 이 합이 실제 여유 메모리를 넘어서 swap thrashing/OOM kill로 이어지는 구조적
+    # 위험이 있었다 (#232). ENTRYPOINT가 `java -jar app.jar` 고정(exec form, 쉘 없음)이라
+    # $JAVA_OPTS 같은 셸 치환은 못 쓰지만, JAVA_TOOL_OPTIONS는 JVM 런처가 별도 셸 개입 없이
+    # 자동으로 읽어들이는 표준 메커니즘이라 Dockerfile을 건드릴 필요가 없다.
+    # 320m은 EC2 호스트 총 8GB 중 MySQL/Elasticsearch(명시적 -Xmx1g)/Kibana/Caddy/FE/OS 및
+    # 추후 k3s(#198) 몫을 남기고, 비즈니스 서비스 9개 힙 총합을 약 2.9GB 상한으로 묶기 위한 값이다.
+    JAVA_TOOL_OPTIONS: -Xms128m -Xmx320m
   # logging.file.name(config repo)이 이미 spring.application.name으로 파일명을 구분해주므로,
   # 모든 서비스가 같은 호스트 디렉터리를 공유해도 로그 파일끼리 덮어쓰지 않는다.
   volumes:
@@ -176,6 +185,8 @@ services:
     # 두면 빈 문자열이 주입되어 FakePaymentGateway/TossPaymentGateway 둘 다 안 만들어지고 기동이 깨진다.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 (#232).
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx320m
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-fake}
       PAYMENT_TOSS_SECRET_KEY: ${PAYMENT_TOSS_SECRET_KEY:-}
       PAYMENT_SECURITY_ENCRYPTION_KEY: ${PAYMENT_SECURITY_ENCRYPTION_KEY}
@@ -195,6 +206,8 @@ services:
     # JWT 발급 키 — gateway-server 와 반드시 같은 값이어야 한다 (#164).
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 (#232).
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx320m
       JWT_SECRET: ${JWT_SECRET}
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
@@ -245,6 +258,8 @@ services:
     # 값이 없으면(로컬 .env 미설정) 빈 문자열로 들어가고, board-service.yml 의 ":" 기본값이 마저 받아준다.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 (#232).
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx320m
       GMAIL_USERNAME: ${GMAIL_USERNAME:-}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
