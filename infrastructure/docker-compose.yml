@@ -272,5 +272,23 @@ services:
     # ports:
     #   - "8089:8089"
 
+  ai-service:
+    # barebone — 아직 자체 DB가 없어 mysql 의존성은 뺀다 (business-depends-on 아님).
+    <<: *service-defaults
+    build:
+      <<: *build-defaults
+      args:
+        MODULE: ai-service
+    container_name: earlybird-ai-service
+    # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써진다 — 그래서 여기선
+    # SPRING_PROFILES_ACTIVE 를 그대로 반복하고 OPENAI_API_KEY 만 추가한다.
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on: *core-depends-on
+    # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
+    # ports:
+    #   - "8090:8090"
+
 volumes:
   earlybird-mysql-data:
