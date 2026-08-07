@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.refund.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import com.growmighty.lectures.firstday.payment.infrastructure.security.PaymentSensitiveDataConverter;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -8,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /** 일괄 환불 추적 — reason/status 로 배치 실패·재시도를 추적한다. */
 @Entity
@@ -33,6 +35,10 @@ public class Refund extends BaseEntity {
     @Column(nullable = false)
     private RefundStatus status;
 
+    @Convert(converter = PaymentSensitiveDataConverter.class)
+    @Column(name = "cancel_idempotency_key", nullable = false, length = 512)
+    private String cancelIdempotencyKey;
+
     /** 실패 시 null — 재시도 대상 */
     @Column
     private LocalDateTime completedAt;
@@ -47,6 +53,7 @@ public class Refund extends BaseEntity {
         this.paymentId = paymentId;
         this.amount = amount;
         this.reason = reason;
+        this.cancelIdempotencyKey = UUID.randomUUID().toString();
         this.status = RefundStatus.REQUESTED;
     }
 
