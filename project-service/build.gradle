@@ -5,11 +5,14 @@ plugins {
 dependencyManagement {
     imports {
         // Spring AI(OpenAI 임베딩)는 프로젝트 전체가 아니라 project-service만 쓰므로 루트가 아니라
-        // 여기서 BOM을 받는다. Boot 4.1과 호환되는 최신 GA 버전 — 첫 의존성 resolve 시 실패하면
-        // Maven Central에 없는 마일스톤/스냅샷일 수 있으니, 그 경우 루트 build.gradle의
-        // `repositories { mavenCentral() }` 옆에 `maven { url 'https://repo.spring.io/milestone' }`를
-        // 추가한다.
-        mavenBom 'org.springframework.ai:spring-ai-bom:1.0.0'
+        // 여기서 BOM을 받는다. 1.0.0(Task 1이 처음 넣은 버전)은 Boot 3.x 시절 FQCN인
+        // org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration을
+        // @AutoConfiguration(after=...)에 클래스 리터럴로 박아놨는데, Boot 4.1에서 그 클래스가
+        // org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration로 패키지가
+        // 옮겨지면서(자동설정 모듈 분리) 컨텍스트 기동 시 TypeNotPresentException → ClassNotFoundException으로
+        // 죽는다. 2.0.0 GA는 그 after 참조를 걷어내 Boot 4.x와 호환된다(spring-autoconfigure-metadata.properties
+        // 확인 결과 OpenAiEmbeddingAutoConfiguration의 AutoConfigureAfter가 비어 있음).
+        mavenBom 'org.springframework.ai:spring-ai-bom:2.0.0'
     }
 }
 
@@ -56,4 +59,10 @@ dependencies {
 
     // 실제 nori가 포함된 ES(로컬 infrastructure/elasticsearch/Dockerfile과 동일 이미지)로 색인/검색을 검증.
     testImplementation 'org.testcontainers:elasticsearch'
+
+    // OpenAI 임베딩 — 커스텀 HTTP 클라이언트 대신 Spring AI의 EmbeddingModel 추상화를 쓴다.
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+
+    // 색인 후 ES refresh_interval(최대 1초) 지연을 기다리는 통합 테스트용.
+    testImplementation 'org.awaitility:awaitility'
 }

@@ -16,6 +16,9 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  ai:
+    openai:
+      api-key: test-key-not-a-real-key
 
 # 테스트에선 Eureka 등록/조회를 시도하지 않는다 (명부 서버가 떠 있지 않음).
 eureka:
