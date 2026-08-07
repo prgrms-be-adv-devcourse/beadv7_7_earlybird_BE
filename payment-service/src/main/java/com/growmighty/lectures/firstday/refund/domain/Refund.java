@@ -73,11 +73,13 @@ public class Refund extends BaseEntity {
         this.completedAt = LocalDateTime.now();
     }
 
-    public void fail() {
+    // 추가 : 정합화 경합 시 이미 처리된 환불 실패 전이는 무시
+    public boolean reconcileFailed() {
         if (!isRequested()) {
-            throw new IllegalStateException("REQUESTED 상태의 환불만 실패 처리할 수 있습니다. status = " + this.status);
+            return false;
         }
 
         this.status = RefundStatus.FAILED;
+        return true;
     }
 }
