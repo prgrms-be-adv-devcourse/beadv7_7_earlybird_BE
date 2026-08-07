@@ -55,7 +55,7 @@ jobs:
             #    health 조건을 스스로 계산해 필요한 컨테이너만 재기동하게 둔다. 반복문 안에서
             #    --build와 up을 합쳤을 때는 매번 config/discovery-server까지 재기동-헬스체크
             #    대기를 반복해 command_timeout(30m)을 넘겼다 (CD #148).
-            for svc in config-server discovery-server gateway-server caddy order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
+            for svc in config-server discovery-server gateway-server caddy order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service ai-service; do
               docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml build "$svc"
             done
             docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d
