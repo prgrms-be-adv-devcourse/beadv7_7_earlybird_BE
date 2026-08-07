@@ -11,7 +11,9 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,6 +30,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/projects")
+@Validated
 public class ProjectController {
 
     private final ProjectService projectService;
@@ -49,7 +52,9 @@ public class ProjectController {
     @GetMapping
     public List<ProjectResponse> findAll(
             @RequestHeader(value = JwtHeaders.USER_ROLE, required = false) UserRole requesterRole,
-            @RequestParam(required = false) String keyword,
+            // keyword가 있을 때마다 OpenAI 임베딩 호출이 하나씩 발생한다(비로그인도 호출 가능한
+            // 공개 API) — 길이 상한 없이는 비용/남용 표면이 무한히 열려 있는 셈이라 상한을 둔다.
+            @RequestParam(required = false) @Size(max = 100, message = "검색어는 100자를 넘을 수 없습니다.") String keyword,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) ProjectStatus status,
             @RequestParam(required = false) ProjectSort sort) {
