@@ -39,6 +39,31 @@ public class PaymentApprovalResilienceConfig {
         return CircuitBreaker.of("PaymentApprovalCircuitBreaker", circuitBreakerConfig);
     }
 
+    @Bean
+    public Retry paymentLookupRetry() {
+        RetryConfig retryConfig = RetryConfig.custom()
+            .maxAttempts(2)
+            .waitDuration(Duration.ofSeconds(1))
+            .retryOnException(this::isUncertainFailure)
+            .build();
+
+        return Retry.of("paymentLookupRetry", retryConfig);
+    }
+
+    @Bean
+    public CircuitBreaker paymentLookupCircuitBreaker() {
+        CircuitBreakerConfig circuitBreakerConfig = CircuitBreakerConfig.custom()
+            .slidingWindowSize(10)
+            .minimumNumberOfCalls(5)
+            .failureRateThreshold(50)
+            .waitDurationInOpenState(Duration.ofSeconds(30))
+            .permittedNumberOfCallsInHalfOpenState(2)
+            .recordException(this::isUncertainFailure)
+            .build();
+
+        return CircuitBreaker.of("PaymentLookupCircuitBreaker", circuitBreakerConfig);
+    }
+
     private boolean isUncertainFailure(Throwable throwable) {
         return throwable instanceof PaymentGatewayException exception && exception.getFailureType() == PaymentGatewayFailureType.UNCERTAIN;
     }

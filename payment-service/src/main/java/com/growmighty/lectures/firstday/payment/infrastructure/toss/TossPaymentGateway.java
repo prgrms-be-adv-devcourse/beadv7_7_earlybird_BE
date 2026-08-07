@@ -11,7 +11,7 @@ import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossPaym
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,7 +24,6 @@ import java.math.BigDecimal;
 import java.util.function.Supplier;
 
 @Component
-@RequiredArgsConstructor
 @ConditionalOnProperty(
     name = "payment.gateway",
     havingValue = "toss"
@@ -32,8 +31,28 @@ import java.util.function.Supplier;
 public class TossPaymentGateway implements PaymentGateway {
     private final RestClient tossRestClient;
     private final ObjectMapper objectMapper;
+
     private final Retry paymentApprovalRetry;
     private final CircuitBreaker paymentApprovalCircuitBreaker;
+
+    private final Retry paymentLookupRetry;
+    private final CircuitBreaker paymentLookupCircuitBreaker;
+
+    public TossPaymentGateway(
+        RestClient tossRestClient,
+        ObjectMapper objectMapper,
+        @Qualifier("paymentApprovalRetry") Retry paymentApprovalRetry,
+        @Qualifier("paymentApprovalCircuitBreaker") CircuitBreaker paymentApprovalCircuitBreaker,
+        @Qualifier("paymentLookupRetry") Retry paymentLookupRetry,
+        @Qualifier("paymentLookupCircuitBreaker") CircuitBreaker paymentLookupCircuitBreaker
+    ) {
+        this.tossRestClient = tossRestClient;
+        this.objectMapper = objectMapper;
+        this.paymentApprovalRetry = paymentApprovalRetry;
+        this.paymentApprovalCircuitBreaker = paymentApprovalCircuitBreaker;
+        this.paymentLookupRetry = paymentLookupRetry;
+        this.paymentLookupCircuitBreaker = paymentLookupCircuitBreaker;
+    }
 
     @Override
     public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
@@ -92,6 +111,22 @@ public class TossPaymentGateway implements PaymentGateway {
     }
     @Override
     public PgPayment getPayment(String paymentKey) {
+        Supplier<PgPayment> lookupSupplier = () -> requestPayment(paymentKey);
+        Supplier<PgPayment> retrySupplier = Retry.decorateSupplier(paymentLookupRetry, lookupSupplier);
+        Supplier<PgPayment> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentLookupCircuitBreaker, retrySupplier);
+
+        try {
+            return circuitBreakerSupplier.get();
+        } catch (CallNotPermittedException exception) {
+            throw new PaymentGatewayException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                PaymentGatewayFailureType.UNCERTAIN,
+                "토스 결제 조회 요청이 일시적으로 차단되었습니다."
+            );
+        }
+    }
+
+    private PgPayment requestPayment(String paymentKey) {
         try {
             TossPaymentResponse response = tossRestClient.get()
                 .uri("/v1/payments/{paymentKey}", paymentKey)
@@ -99,7 +134,11 @@ public class TossPaymentGateway implements PaymentGateway {
                 .body(TossPaymentResponse.class);
 
             if (response == null) {
-                throw new IllegalStateException("토스 결제 조회 응답이 비어있습니다.");
+                throw new PaymentGatewayException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    PaymentGatewayFailureType.UNCERTAIN,
+                    "토스 결제 조회 결과를 확인할 수 없습니다."
+                );
             }
 
             return new PgPayment(
@@ -108,9 +147,9 @@ public class TossPaymentGateway implements PaymentGateway {
                 response.totalAmount(),
                 PgPaymentStatus.fromTossStatus(response.status())
             );
-        } catch (RestClientResponseException e) {
-            throw toPaymentGatewayException(e);
-        } catch (ResourceAccessException e) {
+        } catch (RestClientResponseException exception) {
+            throw toPaymentGatewayException(exception);
+        } catch (ResourceAccessException exception) {
             throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 PaymentGatewayFailureType.UNCERTAIN,
