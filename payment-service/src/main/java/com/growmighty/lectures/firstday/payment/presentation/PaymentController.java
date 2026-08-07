@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.payment.presentation;
 import com.growmighty.lectures.firstday.payment.application.PaymentService;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PayRequest;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentResponse;
+import com.growmighty.lectures.firstday.refund.application.RefundCancellationSagaOrchestrator;
+import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("api/v1/payments")
 public class PaymentController {
     private final PaymentService paymentService;
+    private final RefundCancellationSagaOrchestrator refundCancellationSagaOrchestrator;
 
     /** 결제 승인.*/
     @PostMapping("/confirm")
@@ -26,6 +29,10 @@ public class PaymentController {
 
     @PostMapping("/{paymentId}/cancel")
     public PaymentResponse cancel(@PathVariable Long paymentId) {
-        return PaymentResponse.from(paymentService.cancel(paymentId));
+        refundCancellationSagaOrchestrator.cancel(
+            paymentId,
+            RefundReason.USER_CANCEL
+        );
+        return PaymentResponse.from(paymentService.getPayment(paymentId));
     }
 }

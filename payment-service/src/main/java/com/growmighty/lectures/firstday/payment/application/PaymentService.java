@@ -81,15 +81,6 @@ public class PaymentService {
         return paymentApprovalSagaService.approve(paymentKey, pgOrderId, amount);
     }
 
-    @Transactional
-    public PaymentInfo cancel(Long paymentId) {
-        Payment payment = findPayment(paymentId);
-
-        paymentGateway.cancel(payment.getPaymentKey());
-        payment.cancel();
-        return PaymentInfo.from(paymentRepository.save(payment));
-    }
-
     @Transactional(readOnly = true)
     public PaymentInfo getPayment(Long paymentId) {
         Payment payment = findPayment(paymentId);
