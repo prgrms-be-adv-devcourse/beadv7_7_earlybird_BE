@@ -28,7 +28,7 @@ flowchart TD
       FILE["file-service :8087"]
       BOARD["board-service :8088"]
       NOTI["notification-service :8089"]
-      AI["ai-service :8090<br/>(barebone)"]
+      AI["ai-service :8090"]
     end
 
     CFG["config-server :8888<br/>(native profile)"]
@@ -74,7 +74,7 @@ flowchart TD
       S1["order · project · payment"]
       S2["user · cart · settlement"]
       S3["file · board · notification"]
-      S4["ai (barebone)"]
+      S4["ai"]
     end
 
     CFG2["config-server<br/>production profile"]
