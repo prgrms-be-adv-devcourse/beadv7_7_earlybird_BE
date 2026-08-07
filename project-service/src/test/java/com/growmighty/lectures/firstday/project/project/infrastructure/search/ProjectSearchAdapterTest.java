@@ -11,6 +11,7 @@ import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
+import org.springframework.data.elasticsearch.core.query.Query;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,7 +26,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -105,7 +105,7 @@ class ProjectSearchAdapterTest {
         SearchHit<ProjectDocument> hit = mock(SearchHit.class);
         when(hit.getContent()).thenReturn(new ProjectDocument(42L, "title", null, null, new float[1536]));
         when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
-        when(elasticsearchOperations.search(any(org.springframework.data.elasticsearch.core.query.Query.class), eq(ProjectDocument.class)))
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(hits);
 
         List<Long> result = adapter.search("keyword");
@@ -117,6 +117,17 @@ class ProjectSearchAdapterTest {
     @DisplayName("ES 검색 호출이 실패하면 조용히 넘기지 않고 503으로 변환한다 (LIKE 폴백 없음)")
     void search_failure_throwsServiceUnavailable() {
         when(embeddingModel.embed(any(String.class))).thenThrow(new RuntimeException("openai down"));
+
+        assertThatThrownBy(() -> adapter.search("keyword"))
+                .isInstanceOf(ServiceUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("임베딩 생성은 성공했지만 ES 검색 호출 자체가 실패해도 503으로 변환한다 (LIKE 폴백 없음)")
+    void search_elasticsearchCallFailure_throwsServiceUnavailable() {
+        when(embeddingModel.embed("keyword")).thenReturn(new float[1536]);
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenThrow(new RuntimeException("es down"));
 
         assertThatThrownBy(() -> adapter.search("keyword"))
                 .isInstanceOf(ServiceUnavailableException.class);

@@ -9,13 +9,15 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.context.annotation.Bean;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Random;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -44,7 +46,7 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
             EmbeddingModel stub = mock(EmbeddingModel.class);
             when(stub.embed(any(String.class))).thenAnswer(invocation -> {
                 String text = invocation.getArgument(0);
-                java.util.Random random = new java.util.Random(text.hashCode());
+                Random random = new Random(text.hashCode());
                 float[] vector = new float[EMBEDDING_DIMENSIONS];
                 for (int i = 0; i < EMBEDDING_DIMENSIONS; i++) {
                     vector[i] = random.nextFloat() * 2f - 1f;
@@ -57,13 +59,11 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
 
     @Autowired
     private ProjectSearchAdapter adapter;
-    @Autowired
-    private CircuitBreakerFactory circuitBreakerFactory;
 
     private Project project(Long id, String title) {
         Project project = Project.register(1L, null, title, 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
-        org.springframework.test.util.ReflectionTestUtils.setField(project, "projectId", id);
+        ReflectionTestUtils.setField(project, "projectId", id);
         return project;
     }
 
@@ -83,7 +83,7 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
         adapter.index(project(100L, "한국어 형태소 분석 테스트 프로젝트"));
         adapter.index(project(200L, "완전히 다른 내용의 프로젝트"));
 
-        await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() -> {
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             List<Long> result = adapter.search("분석");
             assertThat(result).contains(100L);
             assertThat(result).doesNotContain(200L);
@@ -94,12 +94,12 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     @DisplayName("삭제한 프로젝트는 더 이상 검색되지 않는다")
     void remove_thenNotFoundBySearch() {
         adapter.index(project(300L, "삭제될 프로젝트 키워드테스트"));
-        await().atMost(java.time.Duration.ofSeconds(5))
+        await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> assertThat(adapter.search("키워드테스트")).contains(300L));
 
         adapter.remove(300L);
 
-        await().atMost(java.time.Duration.ofSeconds(5))
+        await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> assertThat(adapter.search("키워드테스트")).doesNotContain(300L));
     }
 }
