@@ -56,30 +56,34 @@ public class ProjectDataInitializer implements CommandLineRunner {
         Long pet = category(null, "반려동물");
         Long petSupplyCategoryId = category(pet, "반려용품");
 
-        // 프로젝트 1 (rewardId 1~3)
+        // 프로젝트 1 (rewardId 1~4)
         Long p1 = openProject(accessoryCategoryId, "수제 가죽 노트커버", 3_000_000,
             "장인이 한 땀 한 땀 만드는 A5 가죽 노트커버 펀딩입니다.");
         reward(p1, "[얼리버드] 노트커버 1개", 29_000, 100, "브라운 단일 색상, 8월 말 발송 예정");
         reward(p1, "노트커버 1개", 35_000, 300, "색상 선택 가능");
         reward(p1, "노트커버 2개 세트", 65_000, 150, "선물용 패키지 포함");
+        reward(p1, "[풀패키지] 노트커버 + 프리미엄 만년필 세트", 95_000, 50, "각인 서비스 및 선물용 고급 케이스 포함");
 
-        // 프로젝트 2 (rewardId 4~5)
+        // 프로젝트 2 (rewardId 5~7)
         Long p2 = openProject(smartDeviceCategoryId, "휴대용 미니 빔프로젝터", 20_000_000,
             "캠핑에서도 쓰는 손바닥 크기 빔프로젝터.");
         reward(p2, "[얼리버드] 빔프로젝터", 189_000, 50, "선착순 한정 특가");
         reward(p2, "빔프로젝터 + 삼각대", 229_000, 200, "전용 미니 삼각대 포함");
+        reward(p2, "[풀패키지] 빔프로젝터 + 삼각대 + 80인치 족자 스크린", 269_000, 100, "야외용 수납 가방 증정");
 
-        // 프로젝트 3 (rewardId 6~7)
+        // 프로젝트 3 (rewardId 8~10)
         Long p3 = openProject(bookCategoryId, "독립출판 시집 <새벽의 온도>", 1_500_000,
             "신인 시인의 첫 시집 인쇄 펀딩.");
         reward(p3, "시집 1권", 15_000, 500, "초판 한정 넘버링");
         reward(p3, "시집 + 필사 노트", 25_000, 200, "굿즈 세트");
+        reward(p3, "[후원자 패키지] 시집 + 필사 노트 + 저자 친필 서명 엽서", 35_000, 100, "후원자 명단 시집 수록");
 
-        // 프로젝트 4 (rewardId 8~9)
+        // 프로젝트 4 (rewardId 11~13)
         Long p4 = openProject(petSupplyCategoryId, "고양이 자동 급식기", 10_000_000,
             "집사 없이도 정시 배식. 앱 연동 자동 급식기.");
         reward(p4, "[얼리버드] 급식기 1대", 79_000, 80, "화이트 단일 색상");
         reward(p4, "급식기 1대 + 전용 사료통", 99_000, 300, "색상 선택 가능");
+        reward(p4, "[2묘 가구용] 급식기 2대 + 스테인리스 식기 2개 세트", 179_000, 50, "추가 위생 식기 세트 증정");
     }
 
     private Long category(Long parentCategoryId, String name) {
