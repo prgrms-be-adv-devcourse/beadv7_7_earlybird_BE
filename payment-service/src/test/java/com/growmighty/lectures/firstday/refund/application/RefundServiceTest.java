@@ -44,7 +44,7 @@ class RefundServiceTest {
     @Test
     void startRefund_createsRequestedRefundAndReturnsTarget() {
         Payment payment = paidPayment();
-        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
         when(refundRepository.findByPaymentId(PAYMENT_ID)).thenReturn(Optional.empty());
         when(refundRepository.save(any(Refund.class)))
             .thenAnswer(invocation -> {
@@ -53,7 +53,7 @@ class RefundServiceTest {
                 return refund;
             });
 
-        RefundCancellationTarget target = refundService.startRefund(ORDER_ID, RefundReason.USER_CANCEL);
+        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL);
 
         assertThat(target.refundId()).isEqualTo(REFUND_ID);
         assertThat(target.paymentKey()).isEqualTo(PAYMENT_KEY);
@@ -68,10 +68,10 @@ class RefundServiceTest {
     void startRefund_reusesExistingRequestedRefund() {
         Payment payment = paidPayment();
         Refund refund = requestedRefund();
-        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
         when(refundRepository.findByPaymentId(PAYMENT_ID)).thenReturn(Optional.of(refund));
 
-        RefundCancellationTarget target = refundService.startRefund(ORDER_ID, RefundReason.USER_CANCEL);
+        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL);
 
         assertThat(target.refundId()).isEqualTo(REFUND_ID);
         verify(refundRepository, never()).save(any());
@@ -110,9 +110,9 @@ class RefundServiceTest {
     @Test
     void startRefund_rejectsNotPaidPayment() {
         Payment payment = Payment.ready(ORDER_ID, AMOUNT);
-        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
 
-        assertThatThrownBy(() -> refundService.startRefund(ORDER_ID, RefundReason.USER_CANCEL))
+        assertThatThrownBy(() -> refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("PAID 상태의 결제만 환불할 수 있습니다.");
 

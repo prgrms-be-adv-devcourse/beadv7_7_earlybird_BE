@@ -42,7 +42,6 @@ class PaymentServiceTest {
         );
         paymentService = new PaymentService(
             paymentRepository,
-            paymentGateway,
             new PaymentApprovalSagaOrchestrator(paymentConfirmationService, paymentGateway) // <-- 승인 SAGA 주입
         );
     }
