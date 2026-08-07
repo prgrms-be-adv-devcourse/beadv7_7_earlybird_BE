@@ -29,10 +29,11 @@ public class TossRefundGateway implements RefundGateway {
     private final ObjectMapper objectMapper;
 
     @Override
-    public void refund(String paymentKey, RefundReason reason) {
+    public void refund(String paymentKey, RefundReason reason, String idempotencyKey) {
         try {
             TossPaymentResponse response = tossRestClient.post()
                 .uri("/v1/payments/{paymentKey}/cancel", paymentKey)
+                .header("Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new TossCancelRequest(reason.name()))
                 .retrieve()
