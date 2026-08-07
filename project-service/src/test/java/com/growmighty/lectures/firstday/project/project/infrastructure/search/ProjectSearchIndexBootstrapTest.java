@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
 import com.growmighty.lectures.firstday.project.support.ElasticsearchIntegrationTestSupport;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,16 @@ class ProjectSearchIndexBootstrapTest extends ElasticsearchIntegrationTestSuppor
         float[] vector = new float[1536];
         vector[0] = 1.0f;
         return vector;
+    }
+
+    // ElasticsearchIntegrationTestSupport의 ES 컨테이너는 JVM당 싱글턴으로 여러 테스트 클래스가
+    // 같은 "projects" 인덱스를 공유한다(ProjectSearchAdapterIntegrationTest 참고) — 여기서 하드코딩한
+    // ID(1L, 2L)로 색인한 문서를 안 지우면 이 테스트의 hasSize(1) 단언이 다른 테스트가 우연히 남긴
+    // 문서 유무에 좌우되는 취약한 상태가 된다.
+    @AfterEach
+    void cleanUpIndexedDocuments() {
+        elasticsearchOperations.delete("1", ProjectDocument.class);
+        elasticsearchOperations.delete("2", ProjectDocument.class);
     }
 
     @Test
