@@ -60,7 +60,8 @@ class ProjectDeleteConcurrencyIntegrationTest extends MySqlIntegrationTestSuppor
         List<Runnable> tasks = new ArrayList<>();
         tasks.add(() -> projectService.delete(projectId, 1L));
         for (int i = 0; i < backerThreads; i++) {
-            tasks.add(() -> rewardService.decreaseStock(rewardId, 1));
+            long orderId = i; // Task 2/Step 11과 동일한 이유 — 스레드별 고유 orderId 필요
+            tasks.add(() -> rewardService.decreaseStock(rewardId, 1, orderId));
         }
 
         Throwable[] results = runAllConcurrently(tasks);

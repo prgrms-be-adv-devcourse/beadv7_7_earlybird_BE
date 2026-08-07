@@ -24,13 +24,13 @@ public class RewardInternalController {
 
     @PostMapping("/{rewardId}/decrease-stock")
     public Void decreaseStock(@PathVariable Long rewardId, @Valid @RequestBody StockChangeRequest request) {
-        rewardService.decreaseStock(rewardId, request.quantity());
+        rewardService.decreaseStock(rewardId, request.quantity(), request.orderId());
         return null;
     }
 
     @PostMapping("/{rewardId}/restore-stock")
     public Void restoreStock(@PathVariable Long rewardId, @Valid @RequestBody StockChangeRequest request) {
-        rewardService.restoreStock(rewardId, request.quantity());
+        rewardService.restoreStock(rewardId, request.quantity(), request.orderId());
         return null;
     }
 }
