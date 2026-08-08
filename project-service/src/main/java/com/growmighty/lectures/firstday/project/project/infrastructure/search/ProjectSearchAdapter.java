@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
@@ -17,6 +18,15 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * index()/remove()는 ES/OpenAI를 직접 부르지 않고 이벤트만 발행한다 — 호출부(ProjectServiceImpl의
+ * create/update/delete)가 진행 중인 MySQL @Transactional 메서드 안에서 이 메서드들을 부르는데,
+ * 여기서 바로 ES 저장을 실행하면 (1) 커밋 전에 이미 나간 ES 쓰기가 나중에 트랜잭션이 롤백돼도
+ * 되돌려지지 않고, (2) 서킷브레이커/타임아웃 없이(직전까지는 search()만 있었다) 이 블로킹 외부
+ * 호출이 끝날 때까지 DB 커넥션·(delete의 경우) 배타락을 붙든 채 기다리게 된다. 실제 색인/삭제는
+ * ProjectSearchIndexEventListener가 트랜잭션 커밋 이후에만(@TransactionalEventListener AFTER_COMMIT)
+ * applyIndex/applyRemove를 통해 수행한다 — board-service ReviewCreatedNotificationListener와 같은 패턴.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -31,6 +41,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final ElasticsearchOperations elasticsearchOperations;
     private final EmbeddingModel embeddingModel;
     private final CircuitBreakerFactory circuitBreakerFactory;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * bool "should" 안의 knn 절은 코사인 스코어와 무관하게 "색인 전체에서 가장 가까운 k개"를
@@ -53,32 +64,59 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
     @Override
     public void index(Project project) {
-        try {
-            String text = String.join(" ",
-                    project.getTitle(),
-                    project.getSummary() != null ? project.getSummary() : "",
-                    project.getDescription() != null ? project.getDescription() : "");
-            float[] embedding = embeddingModel.embed(text);
-            elasticsearchOperations.save(new ProjectDocument(
-                    project.getProjectId(), project.getTitle(), project.getSummary(),
-                    project.getDescription(), embedding));
-        } catch (RuntimeException e) {
-            log.warn("프로젝트 검색 색인 실패. projectId={}", project.getProjectId(), e);
-        }
+        eventPublisher.publishEvent(new ProjectIndexRequestedEvent(project.getProjectId()));
     }
 
     @Override
     public void remove(Long projectId) {
-        try {
-            elasticsearchOperations.delete(String.valueOf(projectId), ProjectDocument.class);
-        } catch (RuntimeException e) {
-            log.warn("프로젝트 검색 색인 삭제 실패. projectId={}", projectId, e);
-        }
+        eventPublisher.publishEvent(new ProjectRemovedFromIndexEvent(projectId));
+    }
+
+    /**
+     * 실제 색인 실행 — ProjectSearchIndexEventListener가 트랜잭션 커밋 후 DB에서 프로젝트를 다시
+     * 조회해 "그 순간의 최신 상태"를 넘겨준다(이벤트가 실어온 옛 스냅샷이 아니라). 그래서 이 메서드는
+     * 항상 방금 막 읽은 최신 Project를 받는다는 전제로, 그 내용을 그대로 색인한다 — 몇 번을 어떤
+     * 순서로 호출해도 결과가 최신 DB 상태로 수렴한다(ProjectIndexRequestedEvent 주석 참고).
+     *
+     * <p>search()와 같은 서킷브레이커(projectSearch)를 태워 타임아웃 없이 무한정 블로킹하지 않게 한다.
+     * 실패는 (기존과 동일하게) 로그만 남기고 삼킨다 — index/remove는 절대 예외를 던지지 않는다는
+     * ProjectSearchPort 계약을 유지한다.
+     */
+    void applyIndex(Project project) {
+        circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_SEARCH_ID).run(
+                () -> {
+                    String text = String.join(" ",
+                            project.getTitle(),
+                            project.getSummary() != null ? project.getSummary() : "",
+                            project.getDescription() != null ? project.getDescription() : "");
+                    float[] embedding = embeddingModel.embed(text);
+                    elasticsearchOperations.save(new ProjectDocument(
+                            project.getProjectId(), project.getTitle(), project.getSummary(),
+                            project.getDescription(), embedding));
+                    return null;
+                },
+                cause -> {
+                    log.warn("프로젝트 검색 색인 실패. projectId={}", project.getProjectId(), cause);
+                    return null;
+                });
+    }
+
+    /** 실제 삭제 실행 — ProjectSearchIndexEventListener가 트랜잭션 커밋 후에만 호출한다. applyIndex와 같은 이유로 서킷브레이커를 태운다. */
+    void applyRemove(Long projectId) {
+        circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_SEARCH_ID).run(
+                () -> {
+                    elasticsearchOperations.delete(String.valueOf(projectId), ProjectDocument.class);
+                    return null;
+                },
+                cause -> {
+                    log.warn("프로젝트 검색 색인 삭제 실패. projectId={}", projectId, cause);
+                    return null;
+                });
     }
 
     @Override
     public List<Long> search(String keyword) {
-        return circuitBreakerFactory.create("projectSearch").run(
+        return circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_SEARCH_ID).run(
                 () -> doSearch(keyword),
                 this::searchFallback);
     }
