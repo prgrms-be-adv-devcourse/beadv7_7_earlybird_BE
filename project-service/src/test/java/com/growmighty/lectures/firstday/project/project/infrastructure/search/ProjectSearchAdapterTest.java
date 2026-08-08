@@ -41,7 +41,6 @@ import static org.mockito.Mockito.when;
 class ProjectSearchAdapterTest {
 
     private final ElasticsearchOperations elasticsearchOperations = mock(ElasticsearchOperations.class);
-    private final EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
     private final CircuitBreakerFactory circuitBreakerFactory = mock(CircuitBreakerFactory.class);
     private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
@@ -60,11 +59,9 @@ class ProjectSearchAdapterTest {
                 return fallback.apply(t);
             }
         });
-        adapter = new ProjectSearchAdapter(elasticsearchOperations, embeddingModel, circuitBreakerFactory, eventPublisher);
+        adapter = new ProjectSearchAdapter(elasticsearchOperations, circuitBreakerFactory, eventPublisher);
     }
 
-    // 실전에선 index()가 불릴 때 project는 이미 저장돼 projectId가 채워져 있다(projectRepository.save()가
-    // ID를 채운 뒤 반환) — 그 상태를 재현하려고 register() 직후 ID를 강제로 채운다.
     private Project project() {
         Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
@@ -73,12 +70,12 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("index()는 ES를 직접 부르지 않고 projectId만 담은 색인 요청 이벤트를 발행한다(내용은 나중에 다시 조회 — 멱등성)")
+    @DisplayName("index()는 ES를 직접 부르지 않고 projectId만 담은 색인 요청 이벤트를 발행한다")
     void index_publishesIndexRequestedEvent() {
         adapter.index(project());
 
         verify(eventPublisher).publishEvent(new ProjectIndexRequestedEvent(project().getProjectId()));
-        verifyNoInteractions(elasticsearchOperations, embeddingModel);
+        verifyNoInteractions(elasticsearchOperations);
     }
 
     @Test
@@ -91,19 +88,17 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("applyIndex()가 성공하면 (이벤트가 아니라) 넘겨받은 프로젝트 내용으로 임베딩을 생성해 ES에 저장한다")
+    @DisplayName("applyIndex()가 성공하면 넘겨받은 프로젝트 내용 및 저장된 임베딩 정보로 ES에 저장한다")
     void applyIndex_success_savesDocument() {
-        when(embeddingModel.embed("title summary desc")).thenReturn(new float[1536]);
-
         adapter.applyIndex(project());
 
         verify(elasticsearchOperations).save(any(ProjectDocument.class));
     }
 
     @Test
-    @DisplayName("applyIndex() 중 임베딩 생성이나 ES 저장이 실패해도 예외를 던지지 않고 삼킨다(서킷브레이커 폴백)")
+    @DisplayName("applyIndex() 중 ES 저장이 실패해도 예외를 던지지 않고 삼킨다(서킷브레이커 폴백)")
     void applyIndex_failure_doesNotThrow() {
-        when(embeddingModel.embed(any(String.class))).thenThrow(new RuntimeException("openai down"));
+        when(elasticsearchOperations.save(any(ProjectDocument.class))).thenThrow(new RuntimeException("es down"));
 
         assertThatCode(() -> adapter.applyIndex(project())).doesNotThrowAnyException();
     }
@@ -128,7 +123,6 @@ class ProjectSearchAdapterTest {
     @DisplayName("검색이 성공하면 매치된 문서들의 projectId를 반환한다")
     @SuppressWarnings("unchecked")
     void search_success_returnsProjectIds() {
-        when(embeddingModel.embed("keyword")).thenReturn(new float[1536]);
         SearchHits<ProjectDocument> hits = mock(SearchHits.class);
         SearchHit<ProjectDocument> hit = mock(SearchHit.class);
         when(hit.getContent()).thenReturn(new ProjectDocument(42L, "title", null, null, new float[1536]));
@@ -142,18 +136,8 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("ES 검색 호출이 실패하면 조용히 넘기지 않고 503으로 변환한다 (LIKE 폴백 없음)")
-    void search_failure_throwsServiceUnavailable() {
-        when(embeddingModel.embed(any(String.class))).thenThrow(new RuntimeException("openai down"));
-
-        assertThatThrownBy(() -> adapter.search("keyword"))
-                .isInstanceOf(ServiceUnavailableException.class);
-    }
-
-    @Test
-    @DisplayName("임베딩 생성은 성공했지만 ES 검색 호출 자체가 실패해도 503으로 변환한다 (LIKE 폴백 없음)")
+    @DisplayName("ES 검색 호출이 실패하면 503 예외로 변환한다")
     void search_elasticsearchCallFailure_throwsServiceUnavailable() {
-        when(embeddingModel.embed("keyword")).thenReturn(new float[1536]);
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenThrow(new RuntimeException("es down"));
 

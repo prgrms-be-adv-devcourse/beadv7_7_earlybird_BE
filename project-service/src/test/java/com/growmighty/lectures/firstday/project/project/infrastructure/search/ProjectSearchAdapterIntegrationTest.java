@@ -43,26 +43,6 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSupport {
 
-    private static final int EMBEDDING_DIMENSIONS = 1536;
-
-    @TestConfiguration
-    static class StubEmbeddingConfig {
-        @Bean
-        EmbeddingModel embeddingModel() {
-            EmbeddingModel stub = mock(EmbeddingModel.class);
-            when(stub.embed(any(String.class))).thenAnswer(invocation -> {
-                String text = invocation.getArgument(0);
-                Random random = new Random(text.hashCode());
-                float[] vector = new float[EMBEDDING_DIMENSIONS];
-                for (int i = 0; i < EMBEDDING_DIMENSIONS; i++) {
-                    vector[i] = random.nextFloat() * 2f - 1f;
-                }
-                return vector;
-            });
-            return stub;
-        }
-    }
-
     @Autowired
     private ProjectSearchAdapter adapter;
     @Autowired

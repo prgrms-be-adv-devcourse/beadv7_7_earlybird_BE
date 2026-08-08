@@ -41,28 +41,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 class ProjectServiceImplSearchIntegrationTest extends ElasticsearchIntegrationTestSupport {
 
-    private static final int EMBEDDING_DIMENSIONS = 1536;
     private static final String KEYWORD = "은하탐사기획전";
-
-    @TestConfiguration
-    static class StubEmbeddingConfig {
-        // ProjectSearchAdapterIntegrationTest와 같은 방식 — 텍스트별로 결정적인 1536차원 랜덤 벡터를
-        // 만들어서 실제 OpenAI 호출 없이도 nori 매치/kNN 둘 다 이 테스트의 키워드에 대해 정상 동작하게 한다.
-        @Bean
-        EmbeddingModel embeddingModel() {
-            EmbeddingModel stub = mock(EmbeddingModel.class);
-            when(stub.embed(any(String.class))).thenAnswer(invocation -> {
-                String text = invocation.getArgument(0);
-                Random random = new Random(text.hashCode());
-                float[] vector = new float[EMBEDDING_DIMENSIONS];
-                for (int i = 0; i < EMBEDDING_DIMENSIONS; i++) {
-                    vector[i] = random.nextFloat() * 2f - 1f;
-                }
-                return vector;
-            });
-            return stub;
-        }
-    }
 
     @Autowired
     private ProjectService projectService;

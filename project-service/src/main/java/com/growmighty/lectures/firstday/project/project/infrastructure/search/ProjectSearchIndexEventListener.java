@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -37,6 +38,7 @@ class ProjectSearchIndexEventListener {
     private final ProjectSearchAdapter adapter;
     private final ProjectRepository projectRepository;
 
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     void onIndexRequested(ProjectIndexRequestedEvent event) {
         Project project = projectRepository.findById(event.projectId()).orElse(null);
@@ -44,9 +46,11 @@ class ProjectSearchIndexEventListener {
             log.debug("색인 요청을 처리하는 시점엔 이미 삭제된 프로젝트라 건너뜀. projectId={}", event.projectId());
             return;
         }
+        // 실제 AI 임베딩 연동 전까지는 null 상태를 유지 (가짜 난수 벡터 오염 방지)
         adapter.applyIndex(project);
     }
 
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     void onRemoveRequested(ProjectRemovedFromIndexEvent event) {
         adapter.applyRemove(event.projectId());
