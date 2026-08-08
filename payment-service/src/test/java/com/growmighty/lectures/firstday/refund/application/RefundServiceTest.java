@@ -3,7 +3,7 @@ package com.growmighty.lectures.firstday.refund.application;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
-import com.growmighty.lectures.firstday.refund.application.port.RefundGateway;
+import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
 import com.growmighty.lectures.firstday.refund.domain.Refund;
 import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
@@ -28,6 +28,7 @@ class RefundServiceTest {
 
     private static final Long PAYMENT_ID = 1L;
     private static final Long ORDER_ID = 1L;
+    private static final Long REFUND_ID = 1L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key";
 
@@ -37,60 +38,105 @@ class RefundServiceTest {
     @Mock
     private RefundRepository refundRepository;
 
-    @Mock
-    private RefundGateway refundGateway;
-
     @InjectMocks
     private RefundService refundService;
 
     @Test
-    void paidPayment_refund_completesRefundAndCancelsPayment() {
+    void startRefund_createsRequestedRefundAndReturnsTarget() {
         Payment payment = paidPayment();
-        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
+        when(refundRepository.findByPaymentId(PAYMENT_ID)).thenReturn(Optional.empty());
         when(refundRepository.save(any(Refund.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
+            .thenAnswer(invocation -> {
+                Refund refund = invocation.getArgument(0);
+                ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+                return refund;
+            });
 
-        Refund result = refundService.refund(ORDER_ID, RefundReason.USER_CANCEL);
+        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL);
 
-        assertThat(result.getStatus()).isEqualTo(RefundStatus.COMPLETED);
-        assertThat(result.getPaymentId()).isEqualTo(PAYMENT_ID);
-        assertThat(result.getAmount()).isEqualByComparingTo(AMOUNT);
-        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+        assertThat(target.refundId()).isEqualTo(REFUND_ID);
+        assertThat(target.paymentKey()).isEqualTo(PAYMENT_KEY);
+        assertThat(target.reason()).isEqualTo(RefundReason.USER_CANCEL);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
 
-        verify(refundGateway).refund(PAYMENT_KEY, RefundReason.USER_CANCEL);
-        verify(paymentRepository).save(payment);
-        verify(refundRepository, times(2)).save(any(Refund.class));
-    }
-
-    @Test
-    void notPaidPayment_refund_throws() {
-        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
-        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
-
-        assertThatThrownBy(() -> refundService.refund(ORDER_ID, RefundReason.USER_CANCEL))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("PAID 상태의 결제만 환불할 수 있습니다.");
-
-        verifyNoInteractions(refundRepository, refundGateway);
+        verify(refundRepository).save(any(Refund.class));
         verify(paymentRepository, never()).save(any());
     }
 
     @Test
-    void refundGatewayFails_refund_keepsPaymentPaid() {
+    void startRefund_reusesExistingRequestedRefund() {
         Payment payment = paidPayment();
-        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
-        when(refundRepository.save(any(Refund.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
-        doThrow(new IllegalStateException("Toss 환불 실패"))
-            .when(refundGateway)
-            .refund(PAYMENT_KEY, RefundReason.USER_CANCEL);
+        Refund refund = requestedRefund();
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
+        when(refundRepository.findByPaymentId(PAYMENT_ID)).thenReturn(Optional.of(refund));
 
-        assertThatThrownBy(() -> refundService.refund(ORDER_ID, RefundReason.USER_CANCEL))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("Toss 환불 실패");
+        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL);
 
+        assertThat(target.refundId()).isEqualTo(REFUND_ID);
+        verify(refundRepository, never()).save(any());
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    void completeRefund_completesRefundAndCancelsPayment() {
+        Payment payment = paidPayment();
+        Refund refund = requestedRefund();
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
+
+        refundService.completeRefund(REFUND_ID);
+
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.COMPLETED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+        verify(refundRepository).save(refund);
+        verify(paymentRepository).save(payment);
+    }
+
+    @Test
+    void failRefund_marksRefundFailedAndKeepsPaymentPaid() {
+        Payment payment = paidPayment();
+        Refund refund = requestedRefund();
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+
+        refundService.failRefund(REFUND_ID);
+
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.FAILED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-        verify(paymentRepository, never()).save(payment);
+        verify(refundRepository).save(refund);
+        verifyNoInteractions(paymentRepository);
+    }
+
+    // 추가 : 정합화가 먼저 완료한 환불의 실패 처리는 무시
+    @Test
+    void failRefund_ignoresAlreadyCompletedRefund() {
+        Refund refund = requestedRefund();
+        refund.complete();
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+
+        refundService.failRefund(REFUND_ID);
+
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.COMPLETED);
+        verify(refundRepository, never()).save(any());
+    }
+
+    @Test
+    void startRefund_rejectsNotPaidPayment() {
+        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("PAID 상태의 결제만 환불할 수 있습니다.");
+
+        verifyNoInteractions(refundRepository);
+    }
+
+    // 추가 : Saga 시작 전 REQUESTED 환불 생성
+    private Refund requestedRefund() {
+        Refund refund = Refund.request(PAYMENT_ID, AMOUNT, RefundReason.USER_CANCEL);
+        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        return refund;
     }
 
     private Payment paidPayment() {

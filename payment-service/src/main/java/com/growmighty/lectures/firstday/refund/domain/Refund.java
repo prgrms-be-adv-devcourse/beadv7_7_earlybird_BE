@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.refund.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import com.growmighty.lectures.firstday.payment.infrastructure.security.PaymentSensitiveDataConverter;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -8,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /** 일괄 환불 추적 — reason/status 로 배치 실패·재시도를 추적한다. */
 @Entity
@@ -19,7 +21,7 @@ public class Refund extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private Long paymentId;
 
     @Column(nullable = false)
@@ -32,6 +34,10 @@ public class Refund extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RefundStatus status;
+
+    @Convert(converter = PaymentSensitiveDataConverter.class)
+    @Column(name = "cancel_idempotency_key", nullable = false, length = 512)
+    private String cancelIdempotencyKey;
 
     /** 실패 시 null — 재시도 대상 */
     @Column
@@ -47,6 +53,7 @@ public class Refund extends BaseEntity {
         this.paymentId = paymentId;
         this.amount = amount;
         this.reason = reason;
+        this.cancelIdempotencyKey = UUID.randomUUID().toString();
         this.status = RefundStatus.REQUESTED;
     }
 
@@ -54,15 +61,25 @@ public class Refund extends BaseEntity {
         return new Refund(paymentId, amount, reason);
     }
 
+    public boolean isRequested() {
+        return RefundStatus.REQUESTED == this.status;
+    }
+
     public void complete() {
-        if (this.status == RefundStatus.COMPLETED) {
-            throw new IllegalStateException("이미 완료된 환불입니다.");
+        if (!isRequested()) {
+            throw new IllegalStateException("REQUESTED 상태의 환불만 완료할 수 있습니다. status = " + this.status);
         }
         this.status = RefundStatus.COMPLETED;
         this.completedAt = LocalDateTime.now();
     }
 
-    public void fail() {
+    // 추가 : 정합화 경합 시 이미 처리된 환불 실패 전이는 무시
+    public boolean reconcileFailed() {
+        if (!isRequested()) {
+            return false;
+        }
+
         this.status = RefundStatus.FAILED;
+        return true;
     }
 }
