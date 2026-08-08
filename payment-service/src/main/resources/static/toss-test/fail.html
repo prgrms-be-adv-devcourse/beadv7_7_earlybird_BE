@@ -10,7 +10,7 @@
   <h1>결제가 완료되지 않았습니다.</h1>
   <p id="message"></p>
   <pre id="details"></pre>
-  <p><a href="/toss-test/">다시 시도하기</a></p>
+  <p><a href="/toss-test/index.html">다시 시도하기</a></p> <!-- <-- 정적 HTML의 실제 경로로 이동 -->
   <script>
     const params = new URLSearchParams(window.location.search);
     document.getElementById('message').textContent = params.get('message') || '결제 과정이 취소되었거나 실패했습니다.';

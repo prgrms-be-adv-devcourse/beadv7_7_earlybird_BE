@@ -89,6 +89,31 @@ class PaymentConfirmationServiceReconcileTest {
         verify(paymentRepository).save(payment);
     }
 
+    @Test
+    void 확정_실패한_승인은_FAILED로_기록한다() {
+        Payment payment = confirmingPayment();
+        when(paymentRepository.findById(payment.getPaymentId())).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+
+        paymentConfirmationService.failConfirmation(payment.getPaymentId());
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        verify(paymentRepository).save(payment);
+    }
+
+    // 추가 : 복구 배치가 먼저 완료한 결제의 실패 처리는 무시
+    @Test
+    void 이미_PAID인_결제의_확정_실패는_무시한다() {
+        Payment payment = confirmingPayment();
+        payment.confirm(PAYMENT_KEY);
+        when(paymentRepository.findById(payment.getPaymentId())).thenReturn(Optional.of(payment));
+
+        paymentConfirmationService.failConfirmation(payment.getPaymentId());
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
+        verify(paymentRepository, never()).save(any());
+    }
+
     private Payment confirmingPayment() {
         Payment payment = Payment.ready(ORDER_ID, AMOUNT);
         payment.startConfirming(PAYMENT_KEY);
