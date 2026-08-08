@@ -67,6 +67,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // 검증하면 (본문 검증인 @Valid의 MethodArgumentNotValidException과 달리) 이 예외가 던져진다 —
     // AOP 프록시(MethodValidationPostProcessor) 경로라 DispatcherServlet의 예외 처리기 앞에서
     // 발생하므로 별도 핸들러가 없으면 catch-all(Exception.class)로 떨어져 500으로 잘못 응답한다.
+    // (실측 확인: Boot 4.1/Framework 7.0.8에서도 @RestController + 클래스 레벨 @Validated는
+    // HandlerMethodValidationException이 아니라 MethodValidationInterceptor 경유
+    // ConstraintViolationException을 던진다 — 이 핸들러를 지우면 findAll_keywordTooLong_returns400가
+    // 500으로 실패하는 것으로 직접 확인함.)
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException e) {
         List<ApiResponse.ApiError.FieldErrorDetail> errors = e.getConstraintViolations().stream()
