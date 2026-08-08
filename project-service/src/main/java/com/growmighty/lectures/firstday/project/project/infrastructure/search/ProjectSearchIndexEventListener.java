@@ -37,6 +37,7 @@ class ProjectSearchIndexEventListener {
 
     private final ProjectSearchAdapter adapter;
     private final ProjectRepository projectRepository;
+    private final ProjectEmbeddingService embeddingService;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
@@ -46,7 +47,13 @@ class ProjectSearchIndexEventListener {
             log.debug("색인 요청을 처리하는 시점엔 이미 삭제된 프로젝트라 건너뜀. projectId={}", event.projectId());
             return;
         }
-        // 실제 AI 임베딩 연동 전까지는 null 상태를 유지 (가짜 난수 벡터 오염 방지)
+        if (project.getEmbedding() == null) {
+            float[] embedding = embeddingService.generateEmbeddingForProject(project);
+            if (embedding != null) {
+                project.updateEmbedding(embedding);
+                project = projectRepository.save(project);
+            }
+        }
         adapter.applyIndex(project);
     }
 

@@ -44,6 +44,7 @@ class ProjectSearchAdapterTest {
     private final CircuitBreakerFactory circuitBreakerFactory = mock(CircuitBreakerFactory.class);
     private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final ProjectEmbeddingService embeddingService = mock(ProjectEmbeddingService.class);
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -59,7 +60,7 @@ class ProjectSearchAdapterTest {
                 return fallback.apply(t);
             }
         });
-        adapter = new ProjectSearchAdapter(elasticsearchOperations, circuitBreakerFactory, eventPublisher);
+        adapter = new ProjectSearchAdapter(elasticsearchOperations, circuitBreakerFactory, eventPublisher, embeddingService);
     }
 
     private Project project() {

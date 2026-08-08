@@ -40,7 +40,9 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 - `@Document(indexName = "projects")`
 - 필드: `projectId`(`@Id`), `title`/`summary`/`description`(nori 커스텀 분석기, `@Setting`으로 인덱스에 등록), `embedding`(`dense_vector`, `text-embedding-3-small` 1536차원, `similarity=cosine`)
 
-**(구현 단계에서 채택하지 않음) `ProjectSearchRepository`** — 애초에 `ElasticsearchRepository<ProjectDocument, Long>`로 기본 CRUD/삭제용 레포지토리를 두는 안을 검토했으나, 실제로는 만들지 않았다. `ElasticsearchOperations`가 save/delete/search를 이미 한 인터페이스로 균일하게 제공해서, 그 위에 얇게 감싸는 레포지토리 인터페이스를 추가로 둬도 실질적으로 얻는 게 없었다(YAGNI) — `ProjectSearchAdapter`가 `ElasticsearchOperations`를 처음부터 끝까지 직접 쓴다.
+**신규: `project-service/.../project/infrastructure/search/ProjectEmbeddingService.java`**
+- AI 임베딩 모델(`EmbeddingModel`) 추상화 서비스. `@Autowired(required = false)`로 주입받아 API 키 미설정 시에도 기동 장애를 방지한다.
+- `generateEmbedding(String text)`: OpenAI 토큰 초과 방지를 위해 입력 텍스트를 `MAX_TEXT_LENGTH = 2000`자로 절단(Truncation) 처리하며, 장애 발생 시 예외를 던지지 않고 `null`을 반환하여 키워드 검색으로 자동 폴백되도록 보호한다.
 
 **신규: `project-service/.../project/application/port/ProjectSearchPort.java`** (인터페이스, 기존 `OrderPort` 같은 포트 패턴)
 - `void index(Project project)` — title/summary/description으로 임베딩 생성 후 ES upsert
@@ -48,8 +50,9 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 - `List<Long> search(String keyword)` — nori match ∪ kNN 하이브리드 쿼리 실행, 매치된 projectId 목록 반환(빈 리스트 가능)
 
 **신규: `project-service/.../project/infrastructure/search/ProjectSearchAdapter.java`** (`ProjectSearchPort` 구현체)
-- `index`/`remove`: `ElasticsearchOperations` 직접 호출. 예외는 호출부(`ProjectServiceImpl`)로 던지지 않고 여기서 로그만 남기고 흡수한다(색인 실패가 원본 트랜잭션을 막으면 안 됨 — 아래 에러 처리 참고).
-- `search`: ES 쿼리 실패/타임아웃 시 `ServiceUnavailableException`을 던진다. `CircuitBreakerFactory` fallback 메서드도 같은 예외를 던지는 용도로만 쓴다(다른 검색 경로로 강등하지 않음) — `OrderHttpClient` 등 기존 어댑터들의 fail-closed 패턴과 동일.
+- `index`/`remove`: `ProjectIndexRequestedEvent`, `ProjectRemovedFromIndexEvent` 비동기 이벤트를 발행한다. 실제 색인은 `ProjectSearchIndexEventListener`가 `AFTER_COMMIT` 시점에 DB에서 프로젝트를 재조회한 뒤 임베딩이 없으면 `ProjectEmbeddingService`로 생성하여 MySQL DB에 영속화(`updateEmbedding`)한 후 ES에 덮어쓴다.
+- `search`: 검색어(`keyword`)에 대한 임베딩 벡터를 추출할 수 있는 경우 Nori 형태소 BM25 키워드 매칭(`title^2.0`, `summary^1.2`, `description`)과 kNN 벡터 코사인 유사도 쿼리(`embedding`, `k=10`, `numCandidates=100`, `boost=10.0f`)를 결합한 하이브리드 검색을 실행한다. 임베딩 불가능 시 Nori 키워드 매칭 전용 쿼리로 동작한다.
+- ES 쿼리 실패/타임아웃 시 `ServiceUnavailableException`을 던진다. `CircuitBreakerFactory` fallback 메서드도 같은 예외를 던지는 용도로만 쓴다(다른 검색 경로로 강등하지 않음) — `OrderHttpClient` 등 기존 어댑터들의 fail-closed 패턴과 동일.
 
 **변경: `project-service/.../project/application/ProjectServiceImpl.java`**
 - 생성자에 `ProjectSearchPort searchPort` 주입

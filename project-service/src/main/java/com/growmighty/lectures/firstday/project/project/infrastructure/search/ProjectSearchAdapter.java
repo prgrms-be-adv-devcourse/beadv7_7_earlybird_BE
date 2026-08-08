@@ -13,12 +13,13 @@ import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * index()/remove()는 ES를 직접 부르지 않고 이벤트만 발행한다.
  * 사전 계산된 임베딩(Project.getEmbedding())을 사용하여 ES에 색인하며,
- * 검색 시 실시간 OpenAI API 호출 없이 Elasticsearch (Nori) 형태소 분석기를 통해 키워드 매칭을 수행한다.
+ * 검색 시 Nori 형태소 분석기 키워드 매칭과 kNN 벡터 하이브리드 검색을 함께 실행한다.
  */
 @Slf4j
 @Component
@@ -31,6 +32,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final ElasticsearchOperations elasticsearchOperations;
     private final CircuitBreakerFactory circuitBreakerFactory;
     private final ApplicationEventPublisher eventPublisher;
+    private final ProjectEmbeddingService embeddingService;
 
     @Override
     public void index(Project project) {
@@ -85,11 +87,34 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     }
 
     private List<Long> doSearch(String keyword) {
-        Query query = Query.of(q -> q.bool(b -> b
-                .should(s -> s.match(m -> m.field("title").query(keyword)))
-                .should(s -> s.match(m -> m.field("summary").query(keyword)))
-                .should(s -> s.match(m -> m.field("description").query(keyword)))));
-        NativeQuery nativeQuery = NativeQuery.builder().withQuery(query).withMaxResults(MAX_RESULTS).build();
+        float[] queryVector = embeddingService.generateEmbedding(keyword);
+        Query query;
+        if (queryVector != null && queryVector.length > 0) {
+            List<Float> vectorList = new ArrayList<>(queryVector.length);
+            for (float f : queryVector) {
+                vectorList.add(f);
+            }
+            query = Query.of(q -> q.bool(b -> b
+                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f)))
+                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f)))
+                    .should(s -> s.match(m -> m.field("description").query(keyword)))
+                    .should(s -> s.knn(k -> k
+                            .field("embedding")
+                            .queryVector(vectorList)
+                            .k(10)
+                            .numCandidates(100)
+                            .boost(10.0f)))));
+        } else {
+            query = Query.of(q -> q.bool(b -> b
+                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f)))
+                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f)))
+                    .should(s -> s.match(m -> m.field("description").query(keyword)))));
+        }
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(query)
+                .withMaxResults(MAX_RESULTS)
+                .build();
         SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
         return hits.stream().map(hit -> hit.getContent().projectId()).toList();
     }
