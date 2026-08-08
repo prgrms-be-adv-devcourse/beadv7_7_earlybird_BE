@@ -75,6 +75,9 @@ public interface ProjectService {
     /** 배치 전용: IN_PROGRESS 프로젝트마다 order-service의 현재 확정 누적 총액을 pull해 보정한다. */
     void reconcileFundedAmounts();
 
+    /** 관리자 전용: ES 검색 인덱스가 MySQL과 어긋났을 때 전체를 다시 색인한다(백필/복구). */
+    void reindexAllProjects();
+
     // ── reward 도메인이 호출하는 API (project-service 내부, 도메인 간) ──────
     /**
      * 지금 이 순간의 진짜 상태(공유락)를 뷰로 노출한다 — Reward가 Project 엔티티/리포지토리를

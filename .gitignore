@@ -38,6 +38,7 @@ out/
 
 ### Claude Code ###
 .claude/
+.superpowers/
 
 ### Docker ###
 .env

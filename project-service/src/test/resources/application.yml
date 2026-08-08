@@ -16,6 +16,20 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  ai:
+    openai:
+      api-key: test-key-not-a-real-key
+    # Spring AI EmbeddingModel(OpenAiEmbeddingModel)의 내부 RetryTemplate 기본값은
+    # max-attempts=10, backoff.initial-interval=2s, multiplier=5, max-interval=180s다 — 최악의 경우
+    # 재시도만으로 서킷브레이커 타임아웃(ProjectSearchCircuitBreakerConfig의 10초)을 훨씬 초과할 수
+    # 있다. 그러면 호출자는 이미 503을 받은 뒤인데 재시도는 별개 스레드에서 계속 도는 낭비가 생기고,
+    # 그 재시도가 성공해도 이미 실패 처리된 호출자에게는 아무 도움이 안 된다. 그래서 낮게 잡는다
+    # (운영 config-repo(beadv7_7_earlybird_config)의 project-service.yml에도 이 값을 동일하게
+    # 추가해야 한다 — 이 리포에서는 그 리포를 직접 수정할 수 없다).
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 200ms
 
 # 테스트에선 Eureka 등록/조회를 시도하지 않는다 (명부 서버가 떠 있지 않음).
 eureka:

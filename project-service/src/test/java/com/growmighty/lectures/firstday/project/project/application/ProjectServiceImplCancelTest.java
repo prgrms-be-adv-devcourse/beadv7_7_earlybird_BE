@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.project.project.application;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
@@ -35,13 +36,14 @@ class ProjectServiceImplCancelTest {
     private final ProjectCategoryRepository projectCategoryRepository = mock(ProjectCategoryRepository.class);
     private final RewardService rewardService = mock(RewardService.class);
     private final OrderPort orderPort = mock(OrderPort.class);
+    private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<RewardService> rewardServiceProvider = mock(ObjectProvider.class);
 
     private final ProjectServiceImpl projectService =
-            new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort);
+            new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort);
 
     private Project project;
 

@@ -105,4 +105,17 @@ class ProjectControllerTest {
                 .isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(projectService);
     }
+
+    @Test
+    void reindex_nonAdmin_rejected() {
+        assertThatThrownBy(() -> controller.reindex(UserRole.CREATOR))
+                .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(projectService);
+    }
+
+    @Test
+    void reindex_admin_allowed() {
+        controller.reindex(UserRole.ADMIN);
+        verify(projectService).reindexAllProjects();
+    }
 }

@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.domain;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
@@ -93,6 +94,10 @@ public class Project {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    @Convert(converter = com.growmighty.lectures.firstday.project.project.infrastructure.persistence.EmbeddingConverter.class)
+    @Column(name = "embedding", columnDefinition = "LONGTEXT")
+    private float[] embedding;
+
     /** 마감 배치(closeByDeadline)와 관리자 마감일 연장(extendDeadline)이 같은 행을 동시에 건드릴 수 있어 충돌 감지용 */
     @Version
     private Long version;
@@ -174,6 +179,9 @@ public class Project {
         if (description != null) {
             this.description = description;
         }
+        if (title != null || summary != null || description != null) {
+            this.embedding = null;
+        }
         if (thumbnailId != null) {
             this.thumbnailId = thumbnailId;
         }
@@ -198,9 +206,17 @@ public class Project {
         if (description != null) {
             this.description = description;
         }
+        if (summary != null || description != null) {
+            this.embedding = null;
+        }
         if (thumbnailId != null) {
             this.thumbnailId = thumbnailId;
         }
+    }
+
+    /** 사전 계산된 임베딩 벡터 저장/갱신 */
+    public void updateEmbedding(float[] embedding) {
+        this.embedding = embedding;
     }
 
     /** 관리자 전용: 마감일 연장만 허용 (과거로 당길 수 없고, 시작일로부터 최대 개월 수도 넘을 수 없음) */

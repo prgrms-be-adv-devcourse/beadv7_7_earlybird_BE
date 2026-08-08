@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -52,18 +53,27 @@ public class ProjectServiceImpl implements ProjectService {
     private final ObjectProvider<RewardService> rewardServiceProvider;
 
     private final OrderPort orderPort;
+    private final ProjectSearchPort searchPort;
 
     @Override
     @Transactional
     public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
         validateCategoryExists(request.categoryId());
         Project project = projectRepository.save(request.toEntity(creatorId));
+        searchPort.index(project);
         return ProjectResponse.from(project);
     }
 
     @Override
     public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole) {
-        Specification<Project> specification = buildSpecification(keyword, categoryId, status, requesterRole);
+        List<Long> candidateProjectIds = null;
+        if (keyword != null && !keyword.isBlank()) {
+            candidateProjectIds = searchPort.search(keyword);
+            if (candidateProjectIds.isEmpty()) {
+                return List.of();
+            }
+        }
+        Specification<Project> specification = buildSpecification(candidateProjectIds, categoryId, status, requesterRole);
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
@@ -100,6 +110,7 @@ public class ProjectServiceImpl implements ProjectService {
             project.updateBeforePublish(request.title(), request.categoryId(), request.summary(), request.description(),
                     request.thumbnailId(), request.goalAmount(), request.startAt(), request.endAt());
         }
+        searchPort.index(project);
         return ProjectResponse.from(project);
     }
 
@@ -119,6 +130,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
+        searchPort.remove(projectId);
     }
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
@@ -297,6 +309,13 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
+    @Override
+    public void reindexAllProjects() {
+        for (Project project : projectRepository.findAll()) {
+            searchPort.index(project);
+        }
+    }
+
     /**
      * 프로젝트가 마감(성공/실패/조기종료)되면 그 리워드들도 비활성화한다. Reward.isOrderable()이
      * 부모 프로젝트 상태를 모르고 자기 active/재고만 보기 때문에, 여기서 안 꺼주면 이미 마감된
@@ -344,7 +363,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
-    private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status, UserRole requesterRole) {
+    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, Long categoryId, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
@@ -355,11 +374,8 @@ public class ProjectServiceImpl implements ProjectService {
                         cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
                         cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
             }
-            if (keyword != null && !keyword.isBlank()) {
-                String pattern = "%" + keyword + "%";
-                predicates.add(cb.or(
-                        cb.like(root.get("title"), pattern),
-                        cb.like(root.get("summary"), pattern)));
+            if (candidateProjectIds != null) {
+                predicates.add(root.get("projectId").in(candidateProjectIds));
             }
             if (categoryId != null) {
                 predicates.add(cb.equal(root.get("categoryId"), categoryId));
