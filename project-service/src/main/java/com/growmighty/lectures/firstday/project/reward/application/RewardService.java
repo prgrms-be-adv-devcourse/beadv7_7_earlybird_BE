@@ -27,9 +27,14 @@ public interface RewardService {
     void deactivate(Long rewardId);
 
     // ── order-service가 호출하는 내부 API ──────────────────────────
-    void decreaseStock(Long rewardId, int quantity);
+    /**
+     * orderId는 (orderId, rewardId, DECREASE) 멱등키의 일부다(#195) — 같은 조합이 재도착하면
+     * 재고를 다시 반영하지 않고 조용히 반환한다.
+     */
+    void decreaseStock(Long rewardId, int quantity, Long orderId);
 
-    void restoreStock(Long rewardId, int quantity);
+    /** decreaseStock과 동일한 멱등성 규칙(#195) — operation이 RESTORE라 DECREASE 로그와 충돌하지 않는다. */
+    void restoreStock(Long rewardId, int quantity, Long orderId);
 
     // ── project 도메인이 호출하는 API (project-service 내부, 도메인 간) ──────
     /** 프로젝트가 마감(성공/실패/조기종료)될 때 그 프로젝트의 리워드를 전부 비활성화한다. */

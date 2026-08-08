@@ -1,6 +1,7 @@
+// TODO(settlement-plan): Align persisted names with the Toss seller destination while retaining masked target data only.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
-import com.growmighty.lectures.firstday.settlement.domain.PayoutDestinationSnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinationSnapshot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 

@@ -1,10 +1,11 @@
+// TODO(settlement-plan): Return deterministic Toss-shaped payout results keyed by refPayoutId and preserve idempotent retries.
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
-import com.growmighty.lectures.firstday.settlement.application.port.PayoutGateway;
-import com.growmighty.lectures.firstday.settlement.application.port.PayoutGatewayException;
-import com.growmighty.lectures.firstday.settlement.application.port.PayoutGatewayResult;
-import com.growmighty.lectures.firstday.settlement.application.port.ScheduledPayoutRequest;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutAttemptStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGateway;
+import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGatewayException;
+import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGatewayResult;
+import com.growmighty.lectures.firstday.settlement.application.port.payout.ScheduledPayoutRequest;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.UUID;

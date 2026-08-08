@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.project.project.application.ProjectServi
 import com.growmighty.lectures.firstday.project.project.application.ProjectStatusView;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.StockChangeLogRepository;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardCreateRequest;
 import com.growmighty.lectures.firstday.project.reward.presentation.dto.request.RewardUpdateRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,9 +32,13 @@ class RewardServiceImplOwnershipTest {
 
     private final RewardRepository rewardRepository = mock(RewardRepository.class);
     private final ProjectService projectService = mock(ProjectService.class);
+    private final StockChangeLogRepository stockChangeLogRepository = mock(StockChangeLogRepository.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> projectServiceProvider = mock(ObjectProvider.class);
-    private final RewardServiceImpl rewardService = new RewardServiceImpl(rewardRepository, projectServiceProvider);
+    private final RewardStockTransactionExecutor rewardStockTransactionExecutor =
+            new RewardStockTransactionExecutor(rewardRepository, projectServiceProvider, stockChangeLogRepository);
+    private final RewardServiceImpl rewardService =
+            new RewardServiceImpl(rewardRepository, projectServiceProvider, rewardStockTransactionExecutor);
 
     private Reward reward;
 

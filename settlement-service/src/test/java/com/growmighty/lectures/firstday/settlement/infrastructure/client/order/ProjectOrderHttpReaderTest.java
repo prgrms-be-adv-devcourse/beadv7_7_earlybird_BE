@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Verify complete recovery mapping and centralize contract-failure cases at the adapter interface.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,10 +12,10 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.OrderPayment;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrderReader;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectOrders;
-import com.growmighty.lectures.firstday.settlement.domain.Money;
+import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPayment;
+import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrderReader;
+import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrders;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;

@@ -50,7 +50,7 @@ Each service follows the same layered layout under `com.growmighty.lectures.firs
 - `domain/` — entities and domain logic
 - `infrastructure/` — port implementations; `infrastructure/client/` contains the HTTP adapters that call other services: a declarative `@FeignClient` interface for the actual call, wrapped by a `*HttpClient` adapter (implements the port interface) that runs the call through a Resilience4j `CircuitBreakerFactory` with a fallback method
 
-Cross-domain references are by **ID, not object** — services never share entities or JPA relationships across domain boundaries; they call each other over HTTP through the port/adapter pair. This port-interface + HTTP-adapter separation is the core pattern the course builds up (monolith → module split → MSA), so preserve it when adding features. Design-background docs live under `docs/` (`1_LOCAL_DB_SETUP.md`, `2_CONFIG_SERVER_SETUP.md`, `ERD.md`).
+Cross-domain references are by **ID, not object** — services never share entities or JPA relationships across domain boundaries. Synchronous queries and commands use the existing port/HTTP-adapter pair; asynchronous domain facts and batch requests use Kafka producer/consumer adapters behind the same application boundary. Settlement's target flow and current implementation state are documented in [`settlement-service/README.md`](settlement-service/README.md). Other design-background docs live under `docs/` (`1_LOCAL_DB_SETUP.md`, `2_CONFIG_SERVER_SETUP.md`, `ERD.md`).
 
 ### Code convention: framework/library defaults over custom code
 

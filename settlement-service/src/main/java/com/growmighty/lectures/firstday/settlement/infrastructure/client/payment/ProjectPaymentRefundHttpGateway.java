@@ -1,13 +1,14 @@
+// TODO(settlement-plan): Delete this adapter after ProjectRefundRequested Outbox publishing replaces synchronous refunds.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE;
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.COMPLETED;
+import static com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus.COMPLETED;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationGateway;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationRequest;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationResult;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationRequest;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationResult;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashSet;

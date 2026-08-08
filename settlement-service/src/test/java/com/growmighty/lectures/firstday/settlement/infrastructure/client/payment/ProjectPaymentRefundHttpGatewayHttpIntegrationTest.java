@@ -1,16 +1,17 @@
+// TODO(settlement-plan): Replace this HTTP integration test with ProjectRefundRequested producer-consumer contract coverage.
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.payment;
 
-import static com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationStatus.COMPLETED;
-import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_CANCELLED;
-import static com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason.PROJECT_FAILED;
+import static com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus.COMPLETED;
+import static com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason.PROJECT_CANCELLED;
+import static com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason.PROJECT_FAILED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationGateway;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationRequest;
-import com.growmighty.lectures.firstday.settlement.application.port.ProjectPaymentCancellationResult;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationRequest;
+import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationResult;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
