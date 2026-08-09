@@ -4,7 +4,6 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
-import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +28,6 @@ class PaymentServiceTest {
     private InMemoryPaymentRepository paymentRepository;
     private InMemoryPaymentStatusOutboxRepository paymentStatusOutboxRepository;
     private RecordingPaymentGateway paymentGateway;
-    private RecordingOrderStatusPort orderStatusPort;
     private PaymentService paymentService;
 
     @BeforeEach
@@ -37,16 +35,15 @@ class PaymentServiceTest {
         paymentRepository = new InMemoryPaymentRepository();
         paymentStatusOutboxRepository = new InMemoryPaymentStatusOutboxRepository();
         paymentGateway = new RecordingPaymentGateway();
-        orderStatusPort = new RecordingOrderStatusPort();
-        paymentService = new PaymentService(
-            paymentRepository,
-            paymentGateway,
-            new PaymentConfirmationService(
+        PaymentConfirmationService paymentConfirmationService = new PaymentConfirmationService( // <-- SAGA 상태 전이 의존성 구성
             paymentRepository,
             paymentStatusOutboxRepository,
             new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10))
-            ),
-            orderStatusPort
+        );
+        paymentService = new PaymentService(
+            paymentRepository,
+            paymentGateway,
+            new PaymentApprovalSagaOrchestrator(paymentConfirmationService, paymentGateway) // <-- 승인 SAGA 주입
         );
     }
 
@@ -134,9 +131,6 @@ class PaymentServiceTest {
             .hasMessageContaining("취소된 결제입니다.");
     }
 
-    /**
-     * 아래 orderStatusPort 부분은 주석처리.
-     */
     @Test
     @DisplayName("confirm은 prepare에 저장된 금액과 멱등키로 승인하고 PAID 처리한다")
     void confirm_approvesUsingPreparedPayment() {
@@ -153,10 +147,6 @@ class PaymentServiceTest {
         assertThat(paymentGateway.requestedAmount).isEqualByComparingTo(AMOUNT);
         assertThat(paymentGateway.requestedIdempotencyKey)
             .isEqualTo(saved.getApproveIdempotencyKey());
-        // TODO: Order 상태 통보가 임시 비활성화된 동안 검증하지 않는다.
-        // assertThat(orderStatusPort.callCount).isEqualTo(1);
-        // assertThat(orderStatusPort.requestedOrderId).isEqualTo(ORDER_ID);
-        // assertThat(orderStatusPort.requestedStatus).isEqualTo(PaymentStatus.PAID);
     }
 
     @Test
@@ -234,19 +224,6 @@ class PaymentServiceTest {
 
         @Override
         public void cancel(String paymentKey) {
-        }
-    }
-
-    private static final class RecordingOrderStatusPort implements OrderStatusPort {
-        private Long requestedOrderId;
-        private PaymentStatus requestedStatus;
-        private int callCount;
-
-        @Override
-        public void notifyStatus(Long orderId, PaymentStatus status) {
-            callCount++;
-            requestedOrderId = orderId;
-            requestedStatus = status;
         }
     }
 

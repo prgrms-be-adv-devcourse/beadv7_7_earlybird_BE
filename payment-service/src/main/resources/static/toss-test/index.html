@@ -39,6 +39,16 @@
 
   <script>
     const form = document.getElementById('payment-form');
+    const query = new URLSearchParams(window.location.search); // <-- URL의 테스트 주문 정보를 입력값에 반영
+    const orderIdFromQuery = Number(query.get('orderId'));
+    const amountFromQuery = Number(query.get('amount'));
+
+    if (Number.isInteger(orderIdFromQuery) && orderIdFromQuery > 0) {
+      document.getElementById('internal-order-id').value = orderIdFromQuery;
+    }
+    if (Number.isInteger(amountFromQuery) && amountFromQuery > 0) {
+      document.getElementById('amount').value = amountFromQuery;
+    }
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
