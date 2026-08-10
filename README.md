@@ -55,7 +55,7 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 ### 사전 준비
 
 - Java 21
-- Docker (Elasticsearch 용 — project-service 검색 기능에만 필요. Kibana는 옵트인 dev-tools 프로필로 별도 실행)
+- Docker (Elasticsearch 용 — project-service 검색 기능에만 필요)
 
 ### 설정 저장소
 
@@ -66,8 +66,6 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 ```bash
 # 0. (검색 기능 쓸 때만) Elasticsearch
 docker compose -f infrastructure/docker-compose.yml up -d
-# Kibana도 같이 보고 싶으면 (옵트인, 프로덕션에서는 안 뜸):
-# docker compose -f infrastructure/docker-compose.yml --profile dev-tools up -d
 
 # 1. 설정 서버
 ./gradlew :config-server:bootRun

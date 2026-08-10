@@ -23,8 +23,7 @@ docker compose -f infrastructure/docker-compose.yml up -d mysql
 최초 실행 시 `infrastructure/mysql/init/01-create-databases.sql` 이 자동 실행되어
 서비스별 데이터베이스 9개가 생성되고 `earlybird` 계정에 권한이 부여된다.
 
-> Elasticsearch까지 같이 띄우려면 `mysql` 을 빼고 `up -d` 만 실행하면 된다. Kibana는 옵트인
-> dev-tools 프로필로 분리되어 있어 `--profile dev-tools up -d` 로 명시해야 뜬다 (#233).
+> Elasticsearch까지 같이 띄우려면 `mysql` 을 빼고 `up -d` 만 실행하면 된다.
 
 ## 2. 접속 정보
 

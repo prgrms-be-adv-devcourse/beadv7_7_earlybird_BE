@@ -28,7 +28,6 @@ Service modules (each with its own port and DB): `order-service` :8080, `project
 ```bash
 docker compose -f infrastructure/docker-compose.yml up -d mysql   # MySQL (1 container, 9 per-service schemas)
 docker compose -f infrastructure/docker-compose.yml up -d         # + Elasticsearch (nori), for project-service search
-docker compose -f infrastructure/docker-compose.yml --profile dev-tools up -d  # + Kibana (opt-in, dev-tools profile — not started in production)
 
 ./gradlew build                                # build everything
 ./gradlew :order-service:test                  # tests for one module
