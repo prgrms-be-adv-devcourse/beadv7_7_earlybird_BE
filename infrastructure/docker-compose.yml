@@ -47,9 +47,15 @@ services:
     ports:
       - "9200:9200"
 
+  # 개발/디버깅용 시각화 UI일 뿐 project-service의 검색 기능(nori)은 elasticsearch에만 직접
+  # 연결되고 kibana에는 런타임 의존성이 없다. profiles로 옵트인 처리해 기본 `up -d`(프로덕션
+  # CD 스크립트가 쓰는 바로 그 명령)로는 뜨지 않게 한다 - idle 상태에서도 상시 메모리를
+  # 점유해 프로덕션 박스의 스왑 압박을 키웠었다 (#233). 로컬에서 켜고 싶으면
+  # `docker compose --profile dev-tools up -d` 로 명시적으로 옵트인.
   kibana:
     image: docker.elastic.co/kibana/kibana:9.0.3
     container_name: lecture-kibana
+    profiles: ["dev-tools"]
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
