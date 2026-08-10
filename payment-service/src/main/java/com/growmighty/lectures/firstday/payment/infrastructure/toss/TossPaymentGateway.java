@@ -158,11 +158,6 @@ public class TossPaymentGateway implements PaymentGateway {
         }
     }
 
-    @Override
-    public void cancel(String paymentKey) {
-
-    }
-
     //상태 유형 결정 메서드
     private PaymentGatewayException toPaymentGatewayException(
         RestClientResponseException exception

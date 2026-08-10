@@ -17,7 +17,6 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class PaymentService {
     private final PaymentRepository paymentRepository;
-    private final PaymentGateway  paymentGateway; //취소 메서드 수정후 삭제 예정
     private final PaymentApprovalSagaOrchestrator paymentApprovalSagaService;
 
     @Transactional
@@ -79,15 +78,6 @@ public class PaymentService {
      */
     public PaymentInfo confirm(String paymentKey, String pgOrderId, BigDecimal amount) {
         return paymentApprovalSagaService.approve(paymentKey, pgOrderId, amount);
-    }
-
-    @Transactional
-    public PaymentInfo cancel(Long paymentId) {
-        Payment payment = findPayment(paymentId);
-
-        paymentGateway.cancel(payment.getPaymentKey());
-        payment.cancel();
-        return PaymentInfo.from(paymentRepository.save(payment));
     }
 
     @Transactional(readOnly = true)

@@ -1,7 +1,7 @@
 # Payment 도메인 구현 현황
 
 담당자: @[단기심화7] 정창민
-기준일: 2026-07-28
+기준일: 2026-08-07
 
 이 문서는 목표 설계가 아니라 현재 `payment-service` 코드의 구현 상태를 기준으로 작성한다.
 
@@ -98,6 +98,92 @@ AES-GCM 암호문은 매번 달라져 `paymentKey`를 DB 동등 조회 조건으
 | `status` | `REQUESTED`, `COMPLETED`, `FAILED` |
 | `completedAt` | 환불 완료 시각 |
 
+## 3-1. Payment 애그리거트 계층 연결
+
+`Payment` 애그리거트는 결제 준비부터 승인·복구·상태 통지까지를 담당한다. `Refund`와 `Wallet`은 별도 도메인이므로 아래 연결도에서는 제외한다.
+
+```text
+표현 계층
+├─ PaymentController
+│  └─ PaymentService.confirm() / getPayment() / cancel()
+├─ PaymentInternalController
+│  └─ PaymentService.prepare()
+└─ TossWebhookController
+   └─ PaymentGateway.getPayment()
+      → PaymentReconciliationService.reconcile()
+
+응용 계층
+├─ PaymentService
+│  ├─ prepare(), getPayment(), cancel() 진입점
+│  └─ PaymentApprovalSagaOrchestrator.approve() 위임
+├─ PaymentApprovalSagaOrchestrator
+│  ├─ PaymentConfirmationService.startConfirmation()
+│  ├─ PaymentGateway.approve()
+│  └─ PaymentConfirmationService.completeConfirmation() / failConfirmation()
+├─ PaymentConfirmationService
+│  ├─ READY → CONFIRMING → PAID 또는 FAILED 상태 전이
+│  └─ PAID 전이와 PaymentStatusOutbox 저장을 같은 트랜잭션으로 처리
+├─ PaymentReconciliationService
+│  └─ 웹훅·복구 배치가 공통으로 사용하는 정합화 진입점
+├─ PaymentRecoveryScheduler → PaymentRecoveryBatchService → PaymentRecoveryService
+│  └─ PaymentGateway.getPayment() → PaymentReconciliationService.reconcile()
+├─ PaymentStatusOutboxScheduler → PaymentStatusOutboxBatchService
+│  → PaymentStatusOutboxDispatchService → OrderStatusPort.notifyStatus()
+└─ PaymentGateway, OrderStatusPort
+   └─ 외부 PG·Order 통신의 추상화(Port)
+
+도메인 계층
+├─ Payment, PaymentStatus
+├─ PaymentStatusOutbox, PaymentStatusOutboxStatus
+└─ PaymentRepository, PaymentStatusOutboxRepository
+   └─ 도메인 저장소 계약
+
+인프라 계층
+├─ PaymentRepositoryAdapter → PaymentJpaRepository
+├─ PaymentStatusOutboxRepositoryAdapter → PaymentStatusOutboxJpaRepository
+├─ TossPaymentGateway / FakePaymentGateway
+├─ OrderHttpClient → OrderFeignClient
+├─ TossPaymentConfig
+└─ PaymentSensitiveDataConverter → PaymentSensitiveDataCrypto
+```
+
+### 계층별 클래스 역할
+
+| 계층 | 클래스 | 역할 | 다음 연결 |
+| --- | --- | --- | --- |
+| 표현 | `PaymentController` | 프론트의 승인·조회·취소 HTTP 요청을 받음 | `PaymentService` |
+| 표현 | `PaymentInternalController` | Order 서비스의 결제 준비 요청을 받음 | `PaymentService.prepare()` |
+| 표현 | `TossWebhookController` | Toss 웹훅의 `paymentKey`를 받고 실제 PG 상태를 재조회 | `PaymentGateway` → `PaymentReconciliationService` |
+| 응용 | `PaymentService` | 결제 준비·조회·기존 취소 API의 진입점 | `PaymentRepository`, Saga Orchestrator |
+| 응용 | `PaymentApprovalSagaOrchestrator` | DB 상태 전이와 외부 PG 승인 호출 순서를 조율 | Confirmation Service, `PaymentGateway` |
+| 응용 | `PaymentConfirmationService` | 상태 전이, 승인 응답 검증, Outbox 저장 트랜잭션을 담당 | `Payment`, Repository, Outbox Repository |
+| 응용 | `PaymentReconciliationService` | 웹훅·복구 결과를 같은 정합화 로직으로 연결 | `PaymentConfirmationService.reconcile()` |
+| 응용 | Recovery Scheduler/Batch/Service | 오래된 `CONFIRMING` 결제를 조회하고 Toss 상태로 복구 | `PaymentGateway` → Reconciliation Service |
+| 응용 | Outbox Scheduler/Batch/Dispatch Service | 저장된 결제 상태 통지를 재시도 발송 | `OrderStatusPort` |
+| 도메인 | `Payment` | 결제 상태 전이와 승인 데이터 검증 규칙 보유 | `PaymentStatus` |
+| 도메인 | `PaymentStatusOutbox` | Order 상태 통지 대기·성공·재시도 횟수 보유 | `PaymentStatusOutboxStatus` |
+| 도메인 | `PaymentRepository`, `PaymentStatusOutboxRepository` | Payment 애그리거트 저장소 계약 정의 | JPA Adapter |
+| 응용 | `PaymentGateway`, `OrderStatusPort` | 외부 PG 승인·조회와 Order 상태 통신의 Port 정의 | Toss/Fake Gateway, Order HTTP Client |
+| 인프라 | JPA Adapter·Repository | 도메인 Repository를 JPA로 구현 | MySQL |
+| 인프라 | Toss/Fake Gateway | `PaymentGateway`를 Toss API·테스트용 PG로 구현 | Toss API |
+| 인프라 | `OrderHttpClient` | `OrderStatusPort`를 Feign 통신으로 구현 | Order 서비스 |
+| 인프라 | 암호화 Converter/Crypto | 결제키·승인 멱등키를 DB 저장 시 암호화 | AES-256-GCM |
+
+### DTO 연결
+
+| 구분 | DTO | 이동 경로 | 목적 |
+| --- | --- | --- | --- |
+| 표현 계층 요청 | `PayRequest` | 프론트 → `PaymentController` | Toss 승인에 필요한 `paymentKey`, `pgOrderId`, 금액 전달 |
+| 표현 계층 요청 | `PaymentPrepareRequest` | Order → `PaymentInternalController` | 결제 준비에 필요한 `orderId`, 금액 전달 |
+| 표현 계층 응답 | `PaymentResponse` | `PaymentController` → 프론트 | 결제 ID·주문 ID·금액·상태 반환 |
+| 표현 계층 응답 | `PaymentPrepareResponse` | `PaymentInternalController` → Order | Toss 결제창에 쓸 `pgOrderId`와 금액 반환 |
+| 응용 계층 DTO | `PaymentInfo` | Application Service → Controller | 일반 결제 조회·승인 결과 표현 |
+| 응용 계층 DTO | `PaymentPreparationInfo` | `PaymentService` → Internal Controller | 준비된 결제 정보 표현 |
+| 응용 계층 DTO | `PaymentConfirmationTarget` | Confirmation Service → Saga Orchestrator | PG 승인에 필요한 내부 결제 ID·멱등키 전달 |
+| 응용 계층 DTO | `PaymentRecoveryTarget` | Confirmation Service → Recovery Service | PG 재조회에 필요한 결제 ID·결제키 전달 |
+| Toss 통신 DTO | `TossConfirmRequest`, `TossPaymentResponse` | Toss Gateway ↔ Toss API | 승인·조회 API 요청과 응답 매핑 |
+| Toss 웹훅 DTO | `TossWebhookRequest`, `TossWebhookPayment` | Toss → Webhook Controller | 웹훅에서 `paymentKey`를 추출하기 위한 최소 표현 |
+
 ### 상태
 
 ```text
@@ -150,10 +236,10 @@ READY → CONFIRMING → PAID → CANCELLED
 2. 성공 페이지는 `/api/v1/payments/confirm`을 호출한다.
 3. `PaymentConfirmationService`는 `pgOrderId`로 준비된 결제를 찾고, 요청 금액이 준비 금액과 같은지 확인한다.
 4. 결제를 `CONFIRMING`으로 바꾸고 `paymentKey`를 저장한 뒤 트랜잭션을 종료한다. `paymentKey`와 승인 멱등키는 DB 저장 시 AES-256-GCM으로 암호화된다. 외부 PG 호출 중 DB 트랜잭션을 유지하지 않는다.
-5. `PaymentService`는 조회 시 자동 복호화된 `paymentKey`, `pgOrderId`, 금액, 승인 멱등키를 `PaymentGateway`에 전달한다.
+5. `PaymentApprovalSagaOrchestrator`는 조회 시 자동 복호화된 `paymentKey`, `pgOrderId`, 금액, 승인 멱등키를 `PaymentGateway`에 전달한다.
 6. Toss 구현체는 `POST /v1/payments/confirm`을 호출하고, 응답 상태가 `DONE`인지 확인한다.
 7. 토스 응답의 결제키·주문번호·금액이 내부 값과 같으면 결제를 `PAID`로 변경하고 `confirmedAt`을 저장한다.
-8. `PaymentService`는 `PAID` 결과를 Order 서비스에 통보한다. Order 서비스 장애 시 Payment는 이미 `PAID`로 저장되며, 현재 동기 호출 실패를 영속 재시도하지 않는다.
+8. `PaymentConfirmationService`는 `PAID` 전이와 `PaymentStatusOutbox(PENDING)` 저장을 같은 트랜잭션으로 처리한다. 이후 Outbox 스케줄러가 `OrderStatusPort`를 통해 상태를 발송하며, 실패하면 Outbox는 `PENDING` 상태로 남고 재시도 횟수만 증가한다.
 
 ### 동시 승인 처리
 
@@ -180,7 +266,7 @@ PAYMENT_SECURITY_ENCRYPTION_KEY=Base64로_인코딩한_32바이트_AES_키
 
 `TossPaymentConfig`는 시크릿 키와 빈 비밀번호를 Basic 인증으로 설정한다. `TossPaymentGateway`는 승인 시 `POST /v1/payments/confirm`을, 복구 조회 시 `GET /v1/payments/{paymentKey}`를 호출한다. `TossRefundGateway`는 전액 환불 시 `POST /v1/payments/{paymentKey}/cancel`을 호출하고 응답 상태가 `CANCELED`인지 검증한다. 클라이언트 키는 결제창을 여는 프론트엔드용 키이며 시크릿 키와 같은 상점의 키 쌍이어야 한다.
 
-토스 4xx/5xx 응답과 네트워크 오류는 `TossPaymentException`으로 변환한다.
+토스 4xx/5xx 응답과 네트워크 오류는 확정 실패·결과 불명 실패를 구분한 `PaymentGatewayException`으로 변환한다. 결과 불명 실패는 `CONFIRMING`으로 남겨 복구 대상이 된다.
 
 `FakePaymentGateway.getPayment()`는 `UnsupportedOperationException`을 던지며 결제 조회를 지원하지 않는다. 그런데 웹훅 정합화(`TossWebhookController`)와 복구 배치(`PaymentRecoveryService`)는 모두 `PaymentGateway.getPayment()`를 호출하므로, `payment.gateway=fake`(기본값)로 실행 중인 환경에서는 웹훅 처리와 복구 배치가 예외를 던지며 동작하지 않는다. 로컬에서 이 두 기능을 확인하려면 `toss` 구현체를 사용하거나 별도의 Fake 조회 지원이 필요하다.
 
@@ -212,7 +298,7 @@ PAID Payment 조회
 
 토스 승인 요청 후 네트워크 오류·응답 유실이 발생하면, 토스가 실제로 승인했는지 즉시 알 수 없다. 이 경우 Payment를 바로 `FAILED`로 바꾸지 않고 `CONFIRMING` 상태로 유지한다.
 
-`PaymentRecoveryScheduler`는 기본 3분(`payment.recovery.schedule-fixed-delay=180000`) 간격으로 `PaymentRecoveryBatchService`를 호출한다. `PaymentRecoveryProperties`는 다음 값을 제공하며 각 Duration의 최소값만 검증한다. `maximumConfirmingDuration >= confirmationTimeOut` 관계 검증은 이 브랜치에 아직 반영되지 않았다.
+`PaymentRecoveryScheduler`는 기본 3분(`payment.recovery.schedule-fixed-delay=180000`) 간격으로 `PaymentRecoveryBatchService`를 호출한다. `PaymentRecoveryProperties`는 각 Duration의 최소값과 `maximumConfirmingDuration >= confirmationTimeOut` 관계를 검증한다.
 
 | 설정 | 기본값 | 용도 |
 | --- | --- | --- |
@@ -248,16 +334,17 @@ Toss 웹훅은 Gateway를 통해 `POST /api/v1/payments/webhook`으로 수신한
 ```text
 Toss 웹훅 또는 복구 배치
   → Toss 결제 조회
-  → PaymentConfirmationService.reconcile()
   → PaymentReconciliationService
-  → OrderStatusPort.notifyStatus() (PAID일 때)
+  → PaymentConfirmationService.reconcile()
+  → PAID 전이 시 PaymentStatusOutbox 저장
+  → Outbox 스케줄러 → OrderStatusPort.notifyStatus()
 ```
 
-`PaymentConfirmationService.reconcile()`은 트랜잭션 안에서 Toss 응답의 `pgOrderId`로 Payment를 조회한 뒤, 복호화된 `paymentKey`가 응답의 결제 키와 같은지 검증하고 상태를 전이한다. 완료 상태는 `PaymentInfo`를 반환하고, `PaymentReconciliationService`가 트랜잭션 밖에서 Order 서비스에 `PAID` 상태를 통보한다.
+`PaymentReconciliationService`는 웹훅·복구 배치의 정합화 요청을 `PaymentConfirmationService.reconcile()`로 전달한다. 정합화 메서드는 트랜잭션 안에서 Toss 응답의 `pgOrderId`로 Payment를 조회한 뒤, 복호화된 `paymentKey`가 응답의 결제 키와 같은지 검증하고 상태를 전이한다. `PAID`로 새로 전이된 경우에는 Outbox를 함께 저장한다.
 
-- 이미 `PAID`인 완료 웹훅은 Payment를 다시 저장하지 않는다.
-- 다만 `PAID` 정보를 다시 반환하므로 웹훅 재전송 또는 복구 재실행 시 Order 상태 통보는 다시 시도한다.
-- Order 통보가 실패하면 Payment 상태는 이미 커밋된 `PAID`로 남는다. 현재는 웹훅 재전송에 기대며, 완전한 전달 보장은 outbox·재시도 작업이 필요하다.
+- 이미 `PAID`인 완료 웹훅은 Payment와 Outbox를 다시 저장하지 않는다.
+- Outbox 발송이 실패하면 Payment 상태는 `PAID`로 유지되고, 같은 Outbox가 다음 스케줄에서 다시 발송된다.
+- 현재 Outbox 발송 구현은 Feign 기반이다. Kafka 상태 통지로 전환할 때 `OrderStatusPort` 구현체를 Kafka Producer로 교체한다.
 
 웹훅 URL은 Toss가 접근 가능한 HTTPS 공개 주소로 등록해야 한다. 로컬 E2E 테스트에서는 Gateway를 향하는 터널을 사용한다. 결제 상태 변경 웹훅의 출처 제어는 현재 애플리케이션 서명 검증이 아니라 Toss 재조회와 인프라 ACL에 의존한다.
 
@@ -271,7 +358,7 @@ Toss 웹훅 또는 복구 배치
 - `PaymentRecoveryBatchServiceTest`: 타임아웃 조회·배치 크기·개별 실패 격리 검증
 - `PaymentRecoverySchedulerTest`: 스케줄러의 배치 서비스 호출 검증
 - `PaymentConfirmationServiceReconcileTest`: 완료·취소 상태 정합화와 중복 완료 웹훅 처리 검증
-- `PaymentReconciliationServiceTest`: `PAID` 정합화 후 Order 상태 통보, 미전이 시 미통보 검증
+- `PaymentReconciliationServiceTest`: 웹훅·복구 정합화 요청이 공통 정합화 서비스로 전달되는지 검증
 - `TossWebhookControllerTest`: 웹훅 `paymentKey` 기반 Toss 조회·정합화 서비스 위임 검증
 - `RefundServiceTest`: 전액 환불 완료, PAID가 아닌 결제 거절, Toss 환불 실패 시 Payment 상태 유지 검증
 - `PaymentSensitiveDataCryptoTest`: AES-GCM 암·복호화, 랜덤 IV로 인한 암호문 비결정성, 암호문 변조 감지 검증
@@ -308,7 +395,7 @@ Payment의 상태 통지 Outbox 재시도를 도입하기 전에, Order 서비�
 - `confirmingAt` 이후 3분이 지나면 Toss 상태 조회 대상에 포함한다.
 - Toss 조회 결과가 계속 `PENDING`이고 `confirmingAt` 이후 10분이 지나면 `FAILED`로 전이한다.
 - 배치 실행 주기, 복구 조회 시작 시간, 최종 대기 시간을 설정 파일에 명시하고 각 값의 역할을 분리한다.
-- `maximumConfirmingDuration`과 `confirmationTimeOut`의 관계 검증은 후속 보완이 필요하다.
+- `maximumConfirmingDuration`은 `confirmationTimeOut`보다 작게 설정할 수 없다.
 
 ## 15. Order 서비스 환불 연동 계약
 

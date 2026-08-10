@@ -42,7 +42,6 @@ class PaymentServiceTest {
         );
         paymentService = new PaymentService(
             paymentRepository,
-            paymentGateway,
             new PaymentApprovalSagaOrchestrator(paymentConfirmationService, paymentGateway) // <-- 승인 SAGA 주입
         );
     }
@@ -222,9 +221,6 @@ class PaymentServiceTest {
             throw new UnsupportedOperationException("이 테스트에서는 결제 조회를 사용하지 않습니다.");
         }
 
-        @Override
-        public void cancel(String paymentKey) {
-        }
     }
 
     private static final class InMemoryPaymentStatusOutboxRepository
