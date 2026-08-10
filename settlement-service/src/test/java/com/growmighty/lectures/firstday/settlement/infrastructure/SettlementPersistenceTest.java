@@ -1,22 +1,23 @@
+// TODO(settlement-plan): Add Inbox, facts, run, reconciliation, Outbox, pgOrderId, and payout idempotency constraint coverage.
 package com.growmighty.lectures.firstday.settlement.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.growmighty.lectures.firstday.settlement.config.JpaAuditingConfig;
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfile;
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutProfileRepository;
-import com.growmighty.lectures.firstday.settlement.domain.CreatorPayoutStatus;
-import com.growmighty.lectures.firstday.settlement.domain.Money;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutAttemptStatus;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutObligation;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationRepository;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutObligationStatus;
-import com.growmighty.lectures.firstday.settlement.domain.PayoutDestinationSnapshot;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlement;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.SettlementBreakdown;
-import com.growmighty.lectures.firstday.settlement.domain.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.infrastructure.config.JpaAuditingConfig;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinationSnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.CreatorPayoutProfileRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;

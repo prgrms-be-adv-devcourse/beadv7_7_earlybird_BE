@@ -1,9 +1,10 @@
+// TODO(settlement-plan): Replace this per-order command entity with a project refund Outbox entity, then delete it.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectCancellationReason;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommand;
-import com.growmighty.lectures.firstday.settlement.domain.ProjectPaymentCancellationCommandStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectCancellationReason;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectPaymentCancellationCommand;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectPaymentCancellationCommandStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

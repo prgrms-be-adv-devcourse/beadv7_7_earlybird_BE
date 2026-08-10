@@ -4,13 +4,79 @@ on:
     workflows: [CI]
     types: [completed]
   workflow_dispatch:
+
+env:
+  # 하드코딩 - github.repository 는 실제 대소문자(...beadv7_7_earlybird_BE)를 그대로 담지만
+  # Docker/GHCR 이미지 이름은 소문자여야 한다 (FE deploy.yml 과 동일한 이유).
+  IMAGE_PREFIX: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be
+  # workflow_run 컨텍스트의 github.sha 는 이 CD 워크플로 자체가 default 브랜치에서 체크아웃한
+  # 커밋이지, CI 를 트리거한 커밋이 아니다 (흔한 함정). workflow_dispatch 에는 애초에
+  # event.workflow_run 이 없으므로 그때는 github.sha 로 폴백한다.
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
 jobs:
   build:
-    name: deploy
+    name: build (${{ matrix.service }})
     runs-on: ubuntu-latest
     # workflow_run은 브랜치/결과와 무관하게 모든 CI 실행마다 발생하므로 여기서 게이팅한다:
     # main 브랜치에서 실제로 성공한 CI 실행만 배포한다. workflow_dispatch는 연결된
     # workflow_run 이벤트가 없으므로 이 조건을 완전히 우회한다.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - config-server
+          - discovery-server
+          - gateway-server
+          - order-service
+          - project-service
+          - payment-service
+          - user-service
+          - cart-service
+          - settlement-service
+          - file-service
+          - board-service
+          - notification-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      # cache-from/cache-to: type=gha 를 쓰려면 기본 docker 드라이버가 아니라
+      # docker-container 드라이버가 필요하다.
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 서비스 12개가 각자 다른 러너에서 병렬로 빌드되므로, EC2(2 vCPU) 한 대에서 buildx
+      # bake로 전부 동시에 빌드했다가 CPU 경합으로 sshd까지 응답 없어졌던 문제(CD #148)
+      # 자체가 사라진다. 모든 서비스가 동일한 루트 Dockerfile을 MODULE 인자만 바꿔 쓴다
+      # (infrastructure/docker-compose.yml의 x-build-defaults와 동일한 패턴).
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          build-args: MODULE=${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ env.DEPLOY_SHA }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
@@ -22,34 +88,59 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          # drone-ssh는 진행 상황과 무관하게 이 시간이 지나면 원격 명령을 강제 종료한다.
-          # 기본값 10분으로는 12개 이미지를 전부 재빌드하기엔 여유가 부족하다.
-          command_timeout: '30m'
+          # 이미지 빌드가 GitHub Actions 러너로 옮겨가면서 이 단계는 pull + up -d만
+          # 하면 되고, 원래 30분을 잡아먹던 이유(EC2에서 12개 이미지 순차 빌드)가
+          # 사라졌다. 그래도 네트워크 지연/헬스체크 대기를 감안해 여유를 좀 남겨둔다.
+          command_timeout: '10m'
           envs: GHCR_PAT
           script: |
+            set -e
+            # without this, a failure partway through (e.g. the up -d conflict below) doesn't stop
+            # the script - it just falls through to the next line, and the step's reported result
+            # ends up being whatever the LAST command returned. That's how a broken deploy showed
+            # as "success": `up -d` failed on most services, but the final `docker restart
+            # earlybird-caddy` succeeded, so the run was green while the backend was down.
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
-            git pull
-            # fe 이미지는 private GHCR 패키지 (조직 정책상 public 전환 불가) - pull 전
-            # 로그인 필요. config-server가 이미 같은 방식(PAT)으로 private config repo에
-            # 접근하는 것과 동일한 패턴.
+            git fetch origin && git reset --hard origin/main
+            # 이제 fe뿐 아니라 12개 BE 서비스 이미지도 전부 private GHCR 패키지 (조직 정책상
+            # public 전환 불가) - pull 전 로그인 필요. config-server가 이미 같은 방식(PAT)으로
+            # private config repo에 접근하는 것과 동일한 패턴.
             echo "$GHCR_PAT" | docker login ghcr.io -u krkhnh --password-stdin
-            # 단일 `docker compose up -d --build`(buildx bake로 12개 이미지를 전부 병렬
-            # 빌드)가 아니라 서비스를 한 번에 하나씩 빌드한다. EC2는 2 vCPU 짜리라
-            # Gradle 빌드 12개가 동시에 돌면 CPU 경합이 심해져 sshd조차 응답하지
-            # 않게 되는데, 이 때문에 CD 실행이 타임아웃되고 인스턴스를 재부팅해야
-            # 했던 적이 있다. 순차 빌드는 전체 시간은 더 걸리지만 각 빌드가 확실히 끝난다.
-            # -f infrastructure/docker-compose.prod.yml 은 공용 base 파일 위에 AWS 전용
-            # 오버라이드(현재는 gateway-server 호스트 포트뿐)를 얹는다 - 이유는 그 파일
-            # 참고. 로컬 개발에서는 이 옵션을 절대 넘기지 않으므로 영향 없음.
-            # 이미지 빌드와 컨테이너 기동을 분리한다.
-            #  - build는 서비스 하나씩 순차 실행 (동시 실행 시 CPU 경합 문제, 위 주석 참고).
-            #    `docker compose build <svc>`는 up과 달리 depends_on을 따라가지 않으므로
-            #    config-server/discovery-server가 매 반복마다 다시 빌드되지 않는다.
-            #  - up은 전체 서비스를 대상으로 마지막에 한 번만 실행해, 컴포즈가 depends_on/
-            #    health 조건을 스스로 계산해 필요한 컨테이너만 재기동하게 둔다. 반복문 안에서
-            #    --build와 up을 합쳤을 때는 매번 config/discovery-server까지 재기동-헬스체크
-            #    대기를 반복해 command_timeout(30m)을 넘겼다 (CD #148).
-            for svc in config-server discovery-server gateway-server caddy order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
-              docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml build "$svc"
+            # `pull` reassigning :latest to a new digest leaves the old digest dangling
+            # (<none>:<none>) - same thing used to happen when EC2 rebuilt images locally, and it
+            # silently ate ~10GB of disk before we noticed. Tag whatever :latest currently points
+            # at as :rollback BEFORE pulling, so the version this deploy is about to replace stays
+            # reachable by name (`docker compose ... up -d` with the service image swapped back to
+            # :rollback) instead of only living on as an anonymous dangling image that a later
+            # prune could sweep away. `docker image inspect` guards the first-ever deploy, where
+            # :latest doesn't exist locally yet.
+            for svc in config-server discovery-server gateway-server order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
+              img="ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc"
+              docker image inspect "$img:latest" > /dev/null 2>&1 && docker tag "$img:latest" "$img:rollback"
             done
+            # -f infrastructure/docker-compose.prod.yml 은 공용 base 파일 위에 AWS 전용
+            # 오버라이드(서비스별 image: 태그, gateway-server 호스트 포트 등)를 얹는다 - 이유는
+            # 그 파일 참고. 로컬 개발에서는 이 옵션을 절대 넘기지 않으므로 영향 없음.
+            # EC2에서의 로컬 이미지 빌드는 더 이상 하지 않는다 - build job이 GHCR에 미리
+            # push해둔 이미지를 pull만 한다.
+            docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml pull
             docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d
+            # caddy bind-mounts Caddyfile by host path (./Caddyfile:/etc/caddy/Caddyfile:ro) -
+            # that path string never changes even when git pull replaces the file's contents, so
+            # plain `up -d` never sees a reason to recreate the container and caddy keeps serving
+            # whatever config it last loaded. Force a fresh read every deploy so routing changes
+            # always take effect (bit us in production: FE cutover shipped but Caddyfile's new
+            # /api split sat unloaded until a manual restart).
+            #
+            # `docker compose up -d --force-recreate caddy` was tried here first but silently
+            # no-ops under appleboy/ssh-action specifically (works fine run manually over plain
+            # SSH) - see issue #212. `docker restart` re-execs the process and re-reads the
+            # bind-mounted Caddyfile, which is all we actually need; it just won't pick up a
+            # change to caddy's own image/ports/volumes in docker-compose.yml (rare enough to
+            # handle manually if it ever happens).
+            docker restart earlybird-caddy
+            # Safe to prune unconditionally: any image a running container still uses is never
+            # touched by `image prune`, and the one previous version worth keeping for a quick
+            # rollback was just re-tagged as :rollback above, so this only clears versions older
+            # than that (plus stray dangling layers from anything else on the host).
+            docker image prune -f

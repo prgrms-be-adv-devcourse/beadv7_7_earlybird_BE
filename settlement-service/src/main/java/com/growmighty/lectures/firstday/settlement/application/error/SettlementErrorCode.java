@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Add event, reconciliation, and REVIEW_REQUIRED errors; remove legacy HTTP cancellation errors after migration.
 package com.growmighty.lectures.firstday.settlement.application.error;
 
 public enum SettlementErrorCode {

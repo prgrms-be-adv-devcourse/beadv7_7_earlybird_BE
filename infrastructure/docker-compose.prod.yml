@@ -1,17 +1,59 @@
 # AWS-only override, layered on top of docker-compose.yml via `-f docker-compose.yml -f docker-compose.prod.yml`.
-# Local dev never passes this file, so it keeps the default 8000:8000 mapping unchanged.
+# Local dev never passes this file, so it keeps the default 8000:8000 mapping and local `build:`
+# behavior unchanged.
 #
 # Caddy is now the sole external entry point (terminates TLS on 80/443, per the EC2 security
 # group). gateway-server no longer publishes anything to the host - same "only reach it through
 # the front door" rule docker-compose.yml already applies to every business service, now applied
 # to gateway-server too since Caddy is the new front door. Caddy still reaches it by service name
 # over the Compose network without any host port published.
+#
+# Every service below also gets an `image:` pointing at the tag CD's build job (matrix over the
+# 12 services, see .github/workflows/cd.yml) pushes to GHCR. The base file's `build:` block is
+# still there (untouched, for local `docker compose up -d --build`) - adding `image:` here doesn't
+# remove it, it just gives `docker compose pull`/`up -d` something to pull instead of building.
+# CD's deploy step runs `pull` before `up -d`, so the image is always present locally and `up -d`
+# never falls back to building on the EC2 host (same pattern the `fe` service below already used).
 services:
+  config-server:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-config-server:latest
+
+  discovery-server:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-discovery-server:latest
+
   gateway-server:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-gateway-server:latest
     # Compose concatenates list fields like `ports` across -f files by default, so a plain
     # override here would publish BOTH 8000:8000 (from the base file) and whatever we add - not
     # what we want. `!override` forces a full replace instead of merging.
     ports: !override []
+
+  order-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-order-service:latest
+
+  project-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-project-service:latest
+
+  payment-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-payment-service:latest
+
+  user-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-user-service:latest
+
+  cart-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-cart-service:latest
+
+  settlement-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-settlement-service:latest
+
+  file-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-file-service:latest
+
+  board-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-board-service:latest
+
+  notification-service:
+    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-notification-service:latest
 
   caddy:
     image: caddy:2

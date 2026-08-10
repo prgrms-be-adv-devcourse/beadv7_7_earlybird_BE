@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
@@ -31,8 +32,8 @@ public class PaymentConfirmationService {
     private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     /**
-     * PG 승인 전에 결제를 CONFIRMING 상태로 선점,
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
+     * 승인 멱등키와 결제정보를 반환하고, Ready -> Confirming 상태를 선점하는 메서드
      */
     @Transactional
     public PaymentConfirmationTarget startConfirmation(String paymentKey, String pgOrderId, BigDecimal requestedAmount) {
@@ -48,7 +49,7 @@ public class PaymentConfirmationService {
         }
 
         if (payment.isConfirming()) {
-            throw new IllegalStateException("이미 승인 처리 중인 결제입니다. 잠시 후 다시 조회해주세요. pgOrderId = " + pgOrderId);
+            throw new PaymentConfirmationInProgressException(pgOrderId);
         }
 
         payment.startConfirming(paymentKey);
@@ -66,10 +67,7 @@ public class PaymentConfirmationService {
      * PG 승인 응답을 검증한 후 결제를 PAID 상태로 완료
      */
     @Transactional
-    public PaymentInfo completeConfirmation(
-        Long paymentId,
-        String requestedPaymentKey,
-        PaymentGateway.PgApproval approval) {
+    public PaymentInfo completeConfirmation(Long paymentId, String requestedPaymentKey, PaymentGateway.PgApproval approval) {
         Payment payment = findPayment(paymentId);
 
         if (!requestedPaymentKey.equals(approval.paymentKey())) {
@@ -87,6 +85,18 @@ public class PaymentConfirmationService {
         savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 동일 상태 Outbox 중복 저장 방지
 
         return PaymentInfo.from(savedPayment);
+    }
+
+    /**
+     * 승인 실패,
+     */
+    @Transactional
+    public void failConfirmation(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if (payment.reconcileFailed()) {
+            paymentRepository.save(payment);
+        }
     }
 
     @Transactional(readOnly = true)

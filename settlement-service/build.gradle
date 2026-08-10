@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Add Spring Kafka test/runtime support; reuse the existing Batch starter and remove obsolete adapter dependencies.
 plugins {
     id 'org.springframework.boot'   // 실행 가능한 서비스이므로 Boot 플러그인 적용 (버전은 루트에 등록됨)
 }

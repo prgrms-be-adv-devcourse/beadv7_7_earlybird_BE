@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Add lock or uniqueness-backed lookups required for concurrent scheduled and manual payout attempts.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository;
 
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.PayoutObligationJpaEntity;

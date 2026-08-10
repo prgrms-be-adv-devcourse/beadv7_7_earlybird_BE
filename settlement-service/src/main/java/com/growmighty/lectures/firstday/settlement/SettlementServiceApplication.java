@@ -1,3 +1,4 @@
+// TODO(settlement-plan): Keep bootstrap thin; wire Kafka consumers and the monthly scheduler through dedicated configuration.
 package com.growmighty.lectures.firstday.settlement;
 
 import org.springframework.boot.SpringApplication;

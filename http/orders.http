@@ -1,5 +1,5 @@
 ### 모든 요청은 게이트웨이(:8000)를 통해 들어간다.
-### 시드 데이터: 프로젝트 1~4 (OPEN), 리워드 1~9 (프로젝트 1 → 리워드 1~3, ProjectDataInitializer 참고)
+### 시드 데이터: 프로젝트 1~4 (OPEN), 리워드 1~12 (프로젝트 1 → 리워드 1~4, ProjectDataInitializer 참고)
 
 ### 내 후원 내역 (TODO(팀): JWT 도입 후 userId 파라미터 제거)
 GET http://localhost:8000/orders/me?userId=1

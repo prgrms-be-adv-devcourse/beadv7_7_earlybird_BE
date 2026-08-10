@@ -19,7 +19,7 @@ Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle multi-module microserv
 
 ### Modules and ports
 
-Service modules (each with its own port and DB): `order-service` :8080, `project-service` :8081, `payment-service` :8082, `user-service` :8083, `cart-service` :8085, `settlement-service` :8086 (Spring Batch), `file-service` :8087 (unimplemented skeleton), `board-service` :8088 (창작자 공지/의견·문의/리뷰), `notification-service` :8089. Infrastructure modules: `discovery-server` (Eureka, :8761), `gateway-server` (:8000, single entry point for all external requests), `config-server` (:8888).
+Service modules (each with its own port and DB): `order-service` :8080, `project-service` :8081, `payment-service` :8082, `user-service` :8083, `cart-service` :8085, `settlement-service` :8086 (Spring Batch), `file-service` :8087 (unimplemented skeleton), `board-service` :8088 (창작자 공지/의견·문의/리뷰), `notification-service` :8089, `ai-service` :8090 (no DB yet; Spring AI OpenAI starter wired, provider/model TODO). Infrastructure modules: `discovery-server` (Eureka, :8761), `gateway-server` (:8000, single entry point for all external requests), `config-server` (:8888).
 
 `/internal/**` endpoints have no gateway route by design — they're reachable only via direct Eureka-to-Eureka service calls, never from outside.
 
@@ -27,7 +27,7 @@ Service modules (each with its own port and DB): `order-service` :8080, `project
 
 ```bash
 docker compose -f infrastructure/docker-compose.yml up -d mysql   # MySQL (1 container, 9 per-service schemas)
-docker compose -f infrastructure/docker-compose.yml up -d         # + Elasticsearch (nori) + Kibana, for project-service search
+docker compose -f infrastructure/docker-compose.yml up -d         # + Elasticsearch (nori), for project-service search
 
 ./gradlew build                                # build everything
 ./gradlew :order-service:test                  # tests for one module
@@ -50,7 +50,7 @@ Each service follows the same layered layout under `com.growmighty.lectures.firs
 - `domain/` — entities and domain logic
 - `infrastructure/` — port implementations; `infrastructure/client/` contains the HTTP adapters that call other services: a declarative `@FeignClient` interface for the actual call, wrapped by a `*HttpClient` adapter (implements the port interface) that runs the call through a Resilience4j `CircuitBreakerFactory` with a fallback method
 
-Cross-domain references are by **ID, not object** — services never share entities or JPA relationships across domain boundaries; they call each other over HTTP through the port/adapter pair. This port-interface + HTTP-adapter separation is the core pattern the course builds up (monolith → module split → MSA), so preserve it when adding features. Design-background docs live under `docs/` (`1_LOCAL_DB_SETUP.md`, `2_CONFIG_SERVER_SETUP.md`, `ERD.md`).
+Cross-domain references are by **ID, not object** — services never share entities or JPA relationships across domain boundaries. Synchronous queries and commands use the existing port/HTTP-adapter pair; asynchronous domain facts and batch requests use Kafka producer/consumer adapters behind the same application boundary. Settlement's target flow and current implementation state are documented in [`settlement-service/README.md`](settlement-service/README.md). Other design-background docs live under `docs/` (`1_LOCAL_DB_SETUP.md`, `2_CONFIG_SERVER_SETUP.md`, `ERD.md`).
 
 ### Code convention: framework/library defaults over custom code
 
