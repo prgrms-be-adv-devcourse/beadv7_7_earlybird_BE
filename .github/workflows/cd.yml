@@ -81,6 +81,24 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      # 호스트는 더 이상 git clone을 유지하지 않는다 - infrastructure/ 에서 실제로 쓰이는
+      # 파일(compose, Caddyfile 등)만 러너가 이미 체크아웃해둔 걸 그대로 옮긴다. --delete로
+      # origin에서 지워진 파일은 호스트에서도 지우되(과거 git reset --hard와 동일 효과),
+      # .env(호스트 전용 시크릿)와 logs/(컨테이너가 쓰는 bind mount 대상)는 러너에 애초에
+      # 없거나 git 추적 대상이 아니므로 반드시 --exclude로 보존한다.
+      - uses: burnett01/rsync-deployments@7.0.2
+        with:
+          switches: -avz --delete --exclude=".env" --exclude="logs/"
+          path: infrastructure/
+          remote_path: /home/ec2-user/earlybird/beadv7_7_earlybird_BE/infrastructure/
+          remote_host: ${{ secrets.EC2_HOST }}
+          remote_user: ${{ secrets.EC2_USER }}
+          remote_key: ${{ secrets.EC2_SSH_KEY }}
+
       - uses: appleboy/ssh-action@v1
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
@@ -101,7 +119,8 @@ jobs:
             # as "success": `up -d` failed on most services, but the final `docker restart
             # earlybird-caddy` succeeded, so the run was green while the backend was down.
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
-            git fetch origin && git reset --hard origin/main
+            # infrastructure/ 는 위 rsync 스텝이 이미 최신 상태로 동기화해뒀다 - 여기서는
+            # git을 전혀 쓰지 않는다.
             # 이제 fe뿐 아니라 12개 BE 서비스 이미지도 전부 private GHCR 패키지 (조직 정책상
             # public 전환 불가) - pull 전 로그인 필요. config-server가 이미 같은 방식(PAT)으로
             # private config repo에 접근하는 것과 동일한 패턴.
@@ -126,8 +145,8 @@ jobs:
             docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml pull
             docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d
             # caddy bind-mounts Caddyfile by host path (./Caddyfile:/etc/caddy/Caddyfile:ro) -
-            # that path string never changes even when git pull replaces the file's contents, so
-            # plain `up -d` never sees a reason to recreate the container and caddy keeps serving
+            # that path string never changes even when the rsync step above replaces the file's
+            # contents, so plain `up -d` never sees a reason to recreate the container and caddy keeps serving
             # whatever config it last loaded. Force a fresh read every deploy so routing changes
             # always take effect (bit us in production: FE cutover shipped but Caddyfile's new
             # /api split sat unloaded until a manual restart).
