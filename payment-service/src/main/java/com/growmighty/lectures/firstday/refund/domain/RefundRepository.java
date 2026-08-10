@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.refund.domain;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface RefundRepository {
@@ -8,4 +10,6 @@ public interface RefundRepository {
     Optional<Refund> findById(Long id);
 
     Optional<Refund> findByPaymentId(Long paymentId);
+
+    List<Long> findRecoveryTargetIds(LocalDateTime cutoff, int limit);
 }
