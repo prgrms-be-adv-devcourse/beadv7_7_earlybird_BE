@@ -21,6 +21,7 @@ import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -79,16 +80,20 @@ public class OrderApiService {
      *    - status = CANCELLED
      * */
 
-
     // 주문 생성 요청
     public OrderResult placeOrder(PlaceOrderCommand command, Long requesterId) {
         validateRequesterId(requesterId);
         command = new PlaceOrderCommand(requesterId, command.projectId(), command.lines(),
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
-                command.expectedItemsAmount(), command.expectedTotalAmount());
+                command.expectedItemsAmount(), command.expectedTotalAmount(), command.orderIdempotencyKey());
         validateCommand(command);
 
-        // FIXME : 동일 요청 자체의 중복 가능성 -> 생성해서 넘어오는 방법 등등을 고려
+        Optional<Order> existingOrder = orderRepository.findByUserIdAndOrderIdempotencyKey(
+                requesterId, command.orderIdempotencyKey());
+        if (existingOrder.isPresent()) {
+            return OrderResult.from(existingOrder.get());
+        }
+
         Order order = createPendingOrder(command);
 
         /*
@@ -104,7 +109,13 @@ public class OrderApiService {
 
         // TODO(예정) : 타 도메인 연동 상세 작업 처리
 
-        order = orderRepository.saveAndFlush(order);
+        try {
+            order = orderRepository.saveAndFlush(order);
+        } catch (DataIntegrityViolationException e) {
+            return orderRepository.findByUserIdAndOrderIdempotencyKey(requesterId, command.orderIdempotencyKey())
+                    .map(OrderResult::from)
+                    .orElseThrow(() -> e);
+        }
 
         try {
             reserveStock(order);
@@ -207,7 +218,8 @@ public class OrderApiService {
 
         Long projectId = command.projectId() != null ? command.projectId() : orderItems.get(0).getProjectId();
         Order order = Order.create(null, command.userId(), projectId, orderItems,
-                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
+                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
+                command.orderIdempotencyKey());
         validateAmounts(command, order);
         log.info("pending order created. orderId={}", order.getId());
         return order;
@@ -240,6 +252,9 @@ public class OrderApiService {
 
     // 주문 형식 정합성 검사
     private void validateCommand(PlaceOrderCommand command) {
+        if (command.orderIdempotencyKey() == null) {
+            throw new IllegalArgumentException("orderIdempotencyKey is required.");
+        }
         if (command.lines() == null || command.lines().isEmpty()) {
             throw new IllegalArgumentException("Order must contain at least one item.");
         }

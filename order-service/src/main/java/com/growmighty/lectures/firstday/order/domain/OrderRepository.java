@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.order.domain;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface OrderRepository {
     Order save(Order order);
@@ -12,6 +13,8 @@ public interface OrderRepository {
     Optional<Order> findById(Long id);
 
     Optional<Order> findByIdWithItems(Long id);
+
+    Optional<Order> findByUserIdAndOrderIdempotencyKey(Long userId, UUID orderIdempotencyKey);
 
     boolean existsByProjectId(Long projectId);
 

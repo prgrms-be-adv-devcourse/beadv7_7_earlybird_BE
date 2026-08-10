@@ -29,7 +29,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import org.junit.jupiter.api.Disabled;
 
 @WebMvcTest(OrderController.class)
 class OrderControllerTest {
@@ -176,6 +175,38 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.error.errors").doesNotExist());
 
         verify(orderApiService).placeOrder(any(PlaceOrderCommand.class), eq(1L));
+        verifyNoMoreInteractions(orderApiService);
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("missing order idempotency key returns bad request")
+    void placeOrder_missingIdempotencyKey_400() throws Exception {
+        mockMvc.perform(post("/api/v1/orders")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"projectId":10,"requests":[{"rewardId":1,"quantity":1,"expectedUnitPrice":20000}],"receiverName":"Receiver","receiverPhone":"010-0000-0000","shippingAddress":"Seoul","zipCode":"06236","expectedItemsAmount":20000,"expectedTotalAmount":23000}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoMoreInteractions(orderApiService);
+    }
+
+    @Disabled
+    @Test
+    @DisplayName("invalid order idempotency key returns bad request")
+    void placeOrder_invalidIdempotencyKey_400() throws Exception {
+        mockMvc.perform(post("/api/v1/orders")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .header(JwtHeaders.USER_ROLE, UserRole.BACKER.name())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"userId":1,"projectId":10,"requests":[{"rewardId":1,"quantity":1,"expectedUnitPrice":20000}],"receiverName":"Receiver","receiverPhone":"010-0000-0000","shippingAddress":"Seoul","zipCode":"06236","expectedItemsAmount":20000,"expectedTotalAmount":23000,"orderIdempotencyKey":"not-a-uuid"}
+                                """))
+                .andExpect(status().isBadRequest());
+
         verifyNoMoreInteractions(orderApiService);
     }
 
