@@ -266,8 +266,8 @@ public final class ProjectSettlementRunService {
             return settlement;
         }
         PayoutExecutionResult payoutResult = payoutExecutor.get()
-                .execute(settlement.payoutObligationId());
-        return settlement.withPayoutObligationStatus(payoutResult.payoutObligationStatus());
+                .execute(settlement.settlementId());
+        return settlement.withPayoutStatus(payoutResult.payoutStatus());
     }
 
     private Map<Long, ProjectOrders> findProjectOrders(List<ProjectOutcome> outcomes) {
