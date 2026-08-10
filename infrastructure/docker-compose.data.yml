@@ -1,0 +1,48 @@
+# 2번째 EC2(MySQL/ES 전용 데이터 박스)에서만 수동으로 띄우는 compose 파일 — #256.
+# docker-compose.yml/docker-compose.prod.yml 어느 쪽에도 속하지 않고, cd.yml 자동 배포 대상도
+# 아니다. mysql/elasticsearch 서비스 정의는 docker-compose.yml과 동일하게 유지하되(로컬 개발용
+# 베이스 파일은 절대 건드리지 않음), root 비밀번호만 .env(gitignore, 이 박스에만 존재)로 분리했다.
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: earlybird-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=earlybird
+      - MYSQL_PASSWORD=earlybird
+      - TZ=Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    # 이 박스가 3.7GiB(t3.medium)를 ES와 나눠 쓰므로, cgroup 메모리 상한 없이 두면 부하가
+    # 몰릴 때 컨테이너가 무한정 커질 수 있다 (#232/#234와 동일한 이유). 갓 기동한 빈 스키마
+    # 상태의 실측(docker stats)이 ~479MiB였던 것에 실 트래픽 여유를 크게 얹어 1GiB로 캡.
+    mem_limit: 1g
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - earlybird-mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  elasticsearch:
+    build: ./elasticsearch          # nori 포함 (elasticsearch/Dockerfile)
+    container_name: lecture-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # SG로 앱 EC2만 접근 허용 — 로컬과 동일한 위험 수준
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    # JVM 힙(512m)만으로는 컨테이너 실제 사용량을 못 막는다 — Lucene/OS 페이지 캐시 등
+    # 힙 바깥 사용량까지 합친 실측(docker stats)이 ~931MiB였던 것에 여유를 얹어 1.2GiB로 캡.
+    mem_limit: 1.2g
+    ports:
+      - "9200:9200"
+    restart: unless-stopped
+
+volumes:
+  earlybird-mysql-data:
