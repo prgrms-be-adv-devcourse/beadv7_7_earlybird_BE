@@ -148,13 +148,6 @@ public class CreatorPayoutProfile extends BaseEntity {
         return status == CreatorPayoutStatus.PAYOUT_READY;
     }
 
-    public PayoutDestinationSnapshot snapshotDestination() {
-        if (!canReceivePayout()) {
-            throw new IllegalStateException("지급 가능한 창작자만 지급 대상 스냅샷을 만들 수 있습니다.");
-        }
-        return PayoutDestinationSnapshot.of(creatorId, tossSellerId, bankCode, maskedAccountNumber);
-    }
-
     private static void validateCreatorId(Long creatorId) {
         if (creatorId == null || creatorId <= 0) {
             throw new IllegalArgumentException("창작자 식별자는 양수여야 합니다.");

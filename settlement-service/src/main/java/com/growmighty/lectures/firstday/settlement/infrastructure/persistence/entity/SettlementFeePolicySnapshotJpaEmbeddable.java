@@ -1,7 +1,7 @@
 // TODO(settlement-plan): Persist the confirmed rate snapshot exactly and remove no-longer-used policy fields.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.math.BigDecimal;
@@ -21,21 +21,25 @@ public class SettlementFeePolicySnapshotJpaEmbeddable {
     protected SettlementFeePolicySnapshotJpaEmbeddable() {
     }
 
-    private SettlementFeePolicySnapshotJpaEmbeddable(SettlementFeePolicySnapshot snapshot) {
-        this.paymentAndSettlementAgencyFeeRate = snapshot.paymentAndSettlementAgencyFeeRate();
-        this.platformFeeRate = snapshot.platformFeeRate();
-        this.vatRate = snapshot.vatRate();
+    private SettlementFeePolicySnapshotJpaEmbeddable(ProjectSettlement settlement) {
+        this.paymentAndSettlementAgencyFeeRate = settlement.paymentAndSettlementAgencyFeeRate();
+        this.platformFeeRate = settlement.platformFeeRate();
+        this.vatRate = settlement.vatRate();
     }
 
-    static SettlementFeePolicySnapshotJpaEmbeddable fromDomain(SettlementFeePolicySnapshot snapshot) {
-        return new SettlementFeePolicySnapshotJpaEmbeddable(snapshot);
+    static SettlementFeePolicySnapshotJpaEmbeddable fromDomain(ProjectSettlement settlement) {
+        return new SettlementFeePolicySnapshotJpaEmbeddable(settlement);
     }
 
-    SettlementFeePolicySnapshot toDomain() {
-        return SettlementFeePolicySnapshot.of(
-                paymentAndSettlementAgencyFeeRate,
-                platformFeeRate,
-                vatRate
-        );
+    BigDecimal paymentAndSettlementAgencyFeeRate() {
+        return paymentAndSettlementAgencyFeeRate;
+    }
+
+    BigDecimal platformFeeRate() {
+        return platformFeeRate;
+    }
+
+    BigDecimal vatRate() {
+        return vatRate;
     }
 }

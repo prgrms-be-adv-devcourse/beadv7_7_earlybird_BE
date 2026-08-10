@@ -2,7 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.converter.MoneyAttributeConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -42,29 +42,45 @@ public class SettlementBreakdownJpaEmbeddable {
     protected SettlementBreakdownJpaEmbeddable() {
     }
 
-    private SettlementBreakdownJpaEmbeddable(SettlementBreakdown breakdown) {
-        this.baseAmount = breakdown.baseAmount();
-        this.paymentAndSettlementAgencyFeeAmount = breakdown.paymentAndSettlementAgencyFeeAmount();
-        this.paymentAndSettlementAgencyFeeVatAmount = breakdown.paymentAndSettlementAgencyFeeVatAmount();
-        this.platformFeeAmount = breakdown.platformFeeAmount();
-        this.platformFeeVatAmount = breakdown.platformFeeVatAmount();
-        this.otherDeductionAmount = breakdown.otherDeductionAmount();
-        this.creatorPayoutAmount = breakdown.creatorPayoutAmount();
+    private SettlementBreakdownJpaEmbeddable(ProjectSettlement settlement) {
+        this.baseAmount = settlement.baseAmount();
+        this.paymentAndSettlementAgencyFeeAmount = settlement.paymentAndSettlementAgencyFeeAmount();
+        this.paymentAndSettlementAgencyFeeVatAmount = settlement.paymentAndSettlementAgencyFeeVatAmount();
+        this.platformFeeAmount = settlement.platformFeeAmount();
+        this.platformFeeVatAmount = settlement.platformFeeVatAmount();
+        this.otherDeductionAmount = settlement.otherDeductionAmount();
+        this.creatorPayoutAmount = settlement.creatorPayoutAmount();
     }
 
-    static SettlementBreakdownJpaEmbeddable fromDomain(SettlementBreakdown breakdown) {
-        return new SettlementBreakdownJpaEmbeddable(breakdown);
+    static SettlementBreakdownJpaEmbeddable fromDomain(ProjectSettlement settlement) {
+        return new SettlementBreakdownJpaEmbeddable(settlement);
     }
 
-    SettlementBreakdown toDomain() {
-        return SettlementBreakdown.of(
-                baseAmount,
-                paymentAndSettlementAgencyFeeAmount,
-                paymentAndSettlementAgencyFeeVatAmount,
-                platformFeeAmount,
-                platformFeeVatAmount,
-                otherDeductionAmount,
-                creatorPayoutAmount
-        );
+    Money baseAmount() {
+        return baseAmount;
+    }
+
+    Money paymentAndSettlementAgencyFeeAmount() {
+        return paymentAndSettlementAgencyFeeAmount;
+    }
+
+    Money paymentAndSettlementAgencyFeeVatAmount() {
+        return paymentAndSettlementAgencyFeeVatAmount;
+    }
+
+    Money platformFeeAmount() {
+        return platformFeeAmount;
+    }
+
+    Money platformFeeVatAmount() {
+        return platformFeeVatAmount;
+    }
+
+    Money otherDeductionAmount() {
+        return otherDeductionAmount;
+    }
+
+    Money creatorPayoutAmount() {
+        return creatorPayoutAmount;
     }
 }
