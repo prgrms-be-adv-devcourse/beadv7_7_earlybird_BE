@@ -122,7 +122,7 @@ public class CartService {
             if (reward == null) {
                 throw new EntityNotFoundException("Reward not found. rewardId=" + item.rewardId());
             }
-            if (!Objects.equals(projectId, reward.projectId())) {
+            if (reward.projectId() != null && !Objects.equals(projectId, reward.projectId())) {
                 throw new IllegalArgumentException("Reward does not belong to the project. projectId="
                         + projectId + ", rewardId=" + item.rewardId());
             }
