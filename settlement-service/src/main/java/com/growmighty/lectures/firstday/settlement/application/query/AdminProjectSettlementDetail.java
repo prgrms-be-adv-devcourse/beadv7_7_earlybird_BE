@@ -3,7 +3,7 @@ package com.growmighty.lectures.firstday.settlement.application.query;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -24,8 +24,7 @@ public record AdminProjectSettlementDetail(
         Money platformFeeVatAmount,
         Money otherDeductionAmount,
         Money creatorPayoutAmount,
-        Long payoutObligationId,
-        PayoutObligationStatus status,
+        PayoutStatus status,
         LocalDate scheduledDate,
         LocalDateTime completedAt,
         String tossSellerId,

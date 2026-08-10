@@ -2,12 +2,8 @@
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_NOT_FOUND;
-import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.SETTLEMENT_DATA_INCONSISTENT;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
-import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import java.time.LocalDateTime;
@@ -21,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class CreatorProjectSettlementQueryService {
 
     private final ProjectSettlementRepository projectSettlementRepository;
-    private final PayoutObligationRepository payoutObligationRepository;
 
     @Transactional(readOnly = true)
     public List<CreatorProjectSettlementSummary> findAll(Long creatorId) {
@@ -35,10 +30,6 @@ public class CreatorProjectSettlementQueryService {
         ProjectSettlement settlement = projectSettlementRepository.findById(settlementId)
                 .filter(candidate -> candidate.creatorId().equals(creatorId))
                 .orElseThrow(() -> new SettlementException(PROJECT_SETTLEMENT_NOT_FOUND));
-        PayoutObligation obligation = payoutObligationRepository.findBySettlementId(settlement.id())
-                .orElseThrow(() -> new SettlementException(SETTLEMENT_DATA_INCONSISTENT));
-        requireConsistent(settlement, obligation);
-
         return new CreatorProjectSettlementDetail(
                 settlement.id(),
                 settlement.projectId(),
@@ -53,46 +44,30 @@ public class CreatorProjectSettlementQueryService {
                 settlement.platformFeeVatAmount(),
                 settlement.otherDeductionAmount(),
                 settlement.creatorPayoutAmount(),
-                obligation.status(),
-                obligation.scheduledDate(),
-                completedAt(obligation),
+                settlement.status(),
+                settlement.scheduledDate(),
+                completedAt(settlement),
                 settlement.bankCode(),
                 settlement.maskedAccountNumber()
         );
     }
 
     private CreatorProjectSettlementSummary toSummary(ProjectSettlement settlement) {
-        PayoutObligation obligation = payoutObligationRepository.findBySettlementId(settlement.id())
-                .orElseThrow(() -> new SettlementException(SETTLEMENT_DATA_INCONSISTENT));
-        requireConsistent(settlement, obligation);
-
         return new CreatorProjectSettlementSummary(
                 settlement.id(),
                 settlement.projectId(),
                 settlement.baseAmount(),
                 settlement.creatorPayoutAmount(),
-                obligation.status(),
+                settlement.status(),
                 settlement.confirmedAt(),
-                obligation.scheduledDate(),
-                completedAt(obligation)
+                settlement.scheduledDate(),
+                completedAt(settlement)
         );
     }
 
-    private static LocalDateTime completedAt(PayoutObligation obligation) {
-        LocalDateTime completedAt = obligation.successfulAttempt()
+    private static LocalDateTime completedAt(ProjectSettlement settlement) {
+        return settlement.successfulAttempt()
                 .map(attempt -> attempt.completedAt())
                 .orElse(null);
-        if ((obligation.status() == PayoutObligationStatus.COMPLETED) != (completedAt != null)) {
-            throw new SettlementException(SETTLEMENT_DATA_INCONSISTENT);
-        }
-        return completedAt;
-    }
-
-    private static void requireConsistent(ProjectSettlement settlement, PayoutObligation obligation) {
-        if (!settlement.id().equals(obligation.settlementId())
-                || !settlement.creatorId().equals(obligation.creatorId())
-                || !settlement.creatorPayoutAmount().equals(obligation.amount())) {
-            throw new SettlementException(SETTLEMENT_DATA_INCONSISTENT);
-        }
     }
 }
