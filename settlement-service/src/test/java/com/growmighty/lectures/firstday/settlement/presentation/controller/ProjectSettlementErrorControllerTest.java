@@ -193,13 +193,13 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                             platform_fee_vat_amount,
                             other_deduction_amount,
                             creator_payout_amount,
-                            destination_creator_id,
                             destination_toss_seller_id,
                             destination_bank_code,
                             destination_masked_account_number,
                             scheduled_date,
                             status,
                             confirmed_at,
+                            version,
                             created_at,
                             updated_at
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -216,13 +216,13 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 400,
                 0,
                 99_999,
-                creatorId,
                 "seller-95",
                 "088",
                 "********0095",
                 LocalDate.of(2026, 8, 3),
                 "SCHEDULED",
                 recordedAt,
+                0,
                 recordedAt,
                 recordedAt
         );

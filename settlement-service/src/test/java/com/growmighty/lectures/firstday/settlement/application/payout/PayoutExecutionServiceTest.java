@@ -6,12 +6,13 @@ import com.growmighty.lectures.firstday.settlement.application.port.payout.Payou
 import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGatewayException;
 import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGatewayResult;
 import com.growmighty.lectures.firstday.settlement.application.port.payout.ScheduledPayoutRequest;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -26,6 +27,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionOperations;
 
 class PayoutExecutionServiceTest {
@@ -186,30 +188,23 @@ class PayoutExecutionServiceTest {
     }
 
     private static ProjectSettlement projectSettlement() {
-        return ProjectSettlement.restore(
-                SETTLEMENT_ID,
+        ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
                 10L,
-                new BigDecimal("0.04"),
-                new BigDecimal("0.04"),
-                new BigDecimal("0.10"),
-                Money.wons(100_000),
-                Money.wons(4_000),
-                Money.wons(400),
-                Money.wons(4_000),
-                Money.wons(400),
-                Money.wons(0),
-                Money.wons(91_200),
-                "seller-10",
-                "088",
-                "********1234",
+                List.of(Money.wons(100_000)),
+                CreatorPayoutProfile.registered(
+                        10L,
+                        "seller-10",
+                        CreatorPayoutStatus.PAYOUT_READY,
+                        "088",
+                        "********1234",
+                        LocalDateTime.of(2026, 7, 26, 0, 0)
+                ),
                 LocalDate.of(2026, 8, 3),
-                PayoutStatus.SCHEDULED,
-                List.of(),
-                null,
-                0L,
                 LocalDateTime.of(2026, 7, 26, 1, 0)
         );
+        ReflectionTestUtils.setField(settlement, "id", SETTLEMENT_ID);
+        return settlement;
     }
 
     private static final class InMemoryProjectSettlementRepository

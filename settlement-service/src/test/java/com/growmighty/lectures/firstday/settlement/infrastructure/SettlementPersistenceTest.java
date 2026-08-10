@@ -16,7 +16,6 @@ import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFa
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.CreatorPayoutProfileRepositoryAdapter;
-import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
@@ -38,7 +37,6 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 @Import({
         JpaAuditingConfig.class,
         CreatorPayoutProfileRepositoryAdapter.class,
-        PayoutObligationRepositoryAdapter.class,
         ProjectSettlementRepositoryAdapter.class
 })
 class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
@@ -461,7 +459,9 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
         entityManager.clear();
 
         ProjectSettlement first = projectSettlementRepository.findById(saved.id()).orElseThrow();
+        entityManager.clear();
         ProjectSettlement stale = projectSettlementRepository.findById(saved.id()).orElseThrow();
+        entityManager.clear();
 
         first.startAttempt(
                 "ref-payout-100-1",

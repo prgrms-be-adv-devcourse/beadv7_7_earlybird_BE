@@ -1,5 +1,23 @@
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -11,38 +29,92 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-public final class ProjectSettlement {
+@Entity
+@Table(
+        name = "project_settlements",
+        uniqueConstraints = @UniqueConstraint(name = "uk_project_settlement_project_id", columnNames = "project_id")
+)
+public class ProjectSettlement extends BaseEntity {
 
     private static final BigDecimal PAYMENT_AND_SETTLEMENT_AGENCY_FEE_RATE = new BigDecimal("0.04");
     private static final BigDecimal PLATFORM_FEE_RATE = new BigDecimal("0.04");
     private static final BigDecimal VAT_RATE = new BigDecimal("0.10");
     private static final BigDecimal ONE = BigDecimal.ONE;
 
-    private final Long id;
-    private final Long projectId;
-    private final Long creatorId;
-    private final BigDecimal paymentAndSettlementAgencyFeeRate;
-    private final BigDecimal platformFeeRate;
-    private final BigDecimal vatRate;
-    private final Money baseAmount;
-    private final Money paymentAndSettlementAgencyFeeAmount;
-    private final Money paymentAndSettlementAgencyFeeVatAmount;
-    private final Money platformFeeAmount;
-    private final Money platformFeeVatAmount;
-    private final Money otherDeductionAmount;
-    private final Money creatorPayoutAmount;
-    private final String tossSellerId;
-    private final String bankCode;
-    private final String maskedAccountNumber;
-    private final LocalDate scheduledDate;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "project_id", nullable = false, updatable = false)
+    private Long projectId;
+
+    @Column(name = "creator_id", nullable = false, updatable = false)
+    private Long creatorId;
+
+    @Column(name = "payment_and_settlement_agency_fee_rate", nullable = false, precision = 7, scale = 6, updatable = false)
+    private BigDecimal paymentAndSettlementAgencyFeeRate;
+
+    @Column(name = "platform_fee_rate", nullable = false, precision = 7, scale = 6, updatable = false)
+    private BigDecimal platformFeeRate;
+
+    @Column(name = "fee_vat_rate", nullable = false, precision = 7, scale = 6, updatable = false)
+    private BigDecimal vatRate;
+
+    @Column(name = "base_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money baseAmount;
+
+    @Column(name = "agency_fee_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money paymentAndSettlementAgencyFeeAmount;
+
+    @Column(name = "agency_fee_vat_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money paymentAndSettlementAgencyFeeVatAmount;
+
+    @Column(name = "platform_fee_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money platformFeeAmount;
+
+    @Column(name = "platform_fee_vat_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money platformFeeVatAmount;
+
+    @Column(name = "other_deduction_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money otherDeductionAmount;
+
+    @Column(name = "creator_payout_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money creatorPayoutAmount;
+
+    @Column(name = "destination_toss_seller_id", nullable = false, updatable = false, length = 100)
+    private String tossSellerId;
+
+    @Column(name = "destination_bank_code", nullable = false, updatable = false, length = 20)
+    private String bankCode;
+
+    @Column(name = "destination_masked_account_number", nullable = false, updatable = false, length = 100)
+    private String maskedAccountNumber;
+
+    @Column(name = "scheduled_date", nullable = false, updatable = false)
+    private LocalDate scheduledDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 40)
     private PayoutStatus status;
-    private final List<PayoutAttempt> attempts;
+
+    @OneToMany(mappedBy = "settlement", cascade = CascadeType.ALL)
+    @OrderBy("sequence ASC")
+    private List<PayoutAttempt> attempts = new ArrayList<>();
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "successful_attempt_id", unique = true)
     private PayoutAttempt successfulAttempt;
-    private final Long version;
-    private final LocalDateTime confirmedAt;
+
+    @Version
+    private Long version;
+
+    @Column(name = "confirmed_at", nullable = false, updatable = false)
+    private LocalDateTime confirmedAt;
+
+    protected ProjectSettlement() {
+    }
 
     private ProjectSettlement(
-            Long id,
             Long projectId,
             Long creatorId,
             BigDecimal paymentAndSettlementAgencyFeeRate,
@@ -59,13 +131,8 @@ public final class ProjectSettlement {
             String bankCode,
             String maskedAccountNumber,
             LocalDate scheduledDate,
-            PayoutStatus status,
-            List<PayoutAttempt> attempts,
-            Integer successfulAttemptSequence,
-            Long version,
             LocalDateTime confirmedAt
     ) {
-        this.id = id;
         this.projectId = projectId;
         this.creatorId = creatorId;
         this.paymentAndSettlementAgencyFeeRate = normalizeRate(
@@ -85,15 +152,7 @@ public final class ProjectSettlement {
         this.bankCode = bankCode;
         this.maskedAccountNumber = maskedAccountNumber;
         this.scheduledDate = scheduledDate;
-        this.status = status;
-        this.attempts = new ArrayList<>(Objects.requireNonNull(attempts, "지급 시도 목록은 필수입니다."));
-        this.version = version;
-        if (successfulAttemptSequence != null) {
-            this.successfulAttempt = this.attempts.stream()
-                    .filter(attempt -> attempt.sequence() == successfulAttemptSequence)
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("성공한 지급 시도가 지급 시도 목록에 없습니다."));
-        }
+        this.status = PayoutStatus.SCHEDULED;
         this.confirmedAt = confirmedAt;
         validateState();
     }
@@ -137,7 +196,6 @@ public final class ProjectSettlement {
                 .minus(otherDeductionAmount);
 
         return new ProjectSettlement(
-                null,
                 projectId,
                 creatorId,
                 PAYMENT_AND_SETTLEMENT_AGENCY_FEE_RATE,
@@ -154,60 +212,6 @@ public final class ProjectSettlement {
                 profile.bankCode(),
                 profile.maskedAccountNumber(),
                 scheduledDate,
-                PayoutStatus.SCHEDULED,
-                List.of(),
-                null,
-                null,
-                confirmedAt
-        );
-    }
-
-    public static ProjectSettlement restore(
-            Long id,
-            Long projectId,
-            Long creatorId,
-            BigDecimal paymentAndSettlementAgencyFeeRate,
-            BigDecimal platformFeeRate,
-            BigDecimal vatRate,
-            Money baseAmount,
-            Money paymentAndSettlementAgencyFeeAmount,
-            Money paymentAndSettlementAgencyFeeVatAmount,
-            Money platformFeeAmount,
-            Money platformFeeVatAmount,
-            Money otherDeductionAmount,
-            Money creatorPayoutAmount,
-            String tossSellerId,
-            String bankCode,
-            String maskedAccountNumber,
-            LocalDate scheduledDate,
-            PayoutStatus status,
-            List<PayoutAttempt> attempts,
-            Integer successfulAttemptSequence,
-            Long version,
-            LocalDateTime confirmedAt
-    ) {
-        return new ProjectSettlement(
-                Objects.requireNonNull(id, "프로젝트 정산 식별자는 필수입니다."),
-                projectId,
-                creatorId,
-                paymentAndSettlementAgencyFeeRate,
-                platformFeeRate,
-                vatRate,
-                baseAmount,
-                paymentAndSettlementAgencyFeeAmount,
-                paymentAndSettlementAgencyFeeVatAmount,
-                platformFeeAmount,
-                platformFeeVatAmount,
-                otherDeductionAmount,
-                creatorPayoutAmount,
-                tossSellerId,
-                bankCode,
-                maskedAccountNumber,
-                scheduledDate,
-                status,
-                attempts,
-                successfulAttemptSequence,
-                version,
                 confirmedAt
         );
     }
@@ -317,6 +321,7 @@ public final class ProjectSettlement {
             throw new IllegalStateException("현재 상태에서는 지급 시도를 시작할 수 없습니다: " + status);
         }
         PayoutAttempt attempt = PayoutAttempt.requested(
+                this,
                 attempts.size() + 1,
                 refPayoutId,
                 idempotencyKey,
@@ -382,6 +387,7 @@ public final class ProjectSettlement {
         return confirmedAt;
     }
 
+    @PostLoad
     private void validateState() {
         if (id != null && id <= 0) {
             throw new IllegalArgumentException("프로젝트 정산 식별자는 양수여야 합니다.");
@@ -432,6 +438,15 @@ public final class ProjectSettlement {
             if (!sequences.add(attempt.sequence())) {
                 throw new IllegalArgumentException("지급 시도 순번은 중복될 수 없습니다.");
             }
+        }
+        long completedAttempts = attempts.stream()
+                .filter(attempt -> attempt.status() == PayoutAttemptStatus.COMPLETED)
+                .count();
+        if (completedAttempts > 1) {
+            throw new IllegalArgumentException("성공한 지급 시도는 하나만 존재할 수 있습니다.");
+        }
+        if (successfulAttempt != null && !attempts.contains(successfulAttempt)) {
+            throw new IllegalArgumentException("성공한 지급 시도가 지급 시도 목록에 없습니다.");
         }
         if ((status == PayoutStatus.COMPLETED) != (successfulAttempt != null)) {
             throw new IllegalArgumentException("지급 완료 상태와 성공한 지급 시도가 일치해야 합니다.");
