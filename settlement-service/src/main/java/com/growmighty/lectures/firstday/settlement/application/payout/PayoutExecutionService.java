@@ -131,7 +131,7 @@ public final class PayoutExecutionService implements PayoutExecutor {
 
         ScheduledPayoutRequest request = new ScheduledPayoutRequest(
                 attempt.refPayoutId(),
-                settlement.destinationSnapshot().tossSellerId(),
+                settlement.tossSellerId(),
                 obligation.scheduledDate(),
                 obligation.amount(),
                 TRANSACTION_DESCRIPTION,

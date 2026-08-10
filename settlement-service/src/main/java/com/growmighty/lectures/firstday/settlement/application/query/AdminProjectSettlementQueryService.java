@@ -54,9 +54,9 @@ public class AdminProjectSettlementQueryService {
                 obligation.status(),
                 obligation.scheduledDate(),
                 completedAt(obligation),
-                settlement.destinationSnapshot().tossSellerId(),
-                settlement.destinationSnapshot().bankCode(),
-                settlement.destinationSnapshot().maskedAccountNumber(),
+                settlement.tossSellerId(),
+                settlement.bankCode(),
+                settlement.maskedAccountNumber(),
                 attempts
         );
     }
@@ -70,7 +70,7 @@ public class AdminProjectSettlementQueryService {
                 settlement.id(),
                 settlement.projectId(),
                 settlement.creatorId(),
-                settlement.breakdown().baseAmount(),
+                settlement.baseAmount(),
                 settlement.creatorPayoutAmount(),
                 obligation.status(),
                 settlement.confirmedAt(),
