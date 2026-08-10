@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -47,13 +48,15 @@ class ProjectSettlementTest {
     }
 
     @Test
-    @DisplayName("정산 확정 시점의 지급 대상을 고정한다")
-    void fixesPayoutDestination() {
+    @DisplayName("정산 확정 시점의 지급 대상과 최초 지급 상태를 고정한다")
+    void fixesPayoutDestinationAndInitialStatus() {
         ProjectSettlement settlement = confirm(List.of(Money.wons(100_000)));
 
         assertThat(settlement.tossSellerId()).isEqualTo("seller-10");
         assertThat(settlement.bankCode()).isEqualTo("088");
         assertThat(settlement.maskedAccountNumber()).isEqualTo("********1234");
+        assertThat(settlement.scheduledDate()).isEqualTo(LocalDate.of(2026, 8, 3));
+        assertThat(settlement.status()).isEqualTo(PayoutStatus.SCHEDULED);
     }
 
     @Test
@@ -77,6 +80,7 @@ class ProjectSettlementTest {
                         "********1234",
                         LocalDateTime.of(2026, 7, 22, 9, 0)
                 ),
+                LocalDate.of(2026, 8, 3),
                 LocalDateTime.of(2026, 7, 22, 10, 0)
         );
     }

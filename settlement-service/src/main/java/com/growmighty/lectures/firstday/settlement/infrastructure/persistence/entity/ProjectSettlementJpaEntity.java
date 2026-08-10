@@ -2,15 +2,19 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -39,6 +43,13 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
     @Embedded
     private PayoutDestinationSnapshotJpaEmbeddable destinationSnapshot;
 
+    @Column(name = "scheduled_date", nullable = false, updatable = false)
+    private LocalDate scheduledDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 40)
+    private PayoutStatus status;
+
     @Column(name = "confirmed_at", nullable = false, updatable = false)
     private LocalDateTime confirmedAt;
 
@@ -55,6 +66,8 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
         this.destinationSnapshot = PayoutDestinationSnapshotJpaEmbeddable.fromDomain(
                 settlement.destinationSnapshot()
         );
+        this.scheduledDate = settlement.scheduledDate();
+        this.status = settlement.status();
         this.confirmedAt = settlement.confirmedAt();
     }
 
@@ -73,6 +86,8 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
                 feePolicySnapshot.toDomain(),
                 breakdown.toDomain(),
                 destinationSnapshot.toDomain(),
+                scheduledDate,
+                status,
                 confirmedAt
         );
     }

@@ -8,6 +8,7 @@ import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayo
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
@@ -72,6 +73,8 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         assertThat(settlement.paymentAndSettlementAgencyFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
         assertThat(settlement.platformFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
         assertThat(settlement.vatRate()).isEqualByComparingTo(new BigDecimal("0.10"));
+        assertThat(settlement.scheduledDate()).isEqualTo(LocalDate.of(2026, 8, 3));
+        assertThat(settlement.status()).isEqualTo(PayoutStatus.SCHEDULED);
     }
 
     @Test

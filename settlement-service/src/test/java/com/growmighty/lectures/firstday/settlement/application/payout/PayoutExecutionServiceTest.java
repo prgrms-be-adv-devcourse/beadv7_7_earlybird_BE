@@ -13,6 +13,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinatio
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
@@ -224,6 +225,8 @@ class PayoutExecutionServiceTest {
                         Money.wons(91_200)
                 ),
                 PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
+                LocalDate.of(2026, 8, 3),
+                PayoutStatus.SCHEDULED,
                 LocalDateTime.of(2026, 7, 26, 1, 0)
         );
     }

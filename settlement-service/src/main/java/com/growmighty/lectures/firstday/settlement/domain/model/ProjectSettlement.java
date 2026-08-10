@@ -2,6 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -14,6 +15,8 @@ public final class ProjectSettlement {
     private final SettlementFeePolicySnapshot feePolicySnapshot;
     private final SettlementBreakdown breakdown;
     private final PayoutDestinationSnapshot destinationSnapshot;
+    private final LocalDate scheduledDate;
+    private final PayoutStatus status;
     private final LocalDateTime confirmedAt;
 
     private ProjectSettlement(
@@ -23,6 +26,8 @@ public final class ProjectSettlement {
             SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
             PayoutDestinationSnapshot destinationSnapshot,
+            LocalDate scheduledDate,
+            PayoutStatus status,
             LocalDateTime confirmedAt
     ) {
         if (id != null && id <= 0) {
@@ -43,6 +48,8 @@ public final class ProjectSettlement {
         if (!destinationSnapshot.belongsTo(creatorId)) {
             throw new IllegalArgumentException("프로젝트 창작자와 지급 대상 창작자가 일치해야 합니다.");
         }
+        this.scheduledDate = Objects.requireNonNull(scheduledDate, "지급 예정일은 필수입니다.");
+        this.status = Objects.requireNonNull(status, "지급 상태는 필수입니다.");
         this.confirmedAt = Objects.requireNonNull(confirmedAt, "정산 확정 시각은 필수입니다.");
     }
 
@@ -51,6 +58,7 @@ public final class ProjectSettlement {
             Long creatorId,
             List<Money> orderPaymentAmounts,
             CreatorPayoutProfile payoutProfile,
+            LocalDate scheduledDate,
             LocalDateTime confirmedAt
     ) {
         List<Money> amounts = List.copyOf(Objects.requireNonNull(
@@ -62,31 +70,15 @@ public final class ProjectSettlement {
             throw new IllegalArgumentException("프로젝트 창작자의 지급 가능한 프로필이 필요합니다.");
         }
         SettlementCalculationPolicy calculationPolicy = SettlementCalculationPolicy.current();
-        return confirm(
+        return new ProjectSettlement(
+                null,
                 projectId,
                 creatorId,
                 calculationPolicy.feePolicySnapshot(),
                 calculationPolicy.calculate(amounts),
                 profile.snapshotDestination(),
-                confirmedAt
-        );
-    }
-
-    public static ProjectSettlement confirm(
-            Long projectId,
-            Long creatorId,
-            SettlementFeePolicySnapshot feePolicySnapshot,
-            SettlementBreakdown breakdown,
-            PayoutDestinationSnapshot destinationSnapshot,
-            LocalDateTime confirmedAt
-    ) {
-        return new ProjectSettlement(
-                null,
-                projectId,
-                creatorId,
-                feePolicySnapshot,
-                breakdown,
-                destinationSnapshot,
+                scheduledDate,
+                PayoutStatus.SCHEDULED,
                 confirmedAt
         );
     }
@@ -98,6 +90,8 @@ public final class ProjectSettlement {
             SettlementFeePolicySnapshot feePolicySnapshot,
             SettlementBreakdown breakdown,
             PayoutDestinationSnapshot destinationSnapshot,
+            LocalDate scheduledDate,
+            PayoutStatus status,
             LocalDateTime confirmedAt
     ) {
         return new ProjectSettlement(
@@ -107,6 +101,8 @@ public final class ProjectSettlement {
                 feePolicySnapshot,
                 breakdown,
                 destinationSnapshot,
+                scheduledDate,
+                status,
                 confirmedAt
         );
     }
@@ -185,6 +181,14 @@ public final class ProjectSettlement {
 
     public PayoutDestinationSnapshot destinationSnapshot() {
         return destinationSnapshot;
+    }
+
+    public LocalDate scheduledDate() {
+        return scheduledDate;
+    }
+
+    public PayoutStatus status() {
+        return status;
     }
 
     public LocalDateTime confirmedAt() {
