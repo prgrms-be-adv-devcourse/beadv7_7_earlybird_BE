@@ -14,12 +14,10 @@ import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptSta
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinationSnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.CreatorPayoutProfileRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
@@ -72,22 +70,7 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     @Test
     @DisplayName("Settlement JPA Auditing이 common 감사 필드를 기록한다")
     void recordsAuditTimestampsWithCommonJpaAuditing() {
-        projectSettlementRepository.save(ProjectSettlement.confirm(
-                1L,
-                10L,
-                SettlementFeePolicySnapshot.current(),
-                SettlementBreakdown.of(
-                        Money.wons(100_000),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(0),
-                        Money.wons(91_200)
-                ),
-                PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
-                LocalDateTime.of(2026, 7, 22, 10, 0)
-        ));
+        projectSettlementRepository.save(confirmedSettlement(1L, 10L, LocalDateTime.of(2026, 7, 22, 10, 0)));
         entityManager.flush();
         entityManager.clear();
 
@@ -100,22 +83,7 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     @Test
     @DisplayName("프로젝트 정산의 금액과 확정 시점 원본을 저장하고 다시 읽는다")
     void persistsAndRestoresProjectSettlementMoney() {
-        ProjectSettlement settlement = ProjectSettlement.confirm(
-                1L,
-                10L,
-                SettlementFeePolicySnapshot.current(),
-                SettlementBreakdown.of(
-                        Money.wons(100_000),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(0),
-                        Money.wons(91_200)
-                ),
-                PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
-                LocalDateTime.of(2026, 7, 22, 10, 0)
-        );
+        ProjectSettlement settlement = confirmedSettlement(1L, 10L, LocalDateTime.of(2026, 7, 22, 10, 0));
         ProjectSettlement saved = projectSettlementRepository.save(settlement);
         entityManager.flush();
         entityManager.clear();
@@ -124,7 +92,9 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
         assertThat(saved.id()).isNotNull();
         assertThat(restored.creatorPayoutAmount()).isEqualTo(Money.wons(91_200));
-        assertThat(restored.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
+        assertThat(restored.scheduledDate()).isEqualTo(LocalDate.of(2026, 8, 3));
+        assertThat(restored.status()).isEqualTo(PayoutStatus.SCHEDULED);
+        assertThat(restored.tossSellerId()).isEqualTo("seller-10");
     }
 
     @Test
@@ -524,31 +494,8 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     @Test
     @DisplayName("같은 프로젝트의 정산을 두 번 저장할 수 없다")
     void rejectsDuplicateSettlementForSameProject() {
-        SettlementBreakdown breakdown = SettlementBreakdown.of(
-                Money.wons(100_000),
-                Money.wons(4_000),
-                Money.wons(400),
-                Money.wons(4_000),
-                Money.wons(400),
-                Money.wons(0),
-                Money.wons(91_200)
-        );
-        ProjectSettlement first = ProjectSettlement.confirm(
-                1L,
-                10L,
-                SettlementFeePolicySnapshot.current(),
-                breakdown,
-                PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
-                LocalDateTime.of(2026, 7, 22, 10, 0)
-        );
-        ProjectSettlement duplicate = ProjectSettlement.confirm(
-                1L,
-                10L,
-                SettlementFeePolicySnapshot.current(),
-                breakdown,
-                PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
-                LocalDateTime.of(2026, 7, 22, 10, 1)
-        );
+        ProjectSettlement first = confirmedSettlement(1L, 10L, LocalDateTime.of(2026, 7, 22, 10, 0));
+        ProjectSettlement duplicate = confirmedSettlement(1L, 10L, LocalDateTime.of(2026, 7, 22, 10, 1));
         projectSettlementRepository.save(first);
 
         assertThatThrownBy(() -> projectSettlementRepository.save(duplicate))
@@ -585,5 +532,27 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
         assertThatThrownBy(() -> payoutObligationRepository.save(second))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private static ProjectSettlement confirmedSettlement(
+            Long projectId,
+            Long creatorId,
+            LocalDateTime confirmedAt
+    ) {
+        return ProjectSettlement.confirm(
+                projectId,
+                creatorId,
+                java.util.List.of(Money.wons(100_000)),
+                CreatorPayoutProfile.registered(
+                        creatorId,
+                        "seller-" + creatorId,
+                        CreatorPayoutStatus.PAYOUT_READY,
+                        "088",
+                        "********1234",
+                        confirmedAt.minusHours(1)
+                ),
+                LocalDate.of(2026, 8, 3),
+                confirmedAt
+        );
     }
 }

@@ -22,7 +22,6 @@ import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementCalculationPolicy;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -235,9 +234,9 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 75_000_001L,
                 creatorId,
-                SettlementCalculationPolicy.current().feePolicySnapshot(),
-                SettlementCalculationPolicy.current().calculate(List.of(Money.wons(1_000_000))),
-                payoutProfile.snapshotDestination(),
+                List.of(Money.wons(1_000_000)),
+                payoutProfile,
+                LocalDate.of(2026, 8, 3),
                 LocalDateTime.of(2026, 7, 1, 9, 0)
         ));
 

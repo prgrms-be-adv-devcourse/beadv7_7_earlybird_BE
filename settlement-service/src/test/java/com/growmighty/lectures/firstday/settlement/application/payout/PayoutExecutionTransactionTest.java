@@ -6,19 +6,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGateway;
 import com.growmighty.lectures.firstday.settlement.application.port.payout.PayoutGatewayResult;
 import com.growmighty.lectures.firstday.settlement.application.port.payout.ScheduledPayoutRequest;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinationSnapshot;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,17 +51,16 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
         ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
                 501L,
                 601L,
-                SettlementFeePolicySnapshot.current(),
-                SettlementBreakdown.of(
-                        Money.wons(100_000),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(0),
-                        Money.wons(91_200)
+                List.of(Money.wons(100_000)),
+                CreatorPayoutProfile.registered(
+                        601L,
+                        "seller-601",
+                        CreatorPayoutStatus.PAYOUT_READY,
+                        "088",
+                        "********0601",
+                        LocalDateTime.of(2026, 7, 26, 9, 0)
                 ),
-                PayoutDestinationSnapshot.of(601L, "seller-601", "088", "********0601"),
+                LocalDate.of(2026, 8, 3),
                 LocalDateTime.of(2026, 7, 26, 10, 0)
         ));
         PayoutObligation obligation = payoutObligationRepository.save(PayoutObligation.schedule(

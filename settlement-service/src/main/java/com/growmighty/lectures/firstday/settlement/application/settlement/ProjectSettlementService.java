@@ -49,6 +49,7 @@ public class ProjectSettlementService {
                     command.creatorId(),
                     command.orderPaymentAmounts(),
                     payoutProfile,
+                    command.scheduledDate(),
                     command.confirmedAt()
             );
         } catch (IllegalArgumentException exception) {

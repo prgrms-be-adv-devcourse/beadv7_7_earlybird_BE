@@ -24,8 +24,8 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutSta
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementCalculationPolicy;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
@@ -183,9 +183,9 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
         projectSettlementRepository.save(ProjectSettlement.confirm(
                 projectId,
                 creatorId,
-                SettlementCalculationPolicy.current().feePolicySnapshot(),
-                SettlementCalculationPolicy.current().calculate(List.of(Money.wons(100_000))),
-                payoutProfile.snapshotDestination(),
+                List.of(Money.wons(100_000)),
+                payoutProfile,
+                LocalDate.of(2026, 8, 3),
                 LocalDateTime.of(2026, 7, 23, 10, 0)
         ));
         externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
@@ -214,6 +214,9 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                         INSERT INTO project_settlements (
                             project_id,
                             creator_id,
+                            payment_and_settlement_agency_fee_rate,
+                            platform_fee_rate,
+                            fee_vat_rate,
                             base_amount,
                             agency_fee_amount,
                             agency_fee_vat_amount,
@@ -225,13 +228,18 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                             destination_toss_seller_id,
                             destination_bank_code,
                             destination_masked_account_number,
+                            scheduled_date,
+                            status,
                             confirmed_at,
                             created_at,
                             updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 projectId,
                 creatorId,
+                0.04,
+                0.04,
+                0.10,
                 100_000,
                 4_000,
                 400,
@@ -243,6 +251,8 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 "seller-95",
                 "088",
                 "********0095",
+                LocalDate.of(2026, 8, 3),
+                "SCHEDULED",
                 recordedAt,
                 recordedAt,
                 recordedAt
