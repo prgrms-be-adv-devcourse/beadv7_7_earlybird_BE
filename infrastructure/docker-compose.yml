@@ -87,6 +87,11 @@ services:
       # beadv7_7_earlybird_config(private) 클론용 PAT — production 모드에서만 쓰인다.
       - GIT_USERNAME=${GIT_USERNAME}
       - GIT_PERSONAL_ACCESS_TOKEN=${GIT_PERSONAL_ACCESS_TOKEN}
+      # 비즈니스 서비스 9개는 #232/PR #234 로 이미 -Xmx 캡을 받았고, 인프라 3개(config/discovery/
+      # gateway-server)는 당시 범위 밖으로 남겨뒀다 (#246). 프로덕션 EC2 docker stats 로 재확인해보니
+      # 셋 다 266.9~271.7MiB 로 값이 서로 가까워, 서비스별로 나누지 않고 공통값 하나에 10~15% 여유를
+      # 두고 반올림했다. -Xms 는 -Xmx 의 절반 (order-service 주석 참고).
+      - JAVA_TOOL_OPTIONS=-Xms160m -Xmx320m
     volumes:
       # native 프로파일 전용 — 파일시스템을 그대로 읽기만 하므로(git 체크아웃/리셋 없음) 실제 작업 중인
       # config repo 를 직접 마운트해도 안전하다. 커밋 없이도 수정하면 바로 반영된다.
@@ -109,6 +114,9 @@ services:
       args:
         MODULE: discovery-server
     container_name: earlybird-discovery-server
+    # 값 근거는 config-server 주석 참고 (#246).
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xms160m -Xmx320m
     volumes:
       - ./logs:/app/logs
     # Eureka 대시보드를 브라우저로 직접 볼 때만 주석 해제.
@@ -132,9 +140,11 @@ services:
     # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써진다 — 그래서 여기선
     # SPRING_PROFILES_ACTIVE 를 그대로 반복하고 JWT_SECRET 만 추가한다.
     # JWT 검증 키 — user-service 와 반드시 같은 값이어야 한다 (#164).
+    # JAVA_TOOL_OPTIONS 값 근거는 config-server 주석 참고 (#246).
     environment:
       SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: ${JWT_SECRET}
+      JAVA_TOOL_OPTIONS: -Xms160m -Xmx320m
     ports:
       - "8000:8000"
     depends_on: *core-depends-on
