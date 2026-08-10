@@ -1,0 +1,34 @@
+plugins {
+    id 'org.springframework.boot'   // 실행 가능한 서비스이므로 Boot 플러그인 적용 (버전은 루트에 등록됨)
+}
+
+// Boot 4.1 BOM 이 Spring AI 버전을 관리하지 않아 직접 가져온다.
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.ai:spring-ai-bom:2.0.0"
+    }
+}
+
+dependencies {
+    implementation project(':common')
+
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+    implementation 'org.springframework.cloud:spring-cloud-starter-config'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // config-server fetch 실패 시 재시도(spring.cloud.config.retry.*)에 필요 — 클래스패스에 없으면
+    // ConfigClientRetryBootstrapper 가 조건 불충족으로 스킵되어 fail-fast 가 재시도 없이 즉시 실패한다 (#192).
+    implementation 'org.springframework.retry:spring-retry'
+
+    // TODO(조우진): 벡터DB/추천 로직에 맞는 모델 제공자로 교체 검토 — 우선 OpenAI starter로 스캐폴딩만 해둠.
+    // spring.ai.openai.api-key 는 config repo(ai-service.yml)에서 OPENAI_API_KEY 환경변수로 주입.
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+
+    // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
+    // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+}
