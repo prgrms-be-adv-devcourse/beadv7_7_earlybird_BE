@@ -6,7 +6,7 @@ import com.growmighty.lectures.firstday.settlement.application.run.ProjectOutcom
 import com.growmighty.lectures.firstday.settlement.application.run.ProjectOutcomeProcessingStatus;
 import com.growmighty.lectures.firstday.settlement.application.run.ProjectSettlementRunResult;
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -49,9 +49,8 @@ public record ProjectSettlementRunResponse(
             Long projectId,
             Long creatorId,
             Long settlementId,
-            Long payoutObligationId,
             BigDecimal creatorPayoutAmount,
-            PayoutObligationStatus payoutObligationStatus,
+            PayoutStatus payoutStatus,
             LocalDate scheduledDate
     ) {
 
@@ -60,9 +59,8 @@ public record ProjectSettlementRunResponse(
                     settlement.projectId(),
                     settlement.creatorId(),
                     settlement.settlementId(),
-                    settlement.payoutObligationId(),
                     settlement.creatorPayoutAmount().amount(),
-                    settlement.payoutObligationStatus(),
+                    settlement.payoutStatus(),
                     settlement.scheduledDate()
             );
         }

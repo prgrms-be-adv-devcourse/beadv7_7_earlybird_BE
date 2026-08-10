@@ -1,7 +1,7 @@
-// TODO(settlement-plan): Keep payout execution as one deep interface over obligation state; do not expose gateway details to callers.
+// TODO(settlement-plan): Keep payout execution as one deep interface over settlement payout state.
 package com.growmighty.lectures.firstday.settlement.application.payout;
 
 public interface PayoutExecutor {
 
-    PayoutExecutionResult execute(Long payoutObligationId);
+    PayoutExecutionResult execute(Long settlementId);
 }

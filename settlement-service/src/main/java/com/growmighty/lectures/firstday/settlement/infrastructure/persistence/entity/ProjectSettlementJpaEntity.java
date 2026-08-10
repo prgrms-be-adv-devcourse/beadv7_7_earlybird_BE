@@ -2,6 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import jakarta.persistence.Column;
@@ -74,9 +75,15 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
         return new ProjectSettlementJpaEntity(settlement);
     }
 
-    public ProjectSettlement toDomain() {
+    public ProjectSettlement toDomain(PayoutObligation payout) {
         if (!creatorId.equals(destinationSnapshot.creatorId())) {
             throw new IllegalArgumentException("프로젝트 창작자와 지급 대상 창작자가 일치해야 합니다.");
+        }
+        if (!id.equals(payout.settlementId())
+                || !creatorId.equals(payout.creatorId())
+                || !breakdown.creatorPayoutAmount().equals(payout.amount())
+                || !scheduledDate.equals(payout.scheduledDate())) {
+            throw new IllegalArgumentException("프로젝트 정산과 지급 상태가 일치하지 않습니다.");
         }
         return ProjectSettlement.restore(
                 id,
@@ -96,7 +103,10 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
                 destinationSnapshot.bankCode(),
                 destinationSnapshot.maskedAccountNumber(),
                 scheduledDate,
-                status,
+                PayoutStatus.valueOf(payout.status().name()),
+                payout.attempts(),
+                payout.successfulAttemptSequence(),
+                payout.version(),
                 confirmedAt
         );
     }

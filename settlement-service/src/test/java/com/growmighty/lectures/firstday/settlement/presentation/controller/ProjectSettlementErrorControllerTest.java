@@ -174,37 +174,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("프로젝트 정산과 지급 의무가 불일치하면 내부 정합성 오류로 응답한다")
-    void rejectsSettlementWhenPayoutObligationIsMissing() throws Exception {
-        long projectId = 93L;
-        long creatorId = 93L;
-        CreatorPayoutProfile payoutProfile = payoutReadyProfile(creatorId);
-        creatorPayoutProfileRepository.save(payoutProfile);
-        projectSettlementRepository.save(ProjectSettlement.confirm(
-                projectId,
-                creatorId,
-                List.of(Money.wons(100_000)),
-                payoutProfile,
-                LocalDate.of(2026, 8, 3),
-                LocalDateTime.of(2026, 7, 23, 10, 0)
-        ));
-        externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
-
-        mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "settlementMonth": "2026-07"
-                                }
-                                """))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("프로젝트 정산 데이터가 일치하지 않습니다."))
-                .andExpect(content().string(not(containsString("지급 의무가 존재하지 않습니다"))));
-    }
-
-    @Test
     @DisplayName("저장된 프로젝트 정산 원본의 정합성 오류는 내부 정보를 노출하지 않는다")
     void hidesPersistenceIntegrityFailureDetails() throws Exception {
         long projectId = 95L;

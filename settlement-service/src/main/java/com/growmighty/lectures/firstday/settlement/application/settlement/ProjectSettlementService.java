@@ -8,8 +8,6 @@ import static com.growmighty.lectures.firstday.settlement.application.error.Sett
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
-import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import java.util.Optional;
@@ -23,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProjectSettlementService {
 
     private final ProjectSettlementRepository projectSettlementRepository;
-    private final PayoutObligationRepository payoutObligationRepository;
     private final CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Transactional
@@ -58,26 +55,7 @@ public class ProjectSettlementService {
         ProjectSettlement settlement = executePersistenceOperation(
                 () -> projectSettlementRepository.save(settlementToSave)
         );
-        // ponytail: remove this compatibility write when the next TODO moves payout execution onto ProjectSettlement.
-        PayoutObligation payoutObligationToSave = PayoutObligation.schedule(
-                settlement.id(),
-                settlement.creatorId(),
-                settlement.creatorPayoutAmount(),
-                command.scheduledDate()
-        );
-        PayoutObligation payoutObligation = executePersistenceOperation(
-                () -> payoutObligationRepository.save(payoutObligationToSave)
-        );
-
-        return new ConfirmedProjectSettlement(
-                settlement.projectId(),
-                settlement.creatorId(),
-                settlement.id(),
-                payoutObligation.id(),
-                settlement.creatorPayoutAmount(),
-                payoutObligation.status(),
-                payoutObligation.scheduledDate()
-        );
+        return confirmedSettlement(settlement);
     }
 
     @Transactional(readOnly = true)
@@ -87,17 +65,13 @@ public class ProjectSettlementService {
     }
 
     private ConfirmedProjectSettlement confirmedSettlement(ProjectSettlement settlement) {
-        PayoutObligation payoutObligation = executePersistenceOperation(
-                () -> payoutObligationRepository.findBySettlementId(settlement.id())
-        ).orElseThrow(() -> new SettlementException(SETTLEMENT_DATA_INCONSISTENT));
         return new ConfirmedProjectSettlement(
                 settlement.projectId(),
                 settlement.creatorId(),
                 settlement.id(),
-                payoutObligation.id(),
                 settlement.creatorPayoutAmount(),
-                payoutObligation.status(),
-                payoutObligation.scheduledDate()
+                settlement.status(),
+                settlement.scheduledDate()
         );
     }
 

@@ -19,7 +19,7 @@ import com.growmighty.lectures.firstday.settlement.application.port.project.Proj
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,7 +35,7 @@ import org.junit.jupiter.api.Test;
 class ProjectSettlementRunPayoutTest {
 
     @Test
-    @DisplayName("성공 정산은 확정된 지급 의무의 지급 흐름을 실행한다")
+    @DisplayName("성공 정산은 프로젝트 정산 식별자로 지급 흐름을 실행한다")
     void executesPayoutForConfirmedSettlement() {
         ProjectOutcomeReader outcomeReader = () -> List.of(
                 new ProjectOutcome(101L, 201L, ProjectOutcomeStatus.SUCCEEDED)
@@ -54,19 +54,18 @@ class ProjectSettlementRunPayoutTest {
                 101L,
                 201L,
                 301L,
-                401L,
                 Money.wons(91_200),
-                PayoutObligationStatus.SCHEDULED,
+                PayoutStatus.SCHEDULED,
                 LocalDate.of(2026, 8, 3)
         ));
-        AtomicReference<Long> requestedObligationId = new AtomicReference<>();
-        PayoutExecutor payoutExecutor = obligationId -> {
-            requestedObligationId.set(obligationId);
+        AtomicReference<Long> requestedSettlementId = new AtomicReference<>();
+        PayoutExecutor payoutExecutor = settlementId -> {
+            requestedSettlementId.set(settlementId);
             return new PayoutExecutionResult(
-                    obligationId,
+                    settlementId,
                     1,
                     PayoutAttemptStatus.REQUESTED,
-                    PayoutObligationStatus.PROCESSING
+                    PayoutStatus.PROCESSING
             );
         };
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
@@ -85,8 +84,8 @@ class ProjectSettlementRunPayoutTest {
                 LocalDateTime.of(2026, 7, 26, 1, 0)
         ));
 
-        assertThat(requestedObligationId.get()).isEqualTo(401L);
-        assertThat(result.confirmedSettlements().getFirst().payoutObligationStatus())
-                .isEqualTo(PayoutObligationStatus.PROCESSING);
+        assertThat(requestedSettlementId.get()).isEqualTo(301L);
+        assertThat(result.confirmedSettlements().getFirst().payoutStatus())
+                .isEqualTo(PayoutStatus.PROCESSING);
     }
 }

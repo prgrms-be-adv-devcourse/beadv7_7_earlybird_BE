@@ -11,9 +11,6 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutSta
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
-import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
@@ -48,9 +45,6 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private ProjectSettlementRepository projectSettlementRepository;
-
-    @Autowired
-    private PayoutObligationRepository payoutObligationRepository;
 
     @Autowired
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
@@ -98,26 +92,24 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("지급 의무와 지급 시도를 함께 저장하고 다시 읽는다")
-    void persistsAndRestoresPayoutObligationWithAttempt() {
-        PayoutObligation obligation = PayoutObligation.schedule(
+    @DisplayName("프로젝트 정산과 지급 시도를 함께 저장하고 다시 읽는다")
+    void persistsAndRestoresProjectSettlementWithAttempt() {
+        ProjectSettlement settlement = projectSettlementRepository.save(confirmedSettlement(
                 100L,
                 10L,
-                Money.wons(91_200),
-                LocalDate.of(2026, 8, 3)
-        );
-        obligation.startAttempt(
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        ));
+        settlement.startAttempt(
                 "ref-payout-100-1",
                 "idempotency-100-1",
                 LocalDateTime.of(2026, 8, 3, 9, 0)
         );
-        PayoutObligation saved = payoutObligationRepository.save(obligation);
+        ProjectSettlement saved = projectSettlementRepository.save(settlement);
         entityManager.flush();
         entityManager.clear();
 
-        PayoutObligation restored = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+        ProjectSettlement restored = projectSettlementRepository.findById(saved.id()).orElseThrow();
 
-        assertThat(saved.id()).isNotNull();
         assertThat(saved.attempts().getFirst().id()).isNotNull();
         assertThat(restored.attemptCount()).isEqualTo(1);
     }
@@ -381,52 +373,51 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("성공한 지급 시도와 완료된 지급 의무를 함께 저장한다")
-    void persistsCompletedObligationWithSuccessfulAttempt() {
-        PayoutObligation obligation = PayoutObligation.schedule(
+    @DisplayName("성공한 지급 시도와 완료 상태를 프로젝트 정산에 함께 저장한다")
+    void persistsCompletedSettlementWithSuccessfulAttempt() {
+        ProjectSettlement settlement = projectSettlementRepository.save(confirmedSettlement(
                 100L,
                 10L,
-                Money.wons(91_200),
-                LocalDate.of(2026, 8, 3)
-        );
-        var attempt = obligation.startAttempt(
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        ));
+        var attempt = settlement.startAttempt(
                 "ref-payout-100-1",
                 "idempotency-100-1",
                 LocalDateTime.of(2026, 8, 3, 9, 0)
         );
-        obligation.completeAttempt(
+        settlement.completeAttempt(
                 attempt,
                 "toss-payout-1",
                 LocalDateTime.of(2026, 8, 3, 9, 1)
         );
-        payoutObligationRepository.save(obligation);
+        projectSettlementRepository.save(settlement);
         entityManager.flush();
         entityManager.clear();
 
-        PayoutObligation restored = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+        ProjectSettlement restored = projectSettlementRepository.findById(settlement.id()).orElseThrow();
 
-        assertThat(restored.isCompleted()).isTrue();
+        assertThat(restored.status()).isEqualTo(PayoutStatus.COMPLETED);
+        assertThat(restored.successfulAttempt()).isPresent();
     }
 
     @Test
     @DisplayName("저장된 지급 시도를 보존하면서 결과와 재시도를 갱신한다")
-    void updatesManagedPayoutObligationGraph() {
-        PayoutObligation obligation = PayoutObligation.schedule(
+    void updatesManagedPayoutGraph() {
+        ProjectSettlement settlement = projectSettlementRepository.save(confirmedSettlement(
                 100L,
                 10L,
-                Money.wons(91_200),
-                LocalDate.of(2026, 8, 3)
-        );
-        obligation.startAttempt(
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        ));
+        settlement.startAttempt(
                 "ref-payout-100-1",
                 "idempotency-100-1",
                 LocalDateTime.of(2026, 8, 3, 9, 0)
         );
-        PayoutObligation saved = payoutObligationRepository.save(obligation);
+        ProjectSettlement saved = projectSettlementRepository.save(settlement);
         Long firstAttemptId = saved.attempts().getFirst().id();
         entityManager.clear();
 
-        PayoutObligation failed = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+        ProjectSettlement failed = projectSettlementRepository.findById(saved.id()).orElseThrow();
         failed.failAttempt(
                 failed.attempts().getFirst(),
                 "toss-payout-1",
@@ -434,7 +425,7 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
                 LocalDateTime.of(2026, 8, 3, 9, 1),
                 true
         );
-        PayoutObligation retryWaiting = payoutObligationRepository.save(failed);
+        ProjectSettlement retryWaiting = projectSettlementRepository.save(failed);
 
         var retry = retryWaiting.startAttempt(
                 "ref-payout-100-2",
@@ -446,12 +437,12 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
                 "toss-payout-2",
                 LocalDateTime.of(2026, 8, 3, 9, 3)
         );
-        payoutObligationRepository.save(retryWaiting);
+        projectSettlementRepository.save(retryWaiting);
         entityManager.clear();
 
-        PayoutObligation restored = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+        ProjectSettlement restored = projectSettlementRepository.findById(saved.id()).orElseThrow();
 
-        assertThat(restored.status()).isEqualTo(PayoutObligationStatus.COMPLETED);
+        assertThat(restored.status()).isEqualTo(PayoutStatus.COMPLETED);
         assertThat(restored.attempts()).hasSize(2);
         assertThat(restored.attempts().getFirst().id()).isEqualTo(firstAttemptId);
         assertThat(restored.attempts().getFirst().status()).isEqualTo(PayoutAttemptStatus.FAILED);
@@ -460,25 +451,24 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("오래된 지급 의무 스냅샷의 저장을 거부한다")
-    void rejectsStalePayoutObligationVersion() {
-        PayoutObligation saved = payoutObligationRepository.save(PayoutObligation.schedule(
+    @DisplayName("오래된 프로젝트 정산 지급 상태의 저장을 거부한다")
+    void rejectsStaleProjectSettlementVersion() {
+        ProjectSettlement saved = projectSettlementRepository.save(confirmedSettlement(
                 100L,
                 10L,
-                Money.wons(91_200),
-                LocalDate.of(2026, 8, 3)
+                LocalDateTime.of(2026, 7, 22, 10, 0)
         ));
         entityManager.clear();
 
-        PayoutObligation first = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
-        PayoutObligation stale = payoutObligationRepository.findBySettlementId(100L).orElseThrow();
+        ProjectSettlement first = projectSettlementRepository.findById(saved.id()).orElseThrow();
+        ProjectSettlement stale = projectSettlementRepository.findById(saved.id()).orElseThrow();
 
         first.startAttempt(
                 "ref-payout-100-1",
                 "idempotency-100-1",
                 LocalDateTime.of(2026, 8, 3, 9, 0)
         );
-        PayoutObligation updated = payoutObligationRepository.save(first);
+        ProjectSettlement updated = projectSettlementRepository.save(first);
 
         stale.startAttempt(
                 "ref-payout-100-stale",
@@ -487,7 +477,7 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
         );
 
         assertThat(updated.version()).isGreaterThan(saved.version());
-        assertThatThrownBy(() -> payoutObligationRepository.save(stale))
+        assertThatThrownBy(() -> projectSettlementRepository.save(stale))
                 .isInstanceOf(ObjectOptimisticLockingFailureException.class);
     }
 
@@ -505,32 +495,30 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     @Test
     @DisplayName("같은 멱등키의 지급 시도를 두 번 저장할 수 없다")
     void rejectsDuplicatePayoutAttemptIdempotencyKey() {
-        PayoutObligation first = PayoutObligation.schedule(
+        ProjectSettlement first = projectSettlementRepository.save(confirmedSettlement(
                 100L,
                 10L,
-                Money.wons(91_200),
-                LocalDate.of(2026, 8, 3)
-        );
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        ));
         first.startAttempt(
                 "ref-payout-100-1",
                 "same-idempotency-key",
                 LocalDateTime.of(2026, 8, 3, 9, 0)
         );
-        payoutObligationRepository.save(first);
+        projectSettlementRepository.save(first);
 
-        PayoutObligation second = PayoutObligation.schedule(
+        ProjectSettlement second = projectSettlementRepository.save(confirmedSettlement(
                 101L,
                 11L,
-                Money.wons(50_000),
-                LocalDate.of(2026, 8, 3)
-        );
+                LocalDateTime.of(2026, 7, 22, 10, 1)
+        ));
         second.startAttempt(
                 "ref-payout-101-1",
                 "same-idempotency-key",
                 LocalDateTime.of(2026, 8, 3, 9, 1)
         );
 
-        assertThatThrownBy(() -> payoutObligationRepository.save(second))
+        assertThatThrownBy(() -> projectSettlementRepository.save(second))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
