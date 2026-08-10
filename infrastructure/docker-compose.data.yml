@@ -14,6 +14,10 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
+    # 이 박스가 3.7GiB(t3.medium)를 ES와 나눠 쓰므로, cgroup 메모리 상한 없이 두면 부하가
+    # 몰릴 때 컨테이너가 무한정 커질 수 있다 (#232/#234와 동일한 이유). 갓 기동한 빈 스키마
+    # 상태의 실측(docker stats)이 ~479MiB였던 것에 실 트래픽 여유를 크게 얹어 1GiB로 캡.
+    mem_limit: 1g
     ports:
       - "3306:3306"
     volumes:
