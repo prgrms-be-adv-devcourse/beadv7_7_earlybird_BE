@@ -15,6 +15,16 @@
 # CD's deploy step runs `pull` before `up -d`, so the image is always present locally and `up -d`
 # never falls back to building on the EC2 host (same pattern the `fe` service below already used).
 services:
+  # mysql/elasticsearch는 #256으로 2번째 EC2(데이터 박스)로 분리됐다 - 앱 박스에서는 더 이상
+  # 로컬 컨테이너로 띄우지 않는다. base 파일(docker-compose.yml)의 정의 자체는 로컬 개발용으로
+  # 그대로 두고, 여기서는 활성화되지 않는 profile을 붙여서 이 -f 조합의 기본 `up -d`(어떤
+  # --profile도 넘기지 않음) 대상에서만 빠지게 한다.
+  mysql:
+    profiles: ["local-only"]
+
+  elasticsearch:
+    profiles: ["local-only"]
+
   config-server:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-config-server:latest
 
@@ -28,32 +38,64 @@ services:
     # what we want. `!override` forces a full replace instead of merging.
     ports: !override []
 
+  # 아래 9개 business-service는 base 파일에서 *business-depends-on 앵커로
+  # `depends_on.mysql.condition: service_healthy`를 물려받는다. mysql이 이 파일에서
+  # local-only profile로 빠지므로, 그 항목에 required: false를 얹어 "떠 있으면 기다리되
+  # 없어도 에러내지 않음"으로 바꾼다 - Compose는 depends_on 맵을 키 단위로 병합하므로
+  # 기존 condition은 그대로 남고 required만 추가된다.
   order-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-order-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   project-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-project-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   payment-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-payment-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   user-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-user-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   cart-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-cart-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   settlement-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-settlement-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   file-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-file-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   board-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-board-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   notification-service:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-notification-service:latest
+    depends_on:
+      mysql:
+        required: false
 
   caddy:
     image: caddy:2
