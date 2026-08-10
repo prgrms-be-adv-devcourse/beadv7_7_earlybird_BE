@@ -48,8 +48,8 @@ public class CreatorProjectSettlementQueryService {
                 obligation.status(),
                 obligation.scheduledDate(),
                 completedAt(obligation),
-                settlement.destinationSnapshot().bankCode(),
-                settlement.destinationSnapshot().maskedAccountNumber()
+                settlement.bankCode(),
+                settlement.maskedAccountNumber()
         );
     }
 
@@ -61,7 +61,7 @@ public class CreatorProjectSettlementQueryService {
         return new CreatorProjectSettlementSummary(
                 settlement.id(),
                 settlement.projectId(),
-                settlement.breakdown().baseAmount(),
+                settlement.baseAmount(),
                 settlement.creatorPayoutAmount(),
                 obligation.status(),
                 settlement.confirmedAt(),

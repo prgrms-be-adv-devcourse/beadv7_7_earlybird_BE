@@ -1,6 +1,7 @@
 // TODO(settlement-plan): Keep the confirmed financial record immutable and create it only from reconciled successful-project payments.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
@@ -103,8 +104,56 @@ public final class ProjectSettlement {
         return breakdown;
     }
 
+    public BigDecimal paymentAndSettlementAgencyFeeRate() {
+        return feePolicySnapshot.paymentAndSettlementAgencyFeeRate();
+    }
+
+    public BigDecimal platformFeeRate() {
+        return feePolicySnapshot.platformFeeRate();
+    }
+
+    public BigDecimal vatRate() {
+        return feePolicySnapshot.vatRate();
+    }
+
+    public Money baseAmount() {
+        return breakdown.baseAmount();
+    }
+
+    public Money paymentAndSettlementAgencyFeeAmount() {
+        return breakdown.paymentAndSettlementAgencyFeeAmount();
+    }
+
+    public Money paymentAndSettlementAgencyFeeVatAmount() {
+        return breakdown.paymentAndSettlementAgencyFeeVatAmount();
+    }
+
+    public Money platformFeeAmount() {
+        return breakdown.platformFeeAmount();
+    }
+
+    public Money platformFeeVatAmount() {
+        return breakdown.platformFeeVatAmount();
+    }
+
+    public Money otherDeductionAmount() {
+        return breakdown.otherDeductionAmount();
+    }
+
     public Money creatorPayoutAmount() {
         return breakdown.creatorPayoutAmount();
+    }
+
+    public String tossSellerId() {
+        return destinationSnapshot.tossSellerId();
+    }
+
+    public String bankCode() {
+        return destinationSnapshot.bankCode();
+    }
+
+    public String maskedAccountNumber() {
+        return destinationSnapshot.maskedAccountNumber();
     }
 
     public PayoutDestinationSnapshot destinationSnapshot() {
