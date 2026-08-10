@@ -29,6 +29,13 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * 몇 번을, 어떤 순서로 처리하든 결과가 항상 그 순간의 DB 최신 상태로 수렴한다(멱등성). 조회 시점에
  * 이미 삭제된 프로젝트라면(다른 이벤트가 먼저 처리됨) 색인하지 않고 건너뛴다 — 삭제된 프로젝트를
  * 검색 결과에 되살리면 안 되므로.
+ *
+ * <p>임베딩 생성(OpenAI 호출)은 이 메서드 자체를 @Transactional로 감싸지 않는다 — 그러면 그 느린
+ * 외부 호출과 뒤이은 adapter.applyIndex()(ES 호출)까지 DB 트랜잭션(커넥션)을 물고 있게 된다(#196과
+ * 같은 문제). 대신 임베딩을 실제로 저장하는 짧은 구간만 ProjectEmbeddingPersister의 별도
+ * @Transactional 메서드로 위임한다 — projectId로 다시 조회한 managed 엔티티에 반영해 dirty-checking
+ * 으로 저장하므로, findById 이후 detached 엔티티를 save()로 merge하다가 그 사이 다른 트랜잭션이
+ * 바꾼 다른 필드를 오래된 스냅샷으로 덮어쓸 위험이 없다.
  */
 @Slf4j
 @Component
@@ -38,6 +45,7 @@ class ProjectSearchIndexEventListener {
     private final ProjectSearchAdapter adapter;
     private final ProjectRepository projectRepository;
     private final ProjectEmbeddingService embeddingService;
+    private final ProjectEmbeddingPersister embeddingPersister;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
@@ -50,8 +58,11 @@ class ProjectSearchIndexEventListener {
         if (project.getEmbedding() == null) {
             float[] embedding = embeddingService.generateEmbeddingForProject(project);
             if (embedding != null) {
-                project.updateEmbedding(embedding);
-                project = projectRepository.save(project);
+                project = embeddingPersister.updateEmbedding(event.projectId(), embedding);
+                if (project == null) {
+                    log.debug("임베딩 생성 중 프로젝트가 삭제되어 색인을 건너뜀. projectId={}", event.projectId());
+                    return;
+                }
             }
         }
         adapter.applyIndex(project);
