@@ -106,6 +106,18 @@ jobs:
             # public 전환 불가) - pull 전 로그인 필요. config-server가 이미 같은 방식(PAT)으로
             # private config repo에 접근하는 것과 동일한 패턴.
             echo "$GHCR_PAT" | docker login ghcr.io -u krkhnh --password-stdin
+            # `pull` reassigning :latest to a new digest leaves the old digest dangling
+            # (<none>:<none>) - same thing used to happen when EC2 rebuilt images locally, and it
+            # silently ate ~10GB of disk before we noticed. Tag whatever :latest currently points
+            # at as :rollback BEFORE pulling, so the version this deploy is about to replace stays
+            # reachable by name (`docker compose ... up -d` with the service image swapped back to
+            # :rollback) instead of only living on as an anonymous dangling image that a later
+            # prune could sweep away. `docker image inspect` guards the first-ever deploy, where
+            # :latest doesn't exist locally yet.
+            for svc in config-server discovery-server gateway-server order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
+              img="ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc"
+              docker image inspect "$img:latest" > /dev/null 2>&1 && docker tag "$img:latest" "$img:rollback"
+            done
             # -f infrastructure/docker-compose.prod.yml 은 공용 base 파일 위에 AWS 전용
             # 오버라이드(서비스별 image: 태그, gateway-server 호스트 포트 등)를 얹는다 - 이유는
             # 그 파일 참고. 로컬 개발에서는 이 옵션을 절대 넘기지 않으므로 영향 없음.
@@ -127,3 +139,8 @@ jobs:
             # change to caddy's own image/ports/volumes in docker-compose.yml (rare enough to
             # handle manually if it ever happens).
             docker restart earlybird-caddy
+            # Safe to prune unconditionally: any image a running container still uses is never
+            # touched by `image prune`, and the one previous version worth keeping for a quick
+            # rollback was just re-tagged as :rollback above, so this only clears versions older
+            # than that (plus stray dangling layers from anything else on the host).
+            docker image prune -f
