@@ -1,0 +1,41 @@
+# 2번째 EC2(MySQL/ES 전용 데이터 박스)에서만 수동으로 띄우는 compose 파일 — #256.
+# docker-compose.yml/docker-compose.prod.yml 어느 쪽에도 속하지 않고, cd.yml 자동 배포 대상도
+# 아니다. mysql/elasticsearch 서비스 정의는 docker-compose.yml과 동일하게 유지하되(로컬 개발용
+# 베이스 파일은 절대 건드리지 않음), root 비밀번호만 .env(gitignore, 이 박스에만 존재)로 분리했다.
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: earlybird-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=earlybird
+      - MYSQL_PASSWORD=earlybird
+      - TZ=Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/init:/docker-entrypoint-initdb.d
+      - earlybird-mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  elasticsearch:
+    build: ./elasticsearch          # nori 포함 (elasticsearch/Dockerfile)
+    container_name: lecture-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # SG로 앱 EC2만 접근 허용 — 로컬과 동일한 위험 수준
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    restart: unless-stopped
+
+volumes:
+  earlybird-mysql-data:
