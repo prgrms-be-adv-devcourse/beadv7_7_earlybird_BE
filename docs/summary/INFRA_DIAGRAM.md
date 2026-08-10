@@ -34,7 +34,6 @@ flowchart TD
     DISC["discovery-server :8761<br/>(host 미노출)"]
     MYSQL[("MySQL :3306<br/>서비스별 스키마 9개")]
     ES[("Elasticsearch :9200<br/>nori 분석기")]
-    KIBANA["Kibana :5601"]
   end
 
   CONFIGREPO[("beadv7_7_earlybird_config<br/>로컬 클론 — read-only mount")]
@@ -48,7 +47,6 @@ flowchart TD
   DISC -.->|서비스 등록·조회| SVC
   SVC -->|JPA| MYSQL
   PROJECT -->|검색 색인/조회| ES
-  KIBANA --> ES
   CFG --- CONFIGREPO
 ```
 

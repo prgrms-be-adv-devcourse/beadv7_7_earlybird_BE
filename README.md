@@ -55,7 +55,7 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 ### 사전 준비
 
 - Java 21
-- Docker (Elasticsearch/Kibana 용 — project-service 검색 기능에만 필요)
+- Docker (Elasticsearch 용 — project-service 검색 기능에만 필요)
 
 ### 설정 저장소
 
@@ -64,7 +64,7 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 ### 기동 순서 (순서 중요!)
 
 ```bash
-# 0. (검색 기능 쓸 때만) Elasticsearch + Kibana
+# 0. (검색 기능 쓸 때만) Elasticsearch
 docker compose -f infrastructure/docker-compose.yml up -d
 
 # 1. 설정 서버
