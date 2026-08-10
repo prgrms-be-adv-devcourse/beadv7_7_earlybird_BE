@@ -1,18 +1,50 @@
-// TODO(settlement-plan): Make creatorId-to-Toss destination eligibility explicit while keeping bank data out of payout requests.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-public final class CreatorPayoutProfile {
+@Entity
+@Table(
+        name = "creator_payout_profiles",
+        uniqueConstraints = @UniqueConstraint(name = "uk_creator_payout_profile_toss_seller_id", columnNames = "toss_seller_id")
+)
+public class CreatorPayoutProfile extends BaseEntity {
 
-    private final Long creatorId;
+    @Id
+    @Column(name = "creator_id", nullable = false, updatable = false)
+    private Long creatorId;
+
+    @Column(name = "toss_seller_id", length = 100)
     private String tossSellerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 40)
     private CreatorPayoutStatus status;
+
+    @Column(name = "bank_code", length = 20)
     private String bankCode;
+
+    @Column(name = "masked_account_number", length = 100)
     private String maskedAccountNumber;
+
+    @Column(name = "verified_at")
     private LocalDateTime verifiedAt;
-    private final Long version;
+
+    @Version
+    private Long version;
+
+    protected CreatorPayoutProfile() {
+    }
 
     private CreatorPayoutProfile(
             Long creatorId,
@@ -20,26 +52,15 @@ public final class CreatorPayoutProfile {
             CreatorPayoutStatus status,
             String bankCode,
             String maskedAccountNumber,
-            LocalDateTime verifiedAt,
-            Long version
+            LocalDateTime verifiedAt
     ) {
-        validateCreatorId(creatorId);
         this.creatorId = creatorId;
-        this.status = Objects.requireNonNull(status, "창작자 지급 상태는 필수입니다.");
-        this.version = version;
-
-        if (status == CreatorPayoutStatus.REGISTRATION_PENDING) {
-            if (tossSellerId != null || bankCode != null || maskedAccountNumber != null || verifiedAt != null) {
-                throw new IllegalArgumentException("셀러 등록 대기 중에는 외부 셀러와 계좌 정보를 가질 수 없습니다.");
-            }
-            return;
-        }
-
-        validateRegistrationDetails(tossSellerId, bankCode, maskedAccountNumber, verifiedAt);
         this.tossSellerId = tossSellerId;
+        this.status = status;
         this.bankCode = bankCode;
         this.maskedAccountNumber = maskedAccountNumber;
         this.verifiedAt = verifiedAt;
+        validateState();
     }
 
     public static CreatorPayoutProfile registered(
@@ -59,8 +80,7 @@ public final class CreatorPayoutProfile {
                 status,
                 bankCode,
                 maskedAccountNumber,
-                verifiedAt,
-                null
+                verifiedAt
         );
     }
 
@@ -71,28 +91,7 @@ public final class CreatorPayoutProfile {
                 CreatorPayoutStatus.REGISTRATION_PENDING,
                 null,
                 null,
-                null,
                 null
-        );
-    }
-
-    public static CreatorPayoutProfile restore(
-            Long creatorId,
-            String tossSellerId,
-            CreatorPayoutStatus status,
-            String bankCode,
-            String maskedAccountNumber,
-            LocalDateTime verifiedAt,
-            Long version
-    ) {
-        return new CreatorPayoutProfile(
-                creatorId,
-                tossSellerId,
-                status,
-                bankCode,
-                maskedAccountNumber,
-                verifiedAt,
-                version
         );
     }
 
@@ -160,6 +159,19 @@ public final class CreatorPayoutProfile {
         if (creatorId == null || creatorId <= 0) {
             throw new IllegalArgumentException("창작자 식별자는 양수여야 합니다.");
         }
+    }
+
+    @PostLoad
+    private void validateState() {
+        validateCreatorId(creatorId);
+        Objects.requireNonNull(status, "창작자 지급 상태는 필수입니다.");
+        if (status == CreatorPayoutStatus.REGISTRATION_PENDING) {
+            if (tossSellerId != null || bankCode != null || maskedAccountNumber != null || verifiedAt != null) {
+                throw new IllegalArgumentException("셀러 등록 대기 중에는 외부 셀러와 계좌 정보를 가질 수 없습니다.");
+            }
+            return;
+        }
+        validateRegistrationDetails(tossSellerId, bankCode, maskedAccountNumber, verifiedAt);
     }
 
     private static void validateRegistrationDetails(

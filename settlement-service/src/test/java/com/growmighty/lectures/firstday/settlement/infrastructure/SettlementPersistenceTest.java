@@ -144,13 +144,14 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
     @Test
     @DisplayName("CreatorId로 창작자 지급 프로필을 저장하고 다시 읽는다")
     void persistsAndRestoresCreatorPayoutProfileByCreatorId() {
+        LocalDateTime verifiedAt = LocalDateTime.of(2026, 7, 22, 10, 0);
         CreatorPayoutProfile profile = CreatorPayoutProfile.registered(
                 10L,
                 "seller-10",
                 CreatorPayoutStatus.PAYOUT_READY,
                 "088",
                 "********1234",
-                LocalDateTime.of(2026, 7, 22, 10, 0)
+                verifiedAt
         );
         creatorPayoutProfileRepository.save(profile);
         entityManager.flush();
@@ -159,6 +160,14 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
         CreatorPayoutProfile restored = creatorPayoutProfileRepository.findByCreatorId(10L).orElseThrow();
 
         assertThat(restored.canReceivePayout()).isTrue();
+        assertThat(restored.tossSellerId()).isEqualTo("seller-10");
+        assertThat(restored.status()).isEqualTo(CreatorPayoutStatus.PAYOUT_READY);
+        assertThat(restored.bankCode()).isEqualTo("088");
+        assertThat(restored.maskedAccountNumber()).isEqualTo("********1234");
+        assertThat(restored.verifiedAt()).isEqualTo(verifiedAt);
+        assertThat(restored.version()).isNotNull();
+        assertThat(restored.getCreatedAt()).isNotNull();
+        assertThat(restored.getUpdatedAt()).isNotNull();
     }
 
     @Test
@@ -197,6 +206,80 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
         assertThat(updated.version()).isGreaterThan(saved.version());
         assertThat(restored.canReceivePayout()).isTrue();
         assertThat(restored.tossSellerId()).isEqualTo("seller-10");
+    }
+
+    @Test
+    @DisplayName("오래된 창작자 지급 프로필의 저장을 거부한다")
+    void rejectsStaleCreatorPayoutProfileVersion() {
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.awaitingRegistration(10L));
+        entityManager.clear();
+
+        CreatorPayoutProfile first = creatorPayoutProfileRepository.findByCreatorId(10L).orElseThrow();
+        entityManager.clear();
+        CreatorPayoutProfile stale = creatorPayoutProfileRepository.findByCreatorId(10L).orElseThrow();
+        entityManager.clear();
+
+        first.completeRegistration(
+                "seller-10",
+                CreatorPayoutStatus.PAYOUT_READY,
+                "088",
+                "********1234",
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        );
+        creatorPayoutProfileRepository.save(first);
+        entityManager.clear();
+
+        stale.completeRegistration(
+                "stale-seller-10",
+                CreatorPayoutStatus.PAYOUT_READY,
+                "088",
+                "********5678",
+                LocalDateTime.of(2026, 7, 22, 10, 1)
+        );
+
+        assertThatThrownBy(() -> creatorPayoutProfileRepository.save(stale))
+                .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    }
+
+    @Test
+    @DisplayName("같은 토스 셀러 식별자를 두 프로필에 저장할 수 없다")
+    void rejectsDuplicateTossSellerId() {
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
+                10L,
+                "seller-shared",
+                CreatorPayoutStatus.PAYOUT_READY,
+                "088",
+                "********1234",
+                LocalDateTime.of(2026, 7, 22, 10, 0)
+        ));
+
+        CreatorPayoutProfile duplicate = CreatorPayoutProfile.registered(
+                11L,
+                "seller-shared",
+                CreatorPayoutStatus.PAYOUT_READY,
+                "088",
+                "********5678",
+                LocalDateTime.of(2026, 7, 22, 10, 1)
+        );
+
+        assertThatThrownBy(() -> creatorPayoutProfileRepository.save(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("DB에서 읽은 창작자 지급 프로필의 상태 조합을 검증한다")
+    void validatesCreatorPayoutProfileAfterLoad() {
+        entityManager.createNativeQuery("""
+                insert into creator_payout_profiles (
+                    creator_id, toss_seller_id, status, version, created_at, updated_at
+                ) values (
+                    10, 'seller-10', 'REGISTRATION_PENDING', 0, now(), now()
+                )
+                """).executeUpdate();
+        entityManager.clear();
+
+        assertThatThrownBy(() -> creatorPayoutProfileRepository.findByCreatorId(10L))
+                .hasRootCauseMessage("셀러 등록 대기 중에는 외부 셀러와 계좌 정보를 가질 수 없습니다.");
     }
 
     @Test
