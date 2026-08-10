@@ -38,6 +38,9 @@ public class OrderItem extends BaseEntity {
     @Column(nullable = false)
     private Integer quantity;
 
+    @Column(name = "stock_reserved", nullable = false)
+    private boolean stockReserved;
+
     public static OrderItem create(String name, BigDecimal price, Long projectId, Long rewardId, int quantity) {
         if (quantity <= 0) {
             throw new IllegalArgumentException("주문 수량은 1개 이상이어야 합니다.");
@@ -48,6 +51,7 @@ public class OrderItem extends BaseEntity {
         orderItem.projectId = projectId;
         orderItem.rewardId = rewardId;
         orderItem.quantity = quantity;
+        orderItem.stockReserved = false;
 
         return orderItem;
     }
@@ -56,15 +60,12 @@ public class OrderItem extends BaseEntity {
         return price.times(quantity);
     }
 
-    public void changePrice(BigDecimal newPrice) {
-        this.price = Money.from(newPrice);
+    public void markStockReserved() {
+        this.stockReserved = true;
     }
 
-    public void changeQuantity(int newQuantity) {
-        if (newQuantity <= 0) {
-            throw new IllegalArgumentException("주문 수량은 1개 이상이어야 합니다.");
-        }
-        this.quantity = newQuantity;
+    public void markStockRestored() {
+        this.stockReserved = false;
     }
 
     void assignOrder(Order order) {

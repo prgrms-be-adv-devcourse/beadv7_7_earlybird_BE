@@ -10,7 +10,7 @@ public interface RewardPort {
 
     RewardSnapshot getReward(Long rewardId);
 
-    void decreaseStock(Long rewardId, int quantity);
+    void decreaseStock(Long rewardId, int quantity, Long orderId);
 
-    void restoreStock(Long rewardId, int quantity);
+    void restoreStock(Long rewardId, int quantity, Long orderId);
 }

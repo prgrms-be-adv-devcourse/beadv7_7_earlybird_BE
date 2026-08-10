@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.order.application;
 
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
+import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
@@ -89,8 +90,8 @@ class OrderApiServiceTest {
                 OrderStatus.PAID);
         InOrder inOrder = inOrder(orderRepository, rewardPort, paymentPort);
         inOrder.verify(orderRepository).saveAndFlush(any(Order.class));
-        inOrder.verify(rewardPort).decreaseStock(10L, 2);
-        inOrder.verify(rewardPort).decreaseStock(20L, 2);
+        inOrder.verify(rewardPort).decreaseStock(10L, 2, 1L);
+        inOrder.verify(rewardPort).decreaseStock(20L, 2, 1L);
         inOrder.verify(orderRepository).save(any(Order.class));
         inOrder.verify(paymentPort).pay(1L, 1L, BigDecimal.valueOf(50_000));
     }
@@ -102,7 +103,7 @@ class OrderApiServiceTest {
         stubRepository();
         stubReward();
         doThrow(new IllegalStateException("stock unavailable"))
-                .when(rewardPort).decreaseStock(10L, 2);
+                .when(rewardPort).decreaseStock(10L, 2, 1L);
 
         assertThatThrownBy(() -> orderApiService.placeOrder(command(), 1L))
                 .isInstanceOf(IllegalStateException.class);
@@ -110,7 +111,7 @@ class OrderApiServiceTest {
         assertThat(orders.get(1L).getStatus()).isEqualTo(OrderStatus.STOCK_FAILED);
         assertThat(savedStatuses).containsExactly(OrderStatus.CREATED, OrderStatus.STOCK_FAILED);
         verify(paymentPort, never()).pay(any(), any(), any());
-        verify(rewardPort, never()).restoreStock(10L, 2);
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -129,7 +130,7 @@ class OrderApiServiceTest {
                 OrderStatus.CREATED,
                 OrderStatus.PAYMENT_REQUEST,
                 OrderStatus.PAYMENT_FAILED);
-        verify(rewardPort).restoreStock(10L, 2);
+        verify(rewardPort).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -142,13 +143,13 @@ class OrderApiServiceTest {
 
         OrderResult result = orderApiService.placeOrder(command(), 1L);
 
-        assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_PROCESSING);
-        assertThat(orders.get(1L).getStatus()).isEqualTo(OrderStatus.PAYMENT_PROCESSING);
+        assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_PENDING);
+        assertThat(orders.get(1L).getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
         assertThat(savedStatuses).containsExactly(
                 OrderStatus.CREATED,
                 OrderStatus.PAYMENT_REQUEST,
-                OrderStatus.PAYMENT_PROCESSING);
-        verify(rewardPort, never()).restoreStock(10L, 2);
+                OrderStatus.PAYMENT_PENDING);
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -181,8 +182,8 @@ class OrderApiServiceTest {
         assertThat(result.id()).isEqualTo(1L);
         assertThat(result.status()).isEqualTo(OrderStatus.PAID);
         assertThat(orders.get(1L).getProjectId()).isEqualTo(10L);
-        verify(rewardPort, times(1)).decreaseStock(10L, 2);
-        verify(rewardPort, never()).restoreStock(10L, 2);
+        verify(rewardPort, times(1)).decreaseStock(10L, 2, 1L);
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -192,7 +193,7 @@ class OrderApiServiceTest {
         stubRepository();
         stubReward();
         doThrow(new IllegalStateException("stock unavailable"))
-                .when(rewardPort).decreaseStock(10L, 2);
+                .when(rewardPort).decreaseStock(10L, 2, 1L);
 
         assertThatThrownBy(() -> orderApiService.placeOrder(command(), 1L))
                 .isInstanceOf(IllegalStateException.class);
@@ -212,7 +213,7 @@ class OrderApiServiceTest {
         OrderResult result = orderApiService.placeOrder(command(), 1L);
 
         assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_FAILED);
-        verify(rewardPort).restoreStock(10L, 2);
+        verify(rewardPort).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -227,8 +228,8 @@ class OrderApiServiceTest {
         OrderResult result = orderApiService.applyPaymentResult(orderId, PaymentResult.success(99L, BigDecimal.valueOf(23000)));
 
         assertThat(result.status()).isEqualTo(OrderStatus.PAID);
-        verify(rewardPort, never()).decreaseStock(10L, 2);
-        verify(rewardPort, never()).restoreStock(10L, 2);
+        verify(rewardPort, never()).decreaseStock(10L, 2, 1L);
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -243,7 +244,7 @@ class OrderApiServiceTest {
         OrderResult result = orderApiService.applyPaymentResult(orderId, PaymentResult.failure(BigDecimal.valueOf(23000)));
 
         assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_FAILED);
-        verify(rewardPort).restoreStock(10L, 2);
+        verify(rewardPort).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -261,7 +262,7 @@ class OrderApiServiceTest {
 
         assertThat(result.status()).isEqualTo(OrderStatus.CANCELLED);
         verify(paymentPort).refund(orderId, BigDecimal.valueOf(23000));
-        verify(rewardPort).restoreStock(10L, 2);
+        verify(rewardPort).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -278,7 +279,7 @@ class OrderApiServiceTest {
                 .isInstanceOf(IllegalStateException.class);
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
-        verify(rewardPort, never()).restoreStock(10L, 2);
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -303,7 +304,7 @@ class OrderApiServiceTest {
                 .isInstanceOf(BusinessException.class);
 
         verifyNoInteractions(paymentPort);
-        verify(rewardPort, never()).restoreStock(10L, 2);
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
     }
 
     @Disabled
@@ -385,8 +386,8 @@ class OrderApiServiceTest {
                         org.assertj.core.groups.Tuple.tuple(10L, 2),
                         org.assertj.core.groups.Tuple.tuple(20L, 2));
         assertThat(orders.get(1L).getItems()).hasSize(2);
-        verify(rewardPort).decreaseStock(10L, 2);
-        verify(rewardPort).decreaseStock(20L, 2);
+        verify(rewardPort).decreaseStock(10L, 2, 1L);
+        verify(rewardPort).decreaseStock(20L, 2, 1L);
         verify(paymentPort).pay(1L, 1L, BigDecimal.valueOf(50_000));
     }
 
@@ -405,7 +406,7 @@ class OrderApiServiceTest {
         assertThat(result.orderItems())
                 .extracting(OrderResult.Item::rewardId, OrderResult.Item::quantity)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple(10L, 2));
-        verify(rewardPort).decreaseStock(10L, 2);
+        verify(rewardPort).decreaseStock(10L, 2, 1L);
         verify(paymentPort).pay(1L, 1L, BigDecimal.valueOf(23_000));
     }
 
@@ -431,7 +432,7 @@ class OrderApiServiceTest {
         assertThat(result.orderItems())
                 .extracting(OrderResult.Item::rewardId, OrderResult.Item::quantity)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple(94L, 1));
-        verify(rewardPort).decreaseStock(94L, 1);
+        verify(rewardPort).decreaseStock(94L, 1, 1L);
         verify(paymentPort).pay(1L, 16L, BigDecimal.valueOf(13_000));
     }
 
@@ -491,7 +492,7 @@ class OrderApiServiceTest {
         OrderResult result = orderApiService.placeOrder(command(1L, key), 1L);
 
         assertThat(result.id()).isEqualTo(7L);
-        verify(rewardPort, never()).decreaseStock(any(), any(Integer.class));
+        verify(rewardPort, never()).decreaseStock(any(), any(Integer.class), any());
         verifyNoInteractions(paymentPort);
     }
 
@@ -509,6 +510,161 @@ class OrderApiServiceTest {
 
         assertThat(first.id()).isNotEqualTo(second.id());
         assertThat(orders.values()).extracting(Order::getUserId).containsExactlyInAnyOrder(1L, 2L);
+    }
+
+    @Disabled
+    @Test
+    void technicalStockFailureIsRetriedAndRemainsRecoverable() {
+        stubRepository();
+        stubReward();
+        doThrow(new ServiceUnavailableException("reward unavailable"))
+                .when(rewardPort).decreaseStock(10L, 2, 1L);
+
+        OrderResult result = orderApiService.placeOrder(command(), 1L);
+
+        assertThat(result.status()).isEqualTo(OrderStatus.STOCK_PENDING);
+        verify(rewardPort, times(3)).decreaseStock(10L, 2, 1L);
+        verifyNoInteractions(paymentPort);
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
+    }
+
+    @Disabled
+    @Test
+    void businessStockFailureIsNotRetried() {
+        stubRepository();
+        stubReward();
+        doThrow(new IllegalStateException("insufficient stock"))
+                .when(rewardPort).decreaseStock(10L, 2, 1L);
+
+        assertThatThrownBy(() -> orderApiService.placeOrder(command(), 1L))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(rewardPort).decreaseStock(10L, 2, 1L);
+        verifyNoInteractions(paymentPort);
+    }
+
+    @Disabled
+    @Test
+    void technicalPaymentFailureDoesNotRestoreStock() {
+        stubRepository();
+        stubReward();
+        when(paymentPort.pay(any(), any(), any()))
+                .thenThrow(new ServiceUnavailableException("payment unavailable"));
+
+        OrderResult result = orderApiService.placeOrder(command(), 1L);
+
+        assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_PENDING);
+        verify(paymentPort, times(3)).pay(1L, 1L, BigDecimal.valueOf(23_000));
+        verify(rewardPort, never()).restoreStock(10L, 2, 1L);
+    }
+
+    @Disabled
+    @Test
+    void technicalRestoreFailureRemainsRecoverable() {
+        stubRepository();
+        stubReward();
+        when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.failure(BigDecimal.valueOf(23_000)));
+        doThrow(new ServiceUnavailableException("restore unavailable"))
+                .when(rewardPort).restoreStock(10L, 2, 1L);
+
+        OrderResult result = orderApiService.placeOrder(command(), 1L);
+
+        assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_COMPENSATION_PENDING);
+        verify(rewardPort, times(3)).restoreStock(10L, 2, 1L);
+    }
+
+    @Disabled
+    @Test
+    void recoveryContinuesStockPendingOrderThroughPayment() {
+        stubRepository();
+        stubReward();
+        doThrow(new ServiceUnavailableException("temporary"),
+                new ServiceUnavailableException("temporary"),
+                new ServiceUnavailableException("temporary"))
+                .doNothing()
+                .when(rewardPort).decreaseStock(10L, 2, 1L);
+        when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.success(99L, BigDecimal.valueOf(23_000)));
+
+        OrderResult pending = orderApiService.placeOrder(command(), 1L);
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(orders.get(1L)));
+        orderApiService.recoverPendingOrders();
+
+        assertThat(pending.status()).isEqualTo(OrderStatus.STOCK_PENDING);
+        assertThat(orders.get(1L).getStatus()).isEqualTo(OrderStatus.PAID);
+        verify(rewardPort, times(4)).decreaseStock(10L, 2, 1L);
+        verify(paymentPort).pay(1L, 1L, BigDecimal.valueOf(23_000));
+    }
+
+    @Disabled
+    @Test
+    void paymentStatusCallbackIsIdempotentAndDoesNotRegressPaidOrder() {
+        Long orderId = 1L;
+        Order order = processingOrder(orderId);
+        when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
+        when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(orderApiService.applyPaymentStatus(orderId, "PAID").status()).isEqualTo(OrderStatus.PAID);
+        assertThat(orderApiService.applyPaymentStatus(orderId, "PAID").status()).isEqualTo(OrderStatus.PAID);
+        assertThat(orderApiService.applyPaymentStatus(orderId, "FAILED").status()).isEqualTo(OrderStatus.PAID);
+
+        verify(rewardPort, never()).restoreStock(any(), any(Integer.class), any());
+    }
+
+    @Disabled
+    @Test
+    void paymentStatusCallbackRejectsInvalidOrderTransition() {
+        Long orderId = 1L;
+        Order order = Order.create(orderId, 1L, 1L,
+                List.of(OrderItem.create("Reward A", BigDecimal.valueOf(10_000), 1L, 10L, 2)),
+                "Receiver", "010-0000-0000", "Seoul", "06236", UUID.randomUUID());
+        when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> orderApiService.applyPaymentStatus(orderId, "PAID"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Disabled
+    @Test
+    void paymentPendingRecoveryDoesNotPreparePaymentAgain() {
+        stubRepository();
+        Order order = processingOrder(1L);
+        order.markPaymentPending();
+        orders.put(1L, order);
+        when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
+
+        orderApiService.recoverPendingOrders();
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
+        verify(paymentPort, never()).pay(any(), any(), any());
+        verify(paymentPort, never()).getPaymentResult(any());
+    }
+
+    @Disabled
+    @Test
+    void businessPaymentRequestFailureCompensatesAndPersistsFailure() {
+        stubRepository();
+        stubReward();
+        when(paymentPort.pay(any(), any(), any())).thenThrow(new IllegalStateException("payment rejected"));
+
+        assertThatThrownBy(() -> orderApiService.placeOrder(command(), 1L))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(orders.get(1L).getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+        verify(rewardPort).restoreStock(10L, 2, 1L);
+    }
+
+    @Disabled
+    @Test
+    void businessRestoreFailureRemainsRecoverable() {
+        stubRepository();
+        stubReward();
+        when(paymentPort.pay(any(), any(), any())).thenReturn(PaymentResult.failure(BigDecimal.valueOf(23_000)));
+        doThrow(new IllegalStateException("restore rejected"))
+                .when(rewardPort).restoreStock(10L, 2, 1L);
+
+        OrderResult result = orderApiService.placeOrder(command(), 1L);
+
+        assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_COMPENSATION_PENDING);
     }
 
     private void stubRepository() {

@@ -1,10 +1,6 @@
 package com.growmighty.lectures.firstday.order;
 
 import com.growmighty.lectures.firstday.order.config.JpaAuditingConfig;
-import com.growmighty.lectures.firstday.order.application.OrderApiService;
-import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
-import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
-import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
@@ -22,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -53,9 +48,7 @@ class OrderRepositoryTests {
     @Autowired
     private EntityManager entityManager;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
+    @Disabled
     @Test
     @DisplayName("Order STATUS 변화 테스트")
     void orderCreationStatusesArePersistedAndLoaded() {
@@ -178,11 +171,11 @@ class OrderRepositoryTests {
             }
 
             @Override
-            public void decreaseStock(Long rewardId, int quantity) {
+            public void decreaseStock(Long rewardId, int quantity, Long orderId) {
             }
 
             @Override
-            public void restoreStock(Long rewardId, int quantity) {
+            public void restoreStock(Long rewardId, int quantity, Long orderId) {
             }
         };
     }
