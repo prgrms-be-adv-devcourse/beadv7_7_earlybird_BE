@@ -1,7 +1,7 @@
 // TODO(settlement-plan): Align persisted names with the Toss seller destination while retaining masked target data only.
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity;
 
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinationSnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 
@@ -23,18 +23,30 @@ public class PayoutDestinationSnapshotJpaEmbeddable {
     protected PayoutDestinationSnapshotJpaEmbeddable() {
     }
 
-    private PayoutDestinationSnapshotJpaEmbeddable(PayoutDestinationSnapshot snapshot) {
-        this.creatorId = snapshot.creatorId();
-        this.tossSellerId = snapshot.tossSellerId();
-        this.bankCode = snapshot.bankCode();
-        this.maskedAccountNumber = snapshot.maskedAccountNumber();
+    private PayoutDestinationSnapshotJpaEmbeddable(ProjectSettlement settlement) {
+        this.creatorId = settlement.creatorId();
+        this.tossSellerId = settlement.tossSellerId();
+        this.bankCode = settlement.bankCode();
+        this.maskedAccountNumber = settlement.maskedAccountNumber();
     }
 
-    static PayoutDestinationSnapshotJpaEmbeddable fromDomain(PayoutDestinationSnapshot snapshot) {
-        return new PayoutDestinationSnapshotJpaEmbeddable(snapshot);
+    static PayoutDestinationSnapshotJpaEmbeddable fromDomain(ProjectSettlement settlement) {
+        return new PayoutDestinationSnapshotJpaEmbeddable(settlement);
     }
 
-    PayoutDestinationSnapshot toDomain() {
-        return PayoutDestinationSnapshot.of(creatorId, tossSellerId, bankCode, maskedAccountNumber);
+    Long creatorId() {
+        return creatorId;
+    }
+
+    String tossSellerId() {
+        return tossSellerId;
+    }
+
+    String bankCode() {
+        return bankCode;
+    }
+
+    String maskedAccountNumber() {
+        return maskedAccountNumber;
     }
 }

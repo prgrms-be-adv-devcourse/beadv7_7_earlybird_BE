@@ -59,13 +59,9 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
     private ProjectSettlementJpaEntity(ProjectSettlement settlement) {
         this.projectId = settlement.projectId();
         this.creatorId = settlement.creatorId();
-        this.feePolicySnapshot = SettlementFeePolicySnapshotJpaEmbeddable.fromDomain(
-                settlement.feePolicySnapshot()
-        );
-        this.breakdown = SettlementBreakdownJpaEmbeddable.fromDomain(settlement.breakdown());
-        this.destinationSnapshot = PayoutDestinationSnapshotJpaEmbeddable.fromDomain(
-                settlement.destinationSnapshot()
-        );
+        this.feePolicySnapshot = SettlementFeePolicySnapshotJpaEmbeddable.fromDomain(settlement);
+        this.breakdown = SettlementBreakdownJpaEmbeddable.fromDomain(settlement);
+        this.destinationSnapshot = PayoutDestinationSnapshotJpaEmbeddable.fromDomain(settlement);
         this.scheduledDate = settlement.scheduledDate();
         this.status = settlement.status();
         this.confirmedAt = settlement.confirmedAt();
@@ -79,13 +75,26 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
     }
 
     public ProjectSettlement toDomain() {
+        if (!creatorId.equals(destinationSnapshot.creatorId())) {
+            throw new IllegalArgumentException("프로젝트 창작자와 지급 대상 창작자가 일치해야 합니다.");
+        }
         return ProjectSettlement.restore(
                 id,
                 projectId,
                 creatorId,
-                feePolicySnapshot.toDomain(),
-                breakdown.toDomain(),
-                destinationSnapshot.toDomain(),
+                feePolicySnapshot.paymentAndSettlementAgencyFeeRate(),
+                feePolicySnapshot.platformFeeRate(),
+                feePolicySnapshot.vatRate(),
+                breakdown.baseAmount(),
+                breakdown.paymentAndSettlementAgencyFeeAmount(),
+                breakdown.paymentAndSettlementAgencyFeeVatAmount(),
+                breakdown.platformFeeAmount(),
+                breakdown.platformFeeVatAmount(),
+                breakdown.otherDeductionAmount(),
+                breakdown.creatorPayoutAmount(),
+                destinationSnapshot.tossSellerId(),
+                destinationSnapshot.bankCode(),
+                destinationSnapshot.maskedAccountNumber(),
                 scheduledDate,
                 status,
                 confirmedAt

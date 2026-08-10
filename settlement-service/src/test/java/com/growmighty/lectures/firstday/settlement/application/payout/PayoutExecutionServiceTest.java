@@ -9,15 +9,13 @@ import com.growmighty.lectures.firstday.settlement.application.port.payout.Payou
 import com.growmighty.lectures.firstday.settlement.application.port.payout.ScheduledPayoutRequest;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinationSnapshot;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -214,17 +212,19 @@ class PayoutExecutionServiceTest {
                 SETTLEMENT_ID,
                 1L,
                 10L,
-                SettlementFeePolicySnapshot.current(),
-                SettlementBreakdown.of(
-                        Money.wons(100_000),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(4_000),
-                        Money.wons(400),
-                        Money.wons(0),
-                        Money.wons(91_200)
-                ),
-                PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234"),
+                new BigDecimal("0.04"),
+                new BigDecimal("0.04"),
+                new BigDecimal("0.10"),
+                Money.wons(100_000),
+                Money.wons(4_000),
+                Money.wons(400),
+                Money.wons(4_000),
+                Money.wons(400),
+                Money.wons(0),
+                Money.wons(91_200),
+                "seller-10",
+                "088",
+                "********1234",
                 LocalDate.of(2026, 8, 3),
                 PayoutStatus.SCHEDULED,
                 LocalDateTime.of(2026, 7, 26, 1, 0)

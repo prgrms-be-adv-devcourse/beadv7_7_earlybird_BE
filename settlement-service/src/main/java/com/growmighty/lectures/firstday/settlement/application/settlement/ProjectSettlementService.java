@@ -58,7 +58,7 @@ public class ProjectSettlementService {
         ProjectSettlement settlement = executePersistenceOperation(
                 () -> projectSettlementRepository.save(settlementToSave)
         );
-        // ponytail: remove this compatibility write when payout execution moves onto ProjectSettlement.
+        // ponytail: remove this compatibility write when the next TODO moves payout execution onto ProjectSettlement.
         PayoutObligation payoutObligationToSave = PayoutObligation.schedule(
                 settlement.id(),
                 settlement.creatorId(),
