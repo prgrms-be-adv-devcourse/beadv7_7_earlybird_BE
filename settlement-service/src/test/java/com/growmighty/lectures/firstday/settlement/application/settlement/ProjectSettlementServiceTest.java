@@ -10,8 +10,8 @@ import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -69,7 +69,9 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
                     assertThat(values.get(2)).isEqualTo(Money.wons(27_595));
                     assertThat(values.get(3)).isEqualTo(PayoutObligationStatus.SCHEDULED);
                 });
-        assertThat(settlement.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
+        assertThat(settlement.paymentAndSettlementAgencyFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
+        assertThat(settlement.platformFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
+        assertThat(settlement.vatRate()).isEqualByComparingTo(new BigDecimal("0.10"));
     }
 
     @Test
