@@ -36,11 +36,7 @@ public record ProjectOutcomeProcessingResult(
         return switch (processingStatus) {
             case SETTLEMENT_CONFIRMED, SETTLEMENT_ALREADY_CONFIRMED ->
                     outcomeStatus == ProjectOutcomeStatus.SUCCEEDED;
-            case PAYMENT_CANCELLATION_COMPLETED,
-                    PAYMENT_CANCELLATION_PROCESSING,
-                    PAYMENT_CANCELLATION_RETRYABLE_FAILED,
-                    PAYMENT_CANCELLATION_FINAL_FAILED,
-                    PAYMENT_CANCELLATION_UNKNOWN -> outcomeStatus != ProjectOutcomeStatus.SUCCEEDED;
+            case REFUND_REQUEST_PENDING -> outcomeStatus != ProjectOutcomeStatus.SUCCEEDED;
             case OUTCOME_CONFLICT -> true;
         };
     }

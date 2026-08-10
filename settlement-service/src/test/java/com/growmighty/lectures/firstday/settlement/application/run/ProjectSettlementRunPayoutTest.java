@@ -1,7 +1,6 @@
 // TODO(settlement-plan): Verify payout starts only after full PG reconciliation and remains idempotent across reruns.
 package com.growmighty.lectures.firstday.settlement.application.run;
 
-import com.growmighty.lectures.firstday.settlement.application.cancellation.ProjectPaymentCancellationCommandService;
 import com.growmighty.lectures.firstday.settlement.application.payout.PayoutExecutionResult;
 import com.growmighty.lectures.firstday.settlement.application.payout.PayoutExecutor;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmedProjectSettlement;
@@ -47,9 +46,6 @@ class ProjectSettlementRunPayoutTest {
                 )
         );
         ProjectSettlementService settlementService = mock(ProjectSettlementService.class);
-        ProjectPaymentCancellationCommandService cancellationCommandService =
-                mock(ProjectPaymentCancellationCommandService.class);
-        when(cancellationCommandService.findAllByProjectIdIn(any())).thenReturn(List.of());
         when(settlementService.confirm(any())).thenReturn(new ConfirmedProjectSettlement(
                 101L,
                 201L,
@@ -71,9 +67,7 @@ class ProjectSettlementRunPayoutTest {
         ProjectSettlementRunService runService = new ProjectSettlementRunService(
                 outcomeReader,
                 orderReader,
-                requests -> List.of(),
                 settlementService,
-                cancellationCommandService,
                 Clock.fixed(Instant.parse("2026-07-26T01:00:00Z"), ZoneOffset.UTC),
                 Optional.of(payoutExecutor)
         );

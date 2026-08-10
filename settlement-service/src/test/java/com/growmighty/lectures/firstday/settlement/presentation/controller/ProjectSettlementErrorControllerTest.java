@@ -14,10 +14,6 @@ import com.growmighty.lectures.firstday.settlement.application.port.order.Projec
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationRequest;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationResult;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
@@ -45,8 +41,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest(properties = {
         "settlement.external-data.mode=error-test",
         "settlement.project-target.mode=error-test",
-        "settlement.project-order.mode=error-test",
-        "settlement.payment-cancellation.mode=error-test"
+        "settlement.project-order.mode=error-test"
 })
 @AutoConfigureMockMvc
 class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
@@ -253,8 +248,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     static class TestExternalDataAdapter
             implements ProjectOutcomeReader,
-            ProjectOrderReader,
-            ProjectPaymentCancellationGateway {
+            ProjectOrderReader {
 
         private ProjectOutcome outcome;
         private List<OrderPayment> orders;
@@ -301,19 +295,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 throw orderReadFailure;
             }
             return List.of(new ProjectOrders(outcome.projectId(), orders));
-        }
-
-        @Override
-        public List<ProjectPaymentCancellationResult> cancel(
-                List<ProjectPaymentCancellationRequest> requests
-        ) {
-            return requests.stream()
-                    .map(ProjectPaymentCancellationRequest::orderId)
-                    .map(orderId -> new ProjectPaymentCancellationResult(
-                            orderId,
-                            ProjectPaymentCancellationStatus.COMPLETED
-                    ))
-                    .toList();
         }
     }
 
