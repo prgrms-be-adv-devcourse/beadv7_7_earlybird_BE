@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.settlement.domain.model;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Objects;
 
 public final class ProjectSettlement {
@@ -43,6 +44,32 @@ public final class ProjectSettlement {
             throw new IllegalArgumentException("프로젝트 창작자와 지급 대상 창작자가 일치해야 합니다.");
         }
         this.confirmedAt = Objects.requireNonNull(confirmedAt, "정산 확정 시각은 필수입니다.");
+    }
+
+    public static ProjectSettlement confirm(
+            Long projectId,
+            Long creatorId,
+            List<Money> orderPaymentAmounts,
+            CreatorPayoutProfile payoutProfile,
+            LocalDateTime confirmedAt
+    ) {
+        List<Money> amounts = List.copyOf(Objects.requireNonNull(
+                orderPaymentAmounts,
+                "주문 결제금액 목록은 필수입니다."
+        ));
+        CreatorPayoutProfile profile = Objects.requireNonNull(payoutProfile, "창작자 지급 프로필은 필수입니다.");
+        if (!profile.creatorId().equals(creatorId) || !profile.canReceivePayout()) {
+            throw new IllegalArgumentException("프로젝트 창작자의 지급 가능한 프로필이 필요합니다.");
+        }
+        SettlementCalculationPolicy calculationPolicy = SettlementCalculationPolicy.current();
+        return confirm(
+                projectId,
+                creatorId,
+                calculationPolicy.feePolicySnapshot(),
+                calculationPolicy.calculate(amounts),
+                profile.snapshotDestination(),
+                confirmedAt
+        );
     }
 
     public static ProjectSettlement confirm(
