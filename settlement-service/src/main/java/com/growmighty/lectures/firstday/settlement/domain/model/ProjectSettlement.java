@@ -4,8 +4,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 public final class ProjectSettlement {
 
@@ -31,7 +35,10 @@ public final class ProjectSettlement {
     private final String bankCode;
     private final String maskedAccountNumber;
     private final LocalDate scheduledDate;
-    private final PayoutStatus status;
+    private PayoutStatus status;
+    private final List<PayoutAttempt> attempts;
+    private PayoutAttempt successfulAttempt;
+    private final Long version;
     private final LocalDateTime confirmedAt;
 
     private ProjectSettlement(
@@ -53,6 +60,9 @@ public final class ProjectSettlement {
             String maskedAccountNumber,
             LocalDate scheduledDate,
             PayoutStatus status,
+            List<PayoutAttempt> attempts,
+            Integer successfulAttemptSequence,
+            Long version,
             LocalDateTime confirmedAt
     ) {
         this.id = id;
@@ -76,6 +86,14 @@ public final class ProjectSettlement {
         this.maskedAccountNumber = maskedAccountNumber;
         this.scheduledDate = scheduledDate;
         this.status = status;
+        this.attempts = new ArrayList<>(Objects.requireNonNull(attempts, "지급 시도 목록은 필수입니다."));
+        this.version = version;
+        if (successfulAttemptSequence != null) {
+            this.successfulAttempt = this.attempts.stream()
+                    .filter(attempt -> attempt.sequence() == successfulAttemptSequence)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("성공한 지급 시도가 지급 시도 목록에 없습니다."));
+        }
         this.confirmedAt = confirmedAt;
         validateState();
     }
@@ -137,6 +155,9 @@ public final class ProjectSettlement {
                 profile.maskedAccountNumber(),
                 scheduledDate,
                 PayoutStatus.SCHEDULED,
+                List.of(),
+                null,
+                null,
                 confirmedAt
         );
     }
@@ -162,6 +183,56 @@ public final class ProjectSettlement {
             PayoutStatus status,
             LocalDateTime confirmedAt
     ) {
+        return restore(
+                id,
+                projectId,
+                creatorId,
+                paymentAndSettlementAgencyFeeRate,
+                platformFeeRate,
+                vatRate,
+                baseAmount,
+                paymentAndSettlementAgencyFeeAmount,
+                paymentAndSettlementAgencyFeeVatAmount,
+                platformFeeAmount,
+                platformFeeVatAmount,
+                otherDeductionAmount,
+                creatorPayoutAmount,
+                tossSellerId,
+                bankCode,
+                maskedAccountNumber,
+                scheduledDate,
+                status,
+                List.of(),
+                null,
+                null,
+                confirmedAt
+        );
+    }
+
+    public static ProjectSettlement restore(
+            Long id,
+            Long projectId,
+            Long creatorId,
+            BigDecimal paymentAndSettlementAgencyFeeRate,
+            BigDecimal platformFeeRate,
+            BigDecimal vatRate,
+            Money baseAmount,
+            Money paymentAndSettlementAgencyFeeAmount,
+            Money paymentAndSettlementAgencyFeeVatAmount,
+            Money platformFeeAmount,
+            Money platformFeeVatAmount,
+            Money otherDeductionAmount,
+            Money creatorPayoutAmount,
+            String tossSellerId,
+            String bankCode,
+            String maskedAccountNumber,
+            LocalDate scheduledDate,
+            PayoutStatus status,
+            List<PayoutAttempt> attempts,
+            Integer successfulAttemptSequence,
+            Long version,
+            LocalDateTime confirmedAt
+    ) {
         return new ProjectSettlement(
                 Objects.requireNonNull(id, "프로젝트 정산 식별자는 필수입니다."),
                 projectId,
@@ -181,6 +252,9 @@ public final class ProjectSettlement {
                 maskedAccountNumber,
                 scheduledDate,
                 status,
+                attempts,
+                successfulAttemptSequence,
+                version,
                 confirmedAt
         );
     }
@@ -257,6 +331,100 @@ public final class ProjectSettlement {
         return status;
     }
 
+    public List<PayoutAttempt> attempts() {
+        return List.copyOf(attempts);
+    }
+
+    public int attemptCount() {
+        return attempts.size();
+    }
+
+    public Optional<PayoutAttempt> latestAttempt() {
+        return attempts.isEmpty() ? Optional.empty() : Optional.of(attempts.getLast());
+    }
+
+    public Optional<PayoutAttempt> successfulAttempt() {
+        return Optional.ofNullable(successfulAttempt);
+    }
+
+    public Integer successfulAttemptSequence() {
+        return successfulAttempt == null ? null : successfulAttempt.sequence();
+    }
+
+    public Long version() {
+        return version;
+    }
+
+    public PayoutAttempt startAttempt(
+            String refPayoutId,
+            String idempotencyKey,
+            LocalDateTime requestedAt
+    ) {
+        if (status != PayoutStatus.SCHEDULED && status != PayoutStatus.RETRY_WAITING) {
+            throw new IllegalStateException("현재 상태에서는 지급 시도를 시작할 수 없습니다: " + status);
+        }
+        PayoutAttempt attempt = PayoutAttempt.requested(
+                attempts.size() + 1,
+                refPayoutId,
+                idempotencyKey,
+                creatorPayoutAmount,
+                requestedAt
+        );
+        attempts.add(attempt);
+        status = PayoutStatus.PROCESSING;
+        return attempt;
+    }
+
+    public void failAttempt(
+            PayoutAttempt attempt,
+            String tossPayoutId,
+            String errorCode,
+            LocalDateTime completedAt,
+            boolean retryable
+    ) {
+        requireProcessingAttempt(attempt);
+        attempt.fail(tossPayoutId, errorCode, completedAt);
+        status = retryable ? PayoutStatus.RETRY_WAITING : PayoutStatus.ACTION_REQUIRED;
+    }
+
+    public void acknowledgeAttempt(
+            PayoutAttempt attempt,
+            String tossPayoutId,
+            PayoutAttemptStatus acknowledgedStatus
+    ) {
+        requireProcessingAttempt(attempt);
+        attempt.acknowledge(tossPayoutId, acknowledgedStatus);
+    }
+
+    public void completeAttempt(
+            PayoutAttempt attempt,
+            String tossPayoutId,
+            LocalDateTime completedAt
+    ) {
+        requireProcessingAttempt(attempt);
+        if (successfulAttempt != null) {
+            throw new IllegalStateException("이미 성공한 지급 시도가 존재합니다.");
+        }
+        attempt.complete(tossPayoutId, completedAt);
+        successfulAttempt = attempt;
+        status = PayoutStatus.COMPLETED;
+    }
+
+    public void markAttemptUnknown(PayoutAttempt attempt) {
+        requireProcessingAttempt(attempt);
+        attempt.markUnknown(null);
+    }
+
+    public void cancelAttempt(
+            PayoutAttempt attempt,
+            String tossPayoutId,
+            LocalDateTime completedAt
+    ) {
+        requireProcessingAttempt(attempt);
+        attempt.cancel(tossPayoutId, completedAt);
+        status = PayoutStatus.ACTION_REQUIRED;
+    }
+
     public LocalDateTime confirmedAt() {
         return confirmedAt;
     }
@@ -303,6 +471,21 @@ public final class ProjectSettlement {
         Objects.requireNonNull(scheduledDate, "지급 예정일은 필수입니다.");
         Objects.requireNonNull(status, "지급 상태는 필수입니다.");
         Objects.requireNonNull(confirmedAt, "정산 확정 시각은 필수입니다.");
+        Set<Integer> sequences = new HashSet<>();
+        for (PayoutAttempt attempt : attempts) {
+            if (!creatorPayoutAmount.equals(attempt.amount())) {
+                throw new IllegalArgumentException("지급 시도의 금액이 프로젝트 정산 지급액과 일치하지 않습니다.");
+            }
+            if (!sequences.add(attempt.sequence())) {
+                throw new IllegalArgumentException("지급 시도 순번은 중복될 수 없습니다.");
+            }
+        }
+        if ((status == PayoutStatus.COMPLETED) != (successfulAttempt != null)) {
+            throw new IllegalArgumentException("지급 완료 상태와 성공한 지급 시도가 일치해야 합니다.");
+        }
+        if (successfulAttempt != null && successfulAttempt.status() != PayoutAttemptStatus.COMPLETED) {
+            throw new IllegalArgumentException("성공한 지급 시도는 완료 상태여야 합니다.");
+        }
     }
 
     private static BigDecimal applyRate(BigDecimal amount, BigDecimal rate) {
@@ -330,6 +513,12 @@ public final class ProjectSettlement {
     private static void requireText(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + "은 필수입니다.");
+        }
+    }
+
+    private void requireProcessingAttempt(PayoutAttempt attempt) {
+        if (status != PayoutStatus.PROCESSING || !attempts.contains(attempt)) {
+            throw new IllegalStateException("현재 프로젝트 정산에 처리 중인 지급 시도가 아닙니다.");
         }
     }
 }
