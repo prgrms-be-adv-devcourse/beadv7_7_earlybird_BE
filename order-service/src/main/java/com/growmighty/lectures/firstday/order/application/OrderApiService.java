@@ -265,8 +265,14 @@ public class OrderApiService {
                 && payment.status() != PaymentResult.Status.FAILURE) {
             return;
         }
+        if (order.getStatus() == OrderStatus.PAYMENT_RECONCILIATION_REQUIRED
+                && payment.status() != PaymentResult.Status.SUCCESS
+                && payment.status() != PaymentResult.Status.FAILURE) {
+            return;
+        }
         if (order.getStatus() != OrderStatus.PAYMENT_REQUEST && order.getStatus() != OrderStatus.PAYMENT_PROCESSING
                 && order.getStatus() != OrderStatus.PAYMENT_PENDING
+                && order.getStatus() != OrderStatus.PAYMENT_RECONCILIATION_REQUIRED
                 && order.getStatus() != OrderStatus.PAYMENT_COMPENSATION_PENDING) {
             throw new IllegalStateException("Payment cannot be applied from status=" + order.getStatus());
         }
@@ -364,18 +370,19 @@ public class OrderApiService {
         for (OrderItem item : order.getItems()) {
             remoteCalls.execute("reward-decrease-stock",
                     () -> rewardPort.decreaseStock(item.getRewardId(), item.getQuantity(), item.getOrder().getId()));
+            item.markStockReserved();
             confirmedItems.add(item);
         }
-        log.info("재고 확보 오류. orderId={}", order.getId());
     }
 
     // 재고 복원
     private void releaseStock(Order order) {
         // TODO(미정) : 정합성 검증 추가?
         for (OrderItem item : order.getItems()) {
-            restoreStock(item);
+            if (item.isStockReserved()) {
+                restoreStock(item);
+            }
         }
-        log.info("재고 복원 오류. orderId={}", order.getId());
     }
 
     // 최종 결제까지 성공 시 cart에서 삭제
@@ -396,6 +403,7 @@ public class OrderApiService {
     private void restoreStock(OrderItem item) {
         remoteCalls.execute("reward-restore-stock",
                 () -> rewardPort.restoreStock(item.getRewardId(), item.getQuantity(), item.getOrder().getId()));
+        item.markStockRestored();
     }
 
     private void compensateStockFailure(Order order, List<OrderItem> confirmedItems) {
@@ -479,6 +487,7 @@ public class OrderApiService {
 
     private void recoverPayment(Order order) {
         log.warn("payment status lookup by orderId is unavailable; awaiting payment callback. orderId={}", order.getId());
+        orderRepository.save(order);
     }
 
     private Order getOrder(Long orderId) {

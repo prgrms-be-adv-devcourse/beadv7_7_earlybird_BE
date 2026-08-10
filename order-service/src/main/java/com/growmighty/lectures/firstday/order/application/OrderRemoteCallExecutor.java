@@ -6,6 +6,7 @@ import feign.RetryableException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.core.IntervalFunction;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
 import org.springframework.stereotype.Component;
@@ -53,7 +54,7 @@ public class OrderRemoteCallExecutor {
     private Retry retry(String operation) {
         return retries.computeIfAbsent(operation, key -> Retry.of(key, RetryConfig.custom()
                 .maxAttempts(3)
-                .waitDuration(Duration.ofMillis(100))
+                .intervalFunction(IntervalFunction.ofExponentialBackoff(100L, 2.0, 1_000L))
                 .retryOnException(this::isTechnical)
                 .build()));
     }

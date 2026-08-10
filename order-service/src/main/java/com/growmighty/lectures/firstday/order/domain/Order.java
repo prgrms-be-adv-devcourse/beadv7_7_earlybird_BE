@@ -184,7 +184,8 @@ public class Order extends BaseEntity {
 
     public void markPaymentCompensationPending() {
         if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
-                && this.status != OrderStatus.PAYMENT_PENDING) {
+                && this.status != OrderStatus.PAYMENT_PENDING
+                && this.status != OrderStatus.PAYMENT_RECONCILIATION_REQUIRED) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_COMPENSATION_PENDING);
         }
         this.status = OrderStatus.PAYMENT_COMPENSATION_PENDING;
@@ -193,7 +194,8 @@ public class Order extends BaseEntity {
     public void markPaymentFailed() {
         if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
                 && this.status != OrderStatus.PAYMENT_PENDING
-                && this.status != OrderStatus.PAYMENT_COMPENSATION_PENDING) {
+                && this.status != OrderStatus.PAYMENT_COMPENSATION_PENDING
+                && this.status != OrderStatus.PAYMENT_RECONCILIATION_REQUIRED) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAYMENT_FAILED);
         }
         this.status = OrderStatus.PAYMENT_FAILED;
@@ -201,7 +203,8 @@ public class Order extends BaseEntity {
 
     public void markPaid() {
         if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
-                && this.status != OrderStatus.PAYMENT_PENDING) {
+                && this.status != OrderStatus.PAYMENT_PENDING
+                && this.status != OrderStatus.PAYMENT_RECONCILIATION_REQUIRED) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAID);
         }
         this.status = OrderStatus.PAID;
@@ -213,23 +216,6 @@ public class Order extends BaseEntity {
 
     public boolean isCancelled() {
         return this.status == OrderStatus.CANCELLED;
-    }
-
-    public void changeItemPrice(Long orderItemId, BigDecimal newPrice) {
-        findItem(orderItemId).changePrice(newPrice);
-        recalculateAmounts();
-    }
-
-    public void changeItemQuantity(Long orderItemId, int newQuantity) {
-        findItem(orderItemId).changeQuantity(newQuantity);
-        recalculateAmounts();
-    }
-
-    private OrderItem findItem(Long orderItemId) {
-        return items.stream()
-                .filter(e -> e.getId().equals(orderItemId))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Order item not found."));
     }
 
     private void changeStatus(OrderStatus expectedStatus, OrderStatus nextStatus) {
