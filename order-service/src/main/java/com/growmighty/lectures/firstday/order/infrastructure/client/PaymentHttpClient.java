@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.PayBody;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.PaymentApiData;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -23,7 +24,12 @@ public class PaymentHttpClient implements PaymentPort {
     @Override
     public PaymentResult pay(Long orderId, Long userId, BigDecimal amount) {
         // TODO(예정, 상세 미정) : 검증 추가?
-        ApiResponse<PaymentApiData> response = paymentFeignClient.pay(new PayBody(orderId, amount));
+        ApiResponse<PaymentApiData> response;
+        try {
+            response = paymentFeignClient.pay(new PayBody(orderId, amount));
+        } catch (FeignException.Conflict e) {
+            return PaymentResult.unknown(amount);
+        }
         return toPaymentResult(response, amount);
     }
 

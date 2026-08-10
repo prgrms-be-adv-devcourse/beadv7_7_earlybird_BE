@@ -20,8 +20,9 @@ import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -131,7 +132,7 @@ public class OrderApiService {
         }
 
         order.markPaymentRequested();
-        orderRepository.save(order);
+        order = orderRepository.save(order);
 
         Order paymentOrder = order;
         PaymentResult payment;
@@ -432,6 +433,8 @@ public class OrderApiService {
         for (Order order : orderRepository.findByStatusIn(statuses)) {
             try {
                 recoverPendingOrder(order);
+            } catch (OptimisticLockingFailureException conflict) {
+                log.info("order saga recovery skipped after concurrent update. orderId={}", order.getId());
             } catch (RuntimeException failure) {
                 log.warn("order saga recovery remains pending. orderId={}, status={}",
                         order.getId(), order.getStatus(), failure);
@@ -470,19 +473,20 @@ public class OrderApiService {
             return;
         }
         order.markPaymentRequested();
-        orderRepository.save(order);
+        Order paymentOrder = orderRepository.save(order);
         try {
             PaymentResult result = remoteCalls.execute("payment-pay",
-                    () -> paymentPort.pay(order.getId(), order.getUserId(), order.getTotalAmount().getValue()));
-            applyPaymentResult(order, result);
+                    () -> paymentPort.pay(paymentOrder.getId(), paymentOrder.getUserId(),
+                            paymentOrder.getTotalAmount().getValue()));
+            applyPaymentResult(paymentOrder, result);
         } catch (RuntimeException failure) {
             if (remoteCalls.isTechnical(failure)) {
-                order.markPaymentPending();
+                paymentOrder.markPaymentPending();
             } else {
-                compensatePaymentFailure(order);
+                compensatePaymentFailure(paymentOrder);
             }
         }
-        orderRepository.save(order);
+        orderRepository.save(paymentOrder);
     }
 
     private void recoverPayment(Order order) {

@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.order.infrastructure.client;
 
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
@@ -9,6 +10,7 @@ import com.growmighty.lectures.firstday.order.infrastructure.client.dto.RewardAp
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.StockChangeBody;
 import feign.FeignException;
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -65,7 +67,12 @@ public interface RewardFeignClient extends RewardPort {
 
     @Override
     default void decreaseStock(Long rewardId, int quantity, Long orderId) {
-        sendDecreaseStock(rewardId, new StockChangeBody(quantity, orderId));
+        try {
+            sendDecreaseStock(rewardId, new StockChangeBody(quantity, orderId));
+        } catch (FeignException.Conflict e) {
+            throw new BusinessException(HttpStatus.CONFLICT,
+                    "Reward stock is unavailable. rewardId=" + rewardId);
+        }
     }
 
     @Override

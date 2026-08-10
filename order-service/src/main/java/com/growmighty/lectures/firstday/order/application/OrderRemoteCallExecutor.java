@@ -42,7 +42,8 @@ public class OrderRemoteCallExecutor {
                 return true;
             }
             if (current instanceof FeignException feignException) {
-                return feignException.status() < 0 || feignException.status() >= 500;
+                return feignException.status() < 0 || feignException.status() == 408
+                        || feignException.status() == 429 || feignException.status() >= 500;
             }
             if (current instanceof BusinessException businessException) {
                 return businessException.getStatus().is5xxServerError();
