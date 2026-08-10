@@ -67,6 +67,69 @@ class ProjectSettlementTest {
                 .hasMessage("프로젝트 정산 기준 금액은 0원보다 커야 합니다.");
     }
 
+    @Test
+    @DisplayName("최종 실패가 확인되면 다음 지급 시도를 추가한다")
+    void retriesAfterConfirmedFailure() {
+        ProjectSettlement settlement = confirm(List.of(Money.wons(100_000)));
+        PayoutAttempt first = settlement.startAttempt(
+                "ref-payout-1",
+                "idempotency-1",
+                LocalDateTime.of(2026, 8, 3, 9, 0)
+        );
+        settlement.failAttempt(
+                first,
+                "toss-payout-1",
+                "TEMPORARY_BANK_ERROR",
+                LocalDateTime.of(2026, 8, 3, 9, 1),
+                true
+        );
+
+        PayoutAttempt retried = settlement.startAttempt(
+                "ref-payout-2",
+                "idempotency-2",
+                LocalDateTime.of(2026, 8, 3, 9, 5)
+        );
+
+        assertThat(retried.sequence()).isEqualTo(2);
+        assertThat(settlement.status()).isEqualTo(PayoutStatus.PROCESSING);
+    }
+
+    @Test
+    @DisplayName("성공한 지급 시도가 있으면 새 지급 시도를 허용하지 않는다")
+    void blocksAttemptAfterSuccess() {
+        ProjectSettlement settlement = confirm(List.of(Money.wons(100_000)));
+        PayoutAttempt attempt = settlement.startAttempt(
+                "ref-payout-1",
+                "idempotency-1",
+                LocalDateTime.of(2026, 8, 3, 9, 0)
+        );
+        settlement.completeAttempt(attempt, "toss-payout-1", LocalDateTime.of(2026, 8, 3, 9, 1));
+
+        assertThatThrownBy(() -> settlement.startAttempt(
+                "ref-payout-2",
+                "idempotency-2",
+                LocalDateTime.of(2026, 8, 3, 9, 5)
+        )).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("지급 결과가 불명확하면 같은 시도만 다시 확인한다")
+    void blocksNewAttemptWhileResultIsUnknown() {
+        ProjectSettlement settlement = confirm(List.of(Money.wons(100_000)));
+        PayoutAttempt attempt = settlement.startAttempt(
+                "ref-payout-1",
+                "idempotency-1",
+                LocalDateTime.of(2026, 8, 3, 9, 0)
+        );
+        settlement.markAttemptUnknown(attempt);
+
+        assertThatThrownBy(() -> settlement.startAttempt(
+                "ref-payout-2",
+                "idempotency-2",
+                LocalDateTime.of(2026, 8, 3, 9, 5)
+        )).isInstanceOf(IllegalStateException.class);
+    }
+
     private static ProjectSettlement confirm(List<Money> amounts) {
         return ProjectSettlement.confirm(
                 1L,
