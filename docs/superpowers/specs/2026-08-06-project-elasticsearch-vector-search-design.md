@@ -2,6 +2,7 @@
 
 - 날짜: 2026-08-06
 - 담당: 강대혁 (project-service)
+- 구현 상태: **완료 (2026-08-09)** — 설계대로 구현됐고, 구현하면서 새로 확인/결정된 세부사항은 아래 각 섹션에 그대로 반영해 뒀다.
 - 배경: `findAll(keyword, categoryId, status, sort, requesterRole)`의 키워드 검색이 지금은 MySQL JPA `Specification`으로 `title`/`summary`에 `LIKE '%keyword%'`만 거는 수준이다(`ProjectServiceImpl.java:346-368`). 이 LIKE 구현은 ES 도입 전 임시로 만들어둔 스텁이라 버려도 된다(2026-08-06 사용자 확인) — ES로 완전히 대체하며, LIKE 경로를 폴백으로 유지할 필요는 없다. 인프라(`infrastructure/docker-compose.yml`, `infrastructure/elasticsearch/Dockerfile`)에는 nori 형태소분석기가 설치된 Elasticsearch 9.0.3 컨테이너가 이미 떠 있지만, project-service 코드에는 아직 전혀 연결되어 있지 않다. 이 키워드 검색을 ES 기반 키워드(nori) + 임베딩 벡터 하이브리드 검색으로 교체한다.
 
 ## 요구사항
@@ -42,7 +43,15 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 
 **신규: `project-service/.../project/infrastructure/search/ProjectEmbeddingService.java`**
 - AI 임베딩 모델(`EmbeddingModel`) 추상화 서비스. `@Autowired(required = false)`로 주입받아 API 키 미설정 시에도 기동 장애를 방지한다.
-- `generateEmbedding(String text)`: OpenAI 토큰 초과 방지를 위해 입력 텍스트를 `MAX_TEXT_LENGTH = 2000`자로 절단(Truncation) 처리하며, 장애 발생 시 예외를 던지지 않고 `null`을 반환하여 키워드 검색으로 자동 폴백되도록 보호한다.
+- `generateEmbedding(String text)`: **① `embeddingModel == null`이면 즉시 `null` 반환**(NPE 방지, 키 미설정 상황) → ② 텍스트 null/blank면 `null` 반환 → ③ OpenAI 토큰 초과 방지를 위해 입력 텍스트를 `MAX_TEXT_LENGTH = 2000`자로 절단(Truncation) → ④ `embeddingModel.embed(...)` 호출을 try-catch로 감싸 rate limit·네트워크 장애 등 어떤 예외가 나도 `WARN` 로그만 남기고 `null`을 반환. 이 4단계 순서 덕분에 "모델이 아예 없는 경우"와 "모델은 있는데 호출이 실패한 경우"가 모두 예외 없이 안전하게 `null`로 수렴하고, 호출부(색인/검색 양쪽)는 항상 "성공(벡터) 또는 실패(null, 키워드 폴백)" 두 가지만 신경 쓰면 된다.
+- `generateEmbeddingForProject(project)`: title+summary+description을 합쳐서 위 `generateEmbedding`에 넘긴다. `isAvailable()`로 모델 존재 여부를 외부에 노출한다.
+
+**변경: `project-service/.../project/domain/Project.java`** (Aggregate Root)
+- 사전 계산된 임베딩 벡터를 담는 `embedding`(`float[]`) 필드와 `updateEmbedding(float[])` 메서드를 추가한다.
+- **한 번 생성한 벡터는 재사용하고, 다시 계산하지 않는다.** `title`/`summary`/`description`이 수정될 때(`updateBeforePublish`/`updateAfterPublish`)만 `embedding`을 `null`로 되돌려서 "이제 이 프로젝트는 임베딩을 다시 만들어야 한다"는 신호로 쓴다. 즉 임베딩 생성은 프로젝트당 "최초 생성 시 1번" + "내용이 바뀔 때마다 1번"만 일어나고, 그 사이엔 저장된 값을 그대로 재사용한다.
+
+**신규: `project-service/.../project/infrastructure/persistence/EmbeddingConverter.java`**
+- JPA `AttributeConverter<float[], String>`. `float[]` ↔ JSON 문자열로 변환해 MySQL `projects.embedding`(`LONGTEXT`) 컬럼에 저장/복원한다. `ObjectMapper`의 체크 예외(`JsonProcessingException`)는 try-catch로 감싸 로그만 남기고 `null`을 반환한다(컨버터 인터페이스가 체크 예외를 선언하지 않으므로 필수).
 
 **신규: `project-service/.../project/application/port/ProjectSearchPort.java`** (인터페이스, 기존 `OrderPort` 같은 포트 패턴)
 - `void index(Project project)` — title/summary/description으로 임베딩 생성 후 ES upsert
@@ -52,6 +61,8 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 **신규: `project-service/.../project/infrastructure/search/ProjectSearchAdapter.java`** (`ProjectSearchPort` 구현체)
 - `index`/`remove`: `ProjectIndexRequestedEvent`, `ProjectRemovedFromIndexEvent` 비동기 이벤트를 발행한다. 실제 색인은 `ProjectSearchIndexEventListener`가 `AFTER_COMMIT` 시점에 DB에서 프로젝트를 재조회한 뒤 임베딩이 없으면 `ProjectEmbeddingService`로 생성하여 MySQL DB에 영속화(`updateEmbedding`)한 후 ES에 덮어쓴다.
 - `search`: 검색어(`keyword`)에 대한 임베딩 벡터를 추출할 수 있는 경우 Nori 형태소 BM25 키워드 매칭(`title^2.0`, `summary^1.2`, `description`)과 kNN 벡터 코사인 유사도 쿼리(`embedding`, `k=10`, `numCandidates=100`, `boost=10.0f`)를 결합한 하이브리드 검색을 실행한다. 임베딩 불가능 시 Nori 키워드 매칭 전용 쿼리로 동작한다.
+  - **쉽게 풀면:** 문서(프로젝트) 쪽 벡터는 위 "한 번 생성 후 재사용" 원칙대로 이미 ES에 저장돼 있는 값을 그대로 쓴다. 검색할 때 실시간으로 OpenAI를 부르는 건 **오직 사용자가 입력한 검색어 하나뿐**이다 — 검색어는 매번 새로운 텍스트라 미리 저장해 둘 수가 없어서, 이 부분만은 구조적으로 실시간 호출을 피할 수 없다. kNN 유사도 계산 자체는 "저장된 문서 벡터들 vs 방금 만든 검색어 벡터"를 비교하는 것이라, 문서 쪽 재사용 임베딩을 그대로 활용하는 게 맞다.
+  - **`boost=10.0f`는 실측 검증된 값이 아니라 추정치다.** BM25 키워드 점수(보통 1~20+)와 코사인 유사도 점수(0~2)는 스케일이 완전히 달라서, 그냥 더하면 키워드 점수가 벡터 유사도를 압도해 버린다. `boost(10.0f)`로 벡터 점수 스케일을 대략 맞춰준 1차 보정이며, 실제 검색어로 "키워드는 다른데 의미는 비슷한" 케이스가 상위에 오는지 확인이 안 된 상태다. 필요하면 ES의 RRF(Reciprocal Rank Fusion) retriever로 전환하는 게 정석적인 해결책이다(점수 스케일과 무관하게 순위 기반으로 합산).
 - ES 쿼리 실패/타임아웃 시 `ServiceUnavailableException`을 던진다. `CircuitBreakerFactory` fallback 메서드도 같은 예외를 던지는 용도로만 쓴다(다른 검색 경로로 강등하지 않음) — `OrderHttpClient` 등 기존 어댑터들의 fail-closed 패턴과 동일.
 
 **변경: `project-service/.../project/application/ProjectServiceImpl.java`**
@@ -73,6 +84,7 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 
 ## 테스트
 
+- `ProjectEmbeddingServiceTest`(신규): 모델 정상 동작(1536차원 벡터 생성) / `EmbeddingModel` 빈 자체가 없을 때 `null` 반환 / 모델이 예외를 던질 때 `null` 반환, 3가지 케이스를 검증한다.
 - `ProjectSearchAdapterTest`: ES를 Testcontainers로 띄워 실제 색인→검색 통합 테스트(nori 매치, kNN 매치, 매치 없음). OpenAI 임베딩 호출은 `EmbeddingModel`을 모킹.
 - `ProjectServiceImplSearchTest`: `create`/`update`/`delete` 시 `searchPort.index`/`remove`가 호출되는지, 색인 어댑터가 예외를 던져도 트랜잭션이 성공하는지(모킹으로 검증).
 - `ProjectServiceImplTest`(`findAll`): `keyword` 있을 때 `searchPort.search` 결과로 후보를 좁히는지, ES 실패 시 `ServiceUnavailableException`이 전파되는지, 빈 매치 시 즉시 빈 리스트 반환하는지.
@@ -88,6 +100,12 @@ keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidatePro
 
 - **결과 절단(truncation)이 categoryId/status 필터링보다 먼저 일어난다.** `ProjectSearchAdapter.MAX_RESULTS`(200)는 ES 인덱스 전체(categoryId/status 없음)에서 관련도 상위 200개를 자른 뒤에야 MySQL로 넘어가고, MySQL이 그다음에 categoryId/status/role 필터를 적용한다. 그래서 `GET /api/v1/projects?keyword=게임&categoryId=5`처럼 keyword+categoryId를 같이 쓰는 요청은, category-5에 실제로 매치되는 프로젝트가 있어도 그게 ES 전체 인덱스 기준 keyword 상위 200위 안에 못 들면 결과가 0건일 수 있다. non-ADMIN 요청에서는 PENDING_REVIEW/REJECTED 문서도 그 200개 후보 슬롯을 소비하고 나서야 MySQL에서 걸러지므로, 실효 결과 집합이 더 줄어들 수 있다. 이건 ES 문서에 categoryId/status를 안 넣기로 한 설계(YAGNI, 위 아키텍처 절 참고)의 자연스러운 귀결이지 구현 버그가 아니지만, 기존 LIKE 검색 대비 실제로 체감되는 동작 차이라 여기 기록해 둔다. `MAX_RESULTS`를 올리면 이 문제가 일어나는 빈도는 줄지만, 근본적으로 없어지지는 않는다(어차피 top-N 자르기 자체가 categoryId/status를 모르는 채로 일어나므로).
 - **`reindexAllProjects()`는 추가(additive)만 하고 고아 문서를 지우지 않는다.** MySQL에서 이미 삭제된 프로젝트의 ES 문서가 남아 있어도, 전체 재색인은 현재 프로젝트들을 다시 upsert할 뿐 ES에만 남아 있는 고아 문서는 정리하지 않는다. 인지된 한계로 남겨둔다(이번 수정 범위에 포함하지 않음).
+- **대량 재색인 시 OpenAI 동시 호출 제한이 없다.** `reindexAllProjects()`가 임베딩이 없는 프로젝트 전체에 대해 색인 이벤트를 한꺼번에 발행하면, `@Async` 리스너가 프로젝트마다 독립적으로 병렬 OpenAI 호출을 시도한다. 데이터가 적을 때(지금 시드 데이터 수준)는 문제없지만, 실제 운영 데이터로 규모가 커지면 OpenAI rate limit(429)에 걸릴 수 있다. 평소 개별 생성/수정 흐름(프로젝트당 이벤트 1건)에서는 발생하지 않고, "전체 재색인" 버튼을 대량 데이터에 쓸 때만 해당하는 문제다. 후속 개선 방향: Spring Batch 청크 분할(예: 50건 단위) 또는 스레드풀 동시성 제한 + `@Retryable` 백오프.
+- **`boost=10.0f`는 아직 실측 검증되지 않은 값이다.** 위 "컴포넌트 변경 > ProjectSearchAdapter" 절 참고 — BM25/코사인 유사도 스케일 차이를 대충 맞춘 값이라, 실제 하이브리드 랭킹 품질은 별도로 확인이 필요하다.
+
+## 구현 중 발견된 함정 (참고용, 재발 방지)
+
+구현 과정에서 한 차례, `embedding`이 `null`일 때 실제 AI 모델을 부르는 대신 `new Random(text.hashCode())`로 만든 **의사난수 벡터를 임시로 채워 넣는 코드**가 잠깐 들어간 적이 있다. 텍스트 내용과 전혀 무관한 랜덤 값이라 의미적으로는 완전히 가짜인데, 배열 길이가 항상 1536이라 "임베딩이 비어있는지" 체크하는 로직을 그냥 통과해 버리고 진짜 벡터처럼 ES에 색인된다는 게 문제였다. 이 상태로 두면 나중에 진짜 모델을 붙일 때 `WHERE embedding IS NOT NULL` 같은 조건으로 "이미 벡터가 있는 행은 건너뛰기"를 하는 순간, 가짜 랜덤 벡터를 진짜인 줄 알고 영구적으로 놓치는 조용한 데이터 오염이 생긴다. 발견 즉시 제거했고, 지금은 실제 모델 호출이 실패하면 그냥 `null`을 유지한다(위 `ProjectEmbeddingService` 참고). **앞으로 비슷한 "임시로 그럴듯한 값 채워두기" 식의 스텁이 필요해지더라도, `null`과 구분이 안 되는 값으로 채우면 안 된다** — 차라리 명시적으로 `null`로 남겨두는 편이 안전하다.
 
 ## 범위 밖
 

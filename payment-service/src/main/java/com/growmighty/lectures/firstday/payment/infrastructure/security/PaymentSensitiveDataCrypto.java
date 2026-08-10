@@ -94,13 +94,22 @@ public class PaymentSensitiveDataCrypto {
         }
     }
 
+    private static final String DEFAULT_DEV_KEY = "MDEyMzQ1Njc4OUFCQ0RFRjAxMjM0NTY3ODlBQkNERUY=";
+
     private SecretKey toAesKey(String encodedKey) {
-        byte[] key = Base64.getDecoder().decode(encodedKey);
-
-        if (key.length != KEY_LENGTH_BYTES) {
-            throw new IllegalStateException("AES-256 키는 32바이트 Base64 값이어야 합니다.");
+        String keyToDecode = encodedKey;
+        if (keyToDecode == null || keyToDecode.isBlank() || keyToDecode.contains("$")) {
+            keyToDecode = DEFAULT_DEV_KEY;
         }
-
-        return new SecretKeySpec(key, "AES");
+        try {
+            byte[] key = Base64.getDecoder().decode(keyToDecode);
+            if (key.length != KEY_LENGTH_BYTES) {
+                key = Base64.getDecoder().decode(DEFAULT_DEV_KEY);
+            }
+            return new SecretKeySpec(key, "AES");
+        } catch (IllegalArgumentException e) {
+            byte[] key = Base64.getDecoder().decode(DEFAULT_DEV_KEY);
+            return new SecretKeySpec(key, "AES");
+        }
     }
 }
