@@ -37,7 +37,6 @@ public class SettlementExceptionHandler {
             case PAYOUT_PROFILE_NOT_READY -> HttpStatus.CONFLICT;
             case PROJECT_SETTLEMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case ORDER_PAYMENT_INPUTS_UNAVAILABLE,
-                    PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE,
                     PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
             case SETTLEMENT_DATA_INCONSISTENT -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
