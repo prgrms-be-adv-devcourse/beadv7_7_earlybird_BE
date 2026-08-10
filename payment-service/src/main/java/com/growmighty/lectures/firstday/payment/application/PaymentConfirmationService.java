@@ -49,7 +49,7 @@ public class PaymentConfirmationService {
         }
 
         if (payment.isConfirming()) {
-            throw new PaymentConfirmationInProgressException("이미 승인 처리 중인 결제입니다. 잠시 후 다시 조회해주세요. pgOrderId = " + pgOrderId);
+            throw new PaymentConfirmationInProgressException(pgOrderId);
         }
 
         payment.startConfirming(paymentKey);
