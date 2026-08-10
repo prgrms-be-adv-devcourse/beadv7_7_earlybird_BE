@@ -15,5 +15,12 @@ dependencies {
     // BaseEntity(JPA Auditing)가 MappedSuperclass/AuditingEntityListener를 쓴다.
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
+    // KafkaErrorHandlingConfig가 KafkaTemplate/DeadLetterPublishingRecoverer 타입을 참조한다.
+    // compileOnly: implementation으로 넣으면 spring-kafka가 board/user/file/notification-service의
+    // runtime classpath에도 전파되어, 그 서비스들에서도 @ConditionalOnClass(KafkaTemplate.class) 조건이
+    // (spring-kafka가 있으니) true가 되어버려 가드가 무력화된다. kafka를 쓰는 5개 서비스는 이미
+    // 자기 build.gradle에 spring-kafka를 직접 선언해뒀으니(6번 작업) compileOnly로도 런타임엔 문제없다.
+    compileOnly 'org.springframework.kafka:spring-kafka'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }

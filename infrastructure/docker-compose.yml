@@ -36,6 +36,19 @@ x-business-depends-on: &business-depends-on
     mysql:
       condition: service_healthy
 
+# order/cart/payment/project/settlement 만 kafka를 쓴다 — 나머지 서비스(board/user/file/
+# notification)까지 kafka-topics-init 완료를 기다리게 하면 불필요한 결합이 생기므로, 공통
+# x-business-depends-on 대신 kafka를 쓰는 서비스에만 이 anchor를 개별로 붙인다.
+x-business-depends-on-kafka: &business-depends-on-kafka
+  depends_on:
+    <<: *core-depends-on
+    mysql:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
+    kafka-topics-init:
+      condition: service_completed_successfully
+
 services:
   elasticsearch:
     build: ./elasticsearch          # 위 Dockerfile로 빌드 (nori 포함)
@@ -73,6 +86,68 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  kafka:
+    image: apache/kafka:4.0.0
+    container_name: earlybird-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      # KRaft 모드 — 브로커가 컨트롤러 역할까지 겸한다 (Zookeeper 불필요, 단일 노드 로컬 개발 환경).
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # 리스너 3개:
+      #  - INTERNAL(29092)  : 컴포즈 네트워크 안의 컨테이너(kafka-ui, 각 서비스 컨테이너)가 접속
+      #  - EXTERNAL(9092)   : 호스트에서 직접 실행되는 스프링 앱(./gradlew bootRun)이 localhost:9092 로 접속
+      #  - CONTROLLER(9093) : KRaft 내부 통신용
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # 브로커 1대뿐이므로 내부 토픽들의 복제 계수를 1로 맞춘다.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # 토픽은 kafka-topics-init(다음 단계)으로만 만든다 — 앱/CLI가 즉석에서 만들어버리면
+      # 파티션 수 등 설정이 서비스마다 제각각으로 드리프트될 수 있어 명시적으로 막는다.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "9092:9092"
+    restart: unless-stopped
+    healthcheck:
+      # apache/kafka:4.0.0 이미지는 kafka-*.sh 가 PATH 에 없고 /opt/kafka/bin 에만 있다 — full path 필수.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # 토픽/파티션/메시지/컨슈머 그룹을 눈으로 확인하는 웹 UI — kibana가 elasticsearch에 대해 하는 역할과 동일.
+  kafka-ui:
+    image: kafbat/kafka-ui:latest
+    container_name: earlybird-kafka-ui
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      # 컴포즈 네트워크 안에서 접속하니 INTERNAL 리스너(29092)를 쓴다 — 호스트용 EXTERNAL(9092)이 아님.
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    ports:
+      - "8989:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 토픽을 앱 생명주기와 분리해 한곳에서만 생성한다 (kafka/init-topics.sh).
+  # restart 정책을 안 준다 — 한 번 실행하고 끝나는 job이라, 끝난 뒤 재시작되면 안 된다.
+  kafka-topics-init:
+    image: apache/kafka:4.0.0
+    container_name: earlybird-kafka-topics-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./kafka/init-topics.sh:/init-topics.sh:ro
+    entrypoint: ["/bin/sh", "/init-topics.sh"]
 
   config-server:
     build:
@@ -140,7 +215,7 @@ services:
     depends_on: *core-depends-on
 
   order-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
@@ -151,7 +226,7 @@ services:
     #   - "8080:8080"
 
   project-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
@@ -162,7 +237,7 @@ services:
     #   - "8081:8081"
 
   payment-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
@@ -201,7 +276,7 @@ services:
     #   - "8083:8083"
 
   cart-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
@@ -212,7 +287,7 @@ services:
     #   - "8085:8085"
 
   settlement-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:

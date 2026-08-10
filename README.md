@@ -84,6 +84,17 @@ docker compose -f infrastructure/docker-compose.yml up -d
 
 기동 확인: Eureka 대시보드 http://localhost:8761 에 서비스가 등록되면 성공. 모든 API 호출은 게이트웨이(http://localhost:8000)를 통한다.
 
+### Kafka 토픽 추가
+
+토픽 목록은 `infrastructure/kafka/init-topics.sh`가 유일한 소스다(각 서비스가 `NewTopic` 빈으로 직접 만들지 않음 —
+토픽 소유권 혼선/설정 드리프트를 막기 위해 브로커에 `auto.create.topics.enable=false`를 걸어뒀다). 새 토픽이
+필요하면 그 스크립트에 추가하고(+ `common`의 `KafkaTopics` 상수도 같이), 아래 한 줄로 반영한다 — 브로커 재시작도
+다운타임도 없다:
+
+```bash
+./infrastructure/kafka/apply-topics.sh
+```
+
 ### 빌드 / 테스트
 
 ```bash
