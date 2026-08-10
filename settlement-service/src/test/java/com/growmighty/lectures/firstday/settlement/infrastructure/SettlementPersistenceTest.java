@@ -9,11 +9,13 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutPro
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutDestinationSnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
@@ -21,9 +23,12 @@ import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePol
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.CreatorPayoutProfileRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +59,12 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private SpringDataProjectSettlementRepository springDataProjectSettlementRepository;
+
+    @Autowired
+    private SpringDataProjectOutcomeFactRepository projectOutcomeFactRepository;
+
+    @Autowired
+    private SpringDataOrderPaymentFactRepository orderPaymentFactRepository;
 
     @Autowired
     private EntityManager entityManager;
@@ -280,6 +291,123 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
         assertThatThrownBy(() -> creatorPayoutProfileRepository.findByCreatorId(10L))
                 .hasRootCauseMessage("셀러 등록 대기 중에는 외부 셀러와 계좌 정보를 가질 수 없습니다.");
+    }
+
+    @Test
+    @DisplayName("프로젝트 결과 사실과 결과 시각을 저장한다")
+    void persistsProjectOutcomeFact() {
+        Instant occurredAt = Instant.parse("2026-07-31T09:00:00Z");
+        projectOutcomeFactRepository.saveAndFlush(ProjectOutcomeFact.of(
+                101L,
+                9L,
+                ProjectOutcomeFact.Outcome.SUCCEEDED,
+                occurredAt
+        ));
+        entityManager.clear();
+
+        ProjectOutcomeFact restored = projectOutcomeFactRepository.findById(101L).orElseThrow();
+
+        assertThat(restored.creatorId()).isEqualTo(9L);
+        assertThat(restored.outcome()).isEqualTo(ProjectOutcomeFact.Outcome.SUCCEEDED);
+        assertThat(restored.occurredAt()).isEqualTo(occurredAt);
+    }
+
+    @Test
+    @DisplayName("같은 프로젝트의 결과 사실을 덮어쓸 수 없다")
+    void rejectsConflictingProjectOutcome() {
+        projectOutcomeFactRepository.saveAndFlush(ProjectOutcomeFact.of(
+                101L,
+                9L,
+                ProjectOutcomeFact.Outcome.SUCCEEDED,
+                Instant.parse("2026-07-31T09:00:00Z")
+        ));
+
+        ProjectOutcomeFact conflicting = ProjectOutcomeFact.of(
+                101L,
+                9L,
+                ProjectOutcomeFact.Outcome.CANCELLED,
+                Instant.parse("2026-07-31T09:01:00Z")
+        );
+
+        assertThatThrownBy(() -> projectOutcomeFactRepository.saveAndFlush(conflicting))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("프로젝트별 주문 결제 사실과 완료·취소 시각을 저장한다")
+    void persistsOrderPaymentFactResults() {
+        Instant completedAt = Instant.parse("2026-07-15T04:20:10Z");
+        Instant cancelledAt = Instant.parse("2026-07-18T00:05:00Z");
+        orderPaymentFactRepository.saveAndFlush(OrderPaymentFact.completed(
+                1001L,
+                "PAY-01J2X8P4QW6YV0M3",
+                101L,
+                Money.wons(50_000),
+                completedAt
+        ));
+        entityManager.clear();
+
+        OrderPaymentFact fact = orderPaymentFactRepository.findById(1001L).orElseThrow();
+        fact.cancel("PAY-01J2X8P4QW6YV0M3", 101L, Money.wons(50_000), cancelledAt);
+        orderPaymentFactRepository.saveAndFlush(fact);
+        entityManager.clear();
+
+        OrderPaymentFact restored = orderPaymentFactRepository
+                .findAllByProjectIdOrderByOrderId(101L)
+                .getFirst();
+
+        assertThat(restored.orderId()).isEqualTo(1001L);
+        assertThat(restored.pgOrderId()).isEqualTo("PAY-01J2X8P4QW6YV0M3");
+        assertThat(restored.paymentAmount()).isEqualTo(Money.wons(50_000));
+        assertThat(restored.status()).isEqualTo(OrderPaymentFact.Status.CANCELLED);
+        assertThat(restored.completedAt()).isEqualTo(completedAt);
+        assertThat(restored.cancelledAt()).isEqualTo(cancelledAt);
+    }
+
+    @Test
+    @DisplayName("같은 PG 정산 식별자를 두 주문에 저장할 수 없다")
+    void rejectsDuplicatePgOrderId() {
+        orderPaymentFactRepository.saveAndFlush(OrderPaymentFact.completed(
+                1001L,
+                "PAY-SHARED",
+                101L,
+                Money.wons(50_000),
+                Instant.parse("2026-07-15T04:20:10Z")
+        ));
+
+        OrderPaymentFact duplicate = OrderPaymentFact.completed(
+                1002L,
+                "PAY-SHARED",
+                101L,
+                Money.wons(30_000),
+                Instant.parse("2026-07-15T04:21:10Z")
+        );
+
+        assertThatThrownBy(() -> orderPaymentFactRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("같은 주문 식별자의 결제 사실을 덮어쓸 수 없다")
+    void rejectsConflictingOrderPayment() {
+        orderPaymentFactRepository.saveAndFlush(OrderPaymentFact.completed(
+                1001L,
+                "PAY-ORIGINAL",
+                101L,
+                Money.wons(50_000),
+                Instant.parse("2026-07-15T04:20:10Z")
+        ));
+
+        OrderPaymentFact conflicting = OrderPaymentFact.completed(
+                1001L,
+                "PAY-CONFLICTING",
+                102L,
+                Money.wons(30_000),
+                Instant.parse("2026-07-15T04:21:10Z")
+        );
+
+        assertThatThrownBy(() -> orderPaymentFactRepository.saveAndFlush(conflicting))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
