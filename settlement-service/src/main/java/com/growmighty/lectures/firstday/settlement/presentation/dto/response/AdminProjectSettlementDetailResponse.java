@@ -4,7 +4,7 @@ package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 import com.growmighty.lectures.firstday.settlement.application.query.AdminProjectSettlementDetail;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -34,7 +34,7 @@ public record AdminProjectSettlementDetailResponse(
                 toOffsetDateTime(detail.confirmedAt()),
                 BreakdownResponse.from(detail),
                 new PayoutResponse(
-                        detail.payoutObligationId(),
+                        detail.settlementId(),
                         detail.status(),
                         detail.scheduledDate(),
                         toOffsetDateTime(detail.completedAt()),
@@ -93,8 +93,8 @@ public record AdminProjectSettlementDetailResponse(
     }
 
     public record PayoutResponse(
-            Long payoutObligationId,
-            PayoutObligationStatus status,
+            Long settlementId,
+            PayoutStatus status,
             LocalDate scheduledDate,
             OffsetDateTime completedAt,
             DestinationResponse destination,
