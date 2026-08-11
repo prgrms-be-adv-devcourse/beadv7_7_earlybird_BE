@@ -1,8 +1,7 @@
 package com.growmighty.lectures.firstday.refund.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
-import com.growmighty.lectures.firstday.payment.domain.Payment;
-import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
+import com.growmighty.lectures.firstday.payment.domain.*;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
 import com.growmighty.lectures.firstday.refund.domain.Refund;
 import com.growmighty.lectures.firstday.refund.domain.RefundReason;
@@ -16,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class RefundService {
     private final PaymentRepository  paymentRepository;
     private final RefundRepository refundRepository;
+    private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
 
     @Transactional
     public RefundCancellationTarget startRefund(Long paymentId, RefundReason reason) {
@@ -65,6 +65,21 @@ public class RefundService {
 
         refundRepository.save(refund);
         paymentRepository.save(payment);
+        savePaymentStatusOutboxIfAbsent(payment.getPaymentId(), payment.getOrderId(), payment.getStatus());
+    }
+
+    private void savePaymentStatusOutboxIfAbsent(Long paymentId, Long orderId, PaymentStatus status) {
+        if(paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(paymentId, status)) {
+            return;
+        }
+
+        paymentStatusOutboxRepository.save(
+            PaymentStatusOutbox.pending(
+                paymentId,
+                orderId,
+                status
+            )
+        );
     }
 
     private Payment findPayment(Long paymentId) {
