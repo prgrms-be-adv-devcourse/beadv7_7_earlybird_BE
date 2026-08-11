@@ -440,6 +440,10 @@ services:
 
   ai-service:
     # 아직 자체 DB가 없어 mysql 의존성은 뺀다 (business-depends-on 아님).
+    # 로컬 개발 전용(조우진) - image: 오버라이드가 없어 build: 로 정의된 채로 두면 CD의
+    # `docker compose ... up -d`(서비스 필터 없음)가 매 배포마다 EC2에서 로컬로 빌드하게 된다.
+    # profiles로 기본 up -d 대상에서 제외 - 로컬에서는 `--profile local` 로 명시적으로 켠다.
+    profiles: ["local"]
     <<: *service-defaults
     build:
       <<: *build-defaults
