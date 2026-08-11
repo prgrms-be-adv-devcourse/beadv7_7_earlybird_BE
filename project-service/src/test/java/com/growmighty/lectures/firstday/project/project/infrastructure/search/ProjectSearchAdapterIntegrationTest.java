@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.support.ElasticsearchIntegrationTestSupport;
@@ -93,5 +94,43 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
 
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> assertThat(adapter.search("키워드테스트")).doesNotContain(project.getProjectId()));
+    }
+
+    @Test
+    @DisplayName("prefix로 시작하는 제목만 자동완성 후보로 나온다")
+    void autocomplete_matchesTitlePrefix() {
+        Project matching = savedProject("카카오 프로젝트");
+        Project other = savedProject("완전히 다른 프로젝트");
+        adapter.index(matching);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<ProjectSuggestion> result = adapter.autocomplete("카카");
+            assertThat(result).extracting(ProjectSuggestion::projectId).contains(matching.getProjectId());
+            assertThat(result).extracting(ProjectSuggestion::projectId).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("영문 제목은 대소문자와 무관하게 매치된다")
+    void autocomplete_caseInsensitive() {
+        Project project = savedProject("Kakao Project");
+        adapter.index(project);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<ProjectSuggestion> result = adapter.autocomplete("kakao");
+            assertThat(result).extracting(ProjectSuggestion::projectId).contains(project.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("매치가 10개를 넘으면 10개로 잘린다")
+    void autocomplete_limitsToTenResults() {
+        for (int i = 0; i < 12; i++) {
+            adapter.index(savedProject("접두어테스트 프로젝트 " + i));
+        }
+
+        await().atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(adapter.autocomplete("접두어테스트")).hasSize(10));
     }
 }
