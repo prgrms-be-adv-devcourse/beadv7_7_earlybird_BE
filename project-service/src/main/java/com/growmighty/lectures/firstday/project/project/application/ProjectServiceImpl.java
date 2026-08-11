@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -78,6 +79,11 @@ public class ProjectServiceImpl implements ProjectService {
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
                 .toList();
+    }
+
+    @Override
+    public List<ProjectSuggestion> autocomplete(String keyword) {
+        return searchPort.autocomplete(keyword);
     }
 
     @Override
