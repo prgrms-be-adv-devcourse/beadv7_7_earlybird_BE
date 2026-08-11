@@ -1,10 +1,11 @@
 package com.growmighty.lectures.firstday.payment.application;
 
-import com.growmighty.lectures.firstday.payment.application.port.OrderStatusPort;
+import com.growmighty.lectures.firstday.payment.application.port.PaymentSingleResultEventPublisher;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxStatus;
+import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.PaymentSingleResultEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -26,33 +27,34 @@ class PaymentStatusOutboxDispatchServiceTest {
     private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
 
     @Mock
-    private OrderStatusPort orderStatusPort;
+    private PaymentSingleResultEventPublisher paymentSingleResultEventPublisher;
 
     @InjectMocks
     private PaymentStatusOutboxDispatchService paymentStatusOutboxDispatchService;
 
     @Test
-    void 주문_상태_통지에_성공하면_Outbox를_전송_완료로_저장한다() {
+    void Kafka_발행에_성공하면_Outbox를_전송_완료로_저장한다() {
         PaymentStatusOutbox outbox = pendingOutbox();
-
         paymentStatusOutboxDispatchService.dispatch(outbox);
 
-        verify(orderStatusPort).notifyStatus(ORDER_ID, PaymentStatus.PAID);
+        verify(paymentSingleResultEventPublisher).publish(
+            new PaymentSingleResultEvent(ORDER_ID, PaymentStatus.PAID.name()) // <--
+        );
         verify(paymentStatusOutboxRepository).save(outbox);
         assertThat(outbox.getStatus()).isEqualTo(PaymentStatusOutboxStatus.SENT);
         assertThat(outbox.getSentAt()).isNotNull();
     }
 
     @Test
-    void 주문_상태_통지에_실패하면_재시도_횟수를_증가시키고_예외를_전파한다() {
+    void Kafka_발행에_실패하면_재시도_횟수를_증가시키고_예외를_전파한다() {
         PaymentStatusOutbox outbox = pendingOutbox();
-        doThrow(new IllegalStateException("Order 통지 실패"))
-            .when(orderStatusPort)
-            .notifyStatus(ORDER_ID, PaymentStatus.PAID);
+        doThrow(new IllegalStateException("Kafka 발행 실패"))
+            .when(paymentSingleResultEventPublisher)
+            .publish(new PaymentSingleResultEvent(ORDER_ID, PaymentStatus.PAID.name())); // <--
 
         assertThatThrownBy(() -> paymentStatusOutboxDispatchService.dispatch(outbox))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessage("Order 통지 실패");
+            .hasMessage("Kafka 발행 실패");
 
         verify(paymentStatusOutboxRepository).save(outbox);
         assertThat(outbox.getStatus()).isEqualTo(PaymentStatusOutboxStatus.PENDING);
