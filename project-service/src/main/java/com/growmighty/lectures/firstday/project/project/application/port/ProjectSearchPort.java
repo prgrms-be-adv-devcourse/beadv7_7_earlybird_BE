@@ -19,4 +19,7 @@ public interface ProjectSearchPort {
 
     /** nori 키워드 매치 ∪ 임베딩 kNN 하이브리드 검색. 매치 없으면 빈 리스트. ES 장애 시 ServiceUnavailableException. */
     List<Long> search(String keyword);
+
+    /** title prefix 매치(자동완성). 매치 없으면 빈 리스트. ES 장애 시 ServiceUnavailableException. */
+    List<ProjectSuggestion> autocomplete(String prefix);
 }

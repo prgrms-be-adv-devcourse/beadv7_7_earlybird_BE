@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
     private static final int DEFAULT_EMBEDDING_DIMENSION = 1536;
     private static final int MAX_RESULTS = 200;
+    private static final int AUTOCOMPLETE_MAX_RESULTS = 10;
 
     private final ElasticsearchOperations elasticsearchOperations;
     private final CircuitBreakerFactory circuitBreakerFactory;
@@ -121,6 +123,30 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
     private List<Long> searchFallback(Throwable cause) {
         log.warn("프로젝트 검색 호출 실패. 원인: {}", cause.toString());
+        throw new ServiceUnavailableException("검색 서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.");
+    }
+
+    @Override
+    public List<ProjectSuggestion> autocomplete(String prefix) {
+        return circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_SEARCH_ID).run(
+                () -> doAutocomplete(prefix),
+                this::autocompleteFallback);
+    }
+
+    private List<ProjectSuggestion> doAutocomplete(String prefix) {
+        Query query = Query.of(q -> q.prefix(p -> p.field("title").value(prefix).caseInsensitive(true)));
+        NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(query)
+                .withMaxResults(AUTOCOMPLETE_MAX_RESULTS)
+                .build();
+        SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
+        return hits.stream()
+                .map(hit -> new ProjectSuggestion(hit.getContent().projectId(), hit.getContent().title()))
+                .toList();
+    }
+
+    private List<ProjectSuggestion> autocompleteFallback(Throwable cause) {
+        log.warn("프로젝트 자동완성 호출 실패. 원인: {}", cause.toString());
         throw new ServiceUnavailableException("검색 서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.");
     }
 }
