@@ -26,6 +26,7 @@ import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -89,6 +90,23 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
         assertThat(restored.scheduledDate()).isEqualTo(LocalDate.of(2026, 8, 3));
         assertThat(restored.status()).isEqualTo(PayoutStatus.SCHEDULED);
         assertThat(restored.tossSellerId()).isEqualTo("seller-10");
+    }
+
+    @Test
+    @DisplayName("창작자 정산 목록을 지급 상태와 함께 읽는다")
+    void readsCreatorSettlementsWithPayoutStates() {
+        projectSettlementRepository.save(confirmedSettlement(101L, 10L, LocalDateTime.of(2026, 7, 22, 10, 0)));
+        projectSettlementRepository.save(confirmedSettlement(102L, 10L, LocalDateTime.of(2026, 7, 22, 10, 1)));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<ProjectSettlement> settlements = projectSettlementRepository
+                .findAllByCreatorIdOrderByConfirmedAtDescIdDesc(10L);
+
+        assertThat(settlements).extracting(ProjectSettlement::projectId).containsExactly(102L, 101L);
+        assertThat(settlements).allSatisfy(settlement ->
+                assertThat(settlement.status()).isEqualTo(PayoutStatus.SCHEDULED)
+        );
     }
 
     @Test

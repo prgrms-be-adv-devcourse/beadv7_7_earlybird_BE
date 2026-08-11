@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.PayoutObligationJpaEntity;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataPayoutObligationRepository;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -45,5 +46,13 @@ public class PayoutObligationRepositoryAdapter implements PayoutObligationReposi
     @Transactional(readOnly = true)
     public Optional<PayoutObligation> findBySettlementId(Long settlementId) {
         return repository.findBySettlementId(settlementId).map(PayoutObligationJpaEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PayoutObligation> findAllBySettlementIdIn(List<Long> settlementIds) {
+        return repository.findAllBySettlementIdIn(settlementIds).stream()
+                .map(PayoutObligationJpaEntity::toDomain)
+                .toList();
     }
 }

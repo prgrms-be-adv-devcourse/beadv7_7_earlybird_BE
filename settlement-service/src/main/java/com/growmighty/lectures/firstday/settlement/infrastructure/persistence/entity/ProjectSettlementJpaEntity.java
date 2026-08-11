@@ -103,7 +103,7 @@ public class ProjectSettlementJpaEntity extends BaseEntity {
                 destinationSnapshot.bankCode(),
                 destinationSnapshot.maskedAccountNumber(),
                 scheduledDate,
-                PayoutStatus.valueOf(payout.status().name()),
+                payout.status().toPayoutStatus(),
                 payout.attempts(),
                 payout.successfulAttemptSequence(),
                 payout.version(),

@@ -2,6 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository;
 
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.PayoutObligationJpaEntity;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +18,7 @@ public interface SpringDataPayoutObligationRepository
 
     @EntityGraph(attributePaths = {"attempts", "successfulAttempt"})
     Optional<PayoutObligationJpaEntity> findBySettlementId(Long settlementId);
+
+    @EntityGraph(attributePaths = {"attempts", "successfulAttempt"})
+    List<PayoutObligationJpaEntity> findAllBySettlementIdIn(List<Long> settlementIds);
 }

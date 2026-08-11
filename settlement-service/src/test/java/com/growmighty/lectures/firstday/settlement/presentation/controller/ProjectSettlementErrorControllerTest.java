@@ -174,8 +174,8 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("저장된 프로젝트 정산 원본의 정합성 오류는 내부 정보를 노출하지 않는다")
-    void hidesPersistenceIntegrityFailureDetails() throws Exception {
+    @DisplayName("지급 상태가 누락된 정산은 내부 정보를 노출하지 않는다")
+    void hidesMissingPayoutStateDetails() throws Exception {
         long projectId = 95L;
         long creatorId = 95L;
         LocalDateTime recordedAt = LocalDateTime.of(2026, 7, 23, 10, 0);
@@ -215,7 +215,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 4_000,
                 400,
                 0,
-                99_999,
+                91_200,
                 creatorId,
                 "seller-95",
                 "088",
@@ -239,7 +239,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("프로젝트 정산 데이터가 일치하지 않습니다."))
-                .andExpect(content().string(not(containsString("창작자 지급액이 공제 후 금액과 일치하지 않습니다"))));
+                .andExpect(content().string(not(containsString("저장된 지급 상태가 존재하지 않습니다."))));
     }
 
     @TestConfiguration(proxyBeanMethods = false)
