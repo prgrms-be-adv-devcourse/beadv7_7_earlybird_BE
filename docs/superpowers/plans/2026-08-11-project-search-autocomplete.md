@@ -33,7 +33,7 @@
 **Interfaces:**
 - Produces: `ProjectSuggestion(Long projectId, String title)` record (패키지: `application.port`). `ProjectSearchPort.autocomplete(String prefix): List<ProjectSuggestion>` — 매치 없으면 빈 리스트, ES 장애 시 `ServiceUnavailableException`. Task 2/3이 이 시그니처를 그대로 사용한다.
 
-- [ ] **Step 1: `ProjectSuggestion` 레코드 생성**
+- [x] **Step 1: `ProjectSuggestion` 레코드 생성**
 
 `project-service/src/main/java/com/growmighty/lectures/firstday/project/project/application/port/ProjectSuggestion.java`:
 
@@ -44,7 +44,7 @@ public record ProjectSuggestion(Long projectId, String title) {
 }
 ```
 
-- [ ] **Step 2: `ProjectSearchPort`에 `autocomplete` 시그니처 추가, `ProjectSearchAdapter`에 임시 스텁 구현**
+- [x] **Step 2: `ProjectSearchPort`에 `autocomplete` 시그니처 추가, `ProjectSearchAdapter`에 임시 스텁 구현**
 
 `ProjectSearchPort.java` — 기존 `search` 메서드(21번째 줄) 바로 뒤에 추가:
 
@@ -65,7 +65,7 @@ public record ProjectSuggestion(Long projectId, String title) {
 - 새 import 추가: `com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion` (`ProjectSearchAdapter.java` 상단, 기존 `ProjectSearchPort` import 근처).
 - 이 시점에 `./gradlew :project-service:compileJava`가 통과하는지 확인한다(컴파일 확인용, 테스트 실행 아님).
 
-- [ ] **Step 3: 실패하는 테스트 작성**
+- [x] **Step 3: 실패하는 테스트 작성**
 
 `ProjectSearchAdapterTest.java` 맨 아래(`search_elasticsearchCallFailure_throwsServiceUnavailable` 뒤, 클래스 닫는 `}` 앞)에 추가. 파일 상단 import에 `com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion` 한 줄 추가.
 
@@ -111,12 +111,12 @@ public record ProjectSuggestion(Long projectId, String title) {
     }
 ```
 
-- [ ] **Step 4: 테스트 실행 → 실패 확인**
+- [x] **Step 4: 테스트 실행 → 실패 확인**
 
 Run: `./gradlew :project-service:test --tests "ProjectSearchAdapterTest.autocomplete_success_returnsSuggestions"`
 Expected: FAIL — `UnsupportedOperationException: not yet implemented` (Step 2의 스텁이 그대로 실행됨).
 
-- [ ] **Step 5: 실제 구현으로 교체**
+- [x] **Step 5: 실제 구현으로 교체**
 
 `ProjectSearchAdapter.java` — `MAX_RESULTS` 상수 근처에 새 상수 추가:
 
@@ -152,12 +152,12 @@ Step 2의 스텁 메서드를 아래로 교체:
     }
 ```
 
-- [ ] **Step 6: 테스트 실행 → 통과 확인**
+- [x] **Step 6: 테스트 실행 → 통과 확인**
 
 Run: `./gradlew :project-service:test --tests "ProjectSearchAdapterTest"`
 Expected: PASS (기존 케이스 포함 전체).
 
-- [ ] **Step 7: 단위 테스트 커밋**
+- [x] **Step 7: 단위 테스트 커밋**
 
 ```bash
 git add project-service/src/main/java/com/growmighty/lectures/firstday/project/project/application/port/ProjectSuggestion.java \
@@ -167,7 +167,7 @@ git add project-service/src/main/java/com/growmighty/lectures/firstday/project/p
 git commit -m "Feat: 프로젝트 제목 자동완성 prefix 쿼리 어댑터 구현"
 ```
 
-- [ ] **Step 8: ES 통합 테스트 추가 (prefix 매치 + 대소문자 무시 + 10개 제한)**
+- [x] **Step 8: ES 통합 테스트 추가 (prefix 매치 + 대소문자 무시 + 10개 제한)**
 
 `ProjectSearchAdapterIntegrationTest.java` 맨 아래(`remove_thenNotFoundBySearch` 뒤, 클래스 닫는 `}` 앞)에 추가. 파일 상단 import에 `com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion` 한 줄 추가.
 
@@ -211,12 +211,12 @@ git commit -m "Feat: 프로젝트 제목 자동완성 prefix 쿼리 어댑터 �
     }
 ```
 
-- [ ] **Step 9: 통합 테스트 실행 → 통과 확인 (Docker 필요)**
+- [x] **Step 9: 통합 테스트 실행 → 통과 확인 (Docker 필요)**
 
 Run: `./gradlew :project-service:test --tests "ProjectSearchAdapterIntegrationTest"`
 Expected: PASS. (Docker가 안 떠 있으면 Testcontainers가 실패한다 — `docs/1_LOCAL_DB_SETUP.md` 참고해 Docker 먼저 확인.)
 
-- [ ] **Step 10: 통합 테스트 커밋**
+- [x] **Step 10: 통합 테스트 커밋**
 
 ```bash
 git add project-service/src/test/java/com/growmighty/lectures/firstday/project/project/infrastructure/search/ProjectSearchAdapterIntegrationTest.java
@@ -236,7 +236,7 @@ git commit -m "Test: 자동완성 prefix/대소문자/결과 제한 통합 테�
 - Consumes: Task 1의 `ProjectSearchPort.autocomplete(String prefix): List<ProjectSuggestion>`.
 - Produces: `ProjectService.autocomplete(String keyword): List<ProjectSuggestion>` — Task 3의 컨트롤러가 이 시그니처를 그대로 호출한다.
 
-- [ ] **Step 1: `ProjectService` 인터페이스에 시그니처 추가**
+- [x] **Step 1: `ProjectService` 인터페이스에 시그니처 추가**
 
 `ProjectService.java` 상단에 import 추가:
 
@@ -251,7 +251,7 @@ import com.growmighty.lectures.firstday.project.project.application.port.Project
     List<ProjectSuggestion> autocomplete(String keyword);
 ```
 
-- [ ] **Step 2: `ProjectServiceImpl`에 구현 추가**
+- [x] **Step 2: `ProjectServiceImpl`에 구현 추가**
 
 `ProjectServiceImpl.java` 상단에 import 추가:
 
@@ -270,7 +270,7 @@ import com.growmighty.lectures.firstday.project.project.application.port.Project
 
 이 시점에 `./gradlew :project-service:compileJava`가 통과하는지 확인한다.
 
-- [ ] **Step 3: 실패하는 테스트 작성**
+- [x] **Step 3: 실패하는 테스트 작성**
 
 `project-service/src/test/java/com/growmighty/lectures/firstday/project/project/application/ProjectServiceImplAutocompleteTest.java` 신규 생성 — 기존 `ProjectServiceImplFindAllSearchTest.java`와 동일한 mock 구성을 따른다:
 
@@ -339,12 +339,12 @@ class ProjectServiceImplAutocompleteTest {
 }
 ```
 
-- [ ] **Step 4: 테스트 실행 → 통과 확인**
+- [x] **Step 4: 테스트 실행 → 통과 확인**
 
 Run: `./gradlew :project-service:test --tests "ProjectServiceImplAutocompleteTest"`
 Expected: PASS. (Step 2에서 구현을 먼저 넣었으므로 바로 통과해야 한다 — 만약 실패하면 Step 2의 위임 로직을 다시 확인.)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add project-service/src/main/java/com/growmighty/lectures/firstday/project/project/application/ProjectService.java \
@@ -365,7 +365,7 @@ git commit -m "Feat: ProjectService에 자동완성 위임 메서드 추가"
 - Consumes: Task 2의 `ProjectService.autocomplete(String keyword): List<ProjectSuggestion>`.
 - Produces: `GET /api/v1/projects/autocomplete?keyword=` — 응답 `List<ProjectAutocompleteResponse>` (`{projectId, title}`).
 
-- [ ] **Step 1: 응답 DTO 생성**
+- [x] **Step 1: 응답 DTO 생성**
 
 `project-service/src/main/java/com/growmighty/lectures/firstday/project/project/presentation/dto/response/ProjectAutocompleteResponse.java`:
 
@@ -381,7 +381,7 @@ public record ProjectAutocompleteResponse(Long projectId, String title) {
 }
 ```
 
-- [ ] **Step 2: 컨트롤러에 엔드포인트 추가**
+- [x] **Step 2: 컨트롤러에 엔드포인트 추가**
 
 `ProjectController.java` 상단에 import 추가:
 
@@ -405,14 +405,14 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.respons
     }
 ```
 
-- [ ] **Step 3: 전체 모듈 테스트 실행 — 컴파일/회귀 확인**
+- [x] **Step 3: 전체 모듈 테스트 실행 — 컴파일/회귀 확인**
 
 이 컨트롤러는 기존 컨벤션상 별도 슬라이스 테스트가 없다(스펙 문서 참고) — 전체 테스트 스위트로 컴파일과 회귀만 확인한다.
 
 Run: `./gradlew :project-service:test`
 Expected: PASS (기존 테스트 전부 포함, 새로 추가한 Task 1/2 테스트도 포함).
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add project-service/src/main/java/com/growmighty/lectures/firstday/project/project/presentation/dto/response/ProjectAutocompleteResponse.java \

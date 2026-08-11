@@ -52,7 +52,7 @@ Base path: `/api/v1/projects`
 | startAt | LocalDateTime | ✓ | 펀딩 시작 일시 |
 | endAt | LocalDate | ✓ | 펀딩 마감일 (해당일 포함, 다음날 00:00에 자동 마감) |
 
-**Response**: `ProjectResponse` (아래 1.4 참고), 초기 상태 `PENDING_REVIEW`
+**Response**: `ProjectResponse` (아래 1.5 참고), 초기 상태 `PENDING_REVIEW`
 
 ### 1.2 프로젝트 목록 조회
 `GET /api/v1/projects`
@@ -70,14 +70,35 @@ Base path: `/api/v1/projects`
 
 **Response**: `List<ProjectResponse>`
 
-### 1.3 내 프로젝트 목록
+### 1.3 프로젝트 제목 자동완성
+`GET /api/v1/projects/autocomplete`
+
+로그인 불필요. `GET /api/v1/projects?keyword=`(§1.2)와 달리 요약/설명/AI임베딩까지 훑는 무거운 검색이 아니라, title만 대상으로 하는 가벼운 자동완성 전용 엔드포인트다. 타이핑마다(키 입력마다) 호출되는 특성에 맞춰 전용 서킷브레이커(800ms 타임아웃)를 쓴다.
+
+**Query Parameters**
+
+| param | type | required | 설명 |
+| --- | --- | --- | --- |
+| keyword | String | ✓ | 검색어, 1~100자. 공백으로 여러 단어를 넣으면 각 단어가 제목의 어떤 단어(토큰)든 하나를 prefix로 매치해야 결과에 포함된다(순서/위치 무관). |
+
+내부적으로 ES에서 후보를 조회한 뒤 MySQL에서 재조회해 공개 상태(`PENDING_REVIEW`/`REJECTED` 제외)만 걸러 반환한다 — ES는 후보 ID 인덱스일 뿐 콘텐츠/가시성의 소스오브트루스가 아니며, `title`도 ES 문서가 아닌 최신 DB 값을 사용한다.
+
+**Response**: `List<ProjectAutocompleteResponse>`, 최대 10개, `projectId` 오름차순. 매치되는 게 없으면 빈 리스트(에러 아님).
+
+```json
+[
+  { "projectId": 1, "title": "카카오 프로젝트" }
+]
+```
+
+### 1.4 내 프로젝트 목록
 `GET /api/v1/projects/me`
 
 **Headers**: `X-User-Id` (Long, 필수)
 
 **Response**: `List<ProjectResponse>`
 
-### 1.4 프로젝트 단건 조회
+### 1.5 프로젝트 단건 조회
 `GET /api/v1/projects/{projectId}`
 
 **Response**: `ProjectResponse`
@@ -106,7 +127,7 @@ Base path: `/api/v1/projects`
 }
 ```
 
-### 1.5 프로젝트 수정
+### 1.6 프로젝트 수정
 `PATCH /api/v1/projects/{projectId}`
 
 **Headers**: `X-User-Id`(필수) — 본인이 등록한 프로젝트가 아니면 `400`.
@@ -126,7 +147,7 @@ Base path: `/api/v1/projects`
 
 **Response**: `ProjectResponse`
 
-### 1.6 프로젝트 삭제
+### 1.7 프로젝트 삭제
 `DELETE /api/v1/projects/{projectId}`
 
 **Headers**: `X-User-Id`(필수) — 본인이 등록한 프로젝트가 아니면 `400`.
@@ -135,7 +156,7 @@ Base path: `/api/v1/projects`
 
 **Response**: `204` 상당의 빈 `data: null`
 
-### 1.7 프로젝트 자진 취소
+### 1.8 프로젝트 자진 취소
 `POST /api/v1/projects/{projectId}/cancel`
 
 **Headers**: `X-User-Id`(필수), `X-User-Role`(필수) — 본인(창작자) 또는 ADMIN만 가능, 아니면 `400`.
