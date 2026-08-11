@@ -267,7 +267,14 @@ public class Order extends BaseEntity {
     }
 
     public void cancel() {
-        changeStatus(OrderStatus.PAID, OrderStatus.CANCELLED);
+        validateCancellationAllowed();
+        this.status = OrderStatus.CANCELLED;
+    }
+
+    public void validateCancellationAllowed() {
+        if (this.status != OrderStatus.PAID) {
+            throw new InvalidOrderStatusException(this.status, OrderStatus.CANCELLED);
+        }
     }
 
     public boolean isCancelled() {
