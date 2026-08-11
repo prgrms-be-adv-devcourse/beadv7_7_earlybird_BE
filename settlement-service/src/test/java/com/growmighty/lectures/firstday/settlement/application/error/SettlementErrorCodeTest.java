@@ -2,7 +2,6 @@
 package com.growmighty.lectures.firstday.settlement.application.error;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;
-import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.DisplayName;
@@ -16,13 +15,5 @@ class SettlementErrorCodeTest {
         assertThat(ORDER_PAYMENT_INPUTS_UNAVAILABLE.getCode()).isEqualTo("S002");
         assertThat(ORDER_PAYMENT_INPUTS_UNAVAILABLE.getMessage())
                 .isEqualTo("주문 결제금액을 확인할 수 없습니다.");
-    }
-
-    @Test
-    @DisplayName("Payment 결제 취소 실패는 Order 입력 오류와 구분한다")
-    void separatesPaymentCancellationFailureFromOrderInputFailure() {
-        assertThat(PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE.getCode()).isEqualTo("S005");
-        assertThat(PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE.getMessage())
-                .isEqualTo("프로젝트 결제 취소 결과를 확인할 수 없습니다.");
     }
 }

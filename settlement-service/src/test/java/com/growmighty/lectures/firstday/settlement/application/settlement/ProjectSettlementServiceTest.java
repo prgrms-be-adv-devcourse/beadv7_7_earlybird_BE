@@ -7,11 +7,11 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutPro
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,8 +35,8 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
     private ProjectSettlementRepository projectSettlementRepository;
 
     @Test
-    @DisplayName("검증된 프로젝트 입력으로 프로젝트 정산과 지급 의무를 확정한다")
-    void confirmsProjectSettlementAndPayoutObligation() {
+    @DisplayName("검증된 프로젝트 입력으로 프로젝트 정산과 최초 지급 상태를 확정한다")
+    void confirmsProjectSettlementAndInitialPayoutState() {
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
                 10L,
                 "seller-10",
@@ -59,17 +59,19 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         assertThat(result)
                 .extracting(
                         ConfirmedProjectSettlement::settlementId,
-                        ConfirmedProjectSettlement::payoutObligationId,
                         ConfirmedProjectSettlement::creatorPayoutAmount,
-                        ConfirmedProjectSettlement::payoutObligationStatus
+                        ConfirmedProjectSettlement::payoutStatus
                 )
                 .satisfies(values -> {
                     assertThat(values.get(0)).isNotNull();
-                    assertThat(values.get(1)).isNotNull();
-                    assertThat(values.get(2)).isEqualTo(Money.wons(27_595));
-                    assertThat(values.get(3)).isEqualTo(PayoutObligationStatus.SCHEDULED);
+                    assertThat(values.get(1)).isEqualTo(Money.wons(27_595));
+                    assertThat(values.get(2)).isEqualTo(PayoutStatus.SCHEDULED);
                 });
-        assertThat(settlement.feePolicySnapshot()).isEqualTo(SettlementFeePolicySnapshot.current());
+        assertThat(settlement.paymentAndSettlementAgencyFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
+        assertThat(settlement.platformFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
+        assertThat(settlement.vatRate()).isEqualByComparingTo(new BigDecimal("0.10"));
+        assertThat(settlement.scheduledDate()).isEqualTo(LocalDate.of(2026, 8, 3));
+        assertThat(settlement.status()).isEqualTo(PayoutStatus.SCHEDULED);
     }
 
     @Test

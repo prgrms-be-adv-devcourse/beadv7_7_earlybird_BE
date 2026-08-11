@@ -1,10 +1,10 @@
 // TODO(settlement-plan): Keep the admin query record stable and add only review or payout fields required by the controller.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -14,10 +14,17 @@ public record AdminProjectSettlementDetail(
         Long projectId,
         Long creatorId,
         LocalDateTime confirmedAt,
-        SettlementFeePolicySnapshot feePolicySnapshot,
-        SettlementBreakdown breakdown,
-        Long payoutObligationId,
-        PayoutObligationStatus status,
+        BigDecimal paymentAndSettlementAgencyFeeRate,
+        BigDecimal platformFeeRate,
+        BigDecimal vatRate,
+        Money baseAmount,
+        Money paymentAndSettlementAgencyFeeAmount,
+        Money paymentAndSettlementAgencyFeeVatAmount,
+        Money platformFeeAmount,
+        Money platformFeeVatAmount,
+        Money otherDeductionAmount,
+        Money creatorPayoutAmount,
+        PayoutStatus status,
         LocalDate scheduledDate,
         LocalDateTime completedAt,
         String tossSellerId,

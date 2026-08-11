@@ -18,11 +18,8 @@ import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayo
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
-import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementCalculationPolicy;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -51,9 +48,6 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
 
     @Autowired
     private ProjectSettlementService projectSettlementService;
-
-    @Autowired
-    private PayoutObligationRepository payoutObligationRepository;
 
     @Autowired
     private ProjectSettlementRepository projectSettlementRepository;
@@ -227,30 +221,6 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     }
 
     @Test
-    @DisplayName("프로젝트 정산에 대응하는 지급 의무가 없으면 공개 정보 없이 데이터 불일치로 응답한다")
-    void rejectsCreatorDetailWhenPayoutObligationIsMissing() throws Exception {
-        long creatorId = Long.parseLong(CREATOR_ID);
-        CreatorPayoutProfile payoutProfile = payoutReadyProfile(creatorId);
-        creatorPayoutProfileRepository.save(payoutProfile);
-        ProjectSettlement settlement = projectSettlementRepository.save(ProjectSettlement.confirm(
-                75_000_001L,
-                creatorId,
-                SettlementCalculationPolicy.current().feePolicySnapshot(),
-                SettlementCalculationPolicy.current().calculate(List.of(Money.wons(1_000_000))),
-                payoutProfile.snapshotDestination(),
-                LocalDateTime.of(2026, 7, 1, 9, 0)
-        ));
-
-        mockMvc.perform(get("/api/v1/settlements/{settlementId}", settlement.id())
-                        .header(JwtHeaders.USER_ID, CREATOR_ID))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("프로젝트 정산 데이터가 일치하지 않습니다."))
-                .andExpect(content().string(not(containsString("지급 의무가 존재하지 않습니다"))));
-    }
-
-    @Test
     @DisplayName("프로젝트 정산 식별자 형식이 올바르지 않으면 잘못된 요청으로 응답한다")
     void rejectsMalformedSettlementId() throws Exception {
         mockMvc.perform(get("/api/v1/settlements/not-a-number")
@@ -289,36 +259,36 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     }
 
     private void failPayoutAttempt(ConfirmedProjectSettlement confirmed) {
-        PayoutObligation obligation = payoutObligationRepository.findById(confirmed.payoutObligationId())
+        ProjectSettlement settlement = projectSettlementRepository.findById(confirmed.settlementId())
                 .orElseThrow();
-        PayoutAttempt attempt = obligation.startAttempt(
+        PayoutAttempt attempt = settlement.startAttempt(
                 "ref-payout-secret",
                 "idempotency-secret",
                 LocalDateTime.of(2026, 7, 7, 9, 0)
         );
-        obligation.failAttempt(
+        settlement.failAttempt(
                 attempt,
                 "toss-payout-secret",
                 "INVALID_ACCOUNT",
                 LocalDateTime.of(2026, 7, 7, 9, 0, 3),
                 false
         );
-        payoutObligationRepository.save(obligation);
+        projectSettlementRepository.save(settlement);
     }
 
     private void completePayoutAttempt(ConfirmedProjectSettlement confirmed) {
-        PayoutObligation obligation = payoutObligationRepository.findById(confirmed.payoutObligationId())
+        ProjectSettlement settlement = projectSettlementRepository.findById(confirmed.settlementId())
                 .orElseThrow();
-        PayoutAttempt attempt = obligation.startAttempt(
+        PayoutAttempt attempt = settlement.startAttempt(
                 "ref-completed-payout",
                 "completed-idempotency-key",
                 LocalDateTime.of(2026, 7, 7, 9, 0)
         );
-        obligation.completeAttempt(
+        settlement.completeAttempt(
                 attempt,
                 "toss-completed-payout",
                 LocalDateTime.of(2026, 7, 7, 9, 0, 3)
         );
-        payoutObligationRepository.save(obligation);
+        projectSettlementRepository.save(settlement);
     }
 }
