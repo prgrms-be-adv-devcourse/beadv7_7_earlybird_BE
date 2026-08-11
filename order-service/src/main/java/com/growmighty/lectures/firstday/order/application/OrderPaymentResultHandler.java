@@ -18,6 +18,7 @@ class OrderPaymentResultHandler {
 
     // 결제 결과에 대한 처리
     void apply(Order order, PaymentResult payment) {
+        order.assignPgOrderId(payment.pgOrderId());
         Order.PaymentOutcome outcome = switch (payment.status()) {
             case SUCCESS -> Order.PaymentOutcome.SUCCESS;
             case FAILURE -> Order.PaymentOutcome.FAILURE;

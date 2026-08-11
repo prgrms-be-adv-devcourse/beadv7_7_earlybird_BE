@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.order.presentation;
 import com.growmighty.lectures.firstday.order.application.InternalOrderApiService;
 import com.growmighty.lectures.firstday.order.presentation.dto.OrderVerification;
 import com.growmighty.lectures.firstday.order.presentation.dto.PaymentStatusRequest;
+import com.growmighty.lectures.firstday.order.presentation.dto.ProjectPaymentsRequest;
+import com.growmighty.lectures.firstday.order.presentation.dto.ProjectPaymentsResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -38,5 +40,10 @@ public class InternalOrderController {
     @GetMapping("/purchase-verification")
     public OrderVerification getOrderedVerification(@RequestParam Long userId, @RequestParam Long rewardId) {
         return OrderVerification.from(internalOrderApiService.getOrderedVerification(userId, rewardId));
+    }
+
+    @PostMapping("/project-payments")
+    public ProjectPaymentsResponse getProjectPayments(@Valid @RequestBody ProjectPaymentsRequest request) {
+        return ProjectPaymentsResponse.from(internalOrderApiService.getProjectPayments(request.projectIds()));
     }
 }
