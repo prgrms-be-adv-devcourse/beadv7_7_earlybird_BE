@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.application.refund;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
@@ -130,6 +131,32 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         service().createDueRequests();
 
         assertThat(outboxRepository.findByProjectId(projectId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("발생 시각보다 이른 발행 완료 시각을 거부해도 Outbox는 미발행 상태를 유지한다")
+    void keepsOutboxUnpublishedWhenPublishedAtIsBeforeOccurredAt() {
+        long projectId = 6_104L;
+        Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
+        outcomeRepository.saveAndFlush(ProjectOutcomeFact.of(
+                projectId,
+                704L,
+                ProjectOutcomeFact.Outcome.FAILED,
+                outcomeAt
+        ));
+        paymentRepository.saveAndFlush(OrderPaymentFact.completed(
+                61_005L,
+                "PG-61005",
+                projectId,
+                Money.wons(50_000),
+                outcomeAt.minusSeconds(1)
+        ));
+        ProjectRefundRequested request = service().createDueRequests().getFirst();
+
+        assertThatThrownBy(() -> request.markPublished(request.occurredAt().minusSeconds(1)))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(request.published()).isFalse();
     }
 
     private ProjectRefundRequestService service() {

@@ -119,10 +119,11 @@ public class ProjectRefundRequested extends BaseEntity {
         if (this.publishedAt != null) {
             return;
         }
-        this.publishedAt = Objects.requireNonNull(publishedAt, "Outbox 발행 완료 시각은 필수입니다.");
-        if (publishedAt.isBefore(occurredAt)) {
+        Instant completedAt = Objects.requireNonNull(publishedAt, "Outbox 발행 완료 시각은 필수입니다.");
+        if (completedAt.isBefore(occurredAt)) {
             throw new IllegalArgumentException("Outbox 발행 완료 시각은 이벤트 발생 시각보다 빠를 수 없습니다.");
         }
+        this.publishedAt = completedAt;
     }
 
     public String eventId() {
