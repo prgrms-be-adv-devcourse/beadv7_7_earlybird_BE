@@ -2,14 +2,17 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.config;
 
 import java.time.Clock;
+import java.time.ZoneId;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class SettlementTimeConfig {
 
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
     @Bean
     public Clock settlementClock() {
-        return Clock.systemDefaultZone();
+        return Clock.system(SEOUL);
     }
 }
