@@ -50,6 +50,8 @@ class OrderApiServiceTest {
     private PaymentPort paymentPort;
 
     private OrderApiService orderApiService;
+    private InternalOrderApiService internalOrderApiService;
+    private OrderSagaRecoveryService orderSagaRecoveryService;
     private final Map<Long, Order> orders = new HashMap<>();
     private final List<OrderStatus> savedStatuses = new ArrayList<>();
     private long nextOrderId;
@@ -57,6 +59,12 @@ class OrderApiServiceTest {
     @BeforeEach
     void setUp() {
         orderApiService = new OrderApiService(orderRepository, rewardPort, paymentPort);
+        OrderRemoteCallExecutor remoteCalls = new OrderRemoteCallExecutor();
+        OrderStockHandler stockHandler = new OrderStockHandler(rewardPort, remoteCalls);
+        OrderPaymentResultHandler paymentResultHandler = new OrderPaymentResultHandler(stockHandler);
+        internalOrderApiService = new InternalOrderApiService(orderRepository, paymentResultHandler);
+        orderSagaRecoveryService = new OrderSagaRecoveryService(orderRepository, paymentPort, remoteCalls,
+                stockHandler, paymentResultHandler);
         orders.clear();
         savedStatuses.clear();
         nextOrderId = 1L;
@@ -225,7 +233,7 @@ class OrderApiServiceTest {
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        OrderResult result = orderApiService.applyPaymentResult(orderId, PaymentResult.success(99L, BigDecimal.valueOf(23000)));
+        OrderResult result = internalOrderApiService.applyPaymentResult(orderId, PaymentResult.success(99L, BigDecimal.valueOf(23000)));
 
         assertThat(result.status()).isEqualTo(OrderStatus.PAID);
         verify(rewardPort, never()).decreaseStock(10L, 2, 1L);
@@ -241,7 +249,7 @@ class OrderApiServiceTest {
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        OrderResult result = orderApiService.applyPaymentResult(orderId, PaymentResult.failure(BigDecimal.valueOf(23000)));
+        OrderResult result = internalOrderApiService.applyPaymentResult(orderId, PaymentResult.failure(BigDecimal.valueOf(23000)));
 
         assertThat(result.status()).isEqualTo(OrderStatus.PAYMENT_FAILED);
         verify(rewardPort).restoreStock(10L, 2, 1L);
@@ -587,7 +595,7 @@ class OrderApiServiceTest {
 
         OrderResult pending = orderApiService.placeOrder(command(), 1L);
         when(orderRepository.findByStatusIn(any())).thenReturn(List.of(orders.get(1L)));
-        orderApiService.recoverPendingOrders();
+        orderSagaRecoveryService.recoverPendingOrders();
 
         assertThat(pending.status()).isEqualTo(OrderStatus.STOCK_PENDING);
         assertThat(orders.get(1L).getStatus()).isEqualTo(OrderStatus.PAID);
@@ -603,9 +611,9 @@ class OrderApiServiceTest {
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThat(orderApiService.applyPaymentStatus(orderId, "PAID").status()).isEqualTo(OrderStatus.PAID);
-        assertThat(orderApiService.applyPaymentStatus(orderId, "PAID").status()).isEqualTo(OrderStatus.PAID);
-        assertThat(orderApiService.applyPaymentStatus(orderId, "FAILED").status()).isEqualTo(OrderStatus.PAID);
+        assertThat(internalOrderApiService.applyPaymentStatus(orderId, "PAID").status()).isEqualTo(OrderStatus.PAID);
+        assertThat(internalOrderApiService.applyPaymentStatus(orderId, "PAID").status()).isEqualTo(OrderStatus.PAID);
+        assertThat(internalOrderApiService.applyPaymentStatus(orderId, "FAILED").status()).isEqualTo(OrderStatus.PAID);
 
         verify(rewardPort, never()).restoreStock(any(), any(Integer.class), any());
     }
@@ -619,7 +627,7 @@ class OrderApiServiceTest {
                 "Receiver", "010-0000-0000", "Seoul", "06236", UUID.randomUUID());
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
 
-        assertThatThrownBy(() -> orderApiService.applyPaymentStatus(orderId, "PAID"))
+        assertThatThrownBy(() -> internalOrderApiService.applyPaymentStatus(orderId, "PAID"))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -632,7 +640,7 @@ class OrderApiServiceTest {
         orders.put(1L, order);
         when(orderRepository.findByStatusIn(any())).thenReturn(List.of(order));
 
-        orderApiService.recoverPendingOrders();
+        orderSagaRecoveryService.recoverPendingOrders();
 
         assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
         verify(paymentPort, never()).pay(any(), any(), any());

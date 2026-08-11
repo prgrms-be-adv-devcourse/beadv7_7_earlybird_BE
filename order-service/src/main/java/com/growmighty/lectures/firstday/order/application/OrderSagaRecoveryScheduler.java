@@ -9,10 +9,10 @@ import org.springframework.stereotype.Component;
 @EnableScheduling
 @RequiredArgsConstructor
 public class OrderSagaRecoveryScheduler {
-    private final OrderApiService orderApiService;
+    private final OrderSagaRecoveryService orderSagaRecoveryService;
 
     @Scheduled(fixedDelayString = "${order.saga.recovery-delay-ms:30000}")
     public void recover() {
-        orderApiService.recoverPendingOrders();
+        orderSagaRecoveryService.recoverPendingOrders();
     }
 }
