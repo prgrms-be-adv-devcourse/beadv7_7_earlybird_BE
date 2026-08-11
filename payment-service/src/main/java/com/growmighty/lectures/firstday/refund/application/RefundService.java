@@ -65,10 +65,10 @@ public class RefundService {
 
         refundRepository.save(refund);
         paymentRepository.save(payment);
-        savePaymentStatusOutboxIfAbsent(payment.getPaymentId(), payment.getOrderId(), payment.getStatus());
+        savePaymentStatusOutboxIfAbsent(payment.getPaymentId(), payment.getOrderId(), payment.getPgOrderId(), payment.getStatus());
     }
 
-    private void savePaymentStatusOutboxIfAbsent(Long paymentId, Long orderId, PaymentStatus status) {
+    private void savePaymentStatusOutboxIfAbsent(Long paymentId, Long orderId, String pgOrderId, PaymentStatus status) {
         if(paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(paymentId, status)) {
             return;
         }
@@ -77,6 +77,7 @@ public class RefundService {
             PaymentStatusOutbox.pending(
                 paymentId,
                 orderId,
+                pgOrderId,
                 status
             )
         );

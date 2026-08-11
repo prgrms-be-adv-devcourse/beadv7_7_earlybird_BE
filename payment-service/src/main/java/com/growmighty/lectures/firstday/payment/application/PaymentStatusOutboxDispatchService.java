@@ -20,6 +20,7 @@ public class PaymentStatusOutboxDispatchService {
             paymentSingleResultEventPublisher.publish(
                 new PaymentSingleResultEvent(
                     outbox.getOrderId(),
+                    outbox.getPgOrderId(),
                     outbox.getPaymentStatus().name()
                 )
             );

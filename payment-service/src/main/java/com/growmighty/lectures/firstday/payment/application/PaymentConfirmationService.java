@@ -174,6 +174,7 @@ public class PaymentConfirmationService {
             PaymentStatusOutbox.pending(
                 payment.getPaymentId(),
                 payment.getOrderId(),
+                payment.getPgOrderId(),
                 payment.getStatus()
             )
         );

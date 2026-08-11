@@ -22,6 +22,7 @@ class PaymentStatusOutboxDispatchServiceTest {
 
     private static final Long PAYMENT_ID = 1L;
     private static final Long ORDER_ID = 2L;
+    private static final String PG_ORDER_ID = "earlybird-2";
 
     @Mock
     private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
@@ -38,7 +39,7 @@ class PaymentStatusOutboxDispatchServiceTest {
         paymentStatusOutboxDispatchService.dispatch(outbox);
 
         verify(paymentSingleResultEventPublisher).publish(
-            new PaymentSingleResultEvent(ORDER_ID, PaymentStatus.PAID.name()) // <--
+            new PaymentSingleResultEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name()) // <--
         );
         verify(paymentStatusOutboxRepository).save(outbox);
         assertThat(outbox.getStatus()).isEqualTo(PaymentStatusOutboxStatus.SENT);
@@ -50,7 +51,7 @@ class PaymentStatusOutboxDispatchServiceTest {
         PaymentStatusOutbox outbox = pendingOutbox();
         doThrow(new IllegalStateException("Kafka 발행 실패"))
             .when(paymentSingleResultEventPublisher)
-            .publish(new PaymentSingleResultEvent(ORDER_ID, PaymentStatus.PAID.name())); // <--
+            .publish(new PaymentSingleResultEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
 
         assertThatThrownBy(() -> paymentStatusOutboxDispatchService.dispatch(outbox))
             .isInstanceOf(IllegalStateException.class)
@@ -62,6 +63,6 @@ class PaymentStatusOutboxDispatchServiceTest {
     }
 
     private PaymentStatusOutbox pendingOutbox() {
-        return PaymentStatusOutbox.pending(PAYMENT_ID, ORDER_ID, PaymentStatus.PAID);
+        return PaymentStatusOutbox.pending(PAYMENT_ID, ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID); // <--
     }
 }
