@@ -127,10 +127,10 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     @DisplayName("매치가 10개를 넘으면 10개로 잘린다")
     void autocomplete_limitsToTenResults() {
         for (int i = 0; i < 12; i++) {
-            adapter.index(savedProject("접두어테스트 프로젝트 " + i));
+            adapter.index(savedProject("PrefixLimitTest Project " + i));
         }
 
         await().atMost(Duration.ofSeconds(5))
-                .untilAsserted(() -> assertThat(adapter.autocomplete("접두어테스트")).hasSize(10));
+                .untilAsserted(() -> assertThat(adapter.autocomplete("PrefixLimitTest")).hasSize(10));
     }
 }
