@@ -188,8 +188,8 @@ class OrderRepositoryTests {
             }
 
             @Override
-            public RefundResult refund(Long orderId, BigDecimal amount) {
-                return RefundResult.success(amount, "refund-reference");
+            public CancellationResult cancel(Long paymentId, BigDecimal amount) {
+                return new CancellationResult(PaymentResult.Status.UNKNOWN, BigDecimal.valueOf(13_000), 1L, 1L);
             }
 
             @Override

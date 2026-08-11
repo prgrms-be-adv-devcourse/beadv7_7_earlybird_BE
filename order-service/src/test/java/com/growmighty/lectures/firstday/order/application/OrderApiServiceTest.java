@@ -6,7 +6,6 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
-import com.growmighty.lectures.firstday.order.application.port.PaymentPort.RefundResult;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
@@ -262,14 +261,13 @@ class OrderApiServiceTest {
         Long orderId = 1L;
         Order order = paidOrder(orderId);
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
-        when(paymentPort.refund(orderId, BigDecimal.valueOf(23000)))
-                .thenReturn(RefundResult.success(BigDecimal.valueOf(23000), "refund-1"));
+        when(paymentPort.cancel(orderId, BigDecimal.valueOf(23000)));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         OrderResult result = orderApiService.cancelOrder(orderId, 1L);
 
         assertThat(result.status()).isEqualTo(OrderStatus.CANCELLED);
-        verify(paymentPort).refund(orderId, BigDecimal.valueOf(23000));
+        verify(paymentPort).cancel(orderId, BigDecimal.valueOf(23000));
         verify(rewardPort).restoreStock(10L, 2, 1L);
     }
 
@@ -280,8 +278,7 @@ class OrderApiServiceTest {
         Long orderId = 1L;
         Order order = paidOrder(orderId);
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
-        when(paymentPort.refund(orderId, BigDecimal.valueOf(23000)))
-                .thenReturn(new RefundResult(PaymentResult.Status.FAILURE, BigDecimal.valueOf(23000), null));
+        when(paymentPort.cancel(orderId, BigDecimal.valueOf(23000)));
 
         assertThatThrownBy(() -> orderApiService.cancelOrder(orderId, 1L))
                 .isInstanceOf(IllegalStateException.class);
