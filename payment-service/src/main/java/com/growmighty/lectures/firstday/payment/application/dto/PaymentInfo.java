@@ -8,10 +8,11 @@ import java.math.BigDecimal;
 public record PaymentInfo(
         Long paymentId,
         Long orderId,
+        String pgOrderId,
         BigDecimal amount,
         PaymentStatus status
 ) {
     public static PaymentInfo from(Payment payment) {
-        return new PaymentInfo(payment.getPaymentId(), payment.getOrderId(), payment.getAmount(), payment.getStatus());
+        return new PaymentInfo(payment.getPaymentId(), payment.getOrderId(), payment.getPgOrderId(), payment.getAmount(), payment.getStatus());
     }
 }
