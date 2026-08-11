@@ -3,79 +3,58 @@
 - 날짜: 2026-08-11
 - 담당: 강대혁 (project-service)
 - 구현 상태: 설계 완료, 구현 전
-- 배경: 프로젝트 목록 화면의 검색창에 자동완성(타이핑 중 후보 제목 목록)을 추가하고 싶다. 기존 `GET /api/v1/projects?keyword=`는 nori 키워드 매치 + OpenAI 임베딩 kNN을 결합한 하이브리드 검색(`2026-08-06-project-elasticsearch-vector-search-design.md`)으로, 자동완성처럼 매 타이핑마다 호출하기엔 무겁고(임베딩 API 호출 포함) 반환 형태도 다르다(풀 `ProjectResponse` 목록). title 필드에 대한 ES prefix 쿼리로 가볍게 후보를 반환하는 전용 기능을 별도로 추가한다.
+- 배경: 프로젝트 검색창에 자동완성(타이핑할 때마다 후보 제목이 뜨는 것)을 추가한다. 기존 `GET /api/v1/projects?keyword=`는 키워드+AI임베딩을 같이 쓰는 무거운 검색이라, 한 글자 칠 때마다 부르기엔 느리고 응답도 무겁다(프로젝트 전체 정보가 다 들어있음). 그래서 "제목만 빠르게 몇 개 보여주는" 가벼운 기능을 따로 만든다.
 
-## 요구사항
+## 이번에 만들 것
 
-- `title` 필드만 대상으로 한다(summary/description 제외) — 자동완성 목록은 "프로젝트 이름 제안"이 목적이라 결과가 깔끔해야 한다.
-- prefix 쿼리는 기존 `title`(nori 분석, `korean_index`/`korean_search`) 필드를 그대로 쓴다 — 별도 `title.keyword` 서브필드나 매핑 변경을 추가하지 않는다.
-- 검색어 최소 1자부터 반응한다. 최대 100자 제한은 기존 `findAll`의 keyword 파라미터와 동일하게 적용한다.
-- 결과는 최대 10개, `projectId`와 `title`만 담는다.
-- 매치가 없으면 빈 리스트를 반환한다(에러 아님).
-- ES 장애/타임아웃 시 기존 `search()`와 동일하게 `ServiceUnavailableException`(503)을 던진다 — 별도 폴백 경로는 두지 않는다.
-- 인증 불필요(비로그인 사용자도 호출 가능한 공개 API, 기존 `findAll`과 동일).
+- 검색 대상은 **제목(title)만**. 요약/설명까지 뒤지지 않는다 — 자동완성은 "이런 이름의 프로젝트가 있어요" 정도만 보여주면 되니까.
+- "어디서부터 시작하는 제목인지"(prefix, 접두어)만 본다. 예: "카카"를 치면 "카카오 프로젝트"는 나오지만, "우리카카오"처럼 중간에 "카카"가 들어간 제목은 안 나온다.
+- 한 글자만 쳐도 검색이 된다. 너무 긴 검색어(100자 초과)는 막는다 — 기존 검색창과 동일한 규칙.
+- 결과는 최대 10개까지만, 각 결과는 `프로젝트 ID`와 `제목`만 준다.
+- 매치되는 게 없으면 그냥 빈 목록을 준다(에러 아님).
+- 검색엔진(ES)이 다운되면 에러를 낸다(503) — "느려도 어떻게든 결과는 보여주기" 같은 대체 경로는 안 만든다. 기존 검색 기능도 똑같이 동작한다.
+- 로그인 안 해도 쓸 수 있다.
 
-## 아키텍처
+## 어떻게 동작하나
 
 ```
-GET /api/v1/projects/autocomplete?keyword=xxx   (기존 GET /api/v1/projects와 별개 경로)
-  → ProjectController.autocomplete()
-    → ProjectService.autocomplete(keyword)
-      → ProjectSearchPort.autocomplete(keyword)
-        → ProjectSearchAdapter: ES title 필드에 prefix 쿼리(case_insensitive) 실행
-          → List<ProjectSuggestion>(projectId, title) 반환, 최대 10개
+GET /api/v1/projects/autocomplete?keyword=카카
+  → 컨트롤러
+    → 서비스
+      → 검색 포트
+        → 검색 어댑터: ES에 "title이 '카카'로 시작하는 문서 찾아줘" 쿼리
+          → [{ 프로젝트ID: 1, 제목: "카카오 프로젝트" }, ...] 최대 10개
 ```
 
-**엔드포인트를 `/api/v1/projects`에 파라미터로 얹지 않고 별도 경로로 분리하는 이유**: 응답 스키마가 완전히 다르다(자동완성은 `{projectId, title}`, 기존 검색은 풀 `ProjectResponse`). 하나의 경로가 파라미터에 따라 다른 응답 스키마를 반환하는 것은 API 계약을 애매하게 만든다. 이미 이 컨트롤러에 같은 이유로 분리된 전례가 있다(`GET /api/v1/projects/me`) — "같은 리소스를 다른 목적으로 조회"할 때 쿼리 파라미터가 아니라 서브 경로로 분리하는 게 이 코드베이스의 기존 컨벤션이다.
+**왜 기존 `/api/v1/projects?keyword=` 안에 옵션으로 넣지 않고 URL을 따로 만드나?**
+같은 URL인데 파라미터 하나로 응답 내용이 완전히 달라지면(자동완성은 `{ID, 제목}`만, 기존 검색은 프로젝트 전체 정보) 헷갈린다. 이미 이 컨트롤러에 `/api/v1/projects/me`("내 프로젝트만 보기")처럼, 목적이 다르면 URL 자체를 나누는 방식을 쓰고 있어서 그 방식을 그대로 따른다.
 
-**서킷브레이커는 기존 `projectSearch` id를 재사용한다** — 자동완성용 서킷브레이커를 새로 만들지 않는다. 자동완성과 하이브리드 검색은 둘 다 같은 ES 클러스터에 의존하므로 장애 도메인을 공유하는 게 맞고(ES가 죽으면 둘 다 죽어야 정상), 별도 설정 클래스를 추가하는 건 YAGNI에 어긋난다.
+**장애 대응(서킷브레이커)은 기존 검색 기능이 쓰는 걸 그대로 같이 쓴다.**
+자동완성이든 기존 검색이든 결국 같은 ES 서버에 의존하니, ES가 죽으면 둘 다 같이 막히는 게 자연스럽다. 굳이 따로 만들 이유가 없다.
 
-## 컴포넌트 변경
+## 코드에서 바뀌는 부분
 
-**변경: `project-service/.../project/application/port/ProjectSearchPort.java`**
-- `List<ProjectSuggestion> autocomplete(String prefix)` 메서드 추가.
-- `ProjectSuggestion(Long projectId, String title)` 레코드를 같은 패키지(`application/port`)에 신규 추가 — 포트가 `List<Long>`(기존 `search()`)과 달리 title도 함께 반환해야 하는 유일한 메서드라 전용 반환 타입이 필요하다.
+- **`ProjectSearchPort`** (검색 기능의 인터페이스): `autocomplete(검색어)` 메서드 추가. 결과로 `{프로젝트ID, 제목}` 쌍을 담는 작은 타입(`ProjectSuggestion`)을 새로 만든다 — 기존 검색 메서드는 ID만 돌려주는데, 자동완성은 제목도 같이 줘야 하니까.
+- **`ProjectSearchAdapter`** (실제로 ES에 쿼리 날리는 곳): title 필드에 prefix 쿼리를 실행하고, 최대 10개로 잘라서 반환. 대소문자 구분 없이 매치되도록 옵션 하나 켠다(영문 제목에 대문자가 섞여 있어도 찾아지도록).
+- **`ProjectServiceImpl`**: 위 검색 포트를 그대로 호출해서 넘겨주기만 한다 — 별도 가공 없음.
+- **`ProjectController`**: `GET /api/v1/projects/autocomplete` 추가. 검색어는 1~100자로 제한.
+- **새 응답 타입**: `ProjectAutocompleteResponse { 프로젝트ID, 제목 }` — 컨트롤러가 응답할 때 쓰는 전용 타입 (기존 컨트롤러들도 다 이런 식으로 응답 전용 타입을 따로 둠).
 
-**변경: `project-service/.../project/infrastructure/search/ProjectSearchAdapter.java`**
-- `autocomplete(String prefix)` 구현 추가: `Query.of(q -> q.prefix(p -> p.field("title").value(prefix).caseInsensitive(true)))`로 prefix 쿼리 실행, `withMaxResults(10)`, 결과를 `ProjectSuggestion` 목록으로 매핑.
-- 기존 `search()`와 동일하게 `circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_SEARCH_ID)`로 감싸고, fallback은 `ServiceUnavailableException`을 던진다.
-- `case_insensitive: true`가 필요한 이유: `title` 필드의 분석기(`korean_index`/`korean_search`)에 `lowercase` 필터가 포함돼 있어 인덱스에는 소문자로 저장되는데, ES `prefix` 쿼리는 기본적으로 입력값을 분석하지 않고 그대로 비교한다 — 이 옵션 없이는 영문 제목에 대문자가 섞여 있을 때 매치가 안 될 수 있다.
+## 에러가 날 때 어떻게 되나
 
-**변경: `project-service/.../project/application/ProjectServiceImpl.java`** (및 `ProjectService` 인터페이스)
-- `List<ProjectSuggestion> autocomplete(String keyword)` 추가 — `searchPort.autocomplete(keyword)` 결과를 그대로 반환(추가 가공 없음, categoryId/status 필터 없음).
+- ES가 죽어있거나 너무 느리면: 503 에러.
+- 검색어가 비어있거나 100자 넘으면: 400 에러(입력값 검증 실패).
+- 매치되는 프로젝트가 없으면: 에러 아니고 그냥 빈 목록 + 200 정상 응답.
 
-**변경: `project-service/.../project/presentation/ProjectController.java`**
-- `GET /api/v1/projects/autocomplete` 추가:
-  ```java
-  @GetMapping("/autocomplete")
-  public List<ProjectAutocompleteResponse> autocomplete(
-          @RequestParam @Size(min = 1, max = 100, message = "검색어는 1자 이상 100자 이하여야 합니다.") String keyword) {
-      return projectService.autocomplete(keyword).stream()
-              .map(s -> new ProjectAutocompleteResponse(s.projectId(), s.title()))
-              .toList();
-  }
-  ```
-- `GetMapping`은 기존 `findAll()`(`GET /api/v1/projects`)보다 위나 아래 아무 데나, 다만 `/{projectId}` 같은 path variable 매핑과 순서 충돌이 없는지만 확인(Spring이 정적 경로 `/autocomplete`를 `/{projectId}`보다 우선 매치하므로 실제로는 문제 없음, 기존 `/me`도 같은 패턴).
+## 테스트할 것
 
-**신규: `project-service/.../project/presentation/dto/response/ProjectAutocompleteResponse.java`**
-- `record ProjectAutocompleteResponse(Long projectId, String title) {}`
-- `application/port`의 `ProjectSuggestion`을 컨트롤러가 그대로 반환하지 않고 이 프레젠테이션 DTO로 한 번 감싸는 이유: 기존 컨벤션상 컨트롤러는 항상 `presentation/dto/response`의 타입을 반환한다(`ProjectResponse`와 동일한 패턴) — 계층 간 타입을 섞지 않는다.
+- prefix로 잘 찾아지는지, 대소문자 섞여도 되는지, 매치 없을 때 빈 목록 나오는지, 10개 넘으면 10개로 잘리는지, ES 장애 시 에러 나는지.
+- 서비스 계층에서 검색 포트 결과를 그대로 잘 넘기는지, ES 장애가 그대로 전달되는지.
+- 컨트롤러는 원래 하던 대로 별도 테스트 없이 서비스 계층 테스트로 커버.
 
-## 에러 처리
+## 이번엔 안 하는 것
 
-- ES 장애/타임아웃: 서킷브레이커 fallback → `ServiceUnavailableException` → 503 (기존 `search()`와 동일, 별도 폴백 없음).
-- `keyword`가 빈 문자열이거나 100자 초과: `@Size(min=1, max=100)` 검증 실패 → 400 (Bean Validation, 기존 컨벤션).
-- 매치 없음: 에러 아님, 빈 리스트 200 응답.
-
-## 테스트
-
-- `ProjectSearchAdapterTest`(기존 파일에 케이스 추가): prefix 매치 성공(대소문자 섞인 영문 제목 포함), 매치 없음(빈 리스트), 10개 초과 매치 시 10개로 절단, ES 장애 시 `ServiceUnavailableException` 전파.
-- `ProjectServiceImplTest`: `autocomplete()`가 포트 결과를 그대로 전달하는지, ES 장애 시 예외가 그대로 전파되는지(가공/폴백 없음을 확인).
-- 컨트롤러 레벨 별도 슬라이스 테스트는 만들지 않는다 — 기존 `findAll` 등 다른 엔드포인트도 같은 컨벤션(서비스 레이어에서 검증, 컨트롤러는 얇은 위임).
-
-## 범위 밖
-
-- `title.keyword` 서브필드 추가나 인덱스 매핑 변경은 하지 않는다 — 기존 분석 필드에 prefix 쿼리로 충분하다고 판단(브레인스토밍 단계에서 확인).
-- summary/description을 자동완성 대상에 포함하는 것은 이번 스코프에 포함하지 않는다.
-- 자동완성 결과에 categoryId/status 필터를 적용하는 것(예: 특정 카테고리 내에서만 자동완성)은 이번 스코프 밖 — 필요해지면 추후 별도 설계.
-- 자동완성 전용 서킷브레이커/레이트리밋 도입은 하지 않는다 — 기존 `projectSearch` 서킷브레이커를 재사용한다(위 아키텍처 절 참고).
+- 제목 매칭 방식을 더 정교하게 바꾸는 것(별도 필드 추가 등)은 안 한다 — 지금 있는 필드로 충분하다고 판단.
+- 요약/설명까지 자동완성 대상에 넣는 것은 안 한다.
+- 카테고리/상태로 자동완성 결과를 필터링하는 것은 안 한다 — 필요해지면 나중에 따로.
+- 자동완성 전용 장애 대응(서킷브레이커)을 새로 만드는 것도 안 한다 — 위에서 설명한 이유로 기존 것을 같이 쓴다.
