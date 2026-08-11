@@ -6,7 +6,7 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
-import com.growmighty.lectures.firstday.order.application.port.PaymentPort.RefundResult;
+import com.growmighty.lectures.firstday.order.application.port.PaymentPort.CancellationResult;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
@@ -168,16 +168,34 @@ public class OrderApiService {
             throw new IllegalStateException("Order is already cancelled. orderId=" + orderId);
         }
 
+        order.validateCancellationAllowed();
         verifyCancellationAllowedByProject(order);
-        RefundResult refund = paymentPort.refund(order.getId(), order.getTotalAmount().getValue());
-        if (refund.status() != PaymentResult.Status.SUCCESS) {
-            throw new IllegalStateException("Refund failed or pending. orderId=" + orderId);
+        PaymentResult payment = remoteCalls.execute("payment-get-by-order",
+                () -> paymentPort.getPaymentResult(order.getId()));
+        validatePaymentForCancellation(order, payment);
+        Long paymentId = payment.paymentId();
+        CancellationResult cancellation = remoteCalls.execute("payment-cancel",
+                () -> paymentPort.cancel(paymentId, order.getTotalAmount().getValue()));
+        if (cancellation == null || cancellation.status() != PaymentResult.Status.SUCCESS
+                || !paymentId.equals(cancellation.paymentId())
+                || !order.getId().equals(cancellation.orderId())) {
+            throw new IllegalStateException("Payment cancellation failed or pending. orderId=" + orderId);
         }
 
         stockHandler.releaseStock(order);
         order.cancel();
         log.info("order cancelled. orderId={}", orderId);
         return OrderResult.from(orderRepository.save(order));
+    }
+
+    private void validatePaymentForCancellation(Order order, PaymentResult payment) {
+        if (payment == null || payment.status() != PaymentResult.Status.SUCCESS || payment.paymentId() == null) {
+            throw new IllegalStateException("Paid payment was not found for cancellation. orderId=" + order.getId());
+        }
+        if (payment.amount() == null
+                || order.getTotalAmount().getValue().compareTo(payment.amount()) != 0) {
+            throw new IllegalStateException("Payment amount mismatch. orderId=" + order.getId());
+        }
     }
 
     @Transactional(readOnly = true)

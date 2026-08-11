@@ -8,17 +8,14 @@ public interface PaymentPort {
 
     PaymentResult pay(Long orderId, Long userId, BigDecimal amount);
 
-    RefundResult refund(Long orderId, BigDecimal amount);
+    CancellationResult cancel(Long paymentId, BigDecimal amount);
 
     PaymentResult getPaymentResult(Long orderId);
 
-    record RefundResult(
+    record CancellationResult(
             PaymentResult.Status status,
             BigDecimal amount,
-            String refundReference
-    ) {
-        public static RefundResult success(BigDecimal amount, String refundReference) {
-            return new RefundResult(PaymentResult.Status.SUCCESS, amount, refundReference);
-        }
-    }
+            Long paymentId,
+            Long orderId
+    ) { }
 }
