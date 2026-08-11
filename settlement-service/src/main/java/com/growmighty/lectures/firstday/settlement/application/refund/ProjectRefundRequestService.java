@@ -8,6 +8,7 @@ import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefu
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ProjectRefundRequestService {
 
+    private static final int OUTCOME_BATCH_SIZE = 100;
+
     private final ProjectRefundInputRepository inputRepository;
     private final ProjectRefundRequestedRepository outboxRepository;
     private final Clock clock;
@@ -28,12 +31,11 @@ public class ProjectRefundRequestService {
     public List<ProjectRefundRequested> createDueRequests() {
         Instant now = Instant.now(clock);
         LocalDate today = LocalDate.now(clock);
+        ZoneId zone = clock.getZone();
+        Instant dueBefore = today.atStartOfDay(zone).toInstant();
         List<ProjectRefundRequested> created = new ArrayList<>();
-        for (ProjectOutcomeFact outcome : inputRepository.findRefundOutcomes()) {
-            LocalDate dueDate = outcome.occurredAt().atZone(clock.getZone()).toLocalDate().plusDays(1);
-            if (dueDate.isAfter(today) || outboxRepository.findByProjectId(outcome.projectId()).isPresent()) {
-                continue;
-            }
+        // ponytail: oldest incomplete inputs can fill one run; add a persisted retry cursor if that backlog grows.
+        for (ProjectOutcomeFact outcome : inputRepository.findRefundOutcomes(dueBefore, OUTCOME_BATCH_SIZE)) {
             List<OrderPaymentFact> payments = inputRepository.findPayments(outcome.projectId());
             if (!hasCompleteInput(outcome, payments)) {
                 continue;

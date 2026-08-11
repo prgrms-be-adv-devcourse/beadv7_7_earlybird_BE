@@ -159,6 +159,36 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         assertThat(request.published()).isFalse();
     }
 
+    @Test
+    @DisplayName("미생성 환불 Outbox는 한 번에 100건씩 생성한다")
+    void createsDueRequestsInBatches() {
+        Instant outcomeAt = Instant.parse("2026-08-01T09:00:00Z");
+        for (int index = 0; index <= 100; index++) {
+            long projectId = 6_200L + index;
+            outcomeRepository.save(ProjectOutcomeFact.of(
+                    projectId,
+                    800L + index,
+                    ProjectOutcomeFact.Outcome.FAILED,
+                    outcomeAt
+            ));
+            paymentRepository.save(OrderPaymentFact.completed(
+                    62_000L + index,
+                    "PG-" + projectId,
+                    projectId,
+                    Money.wons(10_000),
+                    outcomeAt.minusSeconds(1)
+            ));
+        }
+        outcomeRepository.flush();
+        paymentRepository.flush();
+
+        List<ProjectRefundRequested> first = service().createDueRequests();
+        List<ProjectRefundRequested> second = service().createDueRequests();
+
+        assertThat(first).hasSize(100);
+        assertThat(second).hasSize(1);
+    }
+
     private ProjectRefundRequestService service() {
         return new ProjectRefundRequestService(inputRepository, outboxRepository, CLOCK);
     }
