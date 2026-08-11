@@ -8,6 +8,6 @@ public record ProjectPaymentsView(List<ProjectPayment> projects) {
     public record ProjectPayment(Long projectId, List<OrderPayment> orders) {
     }
 
-    public record OrderPayment(Long orderId, String pgOrderId, BigDecimal paymentAmount) {
+    public record OrderPayment(Long orderId, String pgOrderId, BigDecimal paymentAmount, String orderStatus) {
     }
 }

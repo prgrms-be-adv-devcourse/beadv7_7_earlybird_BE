@@ -22,10 +22,10 @@ public record ProjectPaymentsResponse(List<ProjectPayment> projects) {
         }
     }
 
-    public record OrderPayment(Long orderId, String pgOrderId, BigDecimal paymentAmount) {
+    public record OrderPayment(Long orderId, String pgOrderId, BigDecimal paymentAmount, String orderStatus) {
 
         private static OrderPayment from(ProjectPaymentsView.OrderPayment order) {
-            return new OrderPayment(order.orderId(), order.pgOrderId(), order.paymentAmount());
+            return new OrderPayment(order.orderId(), order.pgOrderId(), order.paymentAmount(), order.orderStatus());
         }
     }
 }

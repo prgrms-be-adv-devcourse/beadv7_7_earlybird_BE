@@ -86,7 +86,8 @@ public class InternalOrderApiService {
 
         orders.forEach(order -> ordersByProjectId.get(order.getProjectId())
                 .add(new ProjectPaymentsView.OrderPayment(
-                        order.getId(), order.getPgOrderId(), order.getTotalAmount().getValue())));
+                        order.getId(), order.getPgOrderId(), order.getTotalAmount().getValue(),
+                        order.getStatus().name())));
 
         return toProjectPaymentsView(ordersByProjectId);
     }
