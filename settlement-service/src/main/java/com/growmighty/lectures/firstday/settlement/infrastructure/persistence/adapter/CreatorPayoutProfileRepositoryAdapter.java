@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutPro
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataCreatorPayoutProfileRepository;
 import java.util.Optional;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +17,7 @@ public class CreatorPayoutProfileRepositoryAdapter implements CreatorPayoutProfi
 
     @Override
     @Transactional
-    public CreatorPayoutProfile save(CreatorPayoutProfile profile) {
+    public CreatorPayoutProfile save(@NonNull CreatorPayoutProfile profile) {
         return repository.saveAndFlush(profile);
     }
 
