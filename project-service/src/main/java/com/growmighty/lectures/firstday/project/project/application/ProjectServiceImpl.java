@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,6 +43,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ProjectServiceImpl implements ProjectService {
+
+    private static final int AUTOCOMPLETE_MAX_RESULTS = 10;
 
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
@@ -81,9 +84,25 @@ public class ProjectServiceImpl implements ProjectService {
                 .toList();
     }
 
+    /**
+     * ES는 후보 projectId 인덱스일 뿐, 콘텐츠/가시성의 소스오브트루스가 아니다(findAll과 동일한 원칙) —
+     * PENDING_REVIEW/REJECTED 상태로 색인된 문서나, 삭제 실패로 남아있는 stale 문서가 그대로 노출되지
+     * 않도록 여기서 MySQL로 다시 걸러 필터링/정렬/제한한다. 제목도 ES 문서가 아니라 DB 엔티티에서
+     * 가져오므로 수정 후 색인이 아직 안 따라잡은 상태에서도 최신 제목을 준다.
+     */
     @Override
     public List<ProjectSuggestion> autocomplete(String keyword) {
-        return searchPort.autocomplete(keyword);
+        List<ProjectSuggestion> candidates = searchPort.autocomplete(keyword);
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        List<Long> candidateIds = candidates.stream().map(ProjectSuggestion::projectId).toList();
+        return projectRepository.findAllById(candidateIds).stream()
+                .filter(Project::isPublished)
+                .sorted(Comparator.comparing(Project::getProjectId))
+                .limit(AUTOCOMPLETE_MAX_RESULTS)
+                .map(p -> new ProjectSuggestion(p.getProjectId(), p.getTitle()))
+                .toList();
     }
 
     @Override

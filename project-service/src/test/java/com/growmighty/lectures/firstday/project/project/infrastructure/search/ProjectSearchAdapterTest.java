@@ -52,6 +52,7 @@ class ProjectSearchAdapterTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         when(circuitBreakerFactory.create("projectSearch")).thenReturn(circuitBreaker);
+        when(circuitBreakerFactory.create("projectAutocomplete")).thenReturn(circuitBreaker);
         when(circuitBreaker.run(any(Supplier.class), any(Function.class))).thenAnswer(invocation -> {
             Supplier<Object> toRun = invocation.getArgument(0);
             Function<Throwable, Object> fallback = invocation.getArgument(1);

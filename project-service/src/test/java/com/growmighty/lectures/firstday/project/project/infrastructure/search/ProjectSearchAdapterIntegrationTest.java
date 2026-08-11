@@ -124,13 +124,34 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     }
 
     @Test
-    @DisplayName("매치가 10개를 넘으면 10개로 잘린다")
-    void autocomplete_limitsToTenResults() {
-        for (int i = 0; i < 12; i++) {
+    @DisplayName("매치가 후보 한도(50개)를 넘으면 50개로 잘린다")
+    void autocomplete_limitsToCandidateLimit() {
+        for (int i = 0; i < 55; i++) {
             adapter.index(savedProject("PrefixLimitTest Project " + i));
         }
 
         await().atMost(Duration.ofSeconds(5))
-                .untilAsserted(() -> assertThat(adapter.autocomplete("PrefixLimitTest")).hasSize(10));
+                .untilAsserted(() -> assertThat(adapter.autocomplete("PrefixLimitTest")).hasSize(50));
+    }
+
+    @Test
+    @DisplayName("여러 단어로 검색하면 모든 단어가 prefix로 매치되는 프로젝트만 나온다")
+    void autocomplete_multiWordQuery_matchesAllWordsAsPrefix() {
+        Project matching = savedProject("고양이 밥 주는 기계");
+        Project other = savedProject("강아지 사료 자동 급식기");
+        adapter.index(matching);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            assertThat(adapter.autocomplete("밥")).extracting(ProjectSuggestion::projectId).contains(matching.getProjectId());
+            assertThat(adapter.autocomplete("고양이 밥")).extracting(ProjectSuggestion::projectId).contains(matching.getProjectId());
+            assertThat(adapter.autocomplete("고양이 개")).extracting(ProjectSuggestion::projectId).doesNotContain(matching.getProjectId(), other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("공백만 있는 검색어는 ES를 부르지 않고 빈 목록을 반환한다")
+    void autocomplete_blankKeyword_returnsEmptyWithoutCallingEs() {
+        assertThat(adapter.autocomplete("   ")).isEmpty();
     }
 }

@@ -37,6 +37,16 @@ import java.time.Duration;
 public class ProjectSearchCircuitBreakerConfig {
 
     static final String PROJECT_SEARCH_ID = "projectSearch";
+    /**
+     * 자동완성 전용 서킷브레이커 id. 타임아웃을 800ms로 짧게 잡는 이유:
+     * 자동완성 경로는 OpenAI 임베딩 API 호출이 없는 순수 ES prefix 쿼리라 원래도 훨씬 빠르고,
+     * 타이핑할 때마다(키 입력마다) 호출되는 특성상 ES가 느려지거나 죽었을 때 최대 10초까지
+     * 요청을 붙잡고 있는 것보다 빠르게 실패해서 다음 입력을 받는 게 사용자 경험상 낫다.
+     * id를 projectSearch와 분리한 이유는 타임아웃만이 아니다 — 같은 id를 쓰면 자동완성의
+     * 키 입력당 높은 호출량이 하이브리드 검색과 실패율 슬라이딩 윈도우를 공유하게 되어,
+     * 한쪽의 장애/트래픽 패턴이 다른 쪽의 서킷 오픈 여부에 영향을 준다(그 반대도 마찬가지).
+     */
+    static final String PROJECT_AUTOCOMPLETE_ID = "projectAutocomplete";
 
     private final TimeLimiterRegistry timeLimiterRegistry;
 
@@ -46,12 +56,16 @@ public class ProjectSearchCircuitBreakerConfig {
         timeLimiterRegistry.addConfiguration(PROJECT_SEARCH_ID, TimeLimiterConfig.custom()
                 .timeoutDuration(Duration.ofSeconds(10))
                 .build());
+        timeLimiterRegistry.addConfiguration(PROJECT_AUTOCOMPLETE_ID, TimeLimiterConfig.custom()
+                .timeoutDuration(Duration.ofMillis(800))
+                .build());
     }
 
     /**
      * {@link org.springframework.cloud.client.circuitbreaker.AbstractCircuitBreakerFactory#configure}로
-     * "projectSearch" id 하나만 골라 CircuitBreakerConfig(실패율/슬라이딩윈도우 등)를 준다 — 이 경로는
-     * 실제로 적용됨이 확인됐다. 다른 id(예: "order")는 영향받지 않는다.
+     * "projectSearch"/"projectAutocomplete" 두 id를 골라 CircuitBreakerConfig(실패율/슬라이딩윈도우 등)를
+     * 준다 — 이 경로는 실제로 적용됨이 확인됐다. 두 id는 실패율/슬라이딩윈도우 모양은 동일하게 두고
+     * (타임아웃만 위에서 id별로 따로 등록) 다른 id(예: "order")는 영향받지 않는다.
      */
     @Bean
     public Customizer<Resilience4JCircuitBreakerFactory> projectSearchCircuitBreakerCustomizer() {
@@ -63,6 +77,6 @@ public class ProjectSearchCircuitBreakerConfig {
                     .waitDurationInOpenState(Duration.ofSeconds(10))
                     .permittedNumberOfCallsInHalfOpenState(2)
                     .build()),
-                PROJECT_SEARCH_ID);
+                PROJECT_SEARCH_ID, PROJECT_AUTOCOMPLETE_ID);
     }
 }
