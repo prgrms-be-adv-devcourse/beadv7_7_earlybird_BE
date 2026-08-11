@@ -27,6 +27,11 @@ public class PaymentController {
         return PaymentResponse.from(paymentService.getPayment(paymentId));
     }
 
+    @GetMapping("/orders/{orderId}")
+    public PaymentResponse getPaymentByOrderId(@PathVariable Long orderId) {
+        return PaymentResponse.from(paymentService.getPaymentByOrderId(orderId));
+    }
+
     @PostMapping("/{paymentId}/cancel")
     public PaymentResponse cancel(@PathVariable Long paymentId) {
         refundCancellationSagaOrchestrator.cancel(

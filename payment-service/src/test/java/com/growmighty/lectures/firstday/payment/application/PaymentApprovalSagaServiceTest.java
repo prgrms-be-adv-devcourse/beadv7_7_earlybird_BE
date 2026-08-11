@@ -46,7 +46,13 @@ class PaymentApprovalSagaServiceTest {
             PG_ORDER_ID,
             AMOUNT
         );
-        PaymentInfo paidPayment = new PaymentInfo(PAYMENT_ID, ORDER_ID, AMOUNT, PaymentStatus.PAID);
+        PaymentInfo paidPayment = new PaymentInfo(
+            PAYMENT_ID,
+            ORDER_ID,
+            PG_ORDER_ID, // <--
+            AMOUNT,
+            PaymentStatus.PAID
+        );
         when(paymentConfirmationService.startConfirmation(PAYMENT_KEY, PG_ORDER_ID, AMOUNT))
             .thenReturn(target);
         when(paymentGateway.approve(PAYMENT_KEY, PG_ORDER_ID, AMOUNT, IDEMPOTENCY_KEY))

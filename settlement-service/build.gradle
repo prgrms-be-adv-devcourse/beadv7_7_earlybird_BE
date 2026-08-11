@@ -1,4 +1,4 @@
-// TODO(settlement-plan): Add Spring Kafka test/runtime support; reuse the existing Batch starter and remove obsolete adapter dependencies.
+// TODO(settlement-plan): reuse the existing Batch starter and remove obsolete adapter dependencies.
 plugins {
     id 'org.springframework.boot'   // 실행 가능한 서비스이므로 Boot 플러그인 적용 (버전은 루트에 등록됨)
 }
@@ -11,10 +11,16 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-batch'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
+    // spring-kafka만 넣으면 클라이언트 라이브러리만 딸려오고 KafkaAutoConfiguration(KafkaTemplate
+    // 자동 생성 등)은 안 붙는다 — Boot 4에서 자동설정이 spring-boot-kafka로 분리되어, 그걸 묶어주는
+    // 이 스타터를 써야 한다.
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-kafka-test'
 
     // DB 의존 테스트는 실제 MySQL(Testcontainers)로 실행한다.
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
