@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.cart.application;
 
 import com.growmighty.lectures.firstday.cart.application.dto.AddCartItemsCommand;
 import com.growmighty.lectures.firstday.cart.application.dto.CartView;
+import com.growmighty.lectures.firstday.cart.application.dto.CartSnapshot;
 import com.growmighty.lectures.firstday.cart.application.dto.UpdateCartItemQuantitiesCommand;
 import com.growmighty.lectures.firstday.cart.application.port.RewardPort;
 import com.growmighty.lectures.firstday.cart.application.port.dto.RewardSnapshot;
@@ -38,9 +39,13 @@ public class CartService {
                 item -> new CartLineCommand(item.rewardId(), item.quantity()));
         Cart cart = cartRepository.findByUserId(command.userId())
                 .orElseGet(() -> Cart.create(command.userId()));
-        Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(rewardIds(items));
+        Set<Long> requestedRewardIds = rewardIds(items);
+        Set<Long> allRewardIds = new HashSet<>(cartRewardIds(cart));
+        allRewardIds.addAll(requestedRewardIds);
+        Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(allRewardIds);
 
         validateRewards(command.projectId(), items, rewards);
+        retainProjectItems(cart, command.projectId(), rewards);
         validateDistinctItemsLimit(cart, items);
         validateFinalQuantities(cart, items, rewards, true);
 
@@ -56,9 +61,13 @@ public class CartService {
                 item -> new CartLineCommand(item.rewardId(), item.quantity()));
         Cart cart = cartRepository.findByUserId(command.userId())
                 .orElseGet(() -> Cart.create(command.userId()));
-        Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(rewardIds(items));
+        Set<Long> requestedRewardIds = rewardIds(items);
+        Set<Long> allRewardIds = new HashSet<>(cartRewardIds(cart));
+        allRewardIds.addAll(requestedRewardIds);
+        Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(allRewardIds);
 
         validateRewards(command.projectId(), items, rewards);
+        retainProjectItems(cart, command.projectId(), rewards);
         validateDistinctItemsLimit(cart, items);
         validateFinalQuantities(cart, items, rewards, false);
 
@@ -76,6 +85,22 @@ public class CartService {
     @Transactional
     public void clear(Long userId) {
         getCartEntity(userId).clear();
+    }
+
+    @Transactional(readOnly = true)
+    public CartSnapshot getSnapshot(Long userId) {
+        return cartRepository.findByUserId(userId)
+                .map(CartSnapshot::from)
+                .orElseGet(() -> CartSnapshot.empty(userId));
+    }
+
+    @Transactional
+    public void removeItems(Long userId, Collection<Long> rewardIds) {
+        if (rewardIds == null || rewardIds.isEmpty()) {
+            return;
+        }
+        cartRepository.findByUserId(userId)
+                .ifPresent(cart -> cart.removeItems(rewardIds));
     }
 
     @Transactional
@@ -122,7 +147,10 @@ public class CartService {
             if (reward == null) {
                 throw new EntityNotFoundException("Reward not found. rewardId=" + item.rewardId());
             }
-            if (reward.projectId() != null && !Objects.equals(projectId, reward.projectId())) {
+            if (reward.projectId() == null) {
+                throw new IllegalStateException("Reward project could not be resolved. rewardId=" + item.rewardId());
+            }
+            if (!Objects.equals(projectId, reward.projectId())) {
                 throw new IllegalArgumentException("Reward does not belong to the project. projectId="
                         + projectId + ", rewardId=" + item.rewardId());
             }
@@ -130,6 +158,20 @@ public class CartService {
                 throw new IllegalStateException("Reward is not orderable. rewardId=" + item.rewardId());
             }
         }
+    }
+
+    private void retainProjectItems(Cart cart, Long projectId, Map<Long, RewardSnapshot> rewards) {
+        Set<Long> rewardsFromOtherProjects = cart.getItems().stream()
+                .map(CartItem::getRewardId)
+                .filter(rewardId -> {
+                    RewardSnapshot reward = rewards.get(rewardId);
+                    if (reward == null || reward.projectId() == null) {
+                        throw new IllegalStateException("Cart reward project could not be resolved. rewardId=" + rewardId);
+                    }
+                    return !Objects.equals(projectId, reward.projectId());
+                })
+                .collect(Collectors.toSet());
+        cart.removeItems(rewardsFromOtherProjects);
     }
 
     private void validateFinalQuantities(Cart cart, List<CartLineCommand> items,

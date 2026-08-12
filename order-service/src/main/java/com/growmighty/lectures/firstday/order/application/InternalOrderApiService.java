@@ -44,8 +44,12 @@ public class InternalOrderApiService {
 
     public OrderResult applyPaymentResult(Long orderId, PaymentResult paymentResult) {
         Order order = getOrderWithItems(orderId);
-        paymentResultHandler.apply(order, paymentResult);
-        return OrderResult.from(orderRepository.save(order));
+        boolean orderCompleted = paymentResultHandler.apply(order, paymentResult);
+        order = orderRepository.save(order);
+        if (orderCompleted) {
+            paymentResultHandler.removeOrderedCartItems(order);
+        }
+        return OrderResult.from(order);
     }
 
     @Transactional(readOnly = true)

@@ -68,6 +68,9 @@ public class OrderSagaRecoveryService {
             }
             stockHandler.compensateStockFailure(order, confirmedItems);
             orderRepository.save(order);
+            if (failure instanceof InvalidCartRewardException invalidReward) {
+                paymentResultHandler.removeInvalidCartReward(order.getUserId(), invalidReward.rewardId());
+            }
             return;
         }
         order.markPaymentRequested();
@@ -76,7 +79,12 @@ public class OrderSagaRecoveryService {
             PaymentResult result = remoteCalls.execute("payment-pay",
                     () -> paymentPort.pay(paymentOrder.getId(), paymentOrder.getUserId(),
                             paymentOrder.getTotalAmount().getValue()));
-            paymentResultHandler.apply(paymentOrder, result);
+            boolean orderCompleted = paymentResultHandler.apply(paymentOrder, result);
+            orderRepository.save(paymentOrder);
+            if (orderCompleted) {
+                paymentResultHandler.removeOrderedCartItems(paymentOrder);
+            }
+            return;
         } catch (RuntimeException failure) {
             if (remoteCalls.isTechnical(failure)) {
                 paymentOrder.markPaymentPending();

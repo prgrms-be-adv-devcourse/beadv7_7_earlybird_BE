@@ -3,21 +3,32 @@ package com.growmighty.lectures.firstday.order.application;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 class OrderPaymentResultHandler {
 
     private final OrderStockHandler stockHandler;
+    private final OrderCartHandler cartHandler;
+
+    @Autowired
+    OrderPaymentResultHandler(OrderStockHandler stockHandler, OrderCartHandler cartHandler) {
+        this.stockHandler = stockHandler;
+        this.cartHandler = cartHandler;
+    }
+
+    OrderPaymentResultHandler(OrderStockHandler stockHandler) {
+        this.stockHandler = stockHandler;
+        this.cartHandler = null;
+    }
 
     // 결제 결과에 대한 처리
-    void apply(Order order, PaymentResult payment) {
+    boolean apply(Order order, PaymentResult payment) {
         order.assignPgOrderId(payment.pgOrderId());
         Order.PaymentOutcome outcome = switch (payment.status()) {
             case SUCCESS -> Order.PaymentOutcome.SUCCESS;
@@ -26,19 +37,19 @@ class OrderPaymentResultHandler {
         };
         Order.PaymentHandling handling = order.handlePaymentOutcome(outcome);
         if (handling == Order.PaymentHandling.IGNORED) {
-            return;
+            return false;
         }
         if (handling == Order.PaymentHandling.COMPENSATION_REQUIRED) {
             compensatePaymentFailure(order);
             log.info("payment failed. orderId={}", order.getId());
-            return;
+            return false;
         }
         if (outcome == Order.PaymentOutcome.SUCCESS) {
-            removeOrderedCartItems(order);
             log.info("payment succeeded. orderId={}", order.getId());
-            return;
+            return true;
         }
         log.warn("payment result is unknown. orderId={}", order.getId());
+        return false;
     }
 
     void compensatePaymentFailure(Order order) {
@@ -51,10 +62,18 @@ class OrderPaymentResultHandler {
     }
 
     // 최종 결제까지 성공 시 cart에서 삭제
-    private void removeOrderedCartItems(Order order) {
-        // TODO(예정) : cart 도메인에 해당 로직 추가
-        log.info("temporary ordered cart item cleanup assumed successful. orderId={}, userId={}, rewardIds={}",
+    void removeOrderedCartItems(Order order) {
+        if (cartHandler != null) {
+            cartHandler.removeOrderedItems(order);
+        }
+        log.info("ordered cart item cleanup requested. orderId={}, userId={}, rewardIds={}",
                 order.getId(), order.getUserId(), rewardIds(order));
+    }
+
+    void removeInvalidCartReward(Long userId, Long rewardId) {
+        if (cartHandler != null) {
+            cartHandler.removeInvalidReward(userId, rewardId);
+        }
     }
 
     private List<Long> rewardIds(Order order) {

@@ -7,10 +7,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 @Entity
-@Table(name = "carts")
+@Table(name = "carts", uniqueConstraints = @UniqueConstraint(
+        name = "uk_carts_user_id",
+        columnNames = "user_id"))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Cart extends BaseEntity {
@@ -20,10 +23,13 @@ public class Cart extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private Long version;
+
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
     private final List<CartItem> items = new ArrayList<>();
 
-    @Column(nullable = false)
+    @Column(name = "user_id", nullable = false)
     private Long userId;
 
     private Cart(Long userId) {
@@ -73,6 +79,10 @@ public class Cart extends BaseEntity {
     public void removeItem(Long rewardId) {
         requireItem(rewardId);
         this.items.removeIf(item -> item.hasReward(rewardId));
+    }
+
+    public void removeItems(Collection<Long> rewardIds) {
+        this.items.removeIf(item -> rewardIds.contains(item.getRewardId()));
     }
 
     public void clear() {
