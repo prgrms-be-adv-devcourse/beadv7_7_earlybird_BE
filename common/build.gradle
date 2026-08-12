@@ -12,8 +12,16 @@ dependencies {
     // 직접 선언하지 않고 이 api 전파에 의존하고 있어 webmvc/data-jpa 와 달리 되돌릴 수 없다.
     // (gateway-server 는 자기 build.gradle 에서 이 모듈을 명시적으로 exclude 하므로 영향 없다.)
     api 'org.springframework.boot:spring-boot-starter-validation'
-    // BaseEntity(JPA Auditing)가 MappedSuperclass/AuditingEntityListener를 쓴다.
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    // BaseEntity(JPA Auditing)가 MappedSuperclass(jakarta.persistence)/AuditingEntityListener(spring-data-jpa)를
+    // 쓴다 - 이 둘만 필요하므로 Hibernate/HikariCP/자동설정 트리거까지 함께 묶인 Boot "starter"
+    // 대신 순수 라이브러리만 의존한다. DB를 실제로 쓰는 서비스는 이미 각자 build.gradle에
+    // spring-boot-starter-data-jpa를 직접 선언해두고 있어(redundant) 영향 없음 - DB가 없는
+    // 서비스(ai-service, gateway-server)만 이걸로 자동설정 오작동을 피한다.
+    implementation 'org.springframework.data:spring-data-jpa'
+    // spring-data-jpa는 jakarta.persistence-api를 compileOnly로만 갖고 있어(실제 구현체는
+    // 각 앱의 starter가 채워줄 걸 전제) common 자신의 @MappedSuperclass/@EntityListeners 컴파일에
+    // 필요한 만큼 직접 선언한다.
+    implementation 'jakarta.persistence:jakarta.persistence-api'
 
     // KafkaErrorHandlingConfig가 KafkaTemplate/DeadLetterPublishingRecoverer 타입을 참조한다.
     // compileOnly: implementation으로 넣으면 spring-kafka가 board/user/file/notification-service의
