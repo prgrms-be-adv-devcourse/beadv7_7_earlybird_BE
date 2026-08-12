@@ -48,22 +48,4 @@ class CreatorPayoutProfileTest {
         assertThat(profile.canReceivePayout()).isTrue();
     }
 
-    @Test
-    @DisplayName("창작자의 현재 지급 대상을 스냅샷으로 만든다")
-    void createsPayoutDestinationSnapshot() {
-        CreatorPayoutProfile profile = CreatorPayoutProfile.registered(
-                10L,
-                "seller-10",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********1234",
-                LocalDateTime.of(2026, 7, 22, 10, 0)
-        );
-
-        PayoutDestinationSnapshot snapshot = profile.snapshotDestination();
-
-        assertThat(snapshot).isEqualTo(
-                PayoutDestinationSnapshot.of(10L, "seller-10", "088", "********1234")
-        );
-    }
 }

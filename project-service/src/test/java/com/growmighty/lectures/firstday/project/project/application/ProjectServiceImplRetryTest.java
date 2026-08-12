@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.project.project.application;
 
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
@@ -64,11 +65,11 @@ class ProjectServiceImplRetryTest {
             return mock(RewardService.class);
         }
 
-        @SuppressWarnings("unchecked")
-        @Bean
-        ObjectProvider<ProjectService> selfProvider() {
-            return mock(ObjectProvider.class);
-        }
+        // selfProvider는 여기서 mock으로 만들지 않는다 — closeEarly/closeProjectByDeadline이 이제
+        // self-invocation(selfProvider.getObject().xxxInternal(...))으로 @Retryable을 태우므로,
+        // 진짜 projectService 프록시를 가리켜야 재시도가 실제로 발동한다. ObjectProvider<T>는 Spring이
+        // 순환 의존 걱정 없이 자동으로 지연 주입해주는 타입이라, 아래 projectService(...) 빈 메서드의
+        // 파라미터로 그냥 선언만 하면 Spring이 실제 프록시를 돌려주는 진짜 ObjectProvider를 준다.
 
         @SuppressWarnings("unchecked")
         @Bean
@@ -84,10 +85,15 @@ class ProjectServiceImplRetryTest {
         }
 
         @Bean
+        ProjectSearchPort projectSearchPort() {
+            return mock(ProjectSearchPort.class);
+        }
+
+        @Bean
         ProjectService projectService(ProjectRepository projectRepository, ProjectCategoryRepository projectCategoryRepository,
                                        ObjectProvider<ProjectService> selfProvider, ObjectProvider<RewardService> rewardServiceProvider,
-                                       OrderPort orderPort) {
-            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort);
+                                       OrderPort orderPort, ProjectSearchPort searchPort) {
+            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort);
         }
     }
 
@@ -104,7 +110,7 @@ class ProjectServiceImplRetryTest {
 
     @BeforeEach
     void setUp() {
-        reset(projectRepository, rewardService);
+        reset(projectRepository, rewardService, orderPort);
         project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project.approve();

@@ -1,17 +1,16 @@
 package com.growmighty.lectures.firstday.payment;
 
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
+import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@EnableFeignClients
 @EnableScheduling
-@EnableConfigurationProperties(PaymentRecoveryProperties.class)
+@EnableConfigurationProperties({PaymentRecoveryProperties.class, RefundRecoveryProperties.class})
 @EntityScan(basePackages = {
     "com.growmighty.lectures.firstday.payment.domain",
     "com.growmighty.lectures.firstday.refund.domain"

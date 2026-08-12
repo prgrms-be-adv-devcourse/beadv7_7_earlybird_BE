@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.a
 
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.entity.ProjectSettlementJpaEntity;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectSettlementRepository;
 import java.util.List;
 import java.util.Optional;
@@ -20,40 +19,30 @@ public class ProjectSettlementRepositoryAdapter implements ProjectSettlementRepo
     @Override
     @Transactional
     public ProjectSettlement save(ProjectSettlement settlement) {
-        if (settlement.id() != null) {
-            throw new IllegalStateException("확정된 프로젝트 정산은 다시 저장할 수 없습니다.");
-        }
-        ProjectSettlementJpaEntity saved = repository.saveAndFlush(
-                ProjectSettlementJpaEntity.fromDomain(settlement)
-        );
-        return saved.toDomain();
+        return repository.saveAndFlush(settlement);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<ProjectSettlement> findById(Long id) {
-        return repository.findById(id).map(ProjectSettlementJpaEntity::toDomain);
+        return repository.findById(id);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<ProjectSettlement> findByProjectId(Long projectId) {
-        return repository.findByProjectId(projectId).map(ProjectSettlementJpaEntity::toDomain);
+        return repository.findByProjectId(projectId);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ProjectSettlement> findAllByCreatorIdOrderByConfirmedAtDescIdDesc(Long creatorId) {
-        return repository.findAllByCreatorIdOrderByConfirmedAtDescIdDesc(creatorId).stream()
-                .map(ProjectSettlementJpaEntity::toDomain)
-                .toList();
+        return repository.findAllByCreatorIdOrderByConfirmedAtDescIdDesc(creatorId);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ProjectSettlement> findAllByOrderByConfirmedAtDescIdDesc() {
-        return repository.findAllByOrderByConfirmedAtDescIdDesc().stream()
-                .map(ProjectSettlementJpaEntity::toDomain)
-                .toList();
+        return repository.findAllByOrderByConfirmedAtDescIdDesc();
     }
 }

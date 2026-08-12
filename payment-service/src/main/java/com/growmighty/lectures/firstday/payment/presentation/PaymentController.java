@@ -21,10 +21,14 @@ public class PaymentController {
     public PaymentResponse confirm(@Valid @RequestBody PayRequest request) {
         return PaymentResponse.from(paymentService.confirm(request.paymentKey(), request.pgOrderId(), request.amount()));
     }
-
     @GetMapping("/{paymentId}")
     public PaymentResponse getPayment(@PathVariable Long paymentId) {
         return PaymentResponse.from(paymentService.getPayment(paymentId));
+    }
+
+    @GetMapping("/orders/{orderId}")
+    public PaymentResponse getPaymentByOrderId(@PathVariable Long orderId) {
+        return PaymentResponse.from(paymentService.getPaymentByOrderId(orderId));
     }
 
     @PostMapping("/{paymentId}/cancel")

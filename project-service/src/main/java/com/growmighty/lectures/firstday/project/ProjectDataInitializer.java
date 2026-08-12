@@ -65,7 +65,7 @@ public class ProjectDataInitializer implements CommandLineRunner {
         reward(p1, "[풀패키지] 노트커버 + 프리미엄 만년필 세트", 95_000, 50, "각인 서비스 및 선물용 고급 케이스 포함");
 
         // 프로젝트 2 (rewardId 5~7)
-        Long p2 = openProject(smartDeviceCategoryId, "휴대용 미니 빔프로젝터", 20_000_000,
+        Long p2 = openProject(smartDeviceCategoryId, "휴대용 미니 빔프로젝터", 1_000,
             "캠핑에서도 쓰는 손바닥 크기 빔프로젝터.");
         reward(p2, "[얼리버드] 빔프로젝터", 189_000, 50, "선착순 한정 특가");
         reward(p2, "빔프로젝터 + 삼각대", 229_000, 200, "전용 미니 삼각대 포함");
@@ -73,7 +73,7 @@ public class ProjectDataInitializer implements CommandLineRunner {
 
         // 프로젝트 3 (rewardId 8~10)
         Long p3 = openProject(bookCategoryId, "독립출판 시집 <새벽의 온도>", 1_500_000,
-            "신인 시인의 첫 시집 인쇄 펀딩.");
+            "신인 시인, 강대혁의 첫 시집 인쇄 펀딩.");
         reward(p3, "시집 1권", 15_000, 500, "초판 한정 넘버링");
         reward(p3, "시집 + 필사 노트", 25_000, 200, "굿즈 세트");
         reward(p3, "[후원자 패키지] 시집 + 필사 노트 + 저자 친필 서명 엽서", 35_000, 100, "후원자 명단 시집 수록");

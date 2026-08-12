@@ -15,7 +15,7 @@ public record PaymentPrepareResponse(
             info.paymentId(),
             info.pgOrderId(),
             info.amount(),
-            info.status().name()
+            info.status().getCode()
         );
     }
 }

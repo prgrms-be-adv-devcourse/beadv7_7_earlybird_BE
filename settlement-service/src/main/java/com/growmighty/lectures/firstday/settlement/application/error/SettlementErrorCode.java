@@ -19,10 +19,6 @@ public enum SettlementErrorCode {
             "S004",
             "프로젝트 정산 내역을 찾을 수 없습니다."
     ),
-    PROJECT_PAYMENT_CANCELLATION_UNAVAILABLE(
-            "S005",
-            "프로젝트 결제 취소 결과를 확인할 수 없습니다."
-    ),
     SETTLEMENT_DATA_INCONSISTENT(
             "S500",
             "프로젝트 정산 데이터가 일치하지 않습니다."

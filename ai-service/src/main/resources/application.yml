@@ -14,10 +14,12 @@ spring:
 ---
 # 프로필별로 문서를 분리하는 이유는 gateway-server/application.yml 참고 — spring.config.import 를
 # env var 로 통째로 덮어쓰면 이 파일의 import 와 별개로 취급돼 둘 다 처리되는 문제가 있었다.
+# '!docker' 단독으로는 k8s 프로필도 매칭되어 이 블록과 k8s 블록이 동시에 활성화되고,
+# localhost:8888 쪽이 실패해 fail-fast로 죽는 문제를 겪었다 — docker/k8s 둘 다 명시적으로 제외.
 spring:
   config:
     activate:
-      on-profile: '!docker'
+      on-profile: '!docker & !k8s'
     import: configserver:http://localhost:8888
 ---
 spring:
@@ -25,3 +27,12 @@ spring:
     activate:
       on-profile: docker
     import: configserver:http://config-server:8888
+---
+# k8s 클러스터(데이터 박스)에서 실행되는 pod는 docker-compose 네트워크의 config-server
+# 호스트명을 못 쓴다 — 앱 박스가 8888을 호스트에 publish해둔 것을 데이터 박스에서
+# 앱 박스의 private IP로 직접 접근 (SG: 데이터 박스 -> 앱 박스 8888 inbound 필요).
+spring:
+  config:
+    activate:
+      on-profile: k8s
+    import: configserver:http://10.0.0.81:8888

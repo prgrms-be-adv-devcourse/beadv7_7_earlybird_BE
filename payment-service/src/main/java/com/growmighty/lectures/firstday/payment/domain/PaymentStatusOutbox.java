@@ -33,6 +33,9 @@ public class PaymentStatusOutbox extends BaseEntity {
     @Column(name = "order_id", nullable = false)
     private Long orderId;
 
+    @Column(name = "pg_order_id", nullable = false)
+    private String pgOrderId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", nullable = false)
     private PaymentStatus paymentStatus;
@@ -49,10 +52,12 @@ public class PaymentStatusOutbox extends BaseEntity {
     private PaymentStatusOutbox(
         Long paymentId,
         Long orderId,
+        String pgOrderId,
         PaymentStatus paymentStatus
     ) {
         this.paymentId = paymentId;
         this.orderId = orderId;
+        this.pgOrderId = pgOrderId;
         this.paymentStatus = paymentStatus;
         this.status = PaymentStatusOutboxStatus.PENDING;
         this.retryCount = 0;
@@ -61,9 +66,10 @@ public class PaymentStatusOutbox extends BaseEntity {
     public static PaymentStatusOutbox pending(
         Long paymentId,
         Long orderId,
+        String pgOrderId,
         PaymentStatus paymentStatus
     ) {
-        return new PaymentStatusOutbox(paymentId, orderId, paymentStatus);
+        return new PaymentStatusOutbox(paymentId, orderId, pgOrderId, paymentStatus);
     }
 
     public void markSent() {

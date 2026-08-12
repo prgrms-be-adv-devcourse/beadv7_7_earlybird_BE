@@ -17,6 +17,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
 
     List<Project> findByCreatorId(Long creatorId);
 
+    /** ES 장애 시 하이브리드 검색의 DB LIKE 폴백 전용(ProjectSearchAdapter.searchFallback). */
+    List<Project> findByTitleContainingIgnoreCase(String title);
+
     /** 카테고리 삭제 전 참조무결성 체크(ProjectCategoryServiceImpl.delete()) 전용. */
     boolean existsByCategoryId(Long categoryId);
 

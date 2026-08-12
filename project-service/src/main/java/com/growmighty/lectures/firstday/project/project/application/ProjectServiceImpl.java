@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -20,6 +21,9 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
@@ -41,6 +45,9 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class ProjectServiceImpl implements ProjectService {
 
+    /** reindexAllProjects() 페이징 단위 — ES bulk 호출/임베딩 벌크 저장 배치 크기와 동일하게 맞춘다. */
+    private static final int REINDEX_PAGE_SIZE = 50;
+
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
     // closeExpiredProjects()가 같은 빈의 @Retryable 메서드를 self-invocation으로 부르면 프록시를
@@ -52,18 +59,27 @@ public class ProjectServiceImpl implements ProjectService {
     private final ObjectProvider<RewardService> rewardServiceProvider;
 
     private final OrderPort orderPort;
+    private final ProjectSearchPort searchPort;
 
     @Override
     @Transactional
     public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
         validateCategoryExists(request.categoryId());
         Project project = projectRepository.save(request.toEntity(creatorId));
+        searchPort.index(project);
         return ProjectResponse.from(project);
     }
 
     @Override
     public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole) {
-        Specification<Project> specification = buildSpecification(keyword, categoryId, status, requesterRole);
+        List<Long> candidateProjectIds = null;
+        if (keyword != null && !keyword.isBlank()) {
+            candidateProjectIds = searchPort.search(keyword);
+            if (candidateProjectIds.isEmpty()) {
+                return List.of();
+            }
+        }
+        Specification<Project> specification = buildSpecification(candidateProjectIds, categoryId, status, requesterRole);
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
@@ -100,25 +116,41 @@ public class ProjectServiceImpl implements ProjectService {
             project.updateBeforePublish(request.title(), request.categoryId(), request.summary(), request.description(),
                     request.thumbnailId(), request.goalAmount(), request.startAt(), request.endAt());
         }
+        searchPort.index(project);
         return ProjectResponse.from(project);
+    }
+
+    /**
+     * orderPort.hasOrderedReward()(HTTP 호출)를 트랜잭션 밖에서 먼저 끝내야 그 응답을 기다리는 동안
+     * DB 커넥션을 물고 있지 않는다(#196). 존재/소유 확인도 무락 조회(getProject)로 여기서 먼저 끝내고,
+     * 실제 삭제(배타 락 선점 포함)는 deleteInternal()에 위임한다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void delete(Long projectId, Long requesterId) {
+        Project project = getProject(projectId);
+        validateOwnership(project, requesterId);
+        if (orderPort.hasOrderedReward(projectId)) {
+            throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
+        }
+        selfProvider.getObject().deleteInternal(projectId, requesterId);
     }
 
     /**
      * 락 순서 역전 데드락 방지를 위해 getProject()(무락 조회) 대신
      * projectRepository.findByIdForDelete()(배타 락)로 Project를 맨 먼저 선점한다 —
-     * ProjectRepository.findByIdForDelete() 주석 참고.
+     * ProjectRepository.findByIdForDelete() 주석 참고. delete()에서 이미 존재/소유/주문이력을
+     * 확인했지만, 락 재획득 사이의 TOCTOU를 방어하기 위해 소유권을 여기서 다시 검증한다.
      */
     @Override
     @Transactional
-    public void delete(Long projectId, Long requesterId) {
+    public void deleteInternal(Long projectId, Long requesterId) {
         Project project = projectRepository.findByIdForDelete(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
         validateOwnership(project, requesterId);
-        if (orderPort.hasOrderedReward(projectId)) {
-            throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
-        }
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
+        searchPort.remove(projectId);
     }
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
@@ -193,19 +225,31 @@ public class ProjectServiceImpl implements ProjectService {
         throw e;
     }
 
+    /**
+     * orderPort.getFundedAmount()(HTTP 호출)를 트랜잭션 밖에서 먼저 끝내야 그 응답을 기다리는 동안
+     * DB 커넥션을 물고 있지 않는다(#196). 재시도(@Retryable)는 그 결과값만 들고 로컬 갱신만 하는
+     * closeEarlyInternal()에 남겨서, 낙관적 락 충돌로 재시도해도 order-service를 다시 호출하지 않는다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ProjectResponse closeEarly(Long projectId) {
+        BigDecimal fundedAmount = orderPort.getFundedAmount(projectId);
+        return selfProvider.getObject().closeEarlyInternal(projectId, fundedAmount);
+    }
+
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public ProjectResponse closeEarly(Long projectId) {
+    public ProjectResponse closeEarlyInternal(Long projectId, BigDecimal fundedAmount) {
         Project project = getProject(projectId);
-        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.updateFundedAmount(fundedAmount);
         project.closeEarlyAsSucceeded();
         deactivateRewards(projectId);
         return ProjectResponse.from(project);
     }
 
     @Recover
-    public ProjectResponse recoverCloseEarlyConflict(RuntimeException e, Long projectId) {
+    public ProjectResponse recoverCloseEarlyInternalConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
                 "조기 마감 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
@@ -239,18 +283,31 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
+    /**
+     * orderPort.getFundedAmount()(HTTP 호출)를 트랜잭션 밖에서 먼저 끝내야 그 응답을 기다리는 동안
+     * DB 커넥션을 물고 있지 않는다(#196). 재시도(@Retryable)는 그 결과값만 들고 로컬 갱신만 하는
+     * closeProjectByDeadlineInternal()에 남겨서, 낙관적 락 충돌로 재시도해도 order-service를 다시
+     * 호출하지 않는다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void closeProjectByDeadline(Long projectId) {
+        BigDecimal fundedAmount = orderPort.getFundedAmount(projectId);
+        selfProvider.getObject().closeProjectByDeadlineInternal(projectId, fundedAmount);
+    }
+
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public void closeProjectByDeadline(Long projectId) {
+    public void closeProjectByDeadlineInternal(Long projectId, BigDecimal fundedAmount) {
         Project project = getProject(projectId);
-        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.updateFundedAmount(fundedAmount);
         project.closeByDeadline();
         deactivateRewards(projectId);
     }
 
     @Recover
-    public void recoverCloseProjectByDeadlineConflict(RuntimeException e, Long projectId) {
+    public void recoverCloseProjectByDeadlineInternalConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
                 "프로젝트 마감 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
@@ -295,6 +352,27 @@ public class ProjectServiceImpl implements ProjectService {
                 log.warn("모금액 보정 실패. projectId={}", project.getProjectId(), e);
             }
         }
+    }
+
+    /**
+     * 클래스 레벨 @Transactional(readOnly=true)을 이 메서드만 NOT_SUPPORTED로 무시한다 — 그러지
+     * 않으면 페이지 루프 전체(임베딩 생성용 OpenAI 호출 포함, 프로젝트 수만큼 반복)가 트랜잭션 하나에
+     * DB 커넥션을 계속 물고 있게 된다(#196과 같은 문제). NOT_SUPPORTED로 감싸면 findAll(pageable)
+     * 호출마다, 그리고 searchPort.bulkIndex() 내부의 임베딩 벌크 저장(ProjectEmbeddingPersister)마다
+     * 각자 짧은 트랜잭션을 새로 열고 바로 끝낸다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void reindexAllProjects() {
+        Pageable pageable = PageRequest.of(0, REINDEX_PAGE_SIZE);
+        Page<Project> page;
+        do {
+            page = projectRepository.findAll(pageable);
+            if (!page.isEmpty()) {
+                searchPort.bulkIndex(page.getContent());
+            }
+            pageable = pageable.next();
+        } while (page.hasNext());
     }
 
     /**
@@ -344,7 +422,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
-    private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status, UserRole requesterRole) {
+    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, Long categoryId, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
@@ -355,11 +433,8 @@ public class ProjectServiceImpl implements ProjectService {
                         cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
                         cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
             }
-            if (keyword != null && !keyword.isBlank()) {
-                String pattern = "%" + keyword + "%";
-                predicates.add(cb.or(
-                        cb.like(root.get("title"), pattern),
-                        cb.like(root.get("summary"), pattern)));
+            if (candidateProjectIds != null) {
+                predicates.add(root.get("projectId").in(candidateProjectIds));
             }
             if (categoryId != null) {
                 predicates.add(cb.equal(root.get("categoryId"), categoryId));

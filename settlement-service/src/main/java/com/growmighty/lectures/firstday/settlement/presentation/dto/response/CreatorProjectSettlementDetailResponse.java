@@ -2,9 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import com.growmighty.lectures.firstday.settlement.application.query.CreatorProjectSettlementDetail;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementBreakdown;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementFeePolicySnapshot;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -25,7 +23,7 @@ public record CreatorProjectSettlementDetailResponse(
                 detail.settlementId(),
                 new ProjectResponse(detail.projectId()),
                 toOffsetDateTime(detail.confirmedAt()),
-                BreakdownResponse.from(detail.feePolicySnapshot(), detail.breakdown()),
+                BreakdownResponse.from(detail),
                 new PayoutResponse(
                         detail.status(),
                         detail.scheduledDate(),
@@ -50,26 +48,23 @@ public record CreatorProjectSettlementDetailResponse(
             BigDecimal creatorPayoutAmount
     ) {
 
-        private static BreakdownResponse from(
-                SettlementFeePolicySnapshot feePolicy,
-                SettlementBreakdown breakdown
-        ) {
+        private static BreakdownResponse from(CreatorProjectSettlementDetail detail) {
             return new BreakdownResponse(
-                    breakdown.baseAmount().amount(),
+                    detail.baseAmount().amount(),
                     new FeeResponse(
-                            feePolicy.paymentAndSettlementAgencyFeeRate(),
-                            breakdown.paymentAndSettlementAgencyFeeAmount().amount(),
-                            feePolicy.vatRate(),
-                            breakdown.paymentAndSettlementAgencyFeeVatAmount().amount()
+                            detail.paymentAndSettlementAgencyFeeRate(),
+                            detail.paymentAndSettlementAgencyFeeAmount().amount(),
+                            detail.vatRate(),
+                            detail.paymentAndSettlementAgencyFeeVatAmount().amount()
                     ),
                     new FeeResponse(
-                            feePolicy.platformFeeRate(),
-                            breakdown.platformFeeAmount().amount(),
-                            feePolicy.vatRate(),
-                            breakdown.platformFeeVatAmount().amount()
+                            detail.platformFeeRate(),
+                            detail.platformFeeAmount().amount(),
+                            detail.vatRate(),
+                            detail.platformFeeVatAmount().amount()
                     ),
-                    breakdown.otherDeductionAmount().amount(),
-                    breakdown.creatorPayoutAmount().amount()
+                    detail.otherDeductionAmount().amount(),
+                    detail.creatorPayoutAmount().amount()
             );
         }
     }
@@ -83,7 +78,7 @@ public record CreatorProjectSettlementDetailResponse(
     }
 
     public record PayoutResponse(
-            PayoutObligationStatus status,
+            PayoutStatus status,
             LocalDate scheduledDate,
             OffsetDateTime completedAt,
             DestinationResponse destination

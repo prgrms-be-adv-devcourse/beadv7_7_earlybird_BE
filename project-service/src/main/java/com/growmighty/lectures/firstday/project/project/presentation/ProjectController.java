@@ -11,7 +11,9 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,6 +30,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/projects")
+@Validated
 public class ProjectController {
 
     private final ProjectService projectService;
@@ -49,7 +52,9 @@ public class ProjectController {
     @GetMapping
     public List<ProjectResponse> findAll(
             @RequestHeader(value = JwtHeaders.USER_ROLE, required = false) UserRole requesterRole,
-            @RequestParam(required = false) String keyword,
+            // keyword가 있을 때마다 OpenAI 임베딩 호출이 하나씩 발생한다(비로그인도 호출 가능한
+            // 공개 API) — 길이 상한 없이는 비용/남용 표면이 무한히 열려 있는 셈이라 상한을 둔다.
+            @RequestParam(required = false) @Size(max = 100, message = "검색어는 100자를 넘을 수 없습니다.") String keyword,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) ProjectStatus status,
             @RequestParam(required = false) ProjectSort sort) {
@@ -132,6 +137,19 @@ public class ProjectController {
                                        @PathVariable Long projectId) {
         requireAdmin(requesterRole);
         return projectService.closeEarly(projectId);
+    }
+
+    /**
+     * 관리자 전용: ES 검색 인덱스가 MySQL과 어긋났을 때(장애 복구, 최초 도입) 전체를 다시 색인한다.
+     * /internal/v1이 아니라 여기 두는 이유 — /internal/v1은 게이트웨이를 거치지 않는 서비스 간 호출
+     * 전용 경로라 사람(ADMIN JWT)이 호출할 방법이 없다(클래스 상단 주석 참고). 다른 관리자 전용
+     * 작업(close-expired 등)과 같은 컨벤션으로 게이트웨이+ADMIN 역할 체크를 받는 이 경로에 둔다.
+     */
+    @PostMapping("/reindex")
+    public Void reindex(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+        requireAdmin(requesterRole);
+        projectService.reindexAllProjects();
+        return null;
     }
 
     private void requireCreatorOrAdmin(UserRole requesterRole) {

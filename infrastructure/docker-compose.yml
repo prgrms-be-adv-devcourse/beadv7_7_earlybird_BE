@@ -36,6 +36,19 @@ x-business-depends-on: &business-depends-on
     mysql:
       condition: service_healthy
 
+# order/cart/payment/project/settlement 만 kafka를 쓴다 — 나머지 서비스(board/user/file/
+# notification)까지 kafka-topics-init 완료를 기다리게 하면 불필요한 결합이 생기므로, 공통
+# x-business-depends-on 대신 kafka를 쓰는 서비스에만 이 anchor를 개별로 붙인다.
+x-business-depends-on-kafka: &business-depends-on-kafka
+  depends_on:
+    <<: *core-depends-on
+    mysql:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
+    kafka-topics-init:
+      condition: service_completed_successfully
+
 services:
   elasticsearch:
     build: ./elasticsearch          # 위 Dockerfile로 빌드 (nori 포함)
@@ -74,12 +87,87 @@ services:
       timeout: 5s
       retries: 10
 
+  kafka:
+    image: apache/kafka:4.0.0
+    container_name: earlybird-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      # KRaft 모드 — 브로커가 컨트롤러 역할까지 겸한다 (Zookeeper 불필요, 단일 노드 로컬 개발 환경).
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # 리스너 3개:
+      #  - INTERNAL(29092)  : 컴포즈 네트워크 안의 컨테이너(kafka-ui, 각 서비스 컨테이너)가 접속
+      #  - EXTERNAL(9092)   : 호스트에서 직접 실행되는 스프링 앱(./gradlew bootRun)이 localhost:9092 로 접속
+      #  - CONTROLLER(9093) : KRaft 내부 통신용
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # 브로커 1대뿐이므로 내부 토픽들의 복제 계수를 1로 맞춘다.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # 토픽은 kafka-topics-init(다음 단계)으로만 만든다 — 앱/CLI가 즉석에서 만들어버리면
+      # 파티션 수 등 설정이 서비스마다 제각각으로 드리프트될 수 있어 명시적으로 막는다.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "9092:9092"
+    restart: unless-stopped
+    healthcheck:
+      # apache/kafka:4.0.0 이미지는 kafka-*.sh 가 PATH 에 없고 /opt/kafka/bin 에만 있다 — full path 필수.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # 토픽/파티션/메시지/컨슈머 그룹을 눈으로 확인하는 웹 UI — kibana가 elasticsearch에 대해 하는 역할과 동일.
+  kafka-ui:
+    image: kafbat/kafka-ui:latest
+    container_name: earlybird-kafka-ui
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      # 컴포즈 네트워크 안에서 접속하니 INTERNAL 리스너(29092)를 쓴다 — 호스트용 EXTERNAL(9092)이 아님.
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    ports:
+      - "8989:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 토픽을 앱 생명주기와 분리해 한곳에서만 생성한다 (kafka/init-topics.sh).
+  # restart 정책을 안 준다 — 한 번 실행하고 끝나는 job이라, 끝난 뒤 재시작되면 안 된다.
+  kafka-topics-init:
+    image: apache/kafka:4.0.0
+    container_name: earlybird-kafka-topics-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./kafka/init-topics.sh:/init-topics.sh:ro
+    entrypoint: ["/bin/sh", "/init-topics.sh"]
+
   config-server:
     build:
       <<: *build-defaults
       args:
         MODULE: config-server
     container_name: earlybird-config-server
+    # 12개 서비스(비즈니스 9개 + config/discovery/gateway) 전체를 -Xms/-Xmx 고정값에서
+    # cgroup mem_limit + -XX:MaxRAMPercentage 로 전환 (#272). 기존 방식(#232/#234/#246/#249)은
+    # 컨테이너 자체엔 메모리 상한이 없어 힙 바깥(메타스페이스/스레드 스택 등) 사용량을 못 막았고,
+    # 트래픽/박스가 바뀔 때마다 docker stats 를 다시 재서 값을 손으로 갱신해야 했다.
+    # 이제부터는:
+    #   - mem_limit: 오늘 프로덕션 docker stats 실측값에 30% 여유를 얹어 32MiB 단위로 반올림한
+    #     "컨테이너 전체" 상한 (cgroup 이 강제 — 넘으면 OOM kill).
+    #   - MaxRAMPercentage=70: JDK 10+ 는 컨테이너 인지라 mem_limit 의 70%까지를 힙 상한으로 자동
+    #     계산한다. 나머지 30%는 메타스페이스/스레드 스택/코드 캐시/direct buffer 등 힙 외 사용량 몫
+    #     — 그동안 관찰된 RES 가 -Xmx 를 넘던 원인(오늘 order-service 만도 534.5MiB RES > -Xmx512m).
+    #   - InitialRAMPercentage=35: 기존 -Xms = -Xmx/2 관행을 그대로 유지 (Max 의 절반).
+    # 서비스별 mem_limit 만 바꾸면 힙이 비율로 자동 재계산되므로, 이후 박스/트래픽이 바뀌어도
+    # #232/#249 때처럼 12개 서비스 값을 전부 손으로 재계산할 필요가 없다.
     environment:
       # 기본값은 native(로컬 파일시스템) — AWS 배포 시 .env 에서 CONFIG_SERVER_PROFILE=production 으로
       # 바꾸면 application.yml 의 GitHub 원격 기본값을 쓴다 (application-production.yml 없음 = 원래 기본값).
@@ -87,11 +175,10 @@ services:
       # beadv7_7_earlybird_config(private) 클론용 PAT — production 모드에서만 쓰인다.
       - GIT_USERNAME=${GIT_USERNAME}
       - GIT_PERSONAL_ACCESS_TOKEN=${GIT_PERSONAL_ACCESS_TOKEN}
-      # 비즈니스 서비스 9개는 #232/PR #234 로 이미 -Xmx 캡을 받았고, 인프라 3개(config/discovery/
-      # gateway-server)는 당시 범위 밖으로 남겨뒀다 (#246). 프로덕션 EC2 docker stats 로 재확인해보니
-      # 셋 다 266.9~271.7MiB 로 값이 서로 가까워, 서비스별로 나누지 않고 공통값 하나에 10~15% 여유를
-      # 두고 반올림했다. -Xms 는 -Xmx 의 절반 (order-service 주석 참고).
-      - JAVA_TOOL_OPTIONS=-Xms160m -Xmx320m
+      # 값 근거는 위 mem_limit 주석 참고 (#272).
+      - JAVA_TOOL_OPTIONS=-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    # 오늘 docker stats 실측 332.1MiB * 1.3 여유 → 448m 로 반올림.
+    mem_limit: 448m
     volumes:
       # native 프로파일 전용 — 파일시스템을 그대로 읽기만 하므로(git 체크아웃/리셋 없음) 실제 작업 중인
       # config repo 를 직접 마운트해도 안전하다. 커밋 없이도 수정하면 바로 반영된다.
@@ -114,9 +201,11 @@ services:
       args:
         MODULE: discovery-server
     container_name: earlybird-discovery-server
-    # 값 근거는 config-server 주석 참고 (#246).
+    # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 config-server 주석 참고 (#272).
+    # 오늘 docker stats 실측 346.5MiB * 1.3 여유 → 480m 로 반올림.
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms160m -Xmx320m
+      - JAVA_TOOL_OPTIONS=-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 480m
     volumes:
       - ./logs:/app/logs
     # Eureka 대시보드를 브라우저로 직접 볼 때만 주석 해제.
@@ -140,57 +229,73 @@ services:
     # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써진다 — 그래서 여기선
     # SPRING_PROFILES_ACTIVE 를 그대로 반복하고 JWT_SECRET 만 추가한다.
     # JWT 검증 키 — user-service 와 반드시 같은 값이어야 한다 (#164).
-    # JAVA_TOOL_OPTIONS 값 근거는 config-server 주석 참고 (#246).
+    # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 config-server 주석 참고 (#272).
+    # 오늘 docker stats 실측 340MiB * 1.3 여유 → 448m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: ${JWT_SECRET}
-      JAVA_TOOL_OPTIONS: -Xms160m -Xmx320m
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 448m
     ports:
       - "8000:8000"
     depends_on: *core-depends-on
 
   order-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
         MODULE: order-service
     container_name: earlybird-order-service
     # service-defaults 의 environment 는 map 이라 <<: 병합이 아니라 완전히 덮어써지므로, 서비스마다
-    # 다른 -Xmx 를 주려면 SPRING_PROFILES_ACTIVE 도 함께 반복해야 한다. JVM 은 -Xmx 미지정 시
-    # 컨테이너 안에서 보이는 호스트 전체 메모리(7.6GB) 기준으로 각자 독립적으로 기본 힙 상한(25%)을
-    # 잡아 서비스 수가 늘어날수록 swap thrashing/OOM kill 위험이 커진다 (#232). ENTRYPOINT 가
-    # exec form(java -jar app.jar, 셸 없음)이라 $JAVA_OPTS 셸 치환은 못 쓰지만, JAVA_TOOL_OPTIONS
-    # 는 JVM 런처가 셸 개입 없이 직접 읽는 표준 환경변수라 Dockerfile 을 건드릴 필요가 없다.
-    # 값은 프로덕션 EC2 에서 docker stats 로 확인한 서비스별 실제 컨테이너 메모리 사용량에 10~15%
-    # 여유를 두고 가까운 값으로 올린 것 - 서비스마다 다른 것도 그래서다. -Xms 는 -Xmx 의 절반으로
-    # 둬서 유휴 상태에서 힙 전체를 바로 커밋하지 않게 한다. (다른 비즈니스 서비스들도 동일 근거로
-    # 서비스별 값을 반복한다.)
+    # 다른 mem_limit/JAVA_TOOL_OPTIONS 를 주려면 SPRING_PROFILES_ACTIVE 도 함께 반복해야 한다.
+    # JVM 은 -Xmx/MaxRAMPercentage 둘 다 미지정 시 컨테이너 안에서 보이는 호스트 전체 메모리(7.6GB)
+    # 기준으로 각자 독립적으로 기본 힙 상한(25%)을 잡아 서비스 수가 늘어날수록 swap thrashing/OOM kill
+    # 위험이 커진다 (#232). ENTRYPOINT 가 exec form(java -jar app.jar, 셸 없음)이라 $JAVA_OPTS 셸
+    # 치환은 못 쓰지만, JAVA_TOOL_OPTIONS 는 JVM 런처가 셸 개입 없이 직접 읽는 표준 환경변수라
+    # Dockerfile 을 건드릴 필요가 없다.
+    #
+    # #272: 기존엔 여기 -Xms/-Xmx 를 프로덕션 docker stats 실측값 기반 고정 MiB 값으로 서비스마다
+    # 손으로 계산해 넣었다 (#232/#234) — 컨테이너 자체엔 메모리 상한이 없어 힙 바깥(메타스페이스/
+    # 스레드 스택 등) 사용량은 못 막았고, 트래픽/박스가 바뀔 때마다 재측정/재계산이 필요했다.
+    # 지금은 대신:
+    #   - mem_limit: 오늘 docker stats 실측값에 30% 여유를 얹어 32MiB 단위로 반올림한 "컨테이너
+    #     전체" cgroup 상한 (넘으면 OOM kill).
+    #   - MaxRAMPercentage=70 / InitialRAMPercentage=35: JDK 10+ 는 컨테이너 인지라 mem_limit 의
+    #     70%까지를 힙 상한으로 자동 계산한다 (나머지 30%는 힙 외 사용량 몫 — 오늘도 이 서비스
+    #     RES 실측 534.5MiB 가 이미 옛 -Xmx512m 를 넘어 있었다). -Xms=-Xmx/2 였던 관행 그대로
+    #     InitialRAMPercentage 를 Max 의 절반으로 둔다.
+    # 서비스별 mem_limit 만 바꾸면 힙이 비율로 자동 재계산되므로, 박스/트래픽이 바뀌어도 12개
+    # 서비스 값을 전부 손으로 재계산할 필요가 없다. (다른 비즈니스 서비스들도 동일 근거로 서비스별
+    # mem_limit/percentage 를 반복한다.)
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      JAVA_TOOL_OPTIONS: -Xms256m -Xmx512m
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 704m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8080:8080"
 
   project-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
         MODULE: project-service
     container_name: earlybird-project-service
     # service-defaults 의 environment 를 통째로 덮어쓰므로 SPRING_PROFILES_ACTIVE/JAVA_TOOL_OPTIONS
-    # 를 그대로 반복한다 - 값 근거는 order-service 주석 참고 (#232).
+    # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+    # 오늘 docker stats 실측 534.8MiB * 1.3 여유 → 704m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      JAVA_TOOL_OPTIONS: -Xms288m -Xmx576m
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 704m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8081:8081"
 
   payment-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
@@ -205,11 +310,13 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
-      # 값 근거는 order-service 주석 참고 (#232).
-      JAVA_TOOL_OPTIONS: -Xms192m -Xmx384m
+      # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+      # 오늘 docker stats 실측 454.2MiB * 1.3 여유 → 608m 로 반올림.
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
       PAYMENT_GATEWAY: ${PAYMENT_GATEWAY:-fake}
       PAYMENT_TOSS_SECRET_KEY: ${PAYMENT_TOSS_SECRET_KEY:-}
       PAYMENT_SECURITY_ENCRYPTION_KEY: ${PAYMENT_SECURITY_ENCRYPTION_KEY}
+    mem_limit: 608m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8082:8082"
@@ -227,41 +334,47 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
-      # 값 근거는 order-service 주석 참고 (#232).
-      JAVA_TOOL_OPTIONS: -Xms192m -Xmx384m
+      # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+      # 오늘 docker stats 실측 442.8MiB * 1.3 여유 → 576m 로 반올림.
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
       JWT_SECRET: ${JWT_SECRET}
+    mem_limit: 576m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8083:8083"
 
   cart-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
         MODULE: cart-service
     container_name: earlybird-cart-service
     # service-defaults 의 environment 를 통째로 덮어쓰므로 SPRING_PROFILES_ACTIVE/JAVA_TOOL_OPTIONS
-    # 를 그대로 반복한다 - 값 근거는 order-service 주석 참고 (#232).
+    # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+    # 오늘 docker stats 실측 504.5MiB * 1.3 여유 → 672m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      JAVA_TOOL_OPTIONS: -Xms288m -Xmx576m
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 672m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8085:8085"
 
   settlement-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:
         MODULE: settlement-service
     container_name: earlybird-settlement-service
     # service-defaults 의 environment 를 통째로 덮어쓰므로 SPRING_PROFILES_ACTIVE/JAVA_TOOL_OPTIONS
-    # 를 그대로 반복한다 - 값 근거는 order-service 주석 참고 (#232).
+    # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+    # 오늘 docker stats 실측 407.3MiB * 1.3 여유 → 544m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      JAVA_TOOL_OPTIONS: -Xms192m -Xmx384m
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 544m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8086:8086"
@@ -274,10 +387,12 @@ services:
         MODULE: file-service
     container_name: earlybird-file-service
     # service-defaults 의 environment 를 통째로 덮어쓰므로 SPRING_PROFILES_ACTIVE/JAVA_TOOL_OPTIONS
-    # 를 그대로 반복한다 - 값 근거는 order-service 주석 참고 (#232).
+    # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+    # 오늘 docker stats 실측 418.2MiB * 1.3 여유 → 544m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      JAVA_TOOL_OPTIONS: -Xms192m -Xmx384m
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 544m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8087:8087"
@@ -295,10 +410,12 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
-      # 값 근거는 order-service 주석 참고 (#232).
-      JAVA_TOOL_OPTIONS: -Xms224m -Xmx448m
+      # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+      # 오늘 docker stats 실측 484MiB * 1.3 여유 → 640m 로 반올림.
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
       GMAIL_USERNAME: ${GMAIL_USERNAME:-}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD:-}
+    mem_limit: 640m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8088:8088"
@@ -311,16 +428,22 @@ services:
         MODULE: notification-service
     container_name: earlybird-notification-service
     # service-defaults 의 environment 를 통째로 덮어쓰므로 SPRING_PROFILES_ACTIVE/JAVA_TOOL_OPTIONS
-    # 를 그대로 반복한다 - 값 근거는 order-service 주석 참고 (#232).
+    # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
+    # 오늘 docker stats 실측 421.8MiB * 1.3 여유 → 576m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      JAVA_TOOL_OPTIONS: -Xms192m -Xmx384m
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    mem_limit: 576m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
     #   - "8089:8089"
 
   ai-service:
     # 아직 자체 DB가 없어 mysql 의존성은 뺀다 (business-depends-on 아님).
+    # 로컬 개발 전용(조우진) - image: 오버라이드가 없어 build: 로 정의된 채로 두면 CD의
+    # `docker compose ... up -d`(서비스 필터 없음)가 매 배포마다 EC2에서 로컬로 빌드하게 된다.
+    # profiles로 기본 up -d 대상에서 제외 - 로컬에서는 `--profile local` 로 명시적으로 켠다.
+    profiles: ["local"]
     <<: *service-defaults
     build:
       <<: *build-defaults
