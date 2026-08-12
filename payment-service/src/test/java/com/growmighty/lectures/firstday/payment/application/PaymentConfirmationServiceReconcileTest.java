@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,11 +83,15 @@ class PaymentConfirmationServiceReconcileTest {
     void 취소된_PG_결제는_FAILED로_정합화한다() {
         Payment payment = confirmingPayment();
         when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
 
         paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.CANCELLED));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
         verify(paymentRepository).save(payment);
+        verify(paymentStatusOutboxRepository).save(argThat(outbox ->
+            outbox.getPaymentStatus() == PaymentStatus.FAILED
+        ));
     }
 
     @Test
@@ -99,6 +104,25 @@ class PaymentConfirmationServiceReconcileTest {
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
         verify(paymentRepository).save(payment);
+        verify(paymentStatusOutboxRepository).save(argThat(outbox ->
+            outbox.getPaymentStatus() == PaymentStatus.FAILED
+        ));
+    }
+
+    // 추가 : 최대 확인 대기 시간 초과 결제의 FAILED 상태를 Order 통지용 Outbox에 저장
+    @Test
+    void 최대_확인_대기_시간을_초과한_PENDING_결제는_FAILED_Outbox를_저장한다() {
+        Payment payment = confirmingPayment();
+        when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+        when(paymentRecoveryProperties.maximumConfirmingDuration()).thenReturn(Duration.ZERO);
+
+        paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.PENDING));
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        verify(paymentStatusOutboxRepository).save(argThat(outbox ->
+            outbox.getPaymentStatus() == PaymentStatus.FAILED
+        ));
     }
 
     // 추가 : 복구 배치가 먼저 완료한 결제의 실패 처리는 무시
