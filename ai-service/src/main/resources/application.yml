@@ -25,3 +25,12 @@ spring:
     activate:
       on-profile: docker
     import: configserver:http://config-server:8888
+---
+# k8s 클러스터(데이터 박스)에서 실행되는 pod는 docker-compose 네트워크의 config-server
+# 호스트명을 못 쓴다 — 앱 박스가 8888을 호스트에 publish해둔 것을 데이터 박스에서
+# 앱 박스의 private IP로 직접 접근 (SG: 데이터 박스 -> 앱 박스 8888 inbound 필요).
+spring:
+  config:
+    activate:
+      on-profile: k8s
+    import: configserver:http://10.0.0.81:8888
