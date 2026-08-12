@@ -12,6 +12,6 @@ public record PaymentResponse(
         String status
 ) {
     public static PaymentResponse from(PaymentInfo info) {
-        return new PaymentResponse(info.paymentId(), info.orderId(), info.pgOrderId(), info.amount(), info.status().name());
+        return new PaymentResponse(info.paymentId(), info.orderId(), info.pgOrderId(), info.amount(), info.status().getCode()); // <-- 최신 응답 필드와 고정 외부 상태 코드를 함께 반영
     }
 }

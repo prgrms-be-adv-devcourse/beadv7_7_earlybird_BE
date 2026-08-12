@@ -69,7 +69,7 @@ public class TossRefundGateway implements RefundGateway {
                 .uri("/v1/payments/{paymentKey}/cancel", paymentKey)
                 .header("Idempotency-key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(new TossCancelRequest(reason.name()))
+                .body(new TossCancelRequest(reason.getCode()))
                 .retrieve()
                 .body(TossPaymentResponse.class);
 
