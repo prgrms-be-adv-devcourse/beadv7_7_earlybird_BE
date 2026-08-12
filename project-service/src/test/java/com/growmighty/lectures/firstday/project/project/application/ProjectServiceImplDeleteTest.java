@@ -79,4 +79,18 @@ class ProjectServiceImplDeleteTest {
         verify(rewardService, never()).deleteAllByProject(anyLong());
         verify(projectRepository, never()).delete(any(Project.class));
     }
+
+    @Test
+    @DisplayName("사전 체크(락 밖) 통과 후 배타 락을 잡은 사이 주문이 들어와도 재확인에 걸려 삭제되지 않는다")
+    void delete_orderArrivesBetweenPreCheckAndLock_rejectsDeletion() {
+        // delete()의 사전 체크 시점엔 주문이 없었지만, deleteInternal()이 배타 락을 잡은 뒤
+        // 재확인하는 시점엔 그 사이 decreaseStock()이 끝나 주문이 생긴 상황을 흉내낸다.
+        when(orderPort.hasOrderedReward(1L)).thenReturn(false).thenReturn(true);
+
+        assertThatThrownBy(() -> projectService.delete(1L, 1L))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(rewardService, never()).deleteAllByProject(anyLong());
+        verify(projectRepository, never()).delete(any(Project.class));
+    }
 }
