@@ -21,6 +21,9 @@ spring:
       enabled: false
     jdbc:
       initialize-schema: always
+  kafka:
+    listener:
+      auto-startup: false
 
 # 테스트에선 Eureka 등록/조회를 시도하지 않는다 (명부 서버가 떠 있지 않음).
 eureka:

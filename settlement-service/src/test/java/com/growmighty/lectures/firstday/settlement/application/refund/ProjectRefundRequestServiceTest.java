@@ -89,8 +89,8 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
                     .containsExactly(61_001L, 61_002L);
         });
         assertThat(repeated).isEmpty();
-        assertThat(outboxRepository.findByProjectId(projectId).orElseThrow().eventId())
-                .isEqualTo(first.getFirst().eventId());
+        assertThat(outboxRepository.findByProjectId(projectId).orElseThrow().refundRequestId())
+                .isEqualTo(first.getFirst().refundRequestId());
     }
 
     @Test

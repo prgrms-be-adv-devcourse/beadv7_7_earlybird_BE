@@ -19,7 +19,7 @@ public class KafkaErrorHandlingConfig {
 
     /**
      * 리스너에서 예외가 나면 1초 간격으로 3번 재시도하고, 그래도 실패하면
-     * "<원본 토픽>.DLT"(같은 파티션)로 보낸다 — KafkaTopics의 *_DLT 상수와 이름이 일치한다.
+     * "<원본 토픽>-dlt"(같은 파티션)로 보낸다 — KafkaTopics의 *_DLT 상수와 이름이 일치한다.
      */
     @Bean
     public DefaultErrorHandler errorHandler(KafkaTemplate<Object, Object> template) {
