@@ -8,6 +8,7 @@ import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.re
 import java.time.Instant;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,10 +28,11 @@ public class SettlementRunInputRepositoryAdapter implements SettlementRunInputRe
     @Override
     @Transactional(readOnly = true)
     public List<OrderPaymentFact> findCompletedPayments(Instant startInclusive, Instant endExclusive) {
-        return paymentRepository.findAllCompletedPaymentsBetween(
+        return paymentRepository.findAllByStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAscOrderIdAsc(
                 OrderPaymentFact.Status.COMPLETED,
                 startInclusive,
-                endExclusive
+                endExclusive,
+                Pageable.unpaged()
         );
     }
 }

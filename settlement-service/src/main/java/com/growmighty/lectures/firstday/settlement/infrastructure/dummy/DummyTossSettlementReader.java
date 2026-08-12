@@ -30,7 +30,7 @@ public class DummyTossSettlementReader implements TossSettlementReader {
         }
         Instant startInclusive = query.startDate().atStartOfDay(SEOUL).toInstant();
         Instant endExclusive = query.endDate().plusDays(1).atStartOfDay(SEOUL).toInstant();
-        return paymentRepository.findCompletedPaymentsBetween(
+        return paymentRepository.findAllByStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAscOrderIdAsc(
                         OrderPaymentFact.Status.COMPLETED,
                         startInclusive,
                         endExclusive,

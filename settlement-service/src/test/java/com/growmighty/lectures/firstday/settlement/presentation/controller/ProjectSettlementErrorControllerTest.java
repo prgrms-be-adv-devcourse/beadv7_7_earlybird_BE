@@ -22,7 +22,6 @@ import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestS
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,10 +29,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     @Autowired
@@ -53,16 +54,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @BeforeEach
-    void clearSettlementInputs() {
-        jdbcTemplate.execute("UPDATE project_settlements SET successful_attempt_id = NULL");
-        jdbcTemplate.execute("DELETE FROM payout_attempts");
-        jdbcTemplate.execute("DELETE FROM project_settlements");
-        jdbcTemplate.execute("DELETE FROM order_payment_facts");
-        jdbcTemplate.execute("DELETE FROM project_outcome_facts");
-        jdbcTemplate.execute("DELETE FROM creator_payout_profiles");
-    }
 
     @Test
     @DisplayName("지급 프로필이 준비되지 않은 프로젝트 정산은 Settlement 오류로 응답한다")
