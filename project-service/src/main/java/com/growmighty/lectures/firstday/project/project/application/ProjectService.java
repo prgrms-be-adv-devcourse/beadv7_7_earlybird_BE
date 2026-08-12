@@ -30,9 +30,6 @@ public interface ProjectService {
     /** requesterId가 본인이 등록한 프로젝트가 아니면 거부한다. */
     void delete(Long projectId, Long requesterId);
 
-    /** delete()가 orderPort 조회(존재/소유/주문이력 확인)를 끝낸 뒤 호출하는 실제 삭제 단위 — 외부에서 직접 부를 일은 없다. */
-    void deleteConfirmed(Long projectId);
-
     /** 창작자(본인) 또는 관리자: 진행중이거나 이미 성공한 프로젝트를 자진 취소한다. */
     ProjectResponse cancel(Long projectId, Long requesterId, UserRole requesterRole);
 
@@ -62,17 +59,11 @@ public interface ProjectService {
     /** 관리자 전용: 목표 금액을 이미 달성한 프로젝트를 마감일 전에 조기 종료(성공 확정)한다. */
     ProjectResponse closeEarly(Long projectId);
 
-    /** closeEarly()가 order-service에서 fundedAmount를 조회한 뒤 그 값으로 호출하는 실제 확정 단위 — 외부에서 직접 부를 일은 없다. */
-    ProjectResponse closeEarlyConfirmed(Long projectId, BigDecimal fundedAmount);
-
     /** 배치 전용: 마감시각이 지난 진행중 프로젝트를 모금액 기준으로 일괄 성공/실패 확정한다. */
     void closeExpiredProjects();
 
     /** closeExpiredProjects()가 프로젝트 하나씩 재시도 가능하도록 호출하는 단위. 외부에서 직접 부를 일은 없다. */
     void closeProjectByDeadline(Long projectId);
-
-    /** closeProjectByDeadline()이 order-service에서 fundedAmount를 조회한 뒤 그 값으로 호출하는 실제 확정 단위 — 외부에서 직접 부를 일은 없다. */
-    void closeProjectByDeadlineConfirmed(Long projectId, BigDecimal fundedAmount);
 
     /**
      * 내부용: order-service에서 pull 조회해온 절대값(누적 총액)으로 한 프로젝트의 fundedAmount를

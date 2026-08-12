@@ -61,7 +61,6 @@ class ProjectServiceImplOwnershipTest {
         when(projectCategoryRepository.existsById(1L)).thenReturn(true);
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         when(orderPort.hasOrderedReward(1L)).thenReturn(false);
-        when(selfProvider.getObject()).thenReturn(projectService);
     }
 
     @Test

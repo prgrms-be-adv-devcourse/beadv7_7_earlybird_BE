@@ -45,7 +45,6 @@ class ProjectServiceImplSearchIndexingTest {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
                 projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort);
-        when(selfProvider.getObject()).thenReturn(projectService);
         project = Project.register(1L, null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
     }
@@ -78,7 +77,6 @@ class ProjectServiceImplSearchIndexingTest {
     @Test
     @DisplayName("프로젝트 삭제 시 색인에서도 제거한다")
     void delete_removesFromIndex() {
-        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
         when(projectRepository.findByIdForDelete(1L)).thenReturn(Optional.of(project));
         when(orderPort.hasOrderedReward(1L)).thenReturn(false);
 
