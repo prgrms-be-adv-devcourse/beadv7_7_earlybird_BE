@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -20,6 +21,9 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
@@ -41,6 +45,9 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class ProjectServiceImpl implements ProjectService {
 
+    /** reindexAllProjects() 페이징 단위 — ES bulk 호출/임베딩 벌크 저장 배치 크기와 동일하게 맞춘다. */
+    private static final int REINDEX_PAGE_SIZE = 50;
+
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
     // closeExpiredProjects()가 같은 빈의 @Retryable 메서드를 self-invocation으로 부르면 프록시를
@@ -52,18 +59,27 @@ public class ProjectServiceImpl implements ProjectService {
     private final ObjectProvider<RewardService> rewardServiceProvider;
 
     private final OrderPort orderPort;
+    private final ProjectSearchPort searchPort;
 
     @Override
     @Transactional
     public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
         validateCategoryExists(request.categoryId());
         Project project = projectRepository.save(request.toEntity(creatorId));
+        searchPort.index(project);
         return ProjectResponse.from(project);
     }
 
     @Override
     public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole) {
-        Specification<Project> specification = buildSpecification(keyword, categoryId, status, requesterRole);
+        List<Long> candidateProjectIds = null;
+        if (keyword != null && !keyword.isBlank()) {
+            candidateProjectIds = searchPort.search(keyword);
+            if (candidateProjectIds.isEmpty()) {
+                return List.of();
+            }
+        }
+        Specification<Project> specification = buildSpecification(candidateProjectIds, categoryId, status, requesterRole);
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
@@ -100,6 +116,7 @@ public class ProjectServiceImpl implements ProjectService {
             project.updateBeforePublish(request.title(), request.categoryId(), request.summary(), request.description(),
                     request.thumbnailId(), request.goalAmount(), request.startAt(), request.endAt());
         }
+        searchPort.index(project);
         return ProjectResponse.from(project);
     }
 
@@ -119,6 +136,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
+        searchPort.remove(projectId);
     }
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
@@ -298,6 +316,27 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     /**
+     * 클래스 레벨 @Transactional(readOnly=true)을 이 메서드만 NOT_SUPPORTED로 무시한다 — 그러지
+     * 않으면 페이지 루프 전체(임베딩 생성용 OpenAI 호출 포함, 프로젝트 수만큼 반복)가 트랜잭션 하나에
+     * DB 커넥션을 계속 물고 있게 된다(#196과 같은 문제). NOT_SUPPORTED로 감싸면 findAll(pageable)
+     * 호출마다, 그리고 searchPort.bulkIndex() 내부의 임베딩 벌크 저장(ProjectEmbeddingPersister)마다
+     * 각자 짧은 트랜잭션을 새로 열고 바로 끝낸다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void reindexAllProjects() {
+        Pageable pageable = PageRequest.of(0, REINDEX_PAGE_SIZE);
+        Page<Project> page;
+        do {
+            page = projectRepository.findAll(pageable);
+            if (!page.isEmpty()) {
+                searchPort.bulkIndex(page.getContent());
+            }
+            pageable = pageable.next();
+        } while (page.hasNext());
+    }
+
+    /**
      * 프로젝트가 마감(성공/실패/조기종료)되면 그 리워드들도 비활성화한다. Reward.isOrderable()이
      * 부모 프로젝트 상태를 모르고 자기 active/재고만 보기 때문에, 여기서 안 꺼주면 이미 마감된
      * 프로젝트의 리워드가 RewardResponse.orderable=true로 잘못 응답한다(실제 주문은 Project.isOpen()이
@@ -344,7 +383,7 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
-    private Specification<Project> buildSpecification(String keyword, Long categoryId, ProjectStatus status, UserRole requesterRole) {
+    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, Long categoryId, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
@@ -355,11 +394,8 @@ public class ProjectServiceImpl implements ProjectService {
                         cb.notEqual(root.get("status"), ProjectStatus.PENDING_REVIEW),
                         cb.notEqual(root.get("status"), ProjectStatus.REJECTED)));
             }
-            if (keyword != null && !keyword.isBlank()) {
-                String pattern = "%" + keyword + "%";
-                predicates.add(cb.or(
-                        cb.like(root.get("title"), pattern),
-                        cb.like(root.get("summary"), pattern)));
+            if (candidateProjectIds != null) {
+                predicates.add(root.get("projectId").in(candidateProjectIds));
             }
             if (categoryId != null) {
                 predicates.add(cb.equal(root.get("categoryId"), categoryId));

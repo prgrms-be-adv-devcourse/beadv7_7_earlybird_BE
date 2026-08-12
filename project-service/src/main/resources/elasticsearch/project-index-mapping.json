@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "projectId": { "type": "long" },
+    "title": { "type": "text", "analyzer": "korean" },
+    "summary": { "type": "text", "analyzer": "korean" },
+    "description": { "type": "text", "analyzer": "korean" },
+    "embedding": {
+      "type": "dense_vector",
+      "dims": 1536,
+      "index": true,
+      "similarity": "cosine"
+    }
+  }
+}

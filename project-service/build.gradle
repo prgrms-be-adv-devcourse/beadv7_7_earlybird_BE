@@ -2,6 +2,20 @@ plugins {
     id 'org.springframework.boot'   // 실행 가능한 서비스이므로 Boot 플러그인 적용 (버전은 루트에 등록됨)
 }
 
+dependencyManagement {
+    imports {
+        // Spring AI(OpenAI 임베딩)는 프로젝트 전체가 아니라 project-service만 쓰므로 루트가 아니라
+        // 여기서 BOM을 받는다. 1.0.0(Task 1이 처음 넣은 버전)은 Boot 3.x 시절 FQCN인
+        // org.springframework.boot.autoconfigure.web.client.RestClientAutoConfiguration을
+        // @AutoConfiguration(after=...)에 클래스 리터럴로 박아놨는데, Boot 4.1에서 그 클래스가
+        // org.springframework.boot.restclient.autoconfigure.RestClientAutoConfiguration로 패키지가
+        // 옮겨지면서(자동설정 모듈 분리) 컨텍스트 기동 시 TypeNotPresentException → ClassNotFoundException으로
+        // 죽는다. 2.0.0 GA는 그 after 참조를 걷어내 Boot 4.x와 호환된다(spring-autoconfigure-metadata.properties
+        // 확인 결과 OpenAiEmbeddingAutoConfiguration의 AutoConfigureAfter가 비어 있음).
+        mavenBom 'org.springframework.ai:spring-ai-bom:2.0.0'
+    }
+}
+
 dependencies {
     implementation project(':common')
 
@@ -45,4 +59,16 @@ dependencies {
     // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
     // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+
+    // 프로젝트 키워드 검색(nori) — 프레임워크 기본 통합(ElasticsearchOperations) 사용, 커스텀 HTTP 클라이언트 없음.
+    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+
+    // 실제 nori가 포함된 ES(로컬 infrastructure/elasticsearch/Dockerfile과 동일 이미지)로 색인/검색을 검증.
+    testImplementation 'org.testcontainers:elasticsearch'
+
+    // OpenAI 임베딩 — 커스텀 HTTP 클라이언트 대신 Spring AI의 EmbeddingModel 추상화를 쓴다.
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+
+    // 색인 후 ES refresh_interval(최대 1초) 지연을 기다리는 통합 테스트용.
+    testImplementation 'org.awaitility:awaitility'
 }
