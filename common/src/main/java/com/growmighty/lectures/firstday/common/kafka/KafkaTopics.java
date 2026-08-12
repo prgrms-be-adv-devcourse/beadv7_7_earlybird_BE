@@ -11,27 +11,27 @@ public final class KafkaTopics {
     /** project-service → settlement-service : 프로젝트 상태값 변경 이벤트 */
     public static final String PROJECT_STATUS_CHANGED = "project.status-changed.v1";
     /** {@link #PROJECT_STATUS_CHANGED} 처리 실패 격리용 DLT (DeadLetterPublishingRecoverer). */
-    public static final String PROJECT_STATUS_CHANGED_DLT = PROJECT_STATUS_CHANGED + ".DLT";
+    public static final String PROJECT_STATUS_CHANGED_DLT = PROJECT_STATUS_CHANGED + "-dlt";
 
     /** order-service → settlement-service : 주문의 결제 결과 반영 상태 변경 이벤트 */
     public static final String ORDER_PAYMENT_STATUS_CHANGED = "order.payment-status-changed.v1";
     /** {@link #ORDER_PAYMENT_STATUS_CHANGED} 처리 실패 격리용 DLT. */
-    public static final String ORDER_PAYMENT_STATUS_CHANGED_DLT = ORDER_PAYMENT_STATUS_CHANGED + ".DLT";
+    public static final String ORDER_PAYMENT_STATUS_CHANGED_DLT = ORDER_PAYMENT_STATUS_CHANGED + "-dlt";
 
     /** payment-service → order-service : 단일 결제 승인/취소 처리 결과 이벤트 */
     public static final String PAYMENT_SINGLE_RESULT = "payment.single-result.v1";
     /** {@link #PAYMENT_SINGLE_RESULT} 처리 실패 격리용 DLT. */
-    public static final String PAYMENT_SINGLE_RESULT_DLT = PAYMENT_SINGLE_RESULT + ".DLT";
+    public static final String PAYMENT_SINGLE_RESULT_DLT = PAYMENT_SINGLE_RESULT + "-dlt";
 
     /** settlement-service → payment-service : 결제 일괄 취소 요청 커맨드 */
     public static final String PAYMENT_BULK_CANCEL_COMMAND = "payment.bulk-cancel-command.v1";
     /** {@link #PAYMENT_BULK_CANCEL_COMMAND} 처리 실패 격리용 DLT. */
-    public static final String PAYMENT_BULK_CANCEL_COMMAND_DLT = PAYMENT_BULK_CANCEL_COMMAND + ".DLT";
+    public static final String PAYMENT_BULK_CANCEL_COMMAND_DLT = PAYMENT_BULK_CANCEL_COMMAND + "-dlt";
 
     /** payment-service → order-service : 결제 일괄 취소 처리 결과 이벤트 */
     public static final String PAYMENT_BULK_CANCEL_RESULT = "payment.bulk-cancel-result.v1";
     /** {@link #PAYMENT_BULK_CANCEL_RESULT} 처리 실패 격리용 DLT. */
-    public static final String PAYMENT_BULK_CANCEL_RESULT_DLT = PAYMENT_BULK_CANCEL_RESULT + ".DLT";
+    public static final String PAYMENT_BULK_CANCEL_RESULT_DLT = PAYMENT_BULK_CANCEL_RESULT + "-dlt";
 
     private KafkaTopics() {
     }
