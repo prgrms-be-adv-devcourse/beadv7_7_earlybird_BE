@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-server
+  namespace: webapp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: config-server
+  template:
+    metadata:
+      labels:
+        app: config-server
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      # discovery-server와 동일하게 앱 박스 노드에 고정 - hostPort로 그 호스트 자체 주소에서
+      # compose 컨테이너들이 그대로 접근 가능해야 한다.
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      containers:
+        - name: config-server
+          image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-config-server:latest
+          ports:
+            - containerPort: 8888
+              hostPort: 8888
+          # SPRING_PROFILES_ACTIVE 를 일부러 지정하지 않는다 - config-server의 application.yml
+          # 기본값이 이미 GitHub 원격 저장소(production 모드)를 가리킨다. native(로컬 파일 마운트)는
+          # k8s에 동등한 방법이 없어(호스트 바인드 마운트는 크로스박스에서 또 다른 진실의 원천이
+          # 생기는 문제) 애초에 고려하지 않는다 - 앱 박스도 이미 production 모드로 운영 중.
+          envFrom:
+            - secretRef:
+                name: config-server-git
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: 320Mi
+              cpu: 100m
+            limits:
+              memory: 448Mi   # 기존 compose mem_limit과 동일
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8888
+            periodSeconds: 10
+            failureThreshold: 30
+          # readiness는 실제 git clone까지 확인하는 전체 health(ConfigServerHealthIndicator) -
+          # PAT 만료/GitHub 장애 시 트래픽에서만 빠지고(READY 0/1), liveness는 별도로 둬서
+          # 그것 때문에 파드가 재시작을 반복하며 crash-loop 되지 않게 한다.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8888
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8888
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: config-server
+  namespace: webapp
+spec:
+  type: ClusterIP
+  selector:
+    app: config-server
+  ports:
+    - name: http
+      port: 8888
+      targetPort: 8888

@@ -50,7 +50,20 @@ GIT_USERNAME=깃허브아이디 GIT_PERSONAL_ACCESS_TOKEN=ghp_... ./gradlew :con
 > 커밋된 yml 에는 `${GIT_USERNAME}` / `${GIT_PERSONAL_ACCESS_TOKEN}` 플레이스홀더만 있어야 한다.
 > (GitHub 는 커밋에서 토큰을 발견하면 자동으로 폐기시킨다.)
 
-## 3. 정상 동작 확인
+## 3. 프로덕션(k8s) 환경변수
+
+config-server가 #198 Phase 3로 k8s(앱 박스 노드)로 이전된 뒤로는, 같은 PAT가 **세 곳**에 존재한다 —
+로컬 IntelliJ Run Configuration, 앱 박스의 `infrastructure/.env`(local-only 모드로 롤백할 때만
+쓰임), 그리고 k8s Secret. 토큰을 재발급할 때마다 이 세 곳을 모두 갱신해야 한다.
+
+```bash
+kubectl -n webapp create secret generic config-server-git \
+  --from-literal=GIT_USERNAME=<github-id> \
+  --from-literal=GIT_PERSONAL_ACCESS_TOKEN=<ghp_...> \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+## 4. 정상 동작 확인
 
 config-server 기동 후:
 
