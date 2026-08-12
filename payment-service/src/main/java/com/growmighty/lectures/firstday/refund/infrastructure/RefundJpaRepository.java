@@ -25,4 +25,12 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
         @Param("status") RefundStatus status,
         @Param("cutoff") LocalDateTime cutoff,
         Pageable pageable);
+
+    @Query("""
+      select refund.id
+      from Refund refund
+      where refund.status = :status
+      order by refund.createdAt asc
+      """)
+    List<Long> findRefundIdsByStatus(@Param("status") RefundStatus status, Pageable pageable);
 }

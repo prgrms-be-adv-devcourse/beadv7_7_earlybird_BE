@@ -99,4 +99,20 @@ public class RefundService {
             refundRepository.save(refund);
         }
     }
+
+    @Transactional
+    public RefundCancellationTarget startPlannedRefund(Long refundId) {
+        Refund refund = findRefund(refundId);
+        Payment payment = findPayment(refund.getPaymentId());
+
+        refund.startRequest();
+        refundRepository.save(refund);
+
+        return new RefundCancellationTarget(
+            refund.getId(),
+            payment.getPaymentKey(),
+            refund.getReason(),
+            refund.getCancelIdempotencyKey()
+        );
+    }
 }

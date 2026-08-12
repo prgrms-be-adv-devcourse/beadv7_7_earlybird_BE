@@ -24,6 +24,9 @@ public class Refund extends BaseEntity {
     @Column(nullable = false, unique = true)
     private Long paymentId;
 
+    @Column(name = "settlement_id")
+    private Long settlementId;
+
     @Column(nullable = false)
     private BigDecimal amount;
 
@@ -43,7 +46,7 @@ public class Refund extends BaseEntity {
     @Column
     private LocalDateTime completedAt;
 
-    private Refund(Long paymentId, BigDecimal amount, RefundReason reason) {
+    private Refund(Long paymentId, Long settlementId, BigDecimal amount, RefundReason reason, RefundStatus status) {
         if (paymentId == null) {
             throw new IllegalArgumentException("paymentId는 필수입니다.");
         }
@@ -51,18 +54,38 @@ public class Refund extends BaseEntity {
             throw new IllegalArgumentException("환불 금액은 0원보다 커야 합니다. 입력값: " + amount);
         }
         this.paymentId = paymentId;
+        this.settlementId = settlementId;
         this.amount = amount;
         this.reason = reason;
         this.cancelIdempotencyKey = UUID.randomUUID().toString();
-        this.status = RefundStatus.REQUESTED;
+        this.status = status;
+    }
+
+    public static Refund planned(
+        Long paymentId,
+        Long settlementId,
+        BigDecimal amount,
+        RefundReason reason
+    ) {
+        return new Refund(paymentId, settlementId, amount, reason, RefundStatus.PLANNED);
     }
 
     public static Refund request(Long paymentId, BigDecimal amount, RefundReason reason) {
-        return new Refund(paymentId, amount, reason);
+        return new Refund(paymentId,null, amount, reason, RefundStatus.REQUESTED);
     }
 
     public boolean isRequested() {
         return RefundStatus.REQUESTED == this.status;
+    }
+
+
+    // 일괄 환불의 PG 취소 요청의 시작부
+    public void startRequest() {
+        if (this.status != RefundStatus.PLANNED) {
+            throw new IllegalStateException("PLANNED 상태의 환불만 요청할 수 있습니다. status = " +  this.status);
+        }
+
+        this.status = RefundStatus.REQUESTED;
     }
 
     public void complete() {
