@@ -24,11 +24,20 @@ public class InternalOrderApiService {
 
     private final OrderRepository orderRepository;
     private final OrderPaymentResultHandler paymentResultHandler;
+    private final OrderPaidCompletionService paidCompletionService;
 
     @Autowired
-    public InternalOrderApiService(OrderRepository orderRepository, OrderPaymentResultHandler paymentResultHandler) {
+    public InternalOrderApiService(OrderRepository orderRepository, OrderPaymentResultHandler paymentResultHandler,
+                                   OrderPaidCompletionService paidCompletionService) {
         this.orderRepository = orderRepository;
         this.paymentResultHandler = paymentResultHandler;
+        this.paidCompletionService = paidCompletionService;
+    }
+
+    InternalOrderApiService(OrderRepository orderRepository, OrderPaymentResultHandler paymentResultHandler) {
+        this.orderRepository = orderRepository;
+        this.paymentResultHandler = paymentResultHandler;
+        this.paidCompletionService = null;
     }
 
     // 결제 결과에 대한 처리
@@ -44,8 +53,18 @@ public class InternalOrderApiService {
 
     public OrderResult applyPaymentResult(Long orderId, PaymentResult paymentResult) {
         Order order = getOrderWithItems(orderId);
-        paymentResultHandler.apply(order, paymentResult);
-        return OrderResult.from(orderRepository.save(order));
+        boolean orderCompleted = paymentResultHandler.apply(order, paymentResult);
+        boolean paidCleanupRequired = orderCompleted
+                || (order.getStatus() == OrderStatus.PAID && paymentResult.status() == PaymentResult.Status.SUCCESS);
+        if (paidCleanupRequired && paidCompletionService != null) {
+            order = paidCompletionService.persistAndCleanup(order);
+        } else {
+            order = orderRepository.save(order);
+            if (orderCompleted) {
+                paymentResultHandler.removeOrderedCartItems(order);
+            }
+        }
+        return OrderResult.from(order);
     }
 
     @Transactional(readOnly = true)

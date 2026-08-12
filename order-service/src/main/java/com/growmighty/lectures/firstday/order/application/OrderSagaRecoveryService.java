@@ -6,8 +6,8 @@ import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
@@ -16,7 +16,6 @@ import java.util.List;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OrderSagaRecoveryService {
 
     private final OrderRepository orderRepository;
@@ -24,6 +23,35 @@ public class OrderSagaRecoveryService {
     private final OrderRemoteCallExecutor remoteCalls;
     private final OrderStockHandler stockHandler;
     private final OrderPaymentResultHandler paymentResultHandler;
+    private final OrderPaidCompletionService paidCompletionService;
+    private final OrderStockFailureCompletionService stockFailureCompletionService;
+
+    @Autowired
+    public OrderSagaRecoveryService(OrderRepository orderRepository, PaymentPort paymentPort,
+                                    OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
+                                    OrderPaymentResultHandler paymentResultHandler,
+                                    OrderPaidCompletionService paidCompletionService,
+                                    OrderStockFailureCompletionService stockFailureCompletionService) {
+        this.orderRepository = orderRepository;
+        this.paymentPort = paymentPort;
+        this.remoteCalls = remoteCalls;
+        this.stockHandler = stockHandler;
+        this.paymentResultHandler = paymentResultHandler;
+        this.paidCompletionService = paidCompletionService;
+        this.stockFailureCompletionService = stockFailureCompletionService;
+    }
+
+    OrderSagaRecoveryService(OrderRepository orderRepository, PaymentPort paymentPort,
+                             OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
+                             OrderPaymentResultHandler paymentResultHandler) {
+        this.orderRepository = orderRepository;
+        this.paymentPort = paymentPort;
+        this.remoteCalls = remoteCalls;
+        this.stockHandler = stockHandler;
+        this.paymentResultHandler = paymentResultHandler;
+        this.paidCompletionService = null;
+        this.stockFailureCompletionService = null;
+    }
 
     public void recoverPendingOrders() {
         List<OrderStatus> statuses = List.of(OrderStatus.STOCK_PENDING, OrderStatus.PAYMENT_PENDING,
@@ -67,7 +95,16 @@ public class OrderSagaRecoveryService {
                 return;
             }
             stockHandler.compensateStockFailure(order, confirmedItems);
-            orderRepository.save(order);
+            if (failure instanceof InvalidCartRewardException invalidReward) {
+                if (stockFailureCompletionService != null) {
+                    stockFailureCompletionService.persistAndCleanup(order, invalidReward.rewardId());
+                } else {
+                    orderRepository.save(order);
+                    paymentResultHandler.removeInvalidCartReward(order.getUserId(), invalidReward.rewardId());
+                }
+            } else {
+                orderRepository.save(order);
+            }
             return;
         }
         order.markPaymentRequested();
@@ -76,7 +113,16 @@ public class OrderSagaRecoveryService {
             PaymentResult result = remoteCalls.execute("payment-pay",
                     () -> paymentPort.pay(paymentOrder.getId(), paymentOrder.getUserId(),
                             paymentOrder.getTotalAmount().getValue()));
-            paymentResultHandler.apply(paymentOrder, result);
+            boolean orderCompleted = paymentResultHandler.apply(paymentOrder, result);
+            if (orderCompleted && paidCompletionService != null) {
+                paidCompletionService.persistAndCleanup(paymentOrder);
+            } else {
+                orderRepository.save(paymentOrder);
+                if (orderCompleted) {
+                    paymentResultHandler.removeOrderedCartItems(paymentOrder);
+                }
+            }
+            return;
         } catch (RuntimeException failure) {
             if (remoteCalls.isTechnical(failure)) {
                 paymentOrder.markPaymentPending();

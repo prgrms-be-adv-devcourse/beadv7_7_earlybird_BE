@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort.CancellationResult;
+import com.growmighty.lectures.firstday.order.application.port.CartPort;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
@@ -23,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 주문 애플리케이션 서비스.
@@ -41,17 +43,28 @@ public class OrderApiService {
     private final OrderRemoteCallExecutor remoteCalls;
     private final OrderStockHandler stockHandler;
     private final OrderPaymentResultHandler paymentResultHandler;
+    private final OrderCartHandler cartHandler;
+    private final OrderPaidCompletionService paidCompletionService;
+    private final OrderStockFailureCompletionService stockFailureCompletionService;
+    private final FundedAmountSynchronizationService fundedAmountSynchronizationService;
 
     @Autowired
     public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
                            OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
-                           OrderPaymentResultHandler paymentResultHandler) {
+                           OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler,
+                           OrderPaidCompletionService paidCompletionService,
+                           OrderStockFailureCompletionService stockFailureCompletionService,
+                           FundedAmountSynchronizationService fundedAmountSynchronizationService) {
         this.orderRepository = orderRepository;
         this.rewardPort = rewardPort;
         this.paymentPort = paymentPort;
         this.remoteCalls = remoteCalls;
         this.stockHandler = stockHandler;
         this.paymentResultHandler = paymentResultHandler;
+        this.cartHandler = cartHandler;
+        this.paidCompletionService = paidCompletionService;
+        this.stockFailureCompletionService = stockFailureCompletionService;
+        this.fundedAmountSynchronizationService = fundedAmountSynchronizationService;
     }
 
     OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
@@ -61,6 +74,10 @@ public class OrderApiService {
         this.remoteCalls = new OrderRemoteCallExecutor();
         this.stockHandler = new OrderStockHandler(rewardPort, remoteCalls);
         this.paymentResultHandler = new OrderPaymentResultHandler(stockHandler);
+        this.cartHandler = null;
+        this.paidCompletionService = null;
+        this.stockFailureCompletionService = null;
+        this.fundedAmountSynchronizationService = null;
     }
 
     /**
@@ -113,7 +130,14 @@ public class OrderApiService {
             return OrderResult.from(existingOrder.get());
         }
 
-        Order order = createPendingOrder(command);
+        command = commandFromCart(command);
+        Order order;
+        try {
+            order = createPendingOrder(command);
+        } catch (InvalidCartRewardException failure) {
+            removeInvalidCartReward(command.userId(), failure);
+            throw failure;
+        }
 
         try {
             order = orderRepository.saveAndFlush(order);
@@ -132,7 +156,16 @@ public class OrderApiService {
                 return OrderResult.from(orderRepository.save(order));
             }
             stockHandler.compensateStockFailure(order, confirmedItems);
-            orderRepository.save(order);
+            if (e instanceof InvalidCartRewardException invalidReward) {
+                if (stockFailureCompletionService != null) {
+                    stockFailureCompletionService.persistAndCleanup(order, invalidReward.rewardId());
+                } else {
+                    orderRepository.save(order);
+                    removeInvalidCartReward(order.getUserId(), invalidReward);
+                }
+            } else {
+                orderRepository.save(order);
+            }
             throw e;
         }
 
@@ -154,9 +187,9 @@ public class OrderApiService {
             orderRepository.save(order);
             throw e;
         }
-        paymentResultHandler.apply(order, payment);
-
-        return OrderResult.from(orderRepository.save(order));
+        boolean orderCompleted = paymentResultHandler.apply(order, payment);
+        order = persistPaymentOutcome(order, orderCompleted);
+        return OrderResult.from(order);
     }
 
     // 주문 취소
@@ -185,7 +218,11 @@ public class OrderApiService {
         stockHandler.releaseStock(order);
         order.cancel();
         log.info("order cancelled. orderId={}", orderId);
-        return OrderResult.from(orderRepository.save(order));
+        Order cancelledOrder = orderRepository.save(order);
+        if (fundedAmountSynchronizationService != null) {
+            fundedAmountSynchronizationService.synchronize(cancelledOrder.getProjectId());
+        }
+        return OrderResult.from(cancelledOrder);
     }
 
     private void validatePaymentForCancellation(Order order, PaymentResult payment) {
@@ -217,14 +254,27 @@ public class OrderApiService {
     private Order createPendingOrder(PlaceOrderCommand command) {
         List<OrderItem> orderItems = new ArrayList<>();
         for (OrderLine line : command.lines()) {
-            RewardSnapshot reward = remoteCalls.execute("reward-get",
-                    () -> rewardPort.getReward(line.rewardId()));
+            RewardSnapshot reward;
+            try {
+                reward = remoteCalls.execute("reward-get", () -> rewardPort.getReward(line.rewardId()));
+            } catch (RuntimeException failure) {
+                if (remoteCalls.isTechnical(failure)) {
+                    throw failure;
+                }
+                throw new InvalidCartRewardException(line.rewardId(), failure.getMessage(), failure);
+            }
             validateRewardSnapshot(line, reward);
             orderItems.add(OrderItem.create(
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
         }
 
-        Long projectId = command.projectId() != null ? command.projectId() : orderItems.get(0).getProjectId();
+        Long projectId = orderItems.get(0).getProjectId();
+        if (command.projectId() != null && !Objects.equals(command.projectId(), projectId)) {
+            throw new IllegalArgumentException("Order project does not match Cart rewards. projectId=" + command.projectId());
+        }
+        if (orderItems.stream().anyMatch(item -> !Objects.equals(projectId, item.getProjectId()))) {
+            throw new IllegalStateException("Cart contains rewards from multiple projects.");
+        }
         Order order = Order.create(null, command.userId(), projectId, orderItems,
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
                 command.orderIdempotencyKey());
@@ -264,14 +314,63 @@ public class OrderApiService {
     // 정합성 세부 검사
     private void validateRewardSnapshot(OrderLine line, RewardSnapshot reward) {
         if (!reward.orderable()) {
-            throw new IllegalStateException("Reward is not orderable. rewardId=" + reward.rewardId());
+            throw new InvalidCartRewardException(line.rewardId(),
+                    "Reward is not orderable. rewardId=" + line.rewardId());
         }
         if (reward.remainingQuantity() != null && reward.remainingQuantity() < line.quantity()) {
-            throw new IllegalStateException("Reward stock is insufficient. rewardId=" + reward.rewardId());
+            throw new InvalidCartRewardException(line.rewardId(),
+                    "Reward stock is insufficient. rewardId=" + line.rewardId());
         }
         if (reward.price().compareTo(line.expectedUnitPrice()) != 0) {
             throw new IllegalArgumentException("Reward price changed. rewardId=" + reward.rewardId());
         }
+    }
+
+    private PlaceOrderCommand commandFromCart(PlaceOrderCommand command) {
+        if (cartHandler == null) {
+            throw new IllegalStateException("Cart integration is required to place an Order.");
+        }
+        CartPort.CartSnapshot cart = cartHandler.getCart(command.userId());
+        if (!Objects.equals(command.userId(), cart.userId())) {
+            throw new IllegalStateException("Cart owner mismatch. userId=" + command.userId());
+        }
+        if (cart.items() == null || cart.items().isEmpty()) {
+            throw new IllegalStateException("Order Cart is empty. userId=" + command.userId());
+        }
+
+        Map<Long, OrderLine> requestedLines = command.lines().stream()
+                .collect(Collectors.toMap(OrderLine::rewardId, line -> line));
+        Set<Long> cartRewardIds = cart.items().stream()
+                .map(CartPort.CartSnapshot.Item::rewardId)
+                .collect(Collectors.toSet());
+        if (requestedLines.size() != cart.items().size() || !requestedLines.keySet().equals(cartRewardIds)) {
+            throw new IllegalArgumentException("Order items must match the current Cart.");
+        }
+
+        List<OrderLine> cartLines = cart.items().stream()
+                .map(item -> new OrderLine(item.rewardId(), item.quantity(),
+                        requestedLines.get(item.rewardId()).expectedUnitPrice()))
+                .toList();
+        return new PlaceOrderCommand(command.userId(), command.projectId(), cartLines,
+                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
+                command.expectedItemsAmount(), command.expectedTotalAmount(), command.orderIdempotencyKey());
+    }
+
+    private void removeInvalidCartReward(Long userId, InvalidCartRewardException failure) {
+        if (cartHandler != null) {
+            cartHandler.removeInvalidReward(userId, failure.rewardId());
+        }
+    }
+
+    private Order persistPaymentOutcome(Order order, boolean orderCompleted) {
+        if (orderCompleted && paidCompletionService != null) {
+            return paidCompletionService.persistAndCleanup(order);
+        }
+        Order savedOrder = orderRepository.save(order);
+        if (orderCompleted) {
+            paymentResultHandler.removeOrderedCartItems(savedOrder);
+        }
+        return savedOrder;
     }
 
     // 금액 총합 일치 검사

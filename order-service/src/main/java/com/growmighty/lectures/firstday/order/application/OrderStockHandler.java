@@ -20,8 +20,15 @@ class OrderStockHandler {
     // 경우에 따라서 reward 도메인이랑 협의 필요
     void reserveStock(Order order, List<OrderItem> confirmedItems) {
         for (OrderItem item : order.getItems()) {
-            remoteCalls.execute("reward-decrease-stock",
-                    () -> rewardPort.decreaseStock(item.getRewardId(), item.getQuantity(), item.getOrder().getId()));
+            try {
+                remoteCalls.execute("reward-decrease-stock",
+                        () -> rewardPort.decreaseStock(item.getRewardId(), item.getQuantity(), item.getOrder().getId()));
+            } catch (RuntimeException failure) {
+                if (remoteCalls.isTechnical(failure)) {
+                    throw failure;
+                }
+                throw new InvalidCartRewardException(item.getRewardId(), failure.getMessage(), failure);
+            }
             item.markStockReserved();
             confirmedItems.add(item);
         }
