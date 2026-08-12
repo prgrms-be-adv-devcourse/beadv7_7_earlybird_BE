@@ -121,16 +121,40 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     /**
+     * orderPort(HTTP GET) 호출을 트랜잭션 시작 전에 한 번 먼저 해서 빠른 실패 경로를 만든다 — #196.
+     * 이건 최적화일 뿐 정합성 보장의 핵심은 아니다: 여기서 false가 나와도 배타 락이 없는 틈에 새
+     * decreaseStock()이 끼어들어 주문을 완성시킬 수 있어서, 진짜 안전장치는 deleteConfirmed()가
+     * 배타 락을 잡은 뒤 다시 확인하는 두 번째 체크다(그 주석 참고). 존재/소유 확인까지 여기서
+     * 끝내고, 실제 삭제(락+재확인+쓰기)는 deleteConfirmed()로 위임한다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void delete(Long projectId, Long requesterId) {
+        Project project = getProject(projectId);
+        validateOwnership(project, requesterId);
+        if (orderPort.hasOrderedReward(projectId)) {
+            throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
+        }
+        selfProvider.getObject().deleteConfirmed(projectId);
+    }
+
+    /**
      * 락 순서 역전 데드락 방지를 위해 getProject()(무락 조회) 대신
      * projectRepository.findByIdForDelete()(배타 락)로 Project를 맨 먼저 선점한다 —
      * ProjectRepository.findByIdForDelete() 주석 참고.
+     *
+     * hasOrderedReward()를 배타 락을 잡은 "직후"에 다시 확인한다 — delete()의 사전 체크와 이 락
+     * 획득 사이의 틈에 새 decreaseStock()이 공유 락을 얻어 주문을 완성시켰을 수 있기 때문이다.
+     * decreaseStock()은 재고를 깎기 전에 항상 Project를 공유 락으로 먼저 잠그므로(RewardStockTransactionExecutor
+     * 참고), 이 배타 락을 잡은 시점 이후로는 어떤 decreaseStock()도 끼어들 수 없다. 그리고 order-service의
+     * placeOrder()는 Order row를 재고 차감 HTTP 호출보다 먼저 커밋하므로, 그 이전에 완성된 주문은 이
+     * 재확인에 반드시 걸린다 — 그래서 이 시점의 체크만이 진짜 안전장치다(외부에서 직접 부를 일은 없다).
      */
     @Override
     @Transactional
-    public void delete(Long projectId, Long requesterId) {
+    public void deleteConfirmed(Long projectId) {
         Project project = projectRepository.findByIdForDelete(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
-        validateOwnership(project, requesterId);
         if (orderPort.hasOrderedReward(projectId)) {
             throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
         }
@@ -211,19 +235,31 @@ public class ProjectServiceImpl implements ProjectService {
         throw e;
     }
 
+    /**
+     * orderPort(HTTP GET) 호출은 트랜잭션 시작 전에 끝내둔다 — #196. fundedAmount는 다음 배치가
+     * 또 보정해주는 값이라(reconcileFundedAmounts) 락 없이 미리 읽어와도 정합성 문제가 없다 —
+     * closeEarlyConfirmed()가 그 값으로 실제 판정+갱신을 재시도 가능한 단위로 수행한다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ProjectResponse closeEarly(Long projectId) {
+        BigDecimal fundedAmount = orderPort.getFundedAmount(projectId);
+        return selfProvider.getObject().closeEarlyConfirmed(projectId, fundedAmount);
+    }
+
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public ProjectResponse closeEarly(Long projectId) {
+    public ProjectResponse closeEarlyConfirmed(Long projectId, BigDecimal fundedAmount) {
         Project project = getProject(projectId);
-        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.updateFundedAmount(fundedAmount);
         project.closeEarlyAsSucceeded();
         deactivateRewards(projectId);
         return ProjectResponse.from(project);
     }
 
     @Recover
-    public ProjectResponse recoverCloseEarlyConflict(RuntimeException e, Long projectId) {
+    public ProjectResponse recoverCloseEarlyConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
                 "조기 마감 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
@@ -257,18 +293,30 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
+    /**
+     * orderPort(HTTP GET) 호출은 트랜잭션 시작 전에 끝내둔다 — #196. closeEarly()와 같은 이유로
+     * fundedAmount를 락 없이 미리 읽어와도 안전하다 — closeProjectByDeadlineConfirmed()가 그 값으로
+     * 실제 판정+갱신을 재시도 가능한 단위로 수행한다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void closeProjectByDeadline(Long projectId) {
+        BigDecimal fundedAmount = orderPort.getFundedAmount(projectId);
+        selfProvider.getObject().closeProjectByDeadlineConfirmed(projectId, fundedAmount);
+    }
+
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public void closeProjectByDeadline(Long projectId) {
+    public void closeProjectByDeadlineConfirmed(Long projectId, BigDecimal fundedAmount) {
         Project project = getProject(projectId);
-        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.updateFundedAmount(fundedAmount);
         project.closeByDeadline();
         deactivateRewards(projectId);
     }
 
     @Recover
-    public void recoverCloseProjectByDeadlineConflict(RuntimeException e, Long projectId) {
+    public void recoverCloseProjectByDeadlineConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
                 "프로젝트 마감 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);

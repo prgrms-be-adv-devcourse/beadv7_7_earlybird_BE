@@ -65,11 +65,10 @@ class ProjectServiceImplRetryTest {
             return mock(RewardService.class);
         }
 
-        @SuppressWarnings("unchecked")
-        @Bean
-        ObjectProvider<ProjectService> selfProvider() {
-            return mock(ObjectProvider.class);
-        }
+        // selfProvider는 별도 @Bean으로 안 만든다 — Spring이 ObjectProvider<T>/ObjectFactory<T>
+        // 파라미터는 명시적 빈 정의 없이도 항상 자동 해석해준다. closeEarly()/closeProjectByDeadline()이
+        // 이제 selfProvider.getObject()로 자기 자신(AOP 프록시)을 호출해 @Retryable을 발동시켜야 하므로,
+        // mock(ObjectProvider.class)처럼 getObject()가 null을 돌려주는 가짜로는 안 되고 진짜 프록시가 필요하다.
 
         @SuppressWarnings("unchecked")
         @Bean
