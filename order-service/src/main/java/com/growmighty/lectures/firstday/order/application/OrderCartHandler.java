@@ -34,6 +34,10 @@ class OrderCartHandler {
         remoteCalls.execute("cart-remove-items", () -> cartPort.removeItems(userId, rewardIds));
     }
 
+    void removeInvalidRewardItems(Long userId, List<Long> rewardIds) {
+        remoteCalls.execute("cart-remove-items", () -> cartPort.removeItems(userId, rewardIds));
+    }
+
     private void removeItems(Long userId, List<Long> rewardIds, String reason) {
         try {
             remoteCalls.execute("cart-remove-items", () -> cartPort.removeItems(userId, rewardIds));

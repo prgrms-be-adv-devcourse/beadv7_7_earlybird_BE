@@ -45,12 +45,14 @@ public class OrderApiService {
     private final OrderPaymentResultHandler paymentResultHandler;
     private final OrderCartHandler cartHandler;
     private final OrderPaidCompletionService paidCompletionService;
+    private final OrderStockFailureCompletionService stockFailureCompletionService;
 
     @Autowired
     public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
                            OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
                            OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler,
-                           OrderPaidCompletionService paidCompletionService) {
+                           OrderPaidCompletionService paidCompletionService,
+                           OrderStockFailureCompletionService stockFailureCompletionService) {
         this.orderRepository = orderRepository;
         this.rewardPort = rewardPort;
         this.paymentPort = paymentPort;
@@ -59,6 +61,7 @@ public class OrderApiService {
         this.paymentResultHandler = paymentResultHandler;
         this.cartHandler = cartHandler;
         this.paidCompletionService = paidCompletionService;
+        this.stockFailureCompletionService = stockFailureCompletionService;
     }
 
     OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
@@ -70,6 +73,7 @@ public class OrderApiService {
         this.paymentResultHandler = new OrderPaymentResultHandler(stockHandler);
         this.cartHandler = null;
         this.paidCompletionService = null;
+        this.stockFailureCompletionService = null;
     }
 
     /**
@@ -148,9 +152,15 @@ public class OrderApiService {
                 return OrderResult.from(orderRepository.save(order));
             }
             stockHandler.compensateStockFailure(order, confirmedItems);
-            orderRepository.save(order);
             if (e instanceof InvalidCartRewardException invalidReward) {
-                removeInvalidCartReward(order.getUserId(), invalidReward);
+                if (stockFailureCompletionService != null) {
+                    stockFailureCompletionService.persistAndCleanup(order, invalidReward.rewardId());
+                } else {
+                    orderRepository.save(order);
+                    removeInvalidCartReward(order.getUserId(), invalidReward);
+                }
+            } else {
+                orderRepository.save(order);
             }
             throw e;
         }

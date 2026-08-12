@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.order.application;
 import com.growmighty.lectures.firstday.order.domain.CartCleanupOutbox;
 import com.growmighty.lectures.firstday.order.domain.CartCleanupOutboxRepository;
 import com.growmighty.lectures.firstday.order.domain.Order;
-import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import lombok.RequiredArgsConstructor;
@@ -14,22 +13,21 @@ import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
-public class OrderPaidPersistenceService {
+public class OrderStockFailurePersistenceService {
     private final OrderRepository orderRepository;
     private final CartCleanupOutboxRepository outboxRepository;
 
     @Transactional
-    public Order savePaidWithCleanup(Order order) {
-        if (order.getStatus() != OrderStatus.PAID) {
-            throw new IllegalStateException("Cart cleanup Outbox can only be created for a paid Order. orderId="
+    public Order saveWithInvalidRewardCleanup(Order order, Long rewardId) {
+        if (order.getStatus() != OrderStatus.STOCK_FAILED
+                && order.getStatus() != OrderStatus.STOCK_COMPENSATION_PENDING) {
+            throw new IllegalStateException("Invalid-reward cleanup Outbox requires a definitive stock failure. orderId="
                     + order.getId());
         }
         Order savedOrder = orderRepository.save(order);
         if (!outboxRepository.existsByOrderId(savedOrder.getId())) {
-            outboxRepository.save(CartCleanupOutbox.pendingPaidOrder(
-                    savedOrder.getId(), savedOrder.getUserId(), savedOrder.getItems().stream()
-                            .map(OrderItem::getRewardId)
-                            .toList(), LocalDateTime.now()));
+            outboxRepository.save(CartCleanupOutbox.pendingInvalidReward(
+                    savedOrder.getId(), savedOrder.getUserId(), rewardId, LocalDateTime.now()));
         }
         return savedOrder;
     }

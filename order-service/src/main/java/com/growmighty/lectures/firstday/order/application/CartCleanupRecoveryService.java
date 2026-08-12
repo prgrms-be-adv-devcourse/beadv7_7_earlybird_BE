@@ -41,10 +41,13 @@ public class CartCleanupRecoveryService {
     private void attempt(CartCleanupTask task) {
         LocalDateTime attemptedAt = LocalDateTime.now();
         try {
-            cartHandler.removeCompletedOrderItems(task.userId(), task.rewardIds());
+            switch (task.cleanupType()) {
+                case PAID_ORDER -> cartHandler.removeCompletedOrderItems(task.userId(), task.rewardIds());
+                case INVALID_REWARD -> cartHandler.removeInvalidRewardItems(task.userId(), task.rewardIds());
+            }
             transactions.complete(task.outboxId(), LocalDateTime.now());
-            log.info("cart cleanup completed. outboxId={}, orderId={}, userId={}, rewardIds={}",
-                    task.outboxId(), task.orderId(), task.userId(), task.rewardIds());
+            log.info("cart cleanup completed. outboxId={}, orderId={}, userId={}, cleanupType={}, rewardIds={}",
+                    task.outboxId(), task.orderId(), task.userId(), task.cleanupType(), task.rewardIds());
         } catch (RuntimeException failure) {
             boolean technical = remoteCalls.isTechnical(failure);
             Duration backoff = technical ? technicalBackoff(task.retryCount()) : NON_RETRYABLE_BACKOFF;

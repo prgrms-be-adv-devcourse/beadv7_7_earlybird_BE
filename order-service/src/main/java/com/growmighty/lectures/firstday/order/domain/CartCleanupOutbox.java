@@ -43,6 +43,10 @@ public class CartCleanupOutbox extends BaseEntity {
     @Column(name = "user_id", nullable = false, updatable = false)
     private Long userId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cleanup_type", nullable = false, updatable = false)
+    private CartCleanupType cleanupType;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "cart_cleanup_outbox_reward_ids",
             joinColumns = @JoinColumn(name = "outbox_id"))
@@ -69,19 +73,33 @@ public class CartCleanupOutbox extends BaseEntity {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
-    private CartCleanupOutbox(Long orderId, Long userId, List<Long> rewardIds, LocalDateTime now) {
+    private CartCleanupOutbox(Long orderId, Long userId, List<Long> rewardIds,
+                              CartCleanupType cleanupType, LocalDateTime now) {
         if (orderId == null || userId == null || rewardIds == null || rewardIds.isEmpty()) {
             throw new IllegalArgumentException("Cart cleanup snapshot is required.");
+        }
+        if (cleanupType == null) {
+            throw new IllegalArgumentException("Cart cleanup type is required.");
+        }
+        if (cleanupType == CartCleanupType.INVALID_REWARD && rewardIds.size() != 1) {
+            throw new IllegalArgumentException("Invalid-reward cleanup requires exactly one reward.");
         }
         this.orderId = orderId;
         this.userId = userId;
         this.rewardIds.addAll(rewardIds);
+        this.cleanupType = cleanupType;
         this.status = CartCleanupStatus.PENDING;
         this.nextRetryAt = now;
     }
 
-    public static CartCleanupOutbox pending(Long orderId, Long userId, List<Long> rewardIds, LocalDateTime now) {
-        return new CartCleanupOutbox(orderId, userId, rewardIds, now);
+    public static CartCleanupOutbox pendingPaidOrder(Long orderId, Long userId, List<Long> rewardIds,
+                                                     LocalDateTime now) {
+        return new CartCleanupOutbox(orderId, userId, rewardIds, CartCleanupType.PAID_ORDER, now);
+    }
+
+    public static CartCleanupOutbox pendingInvalidReward(Long orderId, Long userId, Long rewardId,
+                                                         LocalDateTime now) {
+        return new CartCleanupOutbox(orderId, userId, List.of(rewardId), CartCleanupType.INVALID_REWARD, now);
     }
 
     public void complete(LocalDateTime now) {

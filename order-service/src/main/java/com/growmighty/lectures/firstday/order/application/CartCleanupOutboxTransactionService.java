@@ -52,6 +52,6 @@ class CartCleanupOutboxTransactionService {
 
     private CartCleanupTask toTask(CartCleanupOutbox outbox) {
         return new CartCleanupTask(outbox.getId(), outbox.getOrderId(), outbox.getUserId(),
-                List.copyOf(outbox.getRewardIds()), outbox.getRetryCount());
+                List.copyOf(outbox.getRewardIds()), outbox.getCleanupType(), outbox.getRetryCount());
     }
 }

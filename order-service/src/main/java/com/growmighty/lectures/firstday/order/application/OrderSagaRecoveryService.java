@@ -24,18 +24,21 @@ public class OrderSagaRecoveryService {
     private final OrderStockHandler stockHandler;
     private final OrderPaymentResultHandler paymentResultHandler;
     private final OrderPaidCompletionService paidCompletionService;
+    private final OrderStockFailureCompletionService stockFailureCompletionService;
 
     @Autowired
     public OrderSagaRecoveryService(OrderRepository orderRepository, PaymentPort paymentPort,
                                     OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
                                     OrderPaymentResultHandler paymentResultHandler,
-                                    OrderPaidCompletionService paidCompletionService) {
+                                    OrderPaidCompletionService paidCompletionService,
+                                    OrderStockFailureCompletionService stockFailureCompletionService) {
         this.orderRepository = orderRepository;
         this.paymentPort = paymentPort;
         this.remoteCalls = remoteCalls;
         this.stockHandler = stockHandler;
         this.paymentResultHandler = paymentResultHandler;
         this.paidCompletionService = paidCompletionService;
+        this.stockFailureCompletionService = stockFailureCompletionService;
     }
 
     OrderSagaRecoveryService(OrderRepository orderRepository, PaymentPort paymentPort,
@@ -47,6 +50,7 @@ public class OrderSagaRecoveryService {
         this.stockHandler = stockHandler;
         this.paymentResultHandler = paymentResultHandler;
         this.paidCompletionService = null;
+        this.stockFailureCompletionService = null;
     }
 
     public void recoverPendingOrders() {
@@ -91,9 +95,15 @@ public class OrderSagaRecoveryService {
                 return;
             }
             stockHandler.compensateStockFailure(order, confirmedItems);
-            orderRepository.save(order);
             if (failure instanceof InvalidCartRewardException invalidReward) {
-                paymentResultHandler.removeInvalidCartReward(order.getUserId(), invalidReward.rewardId());
+                if (stockFailureCompletionService != null) {
+                    stockFailureCompletionService.persistAndCleanup(order, invalidReward.rewardId());
+                } else {
+                    orderRepository.save(order);
+                    paymentResultHandler.removeInvalidCartReward(order.getUserId(), invalidReward.rewardId());
+                }
+            } else {
+                orderRepository.save(order);
             }
             return;
         }
