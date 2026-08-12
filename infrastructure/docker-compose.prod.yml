@@ -14,6 +14,17 @@
 # remove it, it just gives `docker compose pull`/`up -d` something to pull instead of building.
 # CD's deploy step runs `pull` before `up -d`, so the image is always present locally and `up -d`
 # never falls back to building on the EC2 host (same pattern the `fe` service below already used).
+#
+# discovery-server/config-server가 #198로 k8s(앱 박스에 nodeSelector로 고정, hostPort로 노출)로
+# 옮겨간 뒤에도, 각 서비스가 이미 패키징하고 있는 application.yml/config repo의 docker 프로필은
+# 여전히 `config-server`/`discovery-server`라는 호스트명을 그대로 쓴다 - 그 호스트명이 가리키는
+# compose 컨테이너가 사라진 대신, 같은 앱 박스 자신의 private IP로 다시 매핑해서 재사용한다
+# (요청 IP만 바뀌고 이름/포트는 그대로라 12개 서비스 어느 것도 rebuild가 필요 없다).
+x-app-box-core-hosts: &app-box-core-hosts
+  extra_hosts:
+    - "discovery-server:10.0.0.81"
+    - "config-server:10.0.0.81"
+
 services:
   # mysql/elasticsearch는 #256으로 2번째 EC2(데이터 박스)로 분리됐다 - 앱 박스에서는 더 이상
   # 로컬 컨테이너로 띄우지 않는다. base 파일(docker-compose.yml)의 정의 자체는 로컬 개발용으로
@@ -28,10 +39,15 @@ services:
   config-server:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-config-server:latest
 
+  # #198 Phase 2 - k8s(앱 박스 nodeSelector 고정, hostPort:8761)로 이전 완료. compose 기본
+  # `up -d`(--profile 없음) 대상에서 제외 - mysql/elasticsearch(#256)와 동일 패턴.
   discovery-server:
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-discovery-server:latest
+    profiles: ["local-only"]
 
   gateway-server:
+    # #198 Phase 5 전까지는 여전히 compose로 뜬다 - discovery-server/config-server를 core-depends-on으로
+    # 기다리므로 이 둘도 앱 박스 자신의 IP로 다시 찾을 수 있어야 한다.
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-gateway-server:latest
     # Compose concatenates list fields like `ports` across -f files by default, so a plain
     # override here would publish BOTH 8000:8000 (from the base file) and whatever we add - not
@@ -44,54 +60,63 @@ services:
   # 없어도 에러내지 않음"으로 바꾼다 - Compose는 depends_on 맵을 키 단위로 병합하므로
   # 기존 condition은 그대로 남고 required만 추가된다.
   order-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-order-service:latest
     depends_on:
       mysql:
         required: false
 
   project-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-project-service:latest
     depends_on:
       mysql:
         required: false
 
   payment-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-payment-service:latest
     depends_on:
       mysql:
         required: false
 
   user-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-user-service:latest
     depends_on:
       mysql:
         required: false
 
   cart-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-cart-service:latest
     depends_on:
       mysql:
         required: false
 
   settlement-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-settlement-service:latest
     depends_on:
       mysql:
         required: false
 
   file-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-file-service:latest
     depends_on:
       mysql:
         required: false
 
   board-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-board-service:latest
     depends_on:
       mysql:
         required: false
 
   notification-service:
+    <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-notification-service:latest
     depends_on:
       mysql:

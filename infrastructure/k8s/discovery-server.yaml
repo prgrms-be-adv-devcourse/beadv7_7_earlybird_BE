@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-server
+  namespace: webapp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  # replicas: 1이라 RollingUpdate는 잠깐 JVM 2개가 동시에 뜬다 - Eureka 자체 레지스트리가
+  # 그 사이 두 인스턴스로 쪼개질 수 있어 Recreate로 확실히 하나씩만 뜨게 한다.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: discovery-server
+  template:
+    metadata:
+      labels:
+        app: discovery-server
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      # 앱 박스(compose 서비스들과 같은 호스트)에 고정 - hostPort로 그 호스트 자체 주소에서
+      # 접근 가능해야 하므로 노드가 바뀌면 안 된다.
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      containers:
+        - name: discovery-server
+          image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-discovery-server:latest
+          ports:
+            - containerPort: 8761
+              hostPort: 8761
+          env:
+            # 값 근거는 기존 docker-compose.yml의 discovery-server 주석 참고 (#272).
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: 352Mi
+              cpu: 100m
+            limits:
+              memory: 480Mi   # 기존 compose mem_limit과 동일 - MaxRAMPercentage 계산값 변화 없음
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            periodSeconds: 10
+            failureThreshold: 30   # JVM 기동 여유 5분
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8761
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-server
+  namespace: webapp
+spec:
+  # ClusterIP만으로 충분 - 앱 박스 compose 컨테이너는 hostPort(위)로, 클러스터 내부(ai-service 등)는
+  # 이 Service의 in-cluster DNS(discovery-server)로 접근한다. 별도 LoadBalancer/NodePort 불필요.
+  type: ClusterIP
+  selector:
+    app: discovery-server
+  ports:
+    - name: http
+      port: 8761
+      targetPort: 8761
