@@ -153,7 +153,7 @@ public class SettlementKafkaInputService {
         if (event.payload() == null) {
             throw new IllegalArgumentException("프로젝트 환불 처리 결과 payload는 필수입니다.");
         }
-        validateKey(key, event.payload().projectId(), "projectId");
+        validateKey(key, event.payload().settlementId(), "settlementId");
         validateOrderIds(event.payload().orderIds());
         if (event.payload().status() == null || event.payload().status().isBlank()) {
             throw new IllegalArgumentException("환불 처리 상태는 필수입니다.");
@@ -185,6 +185,15 @@ public class SettlementKafkaInputService {
             }
         } catch (NumberFormatException exception) {
             throw new IllegalArgumentException("Kafka key는 " + field + "여야 합니다.", exception);
+        }
+    }
+
+    private static void validateKey(String key, String payloadId, String field) {
+        if (payloadId == null || payloadId.isBlank()) {
+            throw new IllegalArgumentException(field + "는 필수입니다.");
+        }
+        if (!Objects.equals(key, payloadId)) {
+            throw new IllegalArgumentException("Kafka key와 " + field + "가 일치하지 않습니다.");
         }
     }
 

@@ -50,27 +50,27 @@ class ProjectRefundRequestedKafkaPublisherTest {
     void marksOutboxPublishedOnlyAfterKafkaAcknowledges() {
         ProjectRefundRequested request = request();
         when(outboxRepository.findPending()).thenReturn(List.of(request));
-        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq("101"), any()))
+        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(request.refundRequestId()), any()))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
         publisher().publishPending();
 
         verify(kafkaTemplate).send(
                 eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND),
-                eq("101"),
+                eq(request.refundRequestId()),
                 eventCaptor.capture()
         );
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
-        assertThat(eventCaptor.getValue().eventId()).isEqualTo(request.eventId());
-        assertThat(eventCaptor.getValue().payload().projectId()).isEqualTo(101L);
+        assertThat(eventCaptor.getValue().settlementId()).isEqualTo(request.refundRequestId());
+        assertThat(eventCaptor.getValue().payload().settlementId()).isEqualTo(request.refundRequestId());
     }
 
     @Test
     void retriesSameOutboxWhenKafkaAcknowledgmentFails() {
         ProjectRefundRequested request = request();
         when(outboxRepository.findPending()).thenReturn(List.of(request));
-        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq("101"), any()))
+        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(request.refundRequestId()), any()))
                 .thenReturn(
                         CompletableFuture.failedFuture(new IllegalStateException("broker unavailable")),
                         CompletableFuture.completedFuture(null)
@@ -81,14 +81,14 @@ class ProjectRefundRequestedKafkaPublisherTest {
 
         verify(kafkaTemplate, org.mockito.Mockito.times(2)).send(
                 eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND),
-                eq("101"),
+                eq(request.refundRequestId()),
                 eventCaptor.capture()
         );
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
         assertThat(eventCaptor.getAllValues())
-                .extracting(ProjectRefundRequestedEvent::eventId)
-                .containsOnly(request.eventId());
+                .extracting(ProjectRefundRequestedEvent::settlementId)
+                .containsOnly(request.refundRequestId());
     }
 
     private ProjectRefundRequestedKafkaPublisher publisher() {

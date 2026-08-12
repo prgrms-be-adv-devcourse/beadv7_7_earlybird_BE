@@ -102,7 +102,7 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-01T09:05:00+09:00"),
-                new ProjectRefundProcessedEvent.Payload(101L, List.of(1001L, 1002L), "COMPLETED")
+                new ProjectRefundProcessedEvent.Payload("101", List.of(1001L, 1002L), "COMPLETED")
         );
 
         inputService.saveProjectRefundProcessed("101", event);

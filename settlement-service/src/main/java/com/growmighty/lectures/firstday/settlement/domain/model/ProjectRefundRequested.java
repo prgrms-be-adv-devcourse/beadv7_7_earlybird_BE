@@ -37,7 +37,7 @@ public class ProjectRefundRequested extends BaseEntity {
 
     @Id
     @Column(name = "event_id", nullable = false, updatable = false, length = 36)
-    private String eventId;
+    private String refundRequestId;
 
     @Column(name = "project_id", nullable = false, updatable = false)
     private Long projectId;
@@ -71,13 +71,13 @@ public class ProjectRefundRequested extends BaseEntity {
     }
 
     private ProjectRefundRequested(
-            String eventId,
+            String refundRequestId,
             Long projectId,
             ProjectCancellationReason reason,
             List<Payment> payments,
             Instant occurredAt
     ) {
-        this.eventId = eventId;
+        this.refundRequestId = refundRequestId;
         this.projectId = projectId;
         this.reason = reason;
         this.payments = List.copyOf(payments);
@@ -86,7 +86,7 @@ public class ProjectRefundRequested extends BaseEntity {
     }
 
     public static ProjectRefundRequested request(
-            String eventId,
+            String refundRequestId,
             ProjectOutcomeFact outcome,
             List<OrderPaymentFact> payments,
             Instant occurredAt
@@ -107,7 +107,7 @@ public class ProjectRefundRequested extends BaseEntity {
                 .sorted((left, right) -> left.orderId.compareTo(right.orderId))
                 .toList();
         return new ProjectRefundRequested(
-                eventId,
+                refundRequestId,
                 outcome.projectId(),
                 cancellationReason(outcome.outcome()),
                 requestedPayments,
@@ -126,8 +126,8 @@ public class ProjectRefundRequested extends BaseEntity {
         this.publishedAt = completedAt;
     }
 
-    public String eventId() {
-        return eventId;
+    public String refundRequestId() {
+        return refundRequestId;
     }
 
     public Long projectId() {
@@ -164,8 +164,8 @@ public class ProjectRefundRequested extends BaseEntity {
 
     @PostLoad
     private void validateState() {
-        if (eventId == null || eventId.isBlank()) {
-            throw new IllegalArgumentException("이벤트 식별자는 필수입니다.");
+        if (refundRequestId == null || refundRequestId.isBlank()) {
+            throw new IllegalArgumentException("환불 요청 식별자는 필수입니다.");
         }
         if (projectId == null || projectId <= 0) {
             throw new IllegalArgumentException("프로젝트 식별자는 양수여야 합니다.");

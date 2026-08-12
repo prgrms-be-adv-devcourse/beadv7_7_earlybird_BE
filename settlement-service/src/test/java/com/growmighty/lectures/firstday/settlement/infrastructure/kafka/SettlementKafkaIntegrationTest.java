@@ -143,7 +143,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
-                new ProjectRefundProcessedEvent.Payload(projectId, List.of(orderId), "COMPLETED")
+                new ProjectRefundProcessedEvent.Payload(Long.toString(projectId), List.of(orderId), "COMPLETED")
         ));
 
         assertThat(await(() -> inboxRepository.existsById(refundProcessedEventId.toString()))).isTrue();
@@ -242,9 +242,10 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                     ProjectRefundRequestedEvent.class
             );
 
-            assertThat(record.key()).isEqualTo(Long.toString(projectId));
-            assertThat(event.eventId()).isEqualTo(request.eventId());
-            assertThat(event.payload().payments()).extracting(ProjectRefundRequestedEvent.Payment::orderId)
+            assertThat(record.key()).isEqualTo(request.refundRequestId());
+            assertThat(event.settlementId()).isEqualTo(request.refundRequestId());
+            assertThat(event.payload().settlementId()).isEqualTo(request.refundRequestId());
+            assertThat(event.payload().orderIds())
                     .containsExactly(91_003L);
             assertThat(outboxRepository.findByProjectId(projectId).orElseThrow().published()).isTrue();
         }

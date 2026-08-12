@@ -27,31 +27,28 @@ public class ProjectRefundRequestedKafkaPublisher {
             try {
                 kafkaTemplate.send(
                         KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND,
-                        request.projectId().toString(),
+                        request.refundRequestId(),
                         eventOf(request)
                 ).join();
                 request.markPublished(Instant.now(clock));
                 outboxRepository.save(request);
             } catch (RuntimeException exception) {
-                log.warn("프로젝트 환불 요청 Kafka 발행에 실패했습니다. eventId={}", request.eventId(), exception);
+                log.warn("프로젝트 환불 요청 Kafka 발행에 실패했습니다. refundRequestId={}", request.refundRequestId(), exception);
             }
         }
     }
 
     private ProjectRefundRequestedEvent eventOf(ProjectRefundRequested request) {
+        // 명세 변경 비용 때문에 외부 settlementId에 내부 refundRequestId를 매핑한다. 계약 변경 시 제거할 수 있다.
         return new ProjectRefundRequestedEvent(
-                request.eventId(),
+                request.refundRequestId(),
                 ProjectRefundRequested.EVENT_TYPE,
                 ProjectRefundRequested.SCHEMA_VERSION,
                 OffsetDateTime.ofInstant(request.occurredAt(), clock.getZone()),
                 new ProjectRefundRequestedEvent.Payload(
-                        request.projectId(),
-                        request.reason().name(),
+                        request.refundRequestId(),
                         request.payments().stream()
-                                .map(payment -> new ProjectRefundRequestedEvent.Payment(
-                                        payment.orderId(),
-                                        payment.pgOrderId()
-                                ))
+                                .map(ProjectRefundRequested.Payment::orderId)
                                 .toList()
                 )
         );
