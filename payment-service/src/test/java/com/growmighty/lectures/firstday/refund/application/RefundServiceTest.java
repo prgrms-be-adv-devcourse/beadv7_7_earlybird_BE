@@ -83,6 +83,21 @@ class RefundServiceTest {
     }
 
     @Test
+    void startPlannedRefund_transitionsPlannedRefundToRequested() {
+        Payment payment = paidPayment();
+        Refund refund = Refund.planned(PAYMENT_ID, 10L, AMOUNT, RefundReason.GOAL_FAILED);
+        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
+
+        RefundCancellationTarget target = refundService.startPlannedRefund(REFUND_ID);
+
+        assertThat(refund.getStatus()).isEqualTo(RefundStatus.REQUESTED);
+        assertThat(target.reason()).isEqualTo(RefundReason.GOAL_FAILED);
+        verify(refundRepository).save(refund);
+    }
+
+    @Test
     void completeRefund_completesRefundAndCancelsPayment() {
         Payment payment = paidPayment();
         Refund refund = requestedRefund();
