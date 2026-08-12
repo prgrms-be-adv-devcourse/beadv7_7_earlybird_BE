@@ -55,10 +55,10 @@ public class PaymentHttpClient implements PaymentPort {
         PaymentApiData data = response.data();
         BigDecimal amount = data.amount() != null ? data.amount() : requestedAmount;
         return switch (data.status()) {
-            case "PAID" -> PaymentResult.success(data.paymentId(), amount);
-            case "FAILED", "CANCELLED" -> PaymentResult.failure(amount);
-            case "READY", "CONFIRMING" -> PaymentResult.pending(amount);
-            default -> PaymentResult.unknown(amount);
+            case "PAID" -> PaymentResult.success(data.paymentId(), data.pgOrderId(), amount);
+            case "FAILED", "CANCELLED" -> PaymentResult.failure(data.pgOrderId(), amount);
+            case "READY", "CONFIRMING" -> PaymentResult.pending(data.pgOrderId(), amount);
+            default -> PaymentResult.unknown(data.pgOrderId(), amount);
         };
     }
 }

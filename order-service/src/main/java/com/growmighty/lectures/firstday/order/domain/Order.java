@@ -55,6 +55,9 @@ public class Order extends BaseEntity {
     @Column(name = "project_id", nullable = false)
     private Long projectId;
 
+    @Column(name = "pg_order_id", nullable = true)
+    private String pgOrderId;
+
     @Embedded
     @AttributeOverride(name = "value", column = @Column(name = "items_amount", nullable = false))
     private Money itemsAmount;
@@ -223,6 +226,13 @@ public class Order extends BaseEntity {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAID);
         }
         this.status = OrderStatus.PAID;
+    }
+
+    public void assignPgOrderId(String pgOrderId) {
+        if (pgOrderId == null || pgOrderId.isBlank()) {
+            return;
+        }
+        this.pgOrderId = pgOrderId;
     }
 
     public PaymentHandling handlePaymentOutcome(PaymentOutcome outcome) {

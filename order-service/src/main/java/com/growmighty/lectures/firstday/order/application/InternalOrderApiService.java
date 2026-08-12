@@ -3,15 +3,21 @@ package com.growmighty.lectures.firstday.order.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.order.application.dto.OrderVerificationResult;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
+import com.growmighty.lectures.firstday.order.application.dto.ProjectPaymentsView;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
+import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 
 @Service
 public class InternalOrderApiService {
@@ -57,6 +63,40 @@ public class InternalOrderApiService {
         return orderRepository.findPaidItem(userId, rewardId)
                 .map(orderItem -> OrderVerificationResult.verified(orderItem.getName()))
                 .orElseGet(OrderVerificationResult::unverified);
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectPaymentsView getProjectPayments(List<Long> requestedProjectIds) {
+        List<Long> projectIds = requestedProjectIds.stream()
+                .distinct()
+                .sorted()
+                .toList();
+        Map<Long, List<ProjectPaymentsView.OrderPayment>> ordersByProjectId = new TreeMap<>();
+        projectIds.forEach(projectId -> ordersByProjectId.put(projectId, new ArrayList<>()));
+
+        List<Order> orders = orderRepository.findByProjectIdsAndStatusIn(
+                projectIds, List.of(OrderStatus.PAID, OrderStatus.CANCELLED));
+        List<Long> missingOrderIds = orders.stream()
+                .filter(order -> order.getPgOrderId() == null || order.getPgOrderId().isBlank())
+                .map(Order::getId)
+                .toList();
+        if (!missingOrderIds.isEmpty()) {
+            throw new IllegalStateException("Missing PG order IDs for settlement orders. orderIds=" + missingOrderIds);
+        }
+
+        orders.forEach(order -> ordersByProjectId.get(order.getProjectId())
+                .add(new ProjectPaymentsView.OrderPayment(
+                        order.getId(), order.getPgOrderId(), order.getTotalAmount().getValue(),
+                        order.getStatus().name())));
+
+        return toProjectPaymentsView(ordersByProjectId);
+    }
+
+    private ProjectPaymentsView toProjectPaymentsView(
+            Map<Long, List<ProjectPaymentsView.OrderPayment>> ordersByProjectId) {
+        return new ProjectPaymentsView(ordersByProjectId.entrySet().stream()
+                .map(entry -> new ProjectPaymentsView.ProjectPayment(entry.getKey(), List.copyOf(entry.getValue())))
+                .toList());
     }
 
     private Order getOrderWithItems(Long orderId) {

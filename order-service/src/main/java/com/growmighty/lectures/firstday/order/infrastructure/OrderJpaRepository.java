@@ -51,4 +51,14 @@ public interface OrderJpaRepository extends JpaRepository<Order, Long> {
             @Param("userId") Long userId,
             @Param("rewardId") Long rewardId,
             @Param("status") OrderStatus status);
+
+    @Query("""
+        select o from Order o
+        where o.projectId in :projectIds
+          and o.status in :statuses
+        order by o.projectId asc, o.id asc
+        """)
+    List<Order> findByProjectIdsAndStatusIn(
+            @Param("projectIds") List<Long> projectIds,
+            @Param("statuses") List<OrderStatus> statuses);
 }
