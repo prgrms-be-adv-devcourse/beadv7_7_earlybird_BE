@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.OrderPaymentStatusChangedEvent;
+import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectStatusChangedEvent;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.inbox.KafkaInboxEvent;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataKafkaInboxEventRepository;
@@ -12,6 +13,9 @@ import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.re
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Objects;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +28,7 @@ public class SettlementKafkaInputService {
     private static final int SCHEMA_VERSION = 1;
     private static final String PROJECT_STATUS_CHANGED = "ProjectStatusChanged";
     private static final String ORDER_PAYMENT_STATUS_CHANGED = "OrderPaymentStatusChanged";
+    private static final String PROJECT_REFUND_PROCESSED = "ProjectRefundProcessed";
 
     private final SpringDataKafkaInboxEventRepository inboxRepository;
     private final SpringDataProjectOutcomeFactRepository outcomeRepository;
@@ -68,6 +73,15 @@ public class SettlementKafkaInputService {
             saveCompletedPayment(existing, event);
         } else {
             saveCancelledPayment(existing, event);
+        }
+        saveInbox(event.eventId(), event.eventType(), event.occurredAt());
+    }
+
+    @Transactional
+    public void saveProjectRefundProcessed(String key, ProjectRefundProcessedEvent event) {
+        validateRefundResultEvent(key, event);
+        if (inboxRepository.existsById(event.eventId().toString())) {
+            return;
         }
         saveInbox(event.eventId(), event.eventType(), event.occurredAt());
     }
@@ -134,6 +148,18 @@ public class SettlementKafkaInputService {
         requiredEnum(OrderPaymentFact.Status.class, event.payload().status(), "주문 결제 상태");
     }
 
+    private static void validateRefundResultEvent(String key, ProjectRefundProcessedEvent event) {
+        validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), PROJECT_REFUND_PROCESSED);
+        if (event.payload() == null) {
+            throw new IllegalArgumentException("프로젝트 환불 처리 결과 payload는 필수입니다.");
+        }
+        validateKey(key, event.payload().projectId(), "projectId");
+        validateOrderIds(event.payload().orderIds());
+        if (event.payload().status() == null || event.payload().status().isBlank()) {
+            throw new IllegalArgumentException("환불 처리 상태는 필수입니다.");
+        }
+    }
+
     private static void validateEnvelope(
             UUID eventId,
             String eventType,
@@ -165,6 +191,19 @@ public class SettlementKafkaInputService {
     private static void requirePositive(Long value, String field) {
         if (value == null || value <= 0) {
             throw new IllegalArgumentException(field + "는 양수여야 합니다.");
+        }
+    }
+
+    private static void validateOrderIds(List<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            throw new IllegalArgumentException("환불 처리 결과에는 하나 이상의 orderId가 필요합니다.");
+        }
+        Set<Long> uniqueOrderIds = new HashSet<>();
+        for (Long orderId : orderIds) {
+            requirePositive(orderId, "orderId");
+            if (!uniqueOrderIds.add(orderId)) {
+                throw new IllegalArgumentException("환불 처리 결과의 orderId는 중복될 수 없습니다.");
+            }
         }
     }
 

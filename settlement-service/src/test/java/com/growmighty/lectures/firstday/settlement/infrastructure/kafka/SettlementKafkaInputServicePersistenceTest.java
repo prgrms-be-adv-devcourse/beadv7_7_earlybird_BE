@@ -7,12 +7,14 @@ import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.infrastructure.config.JpaAuditingConfig;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.OrderPaymentStatusChangedEvent;
+import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectStatusChangedEvent;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataKafkaInboxEventRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -89,5 +91,25 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
         assertThat(outcome.outcome()).isEqualTo(ProjectOutcomeFact.Outcome.SUCCEEDED);
         assertThat(payment.status()).isEqualTo(OrderPaymentFact.Status.CANCELLED);
         assertThat(payment.paymentAmount().amount()).isEqualByComparingTo("50000");
+    }
+
+    @Test
+    @DisplayName("Payment 환불 batch 결과는 Inbox에만 한 번 기록한다")
+    void storesRefundResultOnlyInInbox() {
+        UUID eventId = UUID.randomUUID();
+        ProjectRefundProcessedEvent event = new ProjectRefundProcessedEvent(
+                eventId,
+                "ProjectRefundProcessed",
+                1,
+                OffsetDateTime.parse("2026-08-01T09:05:00+09:00"),
+                new ProjectRefundProcessedEvent.Payload(101L, List.of(1001L, 1002L), "COMPLETED")
+        );
+
+        inputService.saveProjectRefundProcessed("101", event);
+        inputService.saveProjectRefundProcessed("101", event);
+
+        assertThat(inboxRepository.count()).isEqualTo(1);
+        assertThat(outcomeRepository.count()).isZero();
+        assertThat(paymentRepository.count()).isZero();
     }
 }
