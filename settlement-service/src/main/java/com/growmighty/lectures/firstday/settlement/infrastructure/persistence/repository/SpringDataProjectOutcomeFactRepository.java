@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface SpringDataProjectOutcomeFactRepository extends JpaRepository<ProjectOutcomeFact, Long> {
 
+    List<ProjectOutcomeFact> findAllByOrderByProjectId();
+
     @Query("""
             select outcome
             from ProjectOutcomeFact outcome

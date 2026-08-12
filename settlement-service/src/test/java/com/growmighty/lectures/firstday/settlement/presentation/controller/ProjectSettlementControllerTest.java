@@ -7,7 +7,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
+import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +26,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,9 +39,52 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private SpringDataProjectOutcomeFactRepository projectOutcomeFactRepository;
+
+    @Autowired
+    private SpringDataOrderPaymentFactRepository orderPaymentFactRepository;
+
+    @Autowired
+    private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void clearSettlementInputs() {
+        jdbcTemplate.execute("UPDATE project_settlements SET successful_attempt_id = NULL");
+        jdbcTemplate.execute("DELETE FROM payout_attempts");
+        jdbcTemplate.execute("DELETE FROM project_settlements");
+        jdbcTemplate.execute("DELETE FROM order_payment_facts");
+        jdbcTemplate.execute("DELETE FROM project_outcome_facts");
+        jdbcTemplate.execute("DELETE FROM creator_payout_profiles");
+    }
+
     @Test
     @DisplayName("프로젝트 정산 기준일 전에도 내부 API로 대상 월의 프로젝트 정산을 실행한다")
     void runsProjectSettlementsManually() throws Exception {
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
+                9_000_001L,
+                "seller-9000001",
+                CreatorPayoutStatus.PAYOUT_READY,
+                "088",
+                "********0001",
+                LocalDateTime.of(2026, 7, 23, 9, 0)
+        ));
+        projectOutcomeFactRepository.save(ProjectOutcomeFact.of(
+                9_000_001L,
+                9_000_001L,
+                ProjectOutcomeFact.Outcome.SUCCEEDED,
+                Instant.parse("2026-07-23T10:00:00Z")
+        ));
+        orderPaymentFactRepository.save(OrderPaymentFact.completed(
+                9_000_001_001L,
+                "pg-9000001",
+                9_000_001L,
+                Money.wons(100_000),
+                Instant.parse("2026-07-15T10:00:00Z")
+        ));
         mockMvc.perform(post("/internal/v1/settlements/runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

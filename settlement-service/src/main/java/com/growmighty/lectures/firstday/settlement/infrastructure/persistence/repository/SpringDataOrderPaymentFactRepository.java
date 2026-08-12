@@ -26,4 +26,18 @@ public interface SpringDataOrderPaymentFactRepository extends JpaRepository<Orde
             @Param("endExclusive") Instant endExclusive,
             Pageable pageable
     );
+
+    @Query("""
+            select payment
+            from OrderPaymentFact payment
+            where payment.status = :status
+              and payment.completedAt >= :startInclusive
+              and payment.completedAt < :endExclusive
+            order by payment.completedAt, payment.orderId
+            """)
+    List<OrderPaymentFact> findAllCompletedPaymentsBetween(
+            @Param("status") OrderPaymentFact.Status status,
+            @Param("startInclusive") Instant startInclusive,
+            @Param("endExclusive") Instant endExclusive
+    );
 }

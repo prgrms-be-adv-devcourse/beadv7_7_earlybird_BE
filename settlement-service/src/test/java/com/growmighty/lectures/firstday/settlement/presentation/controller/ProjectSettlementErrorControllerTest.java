@@ -8,49 +8,36 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPayment;
-import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrderReader;
-import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrders;
-import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;
-import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeReader;
-import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.YearMonth;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.IntStream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = {
-        "settlement.external-data.mode=error-test",
-        "settlement.project-target.mode=error-test",
-        "settlement.project-order.mode=error-test"
-})
+@SpringBootTest
 @AutoConfigureMockMvc
 class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
-
-    @Autowired
-    private TestExternalDataAdapter externalDataAdapter;
 
     @Autowired
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
@@ -59,12 +46,28 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     private ProjectSettlementRepository projectSettlementRepository;
 
     @Autowired
+    private SpringDataProjectOutcomeFactRepository projectOutcomeFactRepository;
+
+    @Autowired
+    private SpringDataOrderPaymentFactRepository orderPaymentFactRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void clearSettlementInputs() {
+        jdbcTemplate.execute("UPDATE project_settlements SET successful_attempt_id = NULL");
+        jdbcTemplate.execute("DELETE FROM payout_attempts");
+        jdbcTemplate.execute("DELETE FROM project_settlements");
+        jdbcTemplate.execute("DELETE FROM order_payment_facts");
+        jdbcTemplate.execute("DELETE FROM project_outcome_facts");
+        jdbcTemplate.execute("DELETE FROM creator_payout_profiles");
+    }
 
     @Test
     @DisplayName("지급 프로필이 준비되지 않은 프로젝트 정산은 Settlement 오류로 응답한다")
     void rejectsSettlementWhenPayoutProfileIsNotReady() throws Exception {
-        externalDataAdapter.respondWith(91L, 91L, List.of(Money.wons(100_000)));
+        storeSucceededProject(91L, 91L, 100_000);
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -91,7 +94,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 "********0096",
                 LocalDateTime.of(2026, 7, 23, 9, 0)
         ));
-        externalDataAdapter.respondWith(96L, creatorId, List.of(Money.wons(100_000)));
+        storeSucceededProject(96L, creatorId, 100_000);
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -111,7 +114,9 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     void rejectsSettlementWhenOrderPaymentInputsAreUnavailable() throws Exception {
         long creatorId = 92L;
         creatorPayoutProfileRepository.save(payoutReadyProfile(creatorId));
-        externalDataAdapter.respondWith(92L, creatorId, List.of());
+        projectOutcomeFactRepository.save(ProjectOutcomeFact.of(
+                92L, creatorId, ProjectOutcomeFact.Outcome.SUCCEEDED, Instant.parse("2026-07-23T10:00:00Z")
+        ));
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -124,48 +129,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").doesNotExist())
                 .andExpect(jsonPath("$.error.message").value("주문 결제금액을 확인할 수 없습니다."));
-    }
-
-    @Test
-    @DisplayName("Order Adapter 오류는 내부 메시지 없이 재시도 가능한 오류로 응답한다")
-    void hidesOrderAdapterFailureDetails() throws Exception {
-        externalDataAdapter.failOrderReadWith(
-                94L,
-                94L,
-                new IllegalArgumentException("order adapter secret")
-        );
-
-        mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "settlementMonth": "2026-07"
-                                }
-                                """))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("주문 결제금액을 확인할 수 없습니다."))
-                .andExpect(content().string(not(containsString("order adapter secret"))));
-    }
-
-    @Test
-    @DisplayName("Project Adapter 오류는 내부 메시지 없이 재시도 가능한 오류로 응답한다")
-    void hidesProjectAdapterFailureDetails() throws Exception {
-        externalDataAdapter.failTargetReadWith(new IllegalStateException("project adapter secret"));
-
-        mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "settlementMonth": "2026-07"
-                                }
-                                """))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("프로젝트 정산 대상 정보를 확인할 수 없습니다."))
-                .andExpect(content().string(not(containsString("project adapter secret"))));
     }
 
     @Test
@@ -221,7 +184,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 recordedAt,
                 recordedAt
         );
-        externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
+        storeSucceededProject(projectId, creatorId, 100_000);
 
         mockMvc.perform(post("/internal/v1/settlements/runs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -237,65 +200,13 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(content().string(not(containsString("창작자 지급액이 공제 후 금액과 일치하지 않습니다"))));
     }
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class ExternalDataTestConfig {
-
-        @Bean
-        TestExternalDataAdapter testExternalDataAdapter() {
-            return new TestExternalDataAdapter();
-        }
-    }
-
-    static class TestExternalDataAdapter
-            implements ProjectOutcomeReader,
-            ProjectOrderReader {
-
-        private ProjectOutcome outcome;
-        private List<OrderPayment> orders;
-        private RuntimeException orderReadFailure;
-        private RuntimeException targetReadFailure;
-
-        void respondWith(Long projectId, Long creatorId, List<Money> paymentAmounts) {
-            this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
-            this.orders = IntStream.range(0, paymentAmounts.size())
-                    .mapToObj(index -> new OrderPayment(
-                            projectId * 1_000 + index + 1,
-                            paymentAmounts.get(index)
-                    ))
-                    .toList();
-            this.orderReadFailure = null;
-            this.targetReadFailure = null;
-        }
-
-        void failOrderReadWith(Long projectId, Long creatorId, RuntimeException failure) {
-            this.outcome = new ProjectOutcome(projectId, creatorId, ProjectOutcomeStatus.SUCCEEDED);
-            this.orders = List.of();
-            this.orderReadFailure = failure;
-            this.targetReadFailure = null;
-        }
-
-        void failTargetReadWith(RuntimeException failure) {
-            this.outcome = null;
-            this.orders = List.of();
-            this.orderReadFailure = null;
-            this.targetReadFailure = failure;
-        }
-
-        @Override
-        public List<ProjectOutcome> findProjectOutcomes() {
-            if (targetReadFailure != null) {
-                throw targetReadFailure;
-            }
-            return List.of(outcome);
-        }
-
-        @Override
-        public List<ProjectOrders> findProjectOrders(Set<Long> projectIds) {
-            if (orderReadFailure != null) {
-                throw orderReadFailure;
-            }
-            return List.of(new ProjectOrders(outcome.projectId(), orders));
-        }
+    private void storeSucceededProject(long projectId, long creatorId, long amount) {
+        projectOutcomeFactRepository.save(ProjectOutcomeFact.of(
+                projectId, creatorId, ProjectOutcomeFact.Outcome.SUCCEEDED, Instant.parse("2026-07-23T10:00:00Z")
+        ));
+        orderPaymentFactRepository.save(OrderPaymentFact.completed(
+                projectId * 1_000, "pg-" + projectId, projectId, Money.wons(amount), Instant.parse("2026-07-15T10:00:00Z")
+        ));
     }
 
     private static CreatorPayoutProfile payoutReadyProfile(Long creatorId) {

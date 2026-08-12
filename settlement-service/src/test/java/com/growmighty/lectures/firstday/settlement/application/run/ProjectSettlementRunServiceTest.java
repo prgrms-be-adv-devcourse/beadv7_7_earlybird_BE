@@ -6,16 +6,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPayment;
-import com.growmighty.lectures.firstday.settlement.application.port.order.ProjectOrders;
-import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;
-import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
+import com.growmighty.lectures.firstday.settlement.application.port.toss.TossSettlement;
+import com.growmighty.lectures.firstday.settlement.application.port.toss.TossSettlementReader;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmedProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ProjectSettlementService;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.SettlementRunInputRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.Clock;
 import java.time.Instant;
@@ -24,7 +25,6 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,18 +40,16 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     private CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Test
-    @DisplayName("Order의 주문별 결제금액으로 성공 프로젝트를 정산한다")
-    void settlesSucceededProjectFromOrderPaymentAmounts() {
+    @DisplayName("저장된 결제 사실과 토스 정산 내역이 일치하면 성공 프로젝트를 정산한다")
+    void settlesSucceededProjectFromReconciledPaymentFacts() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(510L));
-        ProjectSettlementRunService service = service(
-                List.of(new ProjectOutcome(510L, 510L, ProjectOutcomeStatus.SUCCEEDED)),
-                List.of(new ProjectOrders(510L, List.of(
-                        new OrderPayment(5_101L, Money.wons(40_000)),
-                        new OrderPayment(5_102L, Money.wons(60_000))
-                )))
-        );
+        OrderPaymentFact first = payment(5_101L, "pg-510-1", 510L, 40_000);
+        OrderPaymentFact second = payment(5_102L, "pg-510-2", 510L, 60_000);
 
-        ProjectSettlementRunResult result = service.run(command());
+        ProjectSettlementRunResult result = service(
+                List.of(succeeded(510L)),
+                List.of(first, second)
+        ).run(command());
 
         assertThat(result.confirmedSettlements())
                 .extracting(ConfirmedProjectSettlement::creatorPayoutAmount)
@@ -59,30 +57,15 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("실패·취소 프로젝트는 월 실행에서 환불 요청 대기로만 분류한다")
+    @DisplayName("실패·취소 프로젝트는 결제 사실이 없어도 환불 요청 대기로만 분류한다")
     void leavesRefundProjectsToOutboxFlow() {
-        AtomicBoolean orderRead = new AtomicBoolean();
-        ProjectSettlementRunService service = new ProjectSettlementRunService(
-                () -> List.of(
-                        new ProjectOutcome(520L, 520L, ProjectOutcomeStatus.FAILED),
-                        new ProjectOutcome(521L, 521L, ProjectOutcomeStatus.CANCELLED)
-                ),
-                projectIds -> {
-                    orderRead.set(true);
-                    return List.of();
-                },
-                projectSettlementService,
-                fixedClock()
-        );
+        ProjectSettlementRunResult result = service(
+                List.of(outcome(520L, ProjectOutcomeFact.Outcome.FAILED), outcome(521L, ProjectOutcomeFact.Outcome.CANCELLED)),
+                List.of()
+        ).run(command());
 
-        ProjectSettlementRunResult result = service.run(command());
-
-        assertThat(orderRead).isFalse();
         assertThat(result.projectResults())
-                .extracting(
-                        ProjectOutcomeProcessingResult::projectId,
-                        ProjectOutcomeProcessingResult::processingStatus
-                )
+                .extracting(ProjectOutcomeProcessingResult::projectId, ProjectOutcomeProcessingResult::processingStatus)
                 .containsExactly(
                         tuple(520L, ProjectOutcomeProcessingStatus.REFUND_REQUEST_PENDING),
                         tuple(521L, ProjectOutcomeProcessingStatus.REFUND_REQUEST_PENDING)
@@ -90,74 +73,69 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("성공 프로젝트의 Order 결과가 누락되면 전체 실행을 거부한다")
-    void rejectsMissingProjectOrderResult() {
-        ProjectSettlementRunService service = new ProjectSettlementRunService(
-                () -> List.of(new ProjectOutcome(530L, 530L, ProjectOutcomeStatus.SUCCEEDED)),
-                projectIds -> List.of(),
-                projectSettlementService,
-                fixedClock()
-        );
-
-        assertThatThrownBy(() -> service.run(command()))
+    @DisplayName("성공 프로젝트에 대응하는 완료 결제 사실이 없으면 실행을 거부한다")
+    void rejectsMissingPaymentFacts() {
+        assertThatThrownBy(() -> service(List.of(succeeded(530L)), List.of()).run(command()))
                 .isInstanceOfSatisfying(
                         SettlementException.class,
-                        exception -> assertThat(exception.errorCode())
-                                .isEqualTo(ORDER_PAYMENT_INPUTS_UNAVAILABLE)
+                        exception -> assertThat(exception.errorCode()).isEqualTo(ORDER_PAYMENT_INPUTS_UNAVAILABLE)
                 );
     }
 
     @Test
-    @DisplayName("이미 확정된 성공 프로젝트는 Order를 다시 조회하지 않는다")
-    void restoresExistingSettlementWithoutOrderRead() {
+    @DisplayName("이미 확정된 성공 프로젝트는 저장된 사실을 다시 대사해도 기존 정산을 복원한다")
+    void restoresExistingSettlement() {
         creatorPayoutProfileRepository.save(payoutReadyProfile(540L));
-        ProjectSettlementRunService initial = service(
-                List.of(new ProjectOutcome(540L, 540L, ProjectOutcomeStatus.SUCCEEDED)),
-                List.of(projectOrders(540L, 5_401L))
-        );
-        initial.run(command());
-        AtomicBoolean orderRead = new AtomicBoolean();
-        ProjectSettlementRunService rerun = new ProjectSettlementRunService(
-                () -> List.of(new ProjectOutcome(540L, 540L, ProjectOutcomeStatus.SUCCEEDED)),
-                projectIds -> {
-                    orderRead.set(true);
-                    return List.of();
-                },
-                projectSettlementService,
-                fixedClock()
-        );
+        OrderPaymentFact payment = payment(5_401L, "pg-540", 540L, 100_000);
+        service(List.of(succeeded(540L)), List.of(payment)).run(command());
 
-        ProjectSettlementRunResult result = rerun.run(command());
+        ProjectSettlementRunResult result = service(List.of(succeeded(540L)), List.of(payment)).run(command());
 
-        assertThat(orderRead).isFalse();
         assertThat(result.projectResults().getFirst().processingStatus())
                 .isEqualTo(ProjectOutcomeProcessingStatus.SETTLEMENT_ALREADY_CONFIRMED);
     }
 
-    private ProjectSettlementRunService service(
-            List<ProjectOutcome> outcomes,
-            List<ProjectOrders> orders
-    ) {
-        return new ProjectSettlementRunService(
-                () -> outcomes,
-                projectIds -> orders,
-                projectSettlementService,
-                fixedClock()
-        );
+    private ProjectSettlementRunService service(List<ProjectOutcomeFact> outcomes, List<OrderPaymentFact> payments) {
+        SettlementRunInputRepository inputs = new SettlementRunInputRepository() {
+            @Override
+            public List<ProjectOutcomeFact> findProjectOutcomes() {
+                return outcomes;
+            }
+
+            @Override
+            public List<OrderPaymentFact> findCompletedPayments(Instant startInclusive, Instant endExclusive) {
+                return payments;
+            }
+        };
+        TossSettlementReader toss = query -> payments.stream()
+                .map(payment -> new TossSettlement(
+                        payment.pgOrderId(),
+                        "KRW",
+                        payment.paymentAmount(),
+                        payment.completedAt().atOffset(ZoneOffset.UTC),
+                        payment.completedAt().atOffset(ZoneOffset.UTC).toLocalDate()
+                ))
+                .toList();
+        return new ProjectSettlementRunService(inputs, toss, projectSettlementService, fixedClock());
     }
 
-    private static ProjectOrders projectOrders(Long projectId, Long orderId) {
-        return new ProjectOrders(
-                projectId,
-                List.of(new OrderPayment(orderId, Money.wons(100_000)))
+    private static ProjectOutcomeFact succeeded(Long projectId) {
+        return outcome(projectId, ProjectOutcomeFact.Outcome.SUCCEEDED);
+    }
+
+    private static ProjectOutcomeFact outcome(Long projectId, ProjectOutcomeFact.Outcome outcome) {
+        return ProjectOutcomeFact.of(projectId, projectId, outcome, Instant.parse("2026-07-23T10:00:00Z"));
+    }
+
+    private static OrderPaymentFact payment(Long orderId, String pgOrderId, Long projectId, long amount) {
+        return OrderPaymentFact.completed(
+                orderId, pgOrderId, projectId, Money.wons(amount), Instant.parse("2026-07-15T10:00:00Z")
         );
     }
 
     private static RunProjectSettlementsCommand command() {
         return new RunProjectSettlementsCommand(
-                YearMonth.of(2026, 7),
-                LocalDate.of(2026, 8, 3),
-                LocalDateTime.of(2026, 7, 23, 10, 0)
+                YearMonth.of(2026, 7), LocalDate.of(2026, 8, 3), LocalDateTime.of(2026, 7, 23, 10, 0)
         );
     }
 
@@ -167,11 +145,7 @@ class ProjectSettlementRunServiceTest extends MySqlIntegrationTestSupport {
 
     private static CreatorPayoutProfile payoutReadyProfile(Long creatorId) {
         return CreatorPayoutProfile.registered(
-                creatorId,
-                "seller-" + creatorId,
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********" + creatorId,
+                creatorId, "seller-" + creatorId, CreatorPayoutStatus.PAYOUT_READY, "088", "********" + creatorId,
                 LocalDateTime.of(2026, 7, 23, 9, 0)
         );
     }
