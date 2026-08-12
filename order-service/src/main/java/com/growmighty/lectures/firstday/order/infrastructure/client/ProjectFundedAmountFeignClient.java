@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 
 @FeignClient(name = "project-service", contextId = "projectFundedAmountFeignClient")
 public interface ProjectFundedAmountFeignClient extends ProjectFundedAmountPort {
-    @PutMapping("/internal/v1/project/{projectId}/funded-amount")
+    @PutMapping("/internal/v1/projects/{projectId}/funded-amount")
     void sendFundedAmount(@PathVariable("projectId") Long projectId, @RequestBody FundedAmountUpdateBody body);
 
     @Override
