@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -89,6 +90,19 @@ class ProjectRefundRequestedKafkaPublisherTest {
         assertThat(eventCaptor.getAllValues())
                 .extracting(ProjectRefundRequestedEvent::settlementId)
                 .containsOnly(request.refundRequestId());
+    }
+
+    @Test
+    void keepsOutboxPendingWhenKafkaAcknowledgmentTimesOut() {
+        ProjectRefundRequested request = request();
+        when(outboxRepository.findPending()).thenReturn(List.of(request));
+        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(request.refundRequestId()), any()))
+                .thenReturn(CompletableFuture.failedFuture(new TimeoutException("broker delayed")));
+
+        publisher().publishPending();
+
+        verify(outboxRepository, never()).save(request);
+        assertThat(request.published()).isFalse();
     }
 
     private ProjectRefundRequestedKafkaPublisher publisher() {

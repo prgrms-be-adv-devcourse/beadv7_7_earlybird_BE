@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -17,6 +18,8 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @RequiredArgsConstructor
 public class ProjectRefundRequestedKafkaPublisher {
+
+    private static final long KAFKA_ACK_TIMEOUT_SECONDS = 10;
 
     private final ProjectRefundRequestedRepository outboxRepository;
     private final KafkaTemplate<Object, Object> kafkaTemplate;
@@ -29,7 +32,7 @@ public class ProjectRefundRequestedKafkaPublisher {
                         KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND,
                         request.refundRequestId(),
                         eventOf(request)
-                ).join();
+                ).orTimeout(KAFKA_ACK_TIMEOUT_SECONDS, TimeUnit.SECONDS).join();
                 request.markPublished(Instant.now(clock));
                 outboxRepository.save(request);
             } catch (RuntimeException exception) {
