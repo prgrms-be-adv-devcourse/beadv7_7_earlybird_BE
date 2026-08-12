@@ -20,6 +20,18 @@ import java.util.UUID;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
+    public enum PaymentOutcome {
+        SUCCESS,
+        FAILURE,
+        PENDING
+    }
+
+    public enum PaymentHandling {
+        APPLIED,
+        IGNORED,
+        COMPENSATION_REQUIRED
+    }
+
     private static final Money FREE_SHIPPING_THRESHOLD = Money.from(BigDecimal.valueOf(50_000));
     private static final Money BASE_SHIPPING_FEE = Money.from(BigDecimal.valueOf(3_000));
 
@@ -211,6 +223,37 @@ public class Order extends BaseEntity {
             throw new InvalidOrderStatusException(this.status, OrderStatus.PAID);
         }
         this.status = OrderStatus.PAID;
+    }
+
+    public PaymentHandling handlePaymentOutcome(PaymentOutcome outcome) {
+        if (this.status == OrderStatus.PAID || this.status == OrderStatus.PAYMENT_FAILED
+                || this.status == OrderStatus.CANCELLED || this.status == OrderStatus.STOCK_FAILED) {
+            return PaymentHandling.IGNORED;
+        }
+        if (this.status == OrderStatus.PAYMENT_COMPENSATION_PENDING && outcome != PaymentOutcome.FAILURE) {
+            return PaymentHandling.IGNORED;
+        }
+        if (this.status == OrderStatus.PAYMENT_RECONCILIATION_REQUIRED && outcome == PaymentOutcome.PENDING) {
+            return PaymentHandling.IGNORED;
+        }
+        if (this.status != OrderStatus.PAYMENT_REQUEST && this.status != OrderStatus.PAYMENT_PROCESSING
+                && this.status != OrderStatus.PAYMENT_PENDING
+                && this.status != OrderStatus.PAYMENT_RECONCILIATION_REQUIRED
+                && this.status != OrderStatus.PAYMENT_COMPENSATION_PENDING) {
+            throw new IllegalStateException("Payment cannot be applied from status=" + this.status);
+        }
+
+        if (outcome == PaymentOutcome.SUCCESS) {
+            markPaid();
+            return PaymentHandling.APPLIED;
+        }
+        if (outcome == PaymentOutcome.FAILURE) {
+            return PaymentHandling.COMPENSATION_REQUIRED;
+        }
+        if (this.status != OrderStatus.PAYMENT_PENDING) {
+            markPaymentPending();
+        }
+        return PaymentHandling.APPLIED;
     }
 
     public void cancel() {
