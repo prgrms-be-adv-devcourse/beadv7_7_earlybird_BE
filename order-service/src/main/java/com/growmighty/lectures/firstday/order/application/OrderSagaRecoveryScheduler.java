@@ -10,9 +10,15 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class OrderSagaRecoveryScheduler {
     private final OrderSagaRecoveryService orderSagaRecoveryService;
+    private final CartCleanupRecoveryService cartCleanupRecoveryService;
 
     @Scheduled(fixedDelayString = "${order.saga.recovery-delay-ms:30000}")
     public void recover() {
         orderSagaRecoveryService.recoverPendingOrders();
+    }
+
+    @Scheduled(fixedDelayString = "${order.cart-cleanup.recovery-delay-ms:30000}")
+    public void recoverCartCleanup() {
+        cartCleanupRecoveryService.recoverPendingCleanups();
     }
 }

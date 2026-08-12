@@ -44,11 +44,13 @@ public class OrderApiService {
     private final OrderStockHandler stockHandler;
     private final OrderPaymentResultHandler paymentResultHandler;
     private final OrderCartHandler cartHandler;
+    private final OrderPaidCompletionService paidCompletionService;
 
     @Autowired
     public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
                            OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
-                           OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler) {
+                           OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler,
+                           OrderPaidCompletionService paidCompletionService) {
         this.orderRepository = orderRepository;
         this.rewardPort = rewardPort;
         this.paymentPort = paymentPort;
@@ -56,6 +58,7 @@ public class OrderApiService {
         this.stockHandler = stockHandler;
         this.paymentResultHandler = paymentResultHandler;
         this.cartHandler = cartHandler;
+        this.paidCompletionService = paidCompletionService;
     }
 
     OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
@@ -66,6 +69,7 @@ public class OrderApiService {
         this.stockHandler = new OrderStockHandler(rewardPort, remoteCalls);
         this.paymentResultHandler = new OrderPaymentResultHandler(stockHandler);
         this.cartHandler = null;
+        this.paidCompletionService = null;
     }
 
     /**
@@ -170,10 +174,7 @@ public class OrderApiService {
             throw e;
         }
         boolean orderCompleted = paymentResultHandler.apply(order, payment);
-        order = orderRepository.save(order);
-        if (orderCompleted) {
-            paymentResultHandler.removeOrderedCartItems(order);
-        }
+        order = persistPaymentOutcome(order, orderCompleted);
         return OrderResult.from(order);
     }
 
@@ -341,6 +342,17 @@ public class OrderApiService {
         if (cartHandler != null) {
             cartHandler.removeInvalidReward(userId, failure.rewardId());
         }
+    }
+
+    private Order persistPaymentOutcome(Order order, boolean orderCompleted) {
+        if (orderCompleted && paidCompletionService != null) {
+            return paidCompletionService.persistAndCleanup(order);
+        }
+        Order savedOrder = orderRepository.save(order);
+        if (orderCompleted) {
+            paymentResultHandler.removeOrderedCartItems(savedOrder);
+        }
+        return savedOrder;
     }
 
     // 금액 총합 일치 검사
