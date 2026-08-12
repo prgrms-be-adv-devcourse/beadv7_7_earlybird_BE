@@ -7,7 +7,7 @@ Settlement는 다른 서비스의 판단을 대신하지 않는다.
 
 - Project: `projectId`, `creatorId`, 결과(`SUCCEEDED`, `FAILED`, `CANCELLED`)
 - Order: 프로젝트별 `orders(orderId, paymentAmount)`
-- Payment: batch 요청을 소비한 뒤 각 결제의 환불 필요 여부와 처리 결과
+- Payment: batch 요청을 소비한 뒤 각 결제의 환불 필요 여부와 처리 결과를 소유하고 프로젝트별 batch 결과를 회신
 - Settlement: 성공 프로젝트의 금액 계산·확정, 지급 의무·지급 시도, 프로젝트 환불 요청
 
 ## 현재 처리 흐름
@@ -40,7 +40,8 @@ sequenceDiagram
 
 - Project·Order 연동은 HTTP adapter와 테스트용 dummy adapter를 제공한다.
 - 지급대행은 항상 결정적 dummy adapter를 사용하며 실제 송금은 발생하지 않는다.
-- 실패·취소 프로젝트는 저장된 입력 사실에서 완료·미취소 결제 전체를 하나의 `ProjectRefundRequested` Outbox로 보존한다. Kafka 발행 구현은 common 모듈에서 제공할 예정이다.
+- 실패·취소 프로젝트는 저장된 입력 사실에서 완료·미취소 결제 전체를 하나의 `ProjectRefundRequested` Outbox로 보존한다. `payment.bulk-cancel-command.v1` publisher는 [Kafka 연동 이슈](../../.scratch/project-settlement/issues/04-integrate-settlement-kafka-events.md)에서 추적한다.
+- Payment가 `payment.bulk-cancel-result.v1`의 `ProjectRefundProcessed`를 회신하면 Settlement는 이를 Inbox와 함께 보존한다. 이 결과는 Payment의 단건 환불 판단을 바꾸지 않는다.
 - 정산 실행은 현재 관리자용 동기 HTTP 요청이다. Kafka 입력 수집과 월 정산 실행은 아래 작업 예정이다.
 
 ## 작업 예정
@@ -48,12 +49,13 @@ sequenceDiagram
 아래 순서는 Kafka 입력 수집, PG 정산 대사, 창작자 지급과 프로젝트별 batch 환불 요청으로 전환하기 위한 구현 계획이다.
 
 1. **Project·Order 이벤트 입력을 저장한다.**
-   - `ProjectEnded`, `ProjectCancelled`에서 `projectId`, `creatorId`, 프로젝트 결과를 받는다.
-   - `OrderPaymentCompleted`, `OrderPaymentCancelled`에서 `orderId`, `pgOrderId`, `projectId`, `paymentAmount`, 결제 결과를 받는다.
+   - `project.status-changed.v1`의 `ProjectStatusChanged`에서 `projectId`, `creatorId`, `status(SUCCEEDED/FAILED/CANCELLED)`를 받는다. Key는 `projectId`다.
+   - `order.payment-status-changed.v1`의 `OrderPaymentStatusChanged`에서 `orderId`, `pgOrderId`, `projectId`, `paymentAmount`, `status(COMPLETED/CANCELLED)`를 받는다. Key는 `orderId`다.
    - `orderId`는 Order 내부 식별자이고 `pgOrderId`는 상점이 결제 요청 때 생성한 Toss `orderId`다.
+   - `payment.bulk-cancel-result.v1`의 `ProjectRefundProcessed`는 `projectId`, `orderIds`, `status`를 받고 환불 batch 처리 결과를 보존한다. Key는 `projectId`다.
 
 2. **Kafka consumer를 멱등하게 만든다.**
-   - `eventId` 고유 Inbox와 Project·Order 입력 projection을 같은 DB 트랜잭션에 저장한다.
+   - `eventId` 고유 Inbox와 Project·Order 입력 projection 또는 환불 batch 결과를 같은 DB 트랜잭션에 저장한다.
    - DB commit 뒤 Kafka offset을 commit하고, 반복 실패와 계약 오류는 DLT로 격리한다.
 
 3. **토스 정산 조회 더미와 대사를 구현한다.**
@@ -76,7 +78,7 @@ sequenceDiagram
    - 실제 Toss 지급대행의 복호화 후 요청·응답 필드를 사용하는 결정적 더미로 지급 결과를 기록하며 HTTP와 JWE 암복호화는 구현하지 않는다.
 
 7. **실패·취소 프로젝트의 익일 batch 환불 요청을 발행한다.**
-   - 프로젝트 결과 발생 다음 날 완료·미취소 결제 목록 전체를 프로젝트별 하나의 `ProjectRefundRequested` Outbox 이벤트로 발행한다.
+   - 프로젝트 결과 발생 다음 날 완료·미취소 결제 목록 전체를 프로젝트별 하나의 `ProjectRefundRequested` Outbox 이벤트로 `payment.bulk-cancel-command.v1`에 발행한다. Key는 `projectId`다.
    - 프로젝트 종료에 따른 일괄 환불 요청은 Settlement가 소유한다. 부분 목록이나 주문별 이벤트는 발행하지 않으며, 각 결제의 단건 환불 판단·실행은 Payment가 소유한다.
 
 8. **producer·consumer 신뢰성과 계약 E2E를 확인한다.**
