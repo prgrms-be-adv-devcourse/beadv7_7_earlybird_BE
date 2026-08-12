@@ -36,8 +36,10 @@ services:
   elasticsearch:
     profiles: ["local-only"]
 
+  # #198 Phase 3 - k8s(앱 박스 nodeSelector 고정, hostPort:8888)로 이전 완료. discovery-server와
+  # 동일 패턴 - compose 기본 `up -d` 대상에서 제외.
   config-server:
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-config-server:latest
+    profiles: ["local-only"]
 
   # #198 Phase 2 - k8s(앱 박스 nodeSelector 고정, hostPort:8761)로 이전 완료. compose 기본
   # `up -d`(--profile 없음) 대상에서 제외 - mysql/elasticsearch(#256)와 동일 패턴.
@@ -53,25 +55,30 @@ services:
     # override here would publish BOTH 8000:8000 (from the base file) and whatever we add - not
     # what we want. `!override` forces a full replace instead of merging.
     ports: !override []
-    # base 파일의 depends_on: *core-depends-on 이 discovery-server: condition: service_healthy를
-    # 그대로 갖고 있어 required: false 로 완화 (다른 9개 서비스와 동일한 이유).
+    # base 파일의 depends_on: *core-depends-on 이 config-server/discovery-server: condition:
+    # service_healthy를 그대로 갖고 있어 둘 다 required: false 로 완화 (다른 9개 서비스와 동일한 이유).
     depends_on:
+      config-server:
+        required: false
       discovery-server:
         required: false
 
   # 아래 9개 business-service는 base 파일에서 *business-depends-on(-kafka) 앵커로
   # `depends_on.{config-server,discovery-server}.condition: service_healthy`,
-  # `depends_on.mysql.condition: service_healthy`를 물려받는다. mysql은 이 파일에서
-  # local-only profile로, discovery-server는 k8s(#198 Phase 2)로 빠지므로, 두 항목 모두
-  # required: false를 얹어 "떠 있으면 기다리되 없어도 에러내지 않음"으로 바꾼다 - Compose는
-  # depends_on 맵을 키 단위로 병합하므로 기존 condition은 그대로 남고 required만 추가된다.
-  # (required: false가 없으면 "depends on undefined service" 로 compose 자체가 안 뜬다 -
-  # profile로 뺀 서비스를 다른 서비스가 여전히 hard dependency로 참조하면 발생하는 에러.)
+  # `depends_on.mysql.condition: service_healthy`를 물려받는다. mysql/config-server/
+  # discovery-server 전부 이 파일에서 local-only profile(또는 k8s 이전, #198 Phase 2/3)로
+  # 빠지므로, 셋 다 required: false를 얹어 "떠 있으면 기다리되 없어도 에러내지 않음"으로
+  # 바꾼다 - Compose는 depends_on 맵을 키 단위로 병합하므로 기존 condition은 그대로 남고
+  # required만 추가된다. (required: false가 없으면 "depends on undefined service"로 compose
+  # 자체가 안 뜬다 - profile로 뺀 서비스를 다른 서비스가 여전히 hard dependency로 참조하면
+  # 발생하는 에러, discovery-server 이전 때 실제로 겪음.)
   order-service:
     <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-order-service:latest
     depends_on:
       mysql:
+        required: false
+      config-server:
         required: false
       discovery-server:
         required: false
@@ -82,6 +89,8 @@ services:
     depends_on:
       mysql:
         required: false
+      config-server:
+        required: false
       discovery-server:
         required: false
 
@@ -90,6 +99,8 @@ services:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-payment-service:latest
     depends_on:
       mysql:
+        required: false
+      config-server:
         required: false
       discovery-server:
         required: false
@@ -100,6 +111,8 @@ services:
     depends_on:
       mysql:
         required: false
+      config-server:
+        required: false
       discovery-server:
         required: false
 
@@ -108,6 +121,8 @@ services:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-cart-service:latest
     depends_on:
       mysql:
+        required: false
+      config-server:
         required: false
       discovery-server:
         required: false
@@ -118,6 +133,8 @@ services:
     depends_on:
       mysql:
         required: false
+      config-server:
+        required: false
       discovery-server:
         required: false
 
@@ -126,6 +143,8 @@ services:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-file-service:latest
     depends_on:
       mysql:
+        required: false
+      config-server:
         required: false
       discovery-server:
         required: false
@@ -136,6 +155,8 @@ services:
     depends_on:
       mysql:
         required: false
+      config-server:
+        required: false
       discovery-server:
         required: false
 
@@ -144,6 +165,8 @@ services:
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-notification-service:latest
     depends_on:
       mysql:
+        required: false
+      config-server:
         required: false
       discovery-server:
         required: false
