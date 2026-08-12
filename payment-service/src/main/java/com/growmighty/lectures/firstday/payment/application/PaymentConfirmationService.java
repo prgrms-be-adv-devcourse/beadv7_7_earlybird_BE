@@ -95,7 +95,8 @@ public class PaymentConfirmationService {
         Payment payment = findPayment(paymentId);
 
         if (payment.reconcileFailed()) {
-            paymentRepository.save(payment);
+            Payment savedPayment = paymentRepository.save(payment);
+            savePaymentStatusOutboxIfAbsent(savedPayment);
         }
     }
 
@@ -144,7 +145,8 @@ public class PaymentConfirmationService {
 
             case FAILED , EXPIRED , CANCELLED -> {
                 if (payment.reconcileFailed()) {
-                    paymentRepository.save(payment);
+                    Payment savedPayment = paymentRepository.save(payment);
+                    savePaymentStatusOutboxIfAbsent(savedPayment);
                 }
             }
 
@@ -153,7 +155,8 @@ public class PaymentConfirmationService {
                     LocalDateTime.now(),
                     paymentRecoveryProperties.maximumConfirmingDuration()
                 )) {
-                    paymentRepository.save(payment);
+                    Payment savedPayment = paymentRepository.save(payment);
+                    savePaymentStatusOutboxIfAbsent(savedPayment);
                 }
             }
         }
