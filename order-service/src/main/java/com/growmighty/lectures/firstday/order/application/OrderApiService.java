@@ -235,16 +235,6 @@ public class OrderApiService {
         }
     }
 
-    private void validatePaymentForCancellation(Order order, PaymentResult payment) {
-        if (payment == null || payment.status() != PaymentResult.Status.SUCCESS || payment.paymentId() == null) {
-            throw new IllegalStateException("Paid payment was not found for cancellation. orderId=" + order.getId());
-        }
-        if (payment.amount() == null
-                || order.getTotalAmount().getValue().compareTo(payment.amount()) != 0) {
-            throw new IllegalStateException("Payment amount mismatch. orderId=" + order.getId());
-        }
-    }
-
     @Transactional(readOnly = true)
     public List<OrderResult> getOrdersByUser(Long userId) {
         return orderRepository.findByUserId(userId).stream()
