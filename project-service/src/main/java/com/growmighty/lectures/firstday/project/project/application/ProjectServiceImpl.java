@@ -121,19 +121,33 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     /**
-     * 락 순서 역전 데드락 방지를 위해 getProject()(무락 조회) 대신
-     * projectRepository.findByIdForDelete()(배타 락)로 Project를 맨 먼저 선점한다 —
-     * ProjectRepository.findByIdForDelete() 주석 참고.
+     * orderPort.hasOrderedReward()(HTTP 호출)를 트랜잭션 밖에서 먼저 끝내야 그 응답을 기다리는 동안
+     * DB 커넥션을 물고 있지 않는다(#196). 존재/소유 확인도 무락 조회(getProject)로 여기서 먼저 끝내고,
+     * 실제 삭제(배타 락 선점 포함)는 deleteInternal()에 위임한다.
      */
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void delete(Long projectId, Long requesterId) {
-        Project project = projectRepository.findByIdForDelete(projectId)
-                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
+        Project project = getProject(projectId);
         validateOwnership(project, requesterId);
         if (orderPort.hasOrderedReward(projectId)) {
             throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
         }
+        selfProvider.getObject().deleteInternal(projectId, requesterId);
+    }
+
+    /**
+     * 락 순서 역전 데드락 방지를 위해 getProject()(무락 조회) 대신
+     * projectRepository.findByIdForDelete()(배타 락)로 Project를 맨 먼저 선점한다 —
+     * ProjectRepository.findByIdForDelete() 주석 참고. delete()에서 이미 존재/소유/주문이력을
+     * 확인했지만, 락 재획득 사이의 TOCTOU를 방어하기 위해 소유권을 여기서 다시 검증한다.
+     */
+    @Override
+    @Transactional
+    public void deleteInternal(Long projectId, Long requesterId) {
+        Project project = projectRepository.findByIdForDelete(projectId)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
+        validateOwnership(project, requesterId);
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
         searchPort.remove(projectId);
@@ -211,19 +225,31 @@ public class ProjectServiceImpl implements ProjectService {
         throw e;
     }
 
+    /**
+     * orderPort.getFundedAmount()(HTTP 호출)를 트랜잭션 밖에서 먼저 끝내야 그 응답을 기다리는 동안
+     * DB 커넥션을 물고 있지 않는다(#196). 재시도(@Retryable)는 그 결과값만 들고 로컬 갱신만 하는
+     * closeEarlyInternal()에 남겨서, 낙관적 락 충돌로 재시도해도 order-service를 다시 호출하지 않는다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ProjectResponse closeEarly(Long projectId) {
+        BigDecimal fundedAmount = orderPort.getFundedAmount(projectId);
+        return selfProvider.getObject().closeEarlyInternal(projectId, fundedAmount);
+    }
+
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public ProjectResponse closeEarly(Long projectId) {
+    public ProjectResponse closeEarlyInternal(Long projectId, BigDecimal fundedAmount) {
         Project project = getProject(projectId);
-        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.updateFundedAmount(fundedAmount);
         project.closeEarlyAsSucceeded();
         deactivateRewards(projectId);
         return ProjectResponse.from(project);
     }
 
     @Recover
-    public ProjectResponse recoverCloseEarlyConflict(RuntimeException e, Long projectId) {
+    public ProjectResponse recoverCloseEarlyInternalConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
                 "조기 마감 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);
@@ -257,18 +283,31 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
+    /**
+     * orderPort.getFundedAmount()(HTTP 호출)를 트랜잭션 밖에서 먼저 끝내야 그 응답을 기다리는 동안
+     * DB 커넥션을 물고 있지 않는다(#196). 재시도(@Retryable)는 그 결과값만 들고 로컬 갱신만 하는
+     * closeProjectByDeadlineInternal()에 남겨서, 낙관적 락 충돌로 재시도해도 order-service를 다시
+     * 호출하지 않는다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void closeProjectByDeadline(Long projectId) {
+        BigDecimal fundedAmount = orderPort.getFundedAmount(projectId);
+        selfProvider.getObject().closeProjectByDeadlineInternal(projectId, fundedAmount);
+    }
+
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
     @Transactional
-    public void closeProjectByDeadline(Long projectId) {
+    public void closeProjectByDeadlineInternal(Long projectId, BigDecimal fundedAmount) {
         Project project = getProject(projectId);
-        project.updateFundedAmount(orderPort.getFundedAmount(projectId));
+        project.updateFundedAmount(fundedAmount);
         project.closeByDeadline();
         deactivateRewards(projectId);
     }
 
     @Recover
-    public void recoverCloseProjectByDeadlineConflict(RuntimeException e, Long projectId) {
+    public void recoverCloseProjectByDeadlineInternalConflict(RuntimeException e, Long projectId, BigDecimal fundedAmount) {
         if (e instanceof ObjectOptimisticLockingFailureException) {
             throw new ConcurrentUpdateFailedException(
                 "프로젝트 마감 처리 중 동시 수정 충돌이 반복되어 실패했습니다. projectId=" + projectId);

@@ -77,8 +77,10 @@ class ProjectServiceImplSearchIndexingTest {
     @Test
     @DisplayName("프로젝트 삭제 시 색인에서도 제거한다")
     void delete_removesFromIndex() {
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
         when(projectRepository.findByIdForDelete(1L)).thenReturn(Optional.of(project));
         when(orderPort.hasOrderedReward(1L)).thenReturn(false);
+        when(selfProvider.getObject()).thenReturn(projectService);
 
         projectService.delete(1L, 1L);
 
