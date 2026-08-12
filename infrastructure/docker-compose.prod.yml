@@ -53,17 +53,27 @@ services:
     # override here would publish BOTH 8000:8000 (from the base file) and whatever we add - not
     # what we want. `!override` forces a full replace instead of merging.
     ports: !override []
+    # base 파일의 depends_on: *core-depends-on 이 discovery-server: condition: service_healthy를
+    # 그대로 갖고 있어 required: false 로 완화 (다른 9개 서비스와 동일한 이유).
+    depends_on:
+      discovery-server:
+        required: false
 
-  # 아래 9개 business-service는 base 파일에서 *business-depends-on 앵커로
-  # `depends_on.mysql.condition: service_healthy`를 물려받는다. mysql이 이 파일에서
-  # local-only profile로 빠지므로, 그 항목에 required: false를 얹어 "떠 있으면 기다리되
-  # 없어도 에러내지 않음"으로 바꾼다 - Compose는 depends_on 맵을 키 단위로 병합하므로
-  # 기존 condition은 그대로 남고 required만 추가된다.
+  # 아래 9개 business-service는 base 파일에서 *business-depends-on(-kafka) 앵커로
+  # `depends_on.{config-server,discovery-server}.condition: service_healthy`,
+  # `depends_on.mysql.condition: service_healthy`를 물려받는다. mysql은 이 파일에서
+  # local-only profile로, discovery-server는 k8s(#198 Phase 2)로 빠지므로, 두 항목 모두
+  # required: false를 얹어 "떠 있으면 기다리되 없어도 에러내지 않음"으로 바꾼다 - Compose는
+  # depends_on 맵을 키 단위로 병합하므로 기존 condition은 그대로 남고 required만 추가된다.
+  # (required: false가 없으면 "depends on undefined service" 로 compose 자체가 안 뜬다 -
+  # profile로 뺀 서비스를 다른 서비스가 여전히 hard dependency로 참조하면 발생하는 에러.)
   order-service:
     <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-order-service:latest
     depends_on:
       mysql:
+        required: false
+      discovery-server:
         required: false
 
   project-service:
@@ -72,12 +82,16 @@ services:
     depends_on:
       mysql:
         required: false
+      discovery-server:
+        required: false
 
   payment-service:
     <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-payment-service:latest
     depends_on:
       mysql:
+        required: false
+      discovery-server:
         required: false
 
   user-service:
@@ -86,12 +100,16 @@ services:
     depends_on:
       mysql:
         required: false
+      discovery-server:
+        required: false
 
   cart-service:
     <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-cart-service:latest
     depends_on:
       mysql:
+        required: false
+      discovery-server:
         required: false
 
   settlement-service:
@@ -100,12 +118,16 @@ services:
     depends_on:
       mysql:
         required: false
+      discovery-server:
+        required: false
 
   file-service:
     <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-file-service:latest
     depends_on:
       mysql:
+        required: false
+      discovery-server:
         required: false
 
   board-service:
@@ -114,12 +136,16 @@ services:
     depends_on:
       mysql:
         required: false
+      discovery-server:
+        required: false
 
   notification-service:
     <<: *app-box-core-hosts
     image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-notification-service:latest
     depends_on:
       mysql:
+        required: false
+      discovery-server:
         required: false
 
   caddy:
