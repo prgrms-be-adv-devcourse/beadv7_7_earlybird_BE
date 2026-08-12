@@ -36,8 +36,8 @@ public class Refund extends BaseEntity {
     private RefundStatus status;
 
     @Convert(converter = PaymentSensitiveDataConverter.class)
-    @Column(name = "cancel_idempotency_key", nullable = false, length = 512)
-    private String cancelIdempotencyKey;
+    @Column(name = "refund_idempotency_key", nullable = false, length = 512)
+    private String refundIdempotencyKey;
 
     /** 실패 시 null — 재시도 대상 */
     @Column
@@ -53,7 +53,7 @@ public class Refund extends BaseEntity {
         this.paymentId = paymentId;
         this.amount = amount;
         this.reason = reason;
-        this.cancelIdempotencyKey = UUID.randomUUID().toString();
+        this.refundIdempotencyKey = UUID.randomUUID().toString();
         this.status = RefundStatus.REQUESTED;
     }
 

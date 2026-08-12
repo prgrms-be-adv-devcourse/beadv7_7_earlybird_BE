@@ -41,7 +41,7 @@ public class RefundService {
             refund.getId(),
             payment.getPaymentKey(),
             refund.getReason(),
-            refund.getCancelIdempotencyKey()
+            refund.getRefundIdempotencyKey()
         );
     }
 
