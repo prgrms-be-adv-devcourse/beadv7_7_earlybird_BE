@@ -21,6 +21,9 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
@@ -41,6 +44,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ProjectServiceImpl implements ProjectService {
+
+    /** reindexAllProjects() 페이징 단위 — ES bulk 호출/임베딩 벌크 저장 배치 크기와 동일하게 맞춘다. */
+    private static final int REINDEX_PAGE_SIZE = 50;
 
     private final ProjectRepository projectRepository;
     private final ProjectCategoryRepository projectCategoryRepository;
@@ -309,11 +315,25 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
+    /**
+     * 클래스 레벨 @Transactional(readOnly=true)을 이 메서드만 NOT_SUPPORTED로 무시한다 — 그러지
+     * 않으면 페이지 루프 전체(임베딩 생성용 OpenAI 호출 포함, 프로젝트 수만큼 반복)가 트랜잭션 하나에
+     * DB 커넥션을 계속 물고 있게 된다(#196과 같은 문제). NOT_SUPPORTED로 감싸면 findAll(pageable)
+     * 호출마다, 그리고 searchPort.bulkIndex() 내부의 임베딩 벌크 저장(ProjectEmbeddingPersister)마다
+     * 각자 짧은 트랜잭션을 새로 열고 바로 끝낸다.
+     */
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void reindexAllProjects() {
-        for (Project project : projectRepository.findAll()) {
-            searchPort.index(project);
-        }
+        Pageable pageable = PageRequest.of(0, REINDEX_PAGE_SIZE);
+        Page<Project> page;
+        do {
+            page = projectRepository.findAll(pageable);
+            if (!page.isEmpty()) {
+                searchPort.bulkIndex(page.getContent());
+            }
+            pageable = pageable.next();
+        } while (page.hasNext());
     }
 
     /**
