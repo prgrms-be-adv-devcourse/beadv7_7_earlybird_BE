@@ -46,13 +46,15 @@ public class OrderApiService {
     private final OrderCartHandler cartHandler;
     private final OrderPaidCompletionService paidCompletionService;
     private final OrderStockFailureCompletionService stockFailureCompletionService;
+    private final FundedAmountSynchronizationService fundedAmountSynchronizationService;
 
     @Autowired
     public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
                            OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
                            OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler,
                            OrderPaidCompletionService paidCompletionService,
-                           OrderStockFailureCompletionService stockFailureCompletionService) {
+                           OrderStockFailureCompletionService stockFailureCompletionService,
+                           FundedAmountSynchronizationService fundedAmountSynchronizationService) {
         this.orderRepository = orderRepository;
         this.rewardPort = rewardPort;
         this.paymentPort = paymentPort;
@@ -62,6 +64,7 @@ public class OrderApiService {
         this.cartHandler = cartHandler;
         this.paidCompletionService = paidCompletionService;
         this.stockFailureCompletionService = stockFailureCompletionService;
+        this.fundedAmountSynchronizationService = fundedAmountSynchronizationService;
     }
 
     OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
@@ -74,6 +77,7 @@ public class OrderApiService {
         this.cartHandler = null;
         this.paidCompletionService = null;
         this.stockFailureCompletionService = null;
+        this.fundedAmountSynchronizationService = null;
     }
 
     /**
@@ -214,7 +218,11 @@ public class OrderApiService {
         stockHandler.releaseStock(order);
         order.cancel();
         log.info("order cancelled. orderId={}", orderId);
-        return OrderResult.from(orderRepository.save(order));
+        Order cancelledOrder = orderRepository.save(order);
+        if (fundedAmountSynchronizationService != null) {
+            fundedAmountSynchronizationService.synchronize(cancelledOrder.getProjectId());
+        }
+        return OrderResult.from(cancelledOrder);
     }
 
     private void validatePaymentForCancellation(Order order, PaymentResult payment) {

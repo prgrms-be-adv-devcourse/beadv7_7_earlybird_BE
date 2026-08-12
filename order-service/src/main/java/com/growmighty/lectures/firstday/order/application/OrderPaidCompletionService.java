@@ -9,10 +9,12 @@ import org.springframework.stereotype.Service;
 public class OrderPaidCompletionService {
     private final OrderPaidPersistenceService persistenceService;
     private final CartCleanupRecoveryService cleanupRecoveryService;
+    private final FundedAmountSynchronizationService fundedAmountSynchronizationService;
 
     public Order persistAndCleanup(Order order) {
         Order savedOrder = persistenceService.savePaidWithCleanup(order);
         cleanupRecoveryService.cleanupImmediately(savedOrder.getId());
+        fundedAmountSynchronizationService.synchronize(savedOrder.getProjectId());
         return savedOrder;
     }
 }
