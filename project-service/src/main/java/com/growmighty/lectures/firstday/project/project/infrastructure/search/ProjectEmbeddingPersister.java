@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
 /**
  * ProjectSearchIndexEventListener가 (느린 외부 호출인) 임베딩 생성을 끝낸 뒤, 그 결과값만 들고
  * 호출하는 전용 트랜잭션 경계. projectId로 다시 조회한 managed 엔티티를 직접 수정해 dirty-checking으로
@@ -29,5 +31,17 @@ class ProjectEmbeddingPersister {
         }
         project.updateEmbedding(embedding);
         return project;
+    }
+
+    /**
+     * 벌크 재색인(ProjectSearchAdapter.bulkIndex) 전용 — 위 updateEmbedding()과 같은 이유로
+     * projectId로 다시 조회한 managed 엔티티에 반영해 dirty-checking으로 저장한다. 여러 건을
+     * findAllById로 한 번에 조회해, "페이지당 트랜잭션 1번"만 열리도록 한다(건당 트랜잭션 N번을
+     * 피하는 것이 이 메서드의 목적).
+     */
+    @Transactional
+    void bulkUpdateEmbeddings(Map<Long, float[]> embeddingsByProjectId) {
+        projectRepository.findAllById(embeddingsByProjectId.keySet())
+                .forEach(project -> project.updateEmbedding(embeddingsByProjectId.get(project.getProjectId())));
     }
 }

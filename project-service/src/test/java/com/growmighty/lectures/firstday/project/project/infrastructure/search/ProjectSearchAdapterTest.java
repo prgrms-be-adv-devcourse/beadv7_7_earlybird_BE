@@ -3,10 +3,10 @@ package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
+import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -27,8 +28,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -46,6 +50,8 @@ class ProjectSearchAdapterTest {
     private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final ProjectEmbeddingService embeddingService = mock(ProjectEmbeddingService.class);
+    private final ProjectRepository projectRepository = mock(ProjectRepository.class);
+    private final ProjectEmbeddingPersister persister = mock(ProjectEmbeddingPersister.class);
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -62,7 +68,7 @@ class ProjectSearchAdapterTest {
                 return fallback.apply(t);
             }
         });
-        adapter = new ProjectSearchAdapter(elasticsearchOperations, circuitBreakerFactory, eventPublisher, embeddingService);
+        adapter = new ProjectSearchAdapter(elasticsearchOperations, circuitBreakerFactory, eventPublisher, embeddingService, projectRepository, persister);
     }
 
     private Project project() {
@@ -139,13 +145,50 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("ES 검색 호출이 실패하면 503 예외로 변환한다")
-    void search_elasticsearchCallFailure_throwsServiceUnavailable() {
+    @DisplayName("ES 검색 호출이 실패하면 DB LIKE 검색으로 폴백한다")
+    void search_elasticsearchCallFailure_fallsBackToDbLikeSearch() {
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenThrow(new RuntimeException("es down"));
+        when(projectRepository.findByTitleContainingIgnoreCase("keyword"))
+                .thenReturn(List.of(project()));
 
-        assertThatThrownBy(() -> adapter.search("keyword"))
-                .isInstanceOf(ServiceUnavailableException.class);
+        List<Long> result = adapter.search("keyword");
+
+        assertThat(result).containsExactly(1L);
+    }
+
+    @Test
+    @DisplayName("bulkIndex()는 임베딩이 없는 프로젝트만 새로 생성하고, 새 임베딩은 벌크로 DB에 반영한 뒤 ES에 일괄 저장한다")
+    void bulkIndex_generatesMissingEmbeddingsAndSavesInBulk() {
+        Project withoutEmbedding = project();
+        float[] generated = new float[1536];
+        when(embeddingService.generateEmbeddingForProject(withoutEmbedding)).thenReturn(generated);
+
+        adapter.bulkIndex(List.of(withoutEmbedding));
+
+        verify(persister).bulkUpdateEmbeddings(Map.of(withoutEmbedding.getProjectId(), generated));
+        verify(elasticsearchOperations).save(anyList());
+    }
+
+    @Test
+    @DisplayName("bulkIndex() 대상이 이미 임베딩을 갖고 있으면 새로 생성하지도, DB에 반영하지도 않는다")
+    void bulkIndex_skipsEmbeddingGenerationWhenAlreadyPresent() {
+        Project withEmbedding = project();
+        withEmbedding.updateEmbedding(new float[1536]);
+
+        adapter.bulkIndex(List.of(withEmbedding));
+
+        verify(embeddingService, never()).generateEmbeddingForProject(any());
+        verify(persister, never()).bulkUpdateEmbeddings(anyMap());
+        verify(elasticsearchOperations).save(anyList());
+    }
+
+    @Test
+    @DisplayName("bulkIndex() 중 ES 저장이 실패해도 예외를 던지지 않고 삼킨다(서킷브레이커 폴백)")
+    void bulkIndex_failure_doesNotThrow() {
+        when(elasticsearchOperations.save(anyList())).thenThrow(new RuntimeException("es down"));
+
+        assertThatCode(() -> adapter.bulkIndex(List.of(project()))).doesNotThrowAnyException();
     }
 
     @Test

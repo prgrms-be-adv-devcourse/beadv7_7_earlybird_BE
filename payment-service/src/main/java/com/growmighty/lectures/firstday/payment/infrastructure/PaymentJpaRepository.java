@@ -16,6 +16,8 @@ public interface PaymentJpaRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByOrderId(Long orderId);
 
+    List<Payment> findAllByOrderIdInAndStatus(List<Long> orderIds, PaymentStatus status);
+
     @Query("""
         select payment.paymentId
         from Payment payment

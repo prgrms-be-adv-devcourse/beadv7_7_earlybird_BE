@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
+import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
@@ -48,7 +49,7 @@ public class PaymentConfirmationService {
         }
 
         if (payment.isConfirming()) {
-            throw new IllegalStateException("이미 승인 처리 중인 결제입니다. 잠시 후 다시 조회해주세요. pgOrderId = " + pgOrderId);
+            throw new PaymentConfirmationInProgressException(pgOrderId);
         }
 
         payment.startConfirming(paymentKey);
@@ -94,7 +95,8 @@ public class PaymentConfirmationService {
         Payment payment = findPayment(paymentId);
 
         if (payment.reconcileFailed()) {
-            paymentRepository.save(payment);
+            Payment savedPayment = paymentRepository.save(payment);
+            savePaymentStatusOutboxIfAbsent(savedPayment);
         }
     }
 
@@ -143,7 +145,8 @@ public class PaymentConfirmationService {
 
             case FAILED , EXPIRED , CANCELLED -> {
                 if (payment.reconcileFailed()) {
-                    paymentRepository.save(payment);
+                    Payment savedPayment = paymentRepository.save(payment);
+                    savePaymentStatusOutboxIfAbsent(savedPayment);
                 }
             }
 
@@ -152,7 +155,8 @@ public class PaymentConfirmationService {
                     LocalDateTime.now(),
                     paymentRecoveryProperties.maximumConfirmingDuration()
                 )) {
-                    paymentRepository.save(payment);
+                    Payment savedPayment = paymentRepository.save(payment);
+                    savePaymentStatusOutboxIfAbsent(savedPayment);
                 }
             }
         }
@@ -173,6 +177,7 @@ public class PaymentConfirmationService {
             PaymentStatusOutbox.pending(
                 payment.getPaymentId(),
                 payment.getOrderId(),
+                payment.getPgOrderId(),
                 payment.getStatus()
             )
         );

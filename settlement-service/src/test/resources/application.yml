@@ -1,4 +1,3 @@
-# TODO(settlement-plan): Add only test-local Kafka, Batch, and clock settings needed by integration tests.
 # 테스트 전용 설정 — @SpringBootTest 통합 테스트는 config-server 없이 독립 실행돼야 한다.
 # (test/resources 의 application.yml 이 main 의 것을 덮어쓰므로 여기서 자립적으로 채운다.)
 spring:
@@ -22,6 +21,9 @@ spring:
       enabled: false
     jdbc:
       initialize-schema: always
+  kafka:
+    listener:
+      auto-startup: false
 
 # 테스트에선 Eureka 등록/조회를 시도하지 않는다 (명부 서버가 떠 있지 않음).
 eureka:
@@ -32,8 +34,6 @@ settlement:
   project-target:
     mode: dummy
   project-order:
-    mode: dummy
-  payment-cancellation:
     mode: dummy
   batch:
     chunk-size: 1000

@@ -2,30 +2,29 @@ package com.growmighty.lectures.firstday.order.application;
 
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
-import com.growmighty.lectures.firstday.order.application.dto.OrderConsistencyView;
-import com.growmighty.lectures.firstday.order.application.dto.OrderInspectionView;
 import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
-import com.growmighty.lectures.firstday.order.application.dto.OrderVerificationResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
-import com.growmighty.lectures.firstday.order.application.port.PaymentPort.RefundResult;
+import com.growmighty.lectures.firstday.order.application.port.PaymentPort.CancellationResult;
+import com.growmighty.lectures.firstday.order.application.port.CartPort;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.application.port.dto.RewardSnapshot;
-import com.growmighty.lectures.firstday.order.domain.Money;
 import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
-import com.growmighty.lectures.firstday.order.domain.OrderStatus;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 주문 애플리케이션 서비스.
@@ -36,12 +35,50 @@ import java.util.*;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class OrderApiService {
 
     private final OrderRepository orderRepository;
     private final RewardPort rewardPort;
     private final PaymentPort paymentPort;
+    private final OrderRemoteCallExecutor remoteCalls;
+    private final OrderStockHandler stockHandler;
+    private final OrderPaymentResultHandler paymentResultHandler;
+    private final OrderCartHandler cartHandler;
+    private final OrderPaidCompletionService paidCompletionService;
+    private final OrderStockFailureCompletionService stockFailureCompletionService;
+    private final FundedAmountSynchronizationService fundedAmountSynchronizationService;
+
+    @Autowired
+    public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
+                           OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
+                           OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler,
+                           OrderPaidCompletionService paidCompletionService,
+                           OrderStockFailureCompletionService stockFailureCompletionService,
+                           FundedAmountSynchronizationService fundedAmountSynchronizationService) {
+        this.orderRepository = orderRepository;
+        this.rewardPort = rewardPort;
+        this.paymentPort = paymentPort;
+        this.remoteCalls = remoteCalls;
+        this.stockHandler = stockHandler;
+        this.paymentResultHandler = paymentResultHandler;
+        this.cartHandler = cartHandler;
+        this.paidCompletionService = paidCompletionService;
+        this.stockFailureCompletionService = stockFailureCompletionService;
+        this.fundedAmountSynchronizationService = fundedAmountSynchronizationService;
+    }
+
+    OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
+        this.orderRepository = orderRepository;
+        this.rewardPort = rewardPort;
+        this.paymentPort = paymentPort;
+        this.remoteCalls = new OrderRemoteCallExecutor();
+        this.stockHandler = new OrderStockHandler(rewardPort, remoteCalls);
+        this.paymentResultHandler = new OrderPaymentResultHandler(stockHandler);
+        this.cartHandler = null;
+        this.paidCompletionService = null;
+        this.stockFailureCompletionService = null;
+        this.fundedAmountSynchronizationService = null;
+    }
 
     /**
      * 1. 주문 생성 요청 수신
@@ -79,55 +116,80 @@ public class OrderApiService {
      *    - status = CANCELLED
      * */
 
-
     // 주문 생성 요청
     public OrderResult placeOrder(PlaceOrderCommand command, Long requesterId) {
         validateRequesterId(requesterId);
         command = new PlaceOrderCommand(requesterId, command.projectId(), command.lines(),
                 command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
-                command.expectedItemsAmount(), command.expectedTotalAmount());
+                command.expectedItemsAmount(), command.expectedTotalAmount(), command.orderIdempotencyKey());
         validateCommand(command);
 
-        // FIXME : 동일 요청 자체의 중복 가능성 -> 생성해서 넘어오는 방법 등등을 고려
-        Order order = createPendingOrder(command);
+        Optional<Order> existingOrder = orderRepository.findByUserIdAndOrderIdempotencyKey(
+                requesterId, command.orderIdempotencyKey());
+        if (existingOrder.isPresent()) {
+            return OrderResult.from(existingOrder.get());
+        }
 
-        /*
-          Project 서비스에 "재고 확보" 요청
-             - 재고 검증과 확보를 원자적으로 수행
-          재고 확보 실패
-             - status = STOCK_FAILED
-             - 결제 호출하지 않음
-          재고 확보 성공
-             - status = PAYMENT_REQUEST
-          */
-
-
-        // TODO(예정) : 타 도메인 연동 상세 작업 처리
-
-        order = orderRepository.saveAndFlush(order);
+        command = commandFromCart(command);
+        Order order;
+        try {
+            order = createPendingOrder(command);
+        } catch (InvalidCartRewardException failure) {
+            removeInvalidCartReward(command.userId(), failure);
+            throw failure;
+        }
 
         try {
-            reserveStock(order);
+            order = orderRepository.saveAndFlush(order);
+        } catch (DataIntegrityViolationException e) {
+            return orderRepository.findByUserIdAndOrderIdempotencyKey(requesterId, command.orderIdempotencyKey())
+                    .map(OrderResult::from)
+                    .orElseThrow(() -> e);
+        }
+
+        List<OrderItem> confirmedItems = new ArrayList<>();
+        try {
+            stockHandler.reserveStock(order, confirmedItems);
         } catch (RuntimeException e) {
-            // TODO: Project service must provide a multi-reward atomic reservation endpoint to avoid partial deduction.
-            order.markStockReservationFailed();
+            if (remoteCalls.isTechnical(e)) {
+                order.markStockPending();
+                return OrderResult.from(orderRepository.save(order));
+            }
+            stockHandler.compensateStockFailure(order, confirmedItems);
+            if (e instanceof InvalidCartRewardException invalidReward) {
+                if (stockFailureCompletionService != null) {
+                    stockFailureCompletionService.persistAndCleanup(order, invalidReward.rewardId());
+                } else {
+                    orderRepository.save(order);
+                    removeInvalidCartReward(order.getUserId(), invalidReward);
+                }
+            } else {
+                orderRepository.save(order);
+            }
+            throw e;
+        }
+
+        order.markPaymentRequested();
+        order = orderRepository.save(order);
+
+        Order paymentOrder = order;
+        PaymentResult payment;
+        try {
+            payment = remoteCalls.execute("payment-pay",
+                    () -> paymentPort.pay(paymentOrder.getId(), paymentOrder.getUserId(),
+                            paymentOrder.getTotalAmount().getValue()));
+        } catch (RuntimeException e) {
+            if (remoteCalls.isTechnical(e)) {
+                order.markPaymentPending();
+                return OrderResult.from(orderRepository.save(order));
+            }
+            paymentResultHandler.compensatePaymentFailure(order);
             orderRepository.save(order);
             throw e;
         }
-        order.markPaymentRequested();
-        orderRepository.save(order);
-
-        PaymentResult payment = paymentPort.pay(order.getId(), order.getUserId(), order.getTotalAmount().getValue());
-        applyPaymentResult(order, payment); // TODO: pending 처리 -> 지속적인(일정시간동안) 요청 트랙잭션이 있어야 하는데 방법혼 구상 필요
-
-        return OrderResult.from(orderRepository.save(order));
-    }
-
-    // 결제 결과에 대한 처리
-    public OrderResult applyPaymentResult(Long orderId, PaymentResult paymentResult) {
-        Order order = getOrderWithItems(orderId);
-        applyPaymentResult(order, paymentResult);
-        return OrderResult.from(orderRepository.save(order));
+        boolean orderCompleted = paymentResultHandler.apply(order, payment);
+        order = persistPaymentOutcome(order, orderCompleted);
+        return OrderResult.from(order);
     }
 
     // 주문 취소
@@ -139,16 +201,38 @@ public class OrderApiService {
             throw new IllegalStateException("Order is already cancelled. orderId=" + orderId);
         }
 
+        order.validateCancellationAllowed();
         verifyCancellationAllowedByProject(order);
-        RefundResult refund = paymentPort.refund(order.getId(), order.getTotalAmount().getValue());
-        if (refund.status() != PaymentResult.Status.SUCCESS) {
-            throw new IllegalStateException("Refund failed or pending. orderId=" + orderId);
+        PaymentResult payment = remoteCalls.execute("payment-get-by-order",
+                () -> paymentPort.getPaymentResult(order.getId()));
+        validatePaymentForCancellation(order, payment);
+        Long paymentId = payment.paymentId();
+        CancellationResult cancellation = remoteCalls.execute("payment-cancel",
+                () -> paymentPort.cancel(paymentId, order.getTotalAmount().getValue()));
+        if (cancellation == null || cancellation.status() != PaymentResult.Status.SUCCESS
+                || !paymentId.equals(cancellation.paymentId())
+                || !order.getId().equals(cancellation.orderId())) {
+            throw new IllegalStateException("Payment cancellation failed or pending. orderId=" + orderId);
         }
 
-        releaseStock(order);
+        stockHandler.releaseStock(order);
         order.cancel();
         log.info("order cancelled. orderId={}", orderId);
-        return OrderResult.from(orderRepository.save(order));
+        Order cancelledOrder = orderRepository.save(order);
+        if (fundedAmountSynchronizationService != null) {
+            fundedAmountSynchronizationService.synchronize(cancelledOrder.getProjectId());
+        }
+        return OrderResult.from(cancelledOrder);
+    }
+
+    private void validatePaymentForCancellation(Order order, PaymentResult payment) {
+        if (payment == null || payment.status() != PaymentResult.Status.SUCCESS || payment.paymentId() == null) {
+            throw new IllegalStateException("Paid payment was not found for cancellation. orderId=" + order.getId());
+        }
+        if (payment.amount() == null
+                || order.getTotalAmount().getValue().compareTo(payment.amount()) != 0) {
+            throw new IllegalStateException("Payment amount mismatch. orderId=" + order.getId());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -166,80 +250,44 @@ public class OrderApiService {
         return OrderResult.from(order);
     }
 
-    @Transactional(readOnly = true)
-    public OrderConsistencyView inspectOrder(Long orderId) {
-        Order order = getOrder(orderId);
-        Money storedTotal = order.getTotalAmount();
-        Money recalculatedTotal = order.recalculatedTotal();
-        return new OrderConsistencyView(
-                orderId,
-                storedTotal.getValue(),
-                recalculatedTotal.getValue(),
-                storedTotal.isSameAmount(recalculatedTotal));
-    }
-
-    @Transactional(readOnly = true)
-    public OrderInspectionView placeOrderInspection(Long orderId) {
-        Order order = orderRepository.findByIdWithItems(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
-        return OrderInspectionView.from(order);
-    }
-
-    @Transactional(readOnly = true)
-    public boolean hasOrderedReward(Long projectId) {
-        return orderRepository.existsByProjectId(projectId);
-    }
-
-    @Transactional(readOnly = true)
-    public Optional<BigDecimal> getFundedAmount(Long projectId) {
-        return orderRepository.getFundedAmount(projectId);
-    }
-
     // 실질 주문 생성
     private Order createPendingOrder(PlaceOrderCommand command) {
         List<OrderItem> orderItems = new ArrayList<>();
         for (OrderLine line : command.lines()) {
-            RewardSnapshot reward = rewardPort.getReward(line.rewardId());
+            RewardSnapshot reward;
+            try {
+                reward = remoteCalls.execute("reward-get", () -> rewardPort.getReward(line.rewardId()));
+            } catch (RuntimeException failure) {
+                if (remoteCalls.isTechnical(failure)) {
+                    throw failure;
+                }
+                throw new InvalidCartRewardException(line.rewardId(), failure.getMessage(), failure);
+            }
             validateRewardSnapshot(line, reward);
             orderItems.add(OrderItem.create(
                     reward.name(), reward.price(), reward.projectId(), reward.rewardId(), line.quantity()));
         }
 
-        Long projectId = command.projectId() != null ? command.projectId() : orderItems.get(0).getProjectId();
+        Long projectId = orderItems.get(0).getProjectId();
+        if (command.projectId() != null && !Objects.equals(command.projectId(), projectId)) {
+            throw new IllegalArgumentException("Order project does not match Cart rewards. projectId=" + command.projectId());
+        }
+        if (orderItems.stream().anyMatch(item -> !Objects.equals(projectId, item.getProjectId()))) {
+            throw new IllegalStateException("Cart contains rewards from multiple projects.");
+        }
         Order order = Order.create(null, command.userId(), projectId, orderItems,
-                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode());
+                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
+                command.orderIdempotencyKey());
         validateAmounts(command, order);
         log.info("pending order created. orderId={}", order.getId());
         return order;
     }
 
-    // 결제 결과에 대한 처리
-    private void applyPaymentResult(Order order, PaymentResult payment) {
-        if (order.getStatus() != OrderStatus.PAYMENT_REQUEST && order.getStatus() != OrderStatus.PAYMENT_PROCESSING) {
-            throw new IllegalStateException("Payment cannot be applied from status=" + order.getStatus());
-        }
-
-        if (payment.status() == PaymentResult.Status.SUCCESS) {
-            order.markPaid();
-            removeOrderedCartItems(order);
-            log.info("payment succeeded. orderId={}", order.getId());
-            return;
-        }
-        if (payment.status() == PaymentResult.Status.FAILURE) {
-            order.markPaymentFailed();
-            releaseStock(order);
-            log.info("payment failed. orderId={}", order.getId());
-            return;
-        }
-
-        if (order.getStatus() == OrderStatus.PAYMENT_REQUEST) {
-            order.markPaymentProcessing();
-        }
-        log.warn("payment result is unknown. orderId={}", order.getId());
-    }
-
     // 주문 형식 정합성 검사
     private void validateCommand(PlaceOrderCommand command) {
+        if (command.orderIdempotencyKey() == null) {
+            throw new IllegalArgumentException("orderIdempotencyKey is required.");
+        }
         if (command.lines() == null || command.lines().isEmpty()) {
             throw new IllegalArgumentException("Order must contain at least one item.");
         }
@@ -266,14 +314,63 @@ public class OrderApiService {
     // 정합성 세부 검사
     private void validateRewardSnapshot(OrderLine line, RewardSnapshot reward) {
         if (!reward.orderable()) {
-            throw new IllegalStateException("Reward is not orderable. rewardId=" + reward.rewardId());
+            throw new InvalidCartRewardException(line.rewardId(),
+                    "Reward is not orderable. rewardId=" + line.rewardId());
         }
         if (reward.remainingQuantity() != null && reward.remainingQuantity() < line.quantity()) {
-            throw new IllegalStateException("Reward stock is insufficient. rewardId=" + reward.rewardId());
+            throw new InvalidCartRewardException(line.rewardId(),
+                    "Reward stock is insufficient. rewardId=" + line.rewardId());
         }
         if (reward.price().compareTo(line.expectedUnitPrice()) != 0) {
             throw new IllegalArgumentException("Reward price changed. rewardId=" + reward.rewardId());
         }
+    }
+
+    private PlaceOrderCommand commandFromCart(PlaceOrderCommand command) {
+        if (cartHandler == null) {
+            throw new IllegalStateException("Cart integration is required to place an Order.");
+        }
+        CartPort.CartSnapshot cart = cartHandler.getCart(command.userId());
+        if (!Objects.equals(command.userId(), cart.userId())) {
+            throw new IllegalStateException("Cart owner mismatch. userId=" + command.userId());
+        }
+        if (cart.items() == null || cart.items().isEmpty()) {
+            throw new IllegalStateException("Order Cart is empty. userId=" + command.userId());
+        }
+
+        Map<Long, OrderLine> requestedLines = command.lines().stream()
+                .collect(Collectors.toMap(OrderLine::rewardId, line -> line));
+        Set<Long> cartRewardIds = cart.items().stream()
+                .map(CartPort.CartSnapshot.Item::rewardId)
+                .collect(Collectors.toSet());
+        if (requestedLines.size() != cart.items().size() || !requestedLines.keySet().equals(cartRewardIds)) {
+            throw new IllegalArgumentException("Order items must match the current Cart.");
+        }
+
+        List<OrderLine> cartLines = cart.items().stream()
+                .map(item -> new OrderLine(item.rewardId(), item.quantity(),
+                        requestedLines.get(item.rewardId()).expectedUnitPrice()))
+                .toList();
+        return new PlaceOrderCommand(command.userId(), command.projectId(), cartLines,
+                command.receiverName(), command.receiverPhone(), command.shippingAddress(), command.zipCode(),
+                command.expectedItemsAmount(), command.expectedTotalAmount(), command.orderIdempotencyKey());
+    }
+
+    private void removeInvalidCartReward(Long userId, InvalidCartRewardException failure) {
+        if (cartHandler != null) {
+            cartHandler.removeInvalidReward(userId, failure.rewardId());
+        }
+    }
+
+    private Order persistPaymentOutcome(Order order, boolean orderCompleted) {
+        if (orderCompleted && paidCompletionService != null) {
+            return paidCompletionService.persistAndCleanup(order);
+        }
+        Order savedOrder = orderRepository.save(order);
+        if (orderCompleted) {
+            paymentResultHandler.removeOrderedCartItems(savedOrder);
+        }
+        return savedOrder;
     }
 
     // 금액 총합 일치 검사
@@ -289,44 +386,11 @@ public class OrderApiService {
         }
     }
 
-    private List<Long> rewardIds(Order order) {
-        return order.getItems().stream()
-                .map(OrderItem::getRewardId)
-                .toList();
-    }
-
     private List<Long> projectIds(Order order) {
         return order.getItems().stream()
                 .map(OrderItem::getProjectId)
                 .distinct()
                 .toList();
-    }
-
-    // 재고 확보 작업 로직 -> 일단 차감 후 다음 단계에서 복원
-    // '재고 확보'를 '감소 처리'로 하는 것 자체가 확정은 아님
-    // 경우에 따라서 reward 도메인이랑 협의 필요
-    private void reserveStock(Order order) {
-        // UPDATE rewards SET stock = stock - :quantity WHERE id = :rewardId AND stock >= :quantity.
-        for (OrderItem item : order.getItems()) {
-            rewardPort.decreaseStock(item.getRewardId(), item.getQuantity());
-        }
-        log.info("재고 확보 오류. orderId={}", order.getId());
-    }
-
-    // 재고 복원
-    private void releaseStock(Order order) {
-        // TODO(미정) : 정합성 검증 추가?
-        for (OrderItem item : order.getItems()) {
-            rewardPort.restoreStock(item.getRewardId(), item.getQuantity());
-        }
-        log.info("재고 복원 오류. orderId={}", order.getId());
-    }
-
-    // 최종 결제까지 성공 시 cart에서 삭제
-    private void removeOrderedCartItems(Order order) {
-        // TODO(예정) : cart 도메인에 해당 로직 추가
-        log.info("temporary ordered cart item cleanup assumed successful. orderId={}, userId={}, rewardIds={}",
-                order.getId(), order.getUserId(), rewardIds(order));
     }
 
     // 주문 취소 가능 여부 검증
@@ -359,10 +423,4 @@ public class OrderApiService {
         }
     }
 
-    @Transactional(readOnly = true)
-    public OrderVerificationResult getOrderedVerification(Long userId, Long rewardId) {
-        return orderRepository.findPaidItem(userId, rewardId)
-                .map(orderItem -> OrderVerificationResult.verified(orderItem.getName()))
-                .orElseGet(OrderVerificationResult::unverified);
-    }
 }

@@ -14,18 +14,14 @@ import com.growmighty.lectures.firstday.settlement.application.port.order.Projec
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcome;
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeReader;
 import com.growmighty.lectures.firstday.settlement.application.port.project.ProjectOutcomeStatus;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationGateway;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationRequest;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationResult;
-import com.growmighty.lectures.firstday.settlement.application.port.payment.ProjectPaymentCancellationStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.SettlementCalculationPolicy;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
@@ -45,8 +41,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest(properties = {
         "settlement.external-data.mode=error-test",
         "settlement.project-target.mode=error-test",
-        "settlement.project-order.mode=error-test",
-        "settlement.payment-cancellation.mode=error-test"
+        "settlement.project-order.mode=error-test"
 })
 @AutoConfigureMockMvc
 class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
@@ -174,37 +169,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("프로젝트 정산과 지급 의무가 불일치하면 내부 정합성 오류로 응답한다")
-    void rejectsSettlementWhenPayoutObligationIsMissing() throws Exception {
-        long projectId = 93L;
-        long creatorId = 93L;
-        CreatorPayoutProfile payoutProfile = payoutReadyProfile(creatorId);
-        creatorPayoutProfileRepository.save(payoutProfile);
-        projectSettlementRepository.save(ProjectSettlement.confirm(
-                projectId,
-                creatorId,
-                SettlementCalculationPolicy.current().feePolicySnapshot(),
-                SettlementCalculationPolicy.current().calculate(List.of(Money.wons(100_000))),
-                payoutProfile.snapshotDestination(),
-                LocalDateTime.of(2026, 7, 23, 10, 0)
-        ));
-        externalDataAdapter.respondWith(projectId, creatorId, List.of(Money.wons(100_000)));
-
-        mockMvc.perform(post("/internal/v1/settlements/runs")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "settlementMonth": "2026-07"
-                                }
-                                """))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").doesNotExist())
-                .andExpect(jsonPath("$.error.message").value("프로젝트 정산 데이터가 일치하지 않습니다."))
-                .andExpect(content().string(not(containsString("지급 의무가 존재하지 않습니다"))));
-    }
-
-    @Test
     @DisplayName("저장된 프로젝트 정산 원본의 정합성 오류는 내부 정보를 노출하지 않는다")
     void hidesPersistenceIntegrityFailureDetails() throws Exception {
         long projectId = 95L;
@@ -214,6 +178,9 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                         INSERT INTO project_settlements (
                             project_id,
                             creator_id,
+                            payment_and_settlement_agency_fee_rate,
+                            platform_fee_rate,
+                            fee_vat_rate,
                             base_amount,
                             agency_fee_amount,
                             agency_fee_vat_amount,
@@ -221,17 +188,22 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                             platform_fee_vat_amount,
                             other_deduction_amount,
                             creator_payout_amount,
-                            destination_creator_id,
                             destination_toss_seller_id,
                             destination_bank_code,
                             destination_masked_account_number,
+                            scheduled_date,
+                            status,
                             confirmed_at,
+                            version,
                             created_at,
                             updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                 projectId,
                 creatorId,
+                0.04,
+                0.04,
+                0.10,
                 100_000,
                 4_000,
                 400,
@@ -239,11 +211,13 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 400,
                 0,
                 99_999,
-                creatorId,
                 "seller-95",
                 "088",
                 "********0095",
+                LocalDate.of(2026, 8, 3),
+                "SCHEDULED",
                 recordedAt,
+                0,
                 recordedAt,
                 recordedAt
         );
@@ -274,8 +248,7 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
 
     static class TestExternalDataAdapter
             implements ProjectOutcomeReader,
-            ProjectOrderReader,
-            ProjectPaymentCancellationGateway {
+            ProjectOrderReader {
 
         private ProjectOutcome outcome;
         private List<OrderPayment> orders;
@@ -322,19 +295,6 @@ class ProjectSettlementErrorControllerTest extends MySqlIntegrationTestSupport {
                 throw orderReadFailure;
             }
             return List.of(new ProjectOrders(outcome.projectId(), orders));
-        }
-
-        @Override
-        public List<ProjectPaymentCancellationResult> cancel(
-                List<ProjectPaymentCancellationRequest> requests
-        ) {
-            return requests.stream()
-                    .map(ProjectPaymentCancellationRequest::orderId)
-                    .map(orderId -> new ProjectPaymentCancellationResult(
-                            orderId,
-                            ProjectPaymentCancellationStatus.COMPLETED
-                    ))
-                    .toList();
         }
     }
 

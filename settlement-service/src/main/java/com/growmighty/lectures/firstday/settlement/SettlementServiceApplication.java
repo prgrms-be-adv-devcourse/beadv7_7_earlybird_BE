@@ -3,8 +3,13 @@ package com.growmighty.lectures.firstday.settlement;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+        "com.growmighty.lectures.firstday.settlement",
+        "com.growmighty.lectures.firstday.common"
+})
+@EnableScheduling
 public class SettlementServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(SettlementServiceApplication.class, args);

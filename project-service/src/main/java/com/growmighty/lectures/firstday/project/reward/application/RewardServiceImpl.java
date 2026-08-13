@@ -60,13 +60,14 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * decreaseStock/restoreStock과 같은 이유로 @Retryable — 공개 후 경로(increaseQuantity)가
-     * 다른 후원자의 동시 주문(decreaseStock)과 같은 리워드의 @Version을 두고 경합할 수 있다.
-     * update()는 self-invocation이 아니라 컨트롤러가 프록시를 통해 직접 호출하는 public
-     * 메서드라 별도 분리 없이 바로 @Retryable을 붙일 수 있다. 파라미터 타입(Long,
-     * RewardUpdateRequest)이 decreaseStock류와 달라 기존 @Recover를 공유할 수 없으므로
-     * 전용 쌍을 아래에 별도로 둔다 — catch-all을 빠뜨리면 이 메서드의 IllegalArgumentException/
-     * IllegalStateException 검증 예외까지 500으로 마스킹되므로 필수.
+     * @Retryable — 공개 후 경로(increaseQuantity)가 다른 후원자의 동시 주문(decreaseStock)이 원자적
+     * UPDATE로 증가시키는 같은 리워드의 @Version을 두고 경합할 수 있다. decreaseStock 자체는 더 이상
+     * 낙관적 락을 쓰지 않지만(원자적 조건부 UPDATE), 그 UPDATE도 version을 함께 증가시키므로 이
+     * 엔티티 기반 경로는 여전히 그 변경을 감지하고 재시도해야 한다. update()는 self-invocation이
+     * 아니라 컨트롤러가 프록시를 통해 직접 호출하는 public 메서드라 별도 분리 없이 바로 @Retryable을
+     * 붙일 수 있다. 파라미터 타입(Long, RewardUpdateRequest)이 decreaseQuantity류와 달라 기존
+     * @Recover를 공유할 수 없으므로 전용 쌍을 아래에 별도로 둔다 — catch-all을 빠뜨리면 이 메서드의
+     * IllegalArgumentException/IllegalStateException 검증 예외까지 500으로 마스킹되므로 필수.
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
@@ -121,10 +122,10 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * decreaseStock/restoreStock과 같은 이유로 @Retryable — 관리자가 수량을 줄이는 동안 다른
-     * 후원자의 주문(decreaseStock)이 같은 리워드에 겹치면 낙관적 락 충돌이 날 수 있다.
-     * 반환 타입이 RewardResponse라 decreaseStock/restoreStock의 void @Recover와는 시그니처가
-     * 갈려서(반환 타입 불일치) 공유할 수 없다 — 아래 전용 @Recover 두 개를 별도로 둔다.
+     * update()와 같은 이유로 @Retryable — 관리자가 수량을 줄이는 동안 다른 후원자의 주문
+     * (decreaseStock, 원자적 UPDATE로 version 증가)이 같은 리워드에 겹치면 이 엔티티 기반 경로가
+     * 낙관적 락 충돌을 겪을 수 있다. 반환 타입이 RewardResponse라 update()의 @Recover와는 파라미터
+     * 시그니처가 달라 공유할 수 없다 — 아래 전용 @Recover 두 개를 별도로 둔다.
      */
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
@@ -165,17 +166,15 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * 재시도 루프(@Retryable)와 트랜잭션 경계(@Transactional)를 물리적으로 다른 빈으로 분리했다 —
-     * rewardStockTransactionExecutor가 별도 프록시라, 재시도마다 이 래퍼가 그 프록시를 다시 호출해야만
-     * 매 attempt가 새 트랜잭션에서 엔티티를 다시 읽어온다는 게 self-invocation 걱정 없이 구조로 보장된다.
-     * 이 메서드 자체는 propagation=NOT_SUPPORTED로 트랜잭션 없이 실행돼야 한다 — 클래스 레벨
-     * @Transactional(readOnly=true)가 기본 적용되는데, 그걸 그대로 두면 이 메서드가 다시 트랜잭션을
-     * 걸치게 돼 분리한 의미가 없어진다. 중복 요청(DataIntegrityViolationException)도 트랜잭션이 이미
-     * 끝난 뒤인 여기서 잡는다 — 트랜잭션 안에서 잡으면 이미 rollback-only로 표시된 트랜잭션을 커밋
-     * 시도하다 UnexpectedRollbackException이 난다(RewardStockTransactionExecutor.registerStockChange 참고).
+     * decreaseStock/restoreStock은 RewardStockTransactionExecutor 내부에서 낙관적 락(엔티티 flush) 대신
+     * RewardRepository의 원자적 조건부 UPDATE(decreaseStockAtomic/restoreStockAtomic)를 쓰므로, 더 이상
+     * ObjectOptimisticLockingFailureException이 나지 않아 @Retryable/@Recover가 필요 없다. 그래도 이
+     * 래퍼(NOT_SUPPORTED)와 트랜잭션 경계(rewardStockTransactionExecutor의 @Transactional)는 여전히
+     * 분리해야 한다 — 중복 요청(DataIntegrityViolationException)을 트랜잭션이 이미 끝난 뒤인 여기서
+     * 잡아야 하기 때문이다. 트랜잭션 안에서 잡으면 이미 rollback-only로 표시된 트랜잭션을 커밋 시도하다
+     * UnexpectedRollbackException이 난다(RewardStockTransactionExecutor.registerStockChange 참고).
      */
     @Override
-    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverDecreaseStockConflict")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void decreaseStock(Long rewardId, int quantity, Long orderId) {
         try {
@@ -184,31 +183,8 @@ public class RewardServiceImpl implements RewardService {
             // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
         }
     }
-    /**
-     * decreaseStock/restoreStock이 파라미터 시그니처(Long, int, Long)가 같아서, operation별로 서로
-     * 다른 @Recover를 시그니처 자동 매칭에 맡기면 둘 다 먼저 선언된 쪽만 호출되는 문제가 있었다.
-     * @Retryable의 recover 속성으로 이름을 직접 지정해 그 모호성을 없앴는데, recover 속성은
-     * 메서드 하나만 가리킬 수 있어서 "락 충돌 전용 + catch-all" 2단 구조를 그대로 못 쓴다 — 대신
-     * 이 메서드 하나가 RuntimeException을 폭넓게 받고 instanceof로 분기한다. else(원본 재던지기)가
-     * 없으면 retryFor에 없는 예외(재고 부족 등)까지 여기로 흘러들어와 매칭 실패로 500이 되므로 필수.
-     */
-    @Recover
-    public void recoverDecreaseStockConflict(RuntimeException e, Long rewardId, int quantity, Long orderId) {
-        if (e instanceof ObjectOptimisticLockingFailureException) {
-            throw new ConcurrentUpdateFailedException(
-                "재고 차감 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity
-                    + ", orderId=" + orderId);
-        }
-        throw e;
-    }
 
-    /**
-     * decreaseStock과 같은 이유로 @Retryable — 동시 취소·환불로 여러 restoreStock 요청이
-     * 같은 리워드에 몰리면 낙관적 락 충돌이 날 수 있어, 재시도 없이는 정상적인 동시 복원 요청도
-     * 그냥 실패해버린다. decreaseStock과 같은 이유로 재시도 루프/트랜잭션 경계를 분리했다.
-     */
     @Override
-    @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50), recover = "recoverRestoreStockConflict")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void restoreStock(Long rewardId, int quantity, Long orderId) {
         try {
@@ -216,17 +192,6 @@ public class RewardServiceImpl implements RewardService {
         } catch (DataIntegrityViolationException e) {
             // 이미 처리된 요청 — 재고를 다시 반영하지 않고 조용히 종료(#195, 200 no-op)
         }
-    }
-
-    /** recoverDecreaseStockConflict와 동일한 instanceof 분기 패턴 — restoreStock 전용 메시지. */
-    @Recover
-    public void recoverRestoreStockConflict(RuntimeException e, Long rewardId, int quantity, Long orderId) {
-        if (e instanceof ObjectOptimisticLockingFailureException) {
-            throw new ConcurrentUpdateFailedException(
-                "재고 복원 중 동시 수정 충돌이 반복되어 실패했습니다. rewardId=" + rewardId + ", quantity=" + quantity
-                    + ", orderId=" + orderId);
-        }
-        throw e;
     }
 
     /** ProjectServiceImpl.validateOwnership과 동일한 관례 — 리워드는 자기 creatorId가 없어 부모 프로젝트 걸 본다. */

@@ -10,10 +10,16 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
+    // spring-kafka만 넣으면 클라이언트 라이브러리만 딸려오고 KafkaAutoConfiguration(KafkaTemplate
+    // 자동 생성 등)은 안 붙는다 — Boot 4에서 자동설정이 spring-boot-kafka로 분리되어, 그걸 묶어주는
+    // 이 스타터를 써야 한다.
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-kafka-test'
 
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'

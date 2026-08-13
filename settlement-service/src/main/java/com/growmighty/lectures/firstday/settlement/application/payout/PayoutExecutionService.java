@@ -1,4 +1,3 @@
-// TODO(settlement-plan): Use stable refPayoutId values and make payout retries converge on one successful attempt per obligation.
 package com.growmighty.lectures.firstday.settlement.application.payout;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.SETTLEMENT_DATA_INCONSISTENT;
@@ -10,9 +9,7 @@ import com.growmighty.lectures.firstday.settlement.application.port.payout.Payou
 import com.growmighty.lectures.firstday.settlement.application.port.payout.ScheduledPayoutRequest;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
-import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import java.time.Clock;
@@ -31,7 +28,6 @@ public final class PayoutExecutionService implements PayoutExecutor {
     private static final int MAX_ATTEMPTS = 4;
     private static final String TRANSACTION_DESCRIPTION = "얼리버드";
 
-    private final PayoutObligationRepository payoutObligationRepository;
     private final ProjectSettlementRepository projectSettlementRepository;
     private final PayoutGateway payoutGateway;
     private final TransactionOperations transactions;
@@ -39,14 +35,12 @@ public final class PayoutExecutionService implements PayoutExecutor {
 
     @Autowired
     public PayoutExecutionService(
-            PayoutObligationRepository payoutObligationRepository,
             ProjectSettlementRepository projectSettlementRepository,
             PayoutGateway payoutGateway,
             PlatformTransactionManager transactionManager,
             Clock clock
     ) {
         this(
-                payoutObligationRepository,
                 projectSettlementRepository,
                 payoutGateway,
                 new TransactionTemplate(transactionManager),
@@ -55,16 +49,11 @@ public final class PayoutExecutionService implements PayoutExecutor {
     }
 
     PayoutExecutionService(
-            PayoutObligationRepository payoutObligationRepository,
             ProjectSettlementRepository projectSettlementRepository,
             PayoutGateway payoutGateway,
             TransactionOperations transactions,
             Clock clock
     ) {
-        this.payoutObligationRepository = Objects.requireNonNull(
-                payoutObligationRepository,
-                "지급 의무 저장소는 필수입니다."
-        );
         this.projectSettlementRepository = Objects.requireNonNull(
                 projectSettlementRepository,
                 "프로젝트 정산 저장소는 필수입니다."
@@ -75,13 +64,13 @@ public final class PayoutExecutionService implements PayoutExecutor {
     }
 
     @Override
-    public PayoutExecutionResult execute(Long payoutObligationId) {
-        if (payoutObligationId == null || payoutObligationId <= 0) {
-            throw new IllegalArgumentException("지급 의무 식별자는 양수여야 합니다.");
+    public PayoutExecutionResult execute(Long settlementId) {
+        if (settlementId == null || settlementId <= 0) {
+            throw new IllegalArgumentException("프로젝트 정산 식별자는 양수여야 합니다.");
         }
 
         PreparedPayout prepared = requireTransactionResult(
-                transactions.execute(status -> prepare(payoutObligationId))
+                transactions.execute(status -> prepare(settlementId))
         );
         if (prepared.request() == null) {
             return prepared.currentResult();
@@ -99,22 +88,22 @@ public final class PayoutExecutionService implements PayoutExecutor {
         );
     }
 
-    private PreparedPayout prepare(Long payoutObligationId) {
-        PayoutObligation obligation = findObligation(payoutObligationId);
+    private PreparedPayout prepare(Long settlementId) {
+        ProjectSettlement settlement = findSettlement(settlementId);
         PayoutAttempt attempt;
 
-        if (obligation.status() == PayoutObligationStatus.SCHEDULED
-                || obligation.status() == PayoutObligationStatus.RETRY_WAITING) {
-            int sequence = obligation.attemptCount() + 1;
-            attempt = obligation.startAttempt(
-                    refPayoutId(obligation.id(), sequence),
+        if (settlement.status() == PayoutStatus.SCHEDULED
+                || settlement.status() == PayoutStatus.RETRY_WAITING) {
+            int sequence = settlement.attemptCount() + 1;
+            attempt = settlement.startAttempt(
+                    refPayoutId(settlement.id(), sequence),
                     UUID.randomUUID().toString(),
                     LocalDateTime.now(clock)
             );
-            obligation = payoutObligationRepository.save(obligation);
-            attempt = findAttempt(obligation, sequence);
-        } else if (obligation.status() == PayoutObligationStatus.PROCESSING) {
-            attempt = obligation.latestAttempt()
+            settlement = projectSettlementRepository.save(settlement);
+            attempt = findAttempt(settlement, sequence);
+        } else if (settlement.status() == PayoutStatus.PROCESSING) {
+            attempt = settlement.latestAttempt()
                     .orElseThrow(PayoutExecutionService::inconsistentData);
             if (attempt.status() != PayoutAttemptStatus.REQUESTED
                     && attempt.status() != PayoutAttemptStatus.IN_PROGRESS
@@ -122,76 +111,68 @@ public final class PayoutExecutionService implements PayoutExecutor {
                 throw inconsistentData();
             }
         } else {
-            return PreparedPayout.noRequest(resultOf(obligation));
+            return PreparedPayout.noRequest(resultOf(settlement));
         }
-
-        ProjectSettlement settlement = projectSettlementRepository.findById(obligation.settlementId())
-                .orElseThrow(PayoutExecutionService::inconsistentData);
-        validatePayoutSource(obligation, settlement);
 
         ScheduledPayoutRequest request = new ScheduledPayoutRequest(
                 attempt.refPayoutId(),
-                settlement.destinationSnapshot().tossSellerId(),
-                obligation.scheduledDate(),
-                obligation.amount(),
+                settlement.tossSellerId(),
+                settlement.scheduledDate(),
+                settlement.creatorPayoutAmount(),
                 TRANSACTION_DESCRIPTION,
                 attempt.idempotencyKey()
         );
-        return PreparedPayout.requested(
-                obligation.id(),
-                attempt.sequence(),
-                request
-        );
+        return PreparedPayout.requested(settlement.id(), attempt.sequence(), request);
     }
 
     private PayoutExecutionResult applyGatewayResult(
             PreparedPayout prepared,
             PayoutGatewayResult gatewayResult
     ) {
-        PayoutObligation obligation = findObligation(prepared.payoutObligationId());
-        if (obligation.status() != PayoutObligationStatus.PROCESSING) {
-            return resultOf(obligation);
+        ProjectSettlement settlement = findSettlement(prepared.settlementId());
+        if (settlement.status() != PayoutStatus.PROCESSING) {
+            return resultOf(settlement);
         }
-        PayoutAttempt attempt = findAttempt(obligation, prepared.attemptSequence());
+        PayoutAttempt attempt = findAttempt(settlement, prepared.attemptSequence());
 
         if (gatewayResult instanceof PayoutGatewayResult.Failed failed) {
-            applyFailure(obligation, attempt, failed);
+            applyFailure(settlement, attempt, failed);
         } else if (gatewayResult instanceof PayoutGatewayResult.Accepted accepted) {
-            applyAcceptedResult(obligation, attempt, accepted);
+            applyAcceptedResult(settlement, attempt, accepted);
         } else {
             throw new PayoutGatewayException("지원하지 않는 지급대행 결과입니다.");
         }
 
-        return resultOf(payoutObligationRepository.save(obligation));
+        return resultOf(projectSettlementRepository.save(settlement));
     }
 
     private PayoutExecutionResult markUnknown(PreparedPayout prepared) {
-        PayoutObligation obligation = findObligation(prepared.payoutObligationId());
-        if (obligation.status() != PayoutObligationStatus.PROCESSING) {
-            return resultOf(obligation);
+        ProjectSettlement settlement = findSettlement(prepared.settlementId());
+        if (settlement.status() != PayoutStatus.PROCESSING) {
+            return resultOf(settlement);
         }
-        PayoutAttempt attempt = findAttempt(obligation, prepared.attemptSequence());
-        obligation.markAttemptUnknown(attempt);
-        return resultOf(payoutObligationRepository.save(obligation));
+        PayoutAttempt attempt = findAttempt(settlement, prepared.attemptSequence());
+        settlement.markAttemptUnknown(attempt);
+        return resultOf(projectSettlementRepository.save(settlement));
     }
 
     private void applyAcceptedResult(
-            PayoutObligation obligation,
+            ProjectSettlement settlement,
             PayoutAttempt attempt,
             PayoutGatewayResult.Accepted accepted
     ) {
         switch (accepted.status()) {
-            case REQUESTED, IN_PROGRESS -> obligation.acknowledgeAttempt(
+            case REQUESTED, IN_PROGRESS -> settlement.acknowledgeAttempt(
                     attempt,
                     accepted.payoutId(),
                     accepted.status()
             );
-            case COMPLETED -> obligation.completeAttempt(
+            case COMPLETED -> settlement.completeAttempt(
                     attempt,
                     accepted.payoutId(),
                     LocalDateTime.now(clock)
             );
-            case CANCELED -> obligation.cancelAttempt(
+            case CANCELED -> settlement.cancelAttempt(
                     attempt,
                     accepted.payoutId(),
                     LocalDateTime.now(clock)
@@ -201,13 +182,12 @@ public final class PayoutExecutionService implements PayoutExecutor {
     }
 
     private void applyFailure(
-            PayoutObligation obligation,
+            ProjectSettlement settlement,
             PayoutAttempt attempt,
             PayoutGatewayResult.Failed failed
     ) {
-        boolean retryable = failed.retryable()
-                && obligation.attemptCount() < MAX_ATTEMPTS;
-        obligation.failAttempt(
+        boolean retryable = failed.retryable() && settlement.attemptCount() < MAX_ATTEMPTS;
+        settlement.failAttempt(
                 attempt,
                 failed.payoutId(),
                 failed.errorCode(),
@@ -216,42 +196,31 @@ public final class PayoutExecutionService implements PayoutExecutor {
         );
     }
 
-    private PayoutObligation findObligation(Long payoutObligationId) {
-        return payoutObligationRepository.findById(payoutObligationId)
+    private ProjectSettlement findSettlement(Long settlementId) {
+        return projectSettlementRepository.findById(settlementId)
                 .orElseThrow(PayoutExecutionService::inconsistentData);
     }
 
-    private static PayoutAttempt findAttempt(PayoutObligation obligation, int sequence) {
-        return obligation.attempts().stream()
+    private static PayoutAttempt findAttempt(ProjectSettlement settlement, int sequence) {
+        return settlement.attempts().stream()
                 .filter(attempt -> attempt.sequence() == sequence)
                 .findFirst()
                 .orElseThrow(PayoutExecutionService::inconsistentData);
     }
 
-    private static PayoutExecutionResult resultOf(PayoutObligation obligation) {
-        PayoutAttempt attempt = obligation.latestAttempt()
+    private static PayoutExecutionResult resultOf(ProjectSettlement settlement) {
+        PayoutAttempt attempt = settlement.latestAttempt()
                 .orElseThrow(PayoutExecutionService::inconsistentData);
         return new PayoutExecutionResult(
-                obligation.id(),
+                settlement.id(),
                 attempt.sequence(),
                 attempt.status(),
-                obligation.status()
+                settlement.status()
         );
     }
 
-    private static void validatePayoutSource(
-            PayoutObligation obligation,
-            ProjectSettlement settlement
-    ) {
-        if (!Objects.equals(obligation.settlementId(), settlement.id())
-                || !Objects.equals(obligation.creatorId(), settlement.creatorId())
-                || !Objects.equals(obligation.amount(), settlement.creatorPayoutAmount())) {
-            throw inconsistentData();
-        }
-    }
-
-    private static String refPayoutId(Long payoutObligationId, int sequence) {
-        return "earlybird-payout-" + payoutObligationId + "-" + sequence;
+    private static String refPayoutId(Long settlementId, int sequence) {
+        return "earlybird-payout-" + settlementId + "-" + sequence;
     }
 
     private static SettlementException inconsistentData() {
@@ -266,19 +235,19 @@ public final class PayoutExecutionService implements PayoutExecutor {
     }
 
     private record PreparedPayout(
-            Long payoutObligationId,
+            Long settlementId,
             int attemptSequence,
             ScheduledPayoutRequest request,
             PayoutExecutionResult currentResult
     ) {
 
         private static PreparedPayout requested(
-                Long payoutObligationId,
+                Long settlementId,
                 int attemptSequence,
                 ScheduledPayoutRequest request
         ) {
             return new PreparedPayout(
-                    payoutObligationId,
+                    settlementId,
                     attemptSequence,
                     Objects.requireNonNull(request),
                     null
@@ -287,7 +256,7 @@ public final class PayoutExecutionService implements PayoutExecutor {
 
         private static PreparedPayout noRequest(PayoutExecutionResult currentResult) {
             return new PreparedPayout(
-                    currentResult.payoutObligationId(),
+                    currentResult.settlementId(),
                     currentResult.attemptSequence(),
                     null,
                     currentResult

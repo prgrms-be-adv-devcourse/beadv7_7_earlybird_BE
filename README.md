@@ -46,6 +46,7 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 | file-service | 8087 | 파일 (미구현 스켈레톤) |
 | board-service | 8088 | 커뮤니티 (공지/의견/리뷰) |
 | notification-service | 8089 | 알림 |
+| ai-service | 8090 | AI |
 | common | — | 공유 모듈 (`ApiResponse`, `BusinessException` 등) |
 
 `/internal/**` API는 게이트웨이에 라우트가 없다 — 서비스 간 Eureka 직접 호출 전용이며 외부에서 접근 불가.
@@ -55,7 +56,7 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 ### 사전 준비
 
 - Java 21
-- Docker (Elasticsearch/Kibana 용 — project-service 검색 기능에만 필요)
+- Docker (Elasticsearch 용 — project-service 검색 기능에만 필요)
 
 ### 설정 저장소
 
@@ -64,7 +65,7 @@ infrastructure/  포트 구현체. client/ 에 RestClient/Feign 기반 HTTP 어�
 ### 기동 순서 (순서 중요!)
 
 ```bash
-# 0. (검색 기능 쓸 때만) Elasticsearch + Kibana
+# 0. (검색 기능 쓸 때만) Elasticsearch
 docker compose -f infrastructure/docker-compose.yml up -d
 
 # 1. 설정 서버
@@ -83,6 +84,17 @@ docker compose -f infrastructure/docker-compose.yml up -d
 ```
 
 기동 확인: Eureka 대시보드 http://localhost:8761 에 서비스가 등록되면 성공. 모든 API 호출은 게이트웨이(http://localhost:8000)를 통한다.
+
+### Kafka 토픽 추가
+
+토픽 목록은 `infrastructure/kafka/init-topics.sh`가 유일한 소스다(각 서비스가 `NewTopic` 빈으로 직접 만들지 않음 —
+토픽 소유권 혼선/설정 드리프트를 막기 위해 브로커에 `auto.create.topics.enable=false`를 걸어뒀다). 새 토픽이
+필요하면 그 스크립트에 추가하고(+ `common`의 `KafkaTopics` 상수도 같이), 아래 한 줄로 반영한다 — 브로커 재시작도
+다운타임도 없다:
+
+```bash
+./infrastructure/kafka/apply-topics.sh
+```
 
 ### 빌드 / 테스트
 

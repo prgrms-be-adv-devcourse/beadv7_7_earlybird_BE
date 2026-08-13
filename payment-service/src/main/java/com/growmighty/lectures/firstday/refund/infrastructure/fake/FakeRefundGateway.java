@@ -14,9 +14,13 @@ import org.springframework.stereotype.Component;
 public class FakeRefundGateway implements RefundGateway {
 
     @Override
-    public void refund(String paymentKey, RefundReason refundReason) {
+    public void refund(String paymentKey, RefundReason refundReason, String idempotencyKey) {
         if (paymentKey == null || paymentKey.isBlank()) {
             throw new IllegalArgumentException("paymentKey는 필수입니다.");
+        }
+
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("환불 멱등키는 필수입니다.");
         }
 
         if (refundReason == null) {

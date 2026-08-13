@@ -1,24 +1,75 @@
 // TODO(settlement-plan): Persist stable refPayoutId and the minimum Toss response needed for idempotent retries and audit.
 package com.growmighty.lectures.firstday.settlement.domain.model;
 
+import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-public final class PayoutAttempt {
+@Entity
+@Table(
+        name = "payout_attempts",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_payout_attempt_ref_payout_id", columnNames = "ref_payout_id"),
+                @UniqueConstraint(name = "uk_payout_attempt_idempotency_key", columnNames = "idempotency_key"),
+                @UniqueConstraint(name = "uk_payout_attempt_sequence", columnNames = {"settlement_id", "sequence"})
+        }
+)
+public class PayoutAttempt extends BaseEntity {
 
-    private final Long id;
-    private final int sequence;
-    private final String refPayoutId;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "settlement_id", nullable = false, updatable = false)
+    private ProjectSettlement settlement;
+
+    @Column(name = "sequence", nullable = false, updatable = false)
+    private int sequence;
+
+    @Column(name = "ref_payout_id", nullable = false, updatable = false, length = 50)
+    private String refPayoutId;
+
+    @Column(name = "toss_payout_id", unique = true, length = 35)
     private String tossPayoutId;
-    private final String idempotencyKey;
-    private final Money amount;
+
+    @Column(name = "idempotency_key", nullable = false, updatable = false, length = 300)
+    private String idempotencyKey;
+
+    @Column(name = "payout_amount", nullable = false, precision = 19, scale = 0, updatable = false)
+    private Money amount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
     private PayoutAttemptStatus status;
+
+    @Column(name = "error_code", length = 100)
     private String errorCode;
-    private final LocalDateTime requestedAt;
+
+    @Column(name = "requested_at", nullable = false, updatable = false)
+    private LocalDateTime requestedAt;
+
+    @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    protected PayoutAttempt() {
+    }
+
     private PayoutAttempt(
-            Long id,
+            ProjectSettlement settlement,
             int sequence,
             String refPayoutId,
             String tossPayoutId,
@@ -29,19 +80,7 @@ public final class PayoutAttempt {
             LocalDateTime requestedAt,
             LocalDateTime completedAt
     ) {
-        if (id != null && id <= 0) {
-            throw new IllegalArgumentException("지급 시도 식별자는 양수여야 합니다.");
-        }
-        if (sequence <= 0) {
-            throw new IllegalArgumentException("지급 시도 순번은 양수여야 합니다.");
-        }
-        if (refPayoutId == null || refPayoutId.isBlank()) {
-            throw new IllegalArgumentException("지급대행 참조 식별자는 필수입니다.");
-        }
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new IllegalArgumentException("멱등키는 필수입니다.");
-        }
-        this.id = id;
+        this.settlement = Objects.requireNonNull(settlement, "프로젝트 정산은 필수입니다.");
         this.sequence = sequence;
         this.refPayoutId = refPayoutId;
         this.tossPayoutId = tossPayoutId;
@@ -51,9 +90,11 @@ public final class PayoutAttempt {
         this.errorCode = errorCode;
         this.requestedAt = Objects.requireNonNull(requestedAt, "지급 요청 시각은 필수입니다.");
         this.completedAt = completedAt;
+        validateState();
     }
 
     static PayoutAttempt requested(
+            ProjectSettlement settlement,
             int sequence,
             String refPayoutId,
             String idempotencyKey,
@@ -61,7 +102,7 @@ public final class PayoutAttempt {
             LocalDateTime requestedAt
     ) {
         return new PayoutAttempt(
-                null,
+                settlement,
                 sequence,
                 refPayoutId,
                 null,
@@ -71,32 +112,6 @@ public final class PayoutAttempt {
                 null,
                 requestedAt,
                 null
-        );
-    }
-
-    public static PayoutAttempt restore(
-            Long id,
-            int sequence,
-            String refPayoutId,
-            String tossPayoutId,
-            String idempotencyKey,
-            Money amount,
-            PayoutAttemptStatus status,
-            String errorCode,
-            LocalDateTime requestedAt,
-            LocalDateTime completedAt
-    ) {
-        return new PayoutAttempt(
-                Objects.requireNonNull(id, "지급 시도 식별자는 필수입니다."),
-                sequence,
-                refPayoutId,
-                tossPayoutId,
-                idempotencyKey,
-                amount,
-                status,
-                errorCode,
-                requestedAt,
-                completedAt
         );
     }
 
@@ -217,5 +232,24 @@ public final class PayoutAttempt {
                 || status == PayoutAttemptStatus.CANCELED) {
             throw new IllegalStateException("이미 종료된 지급 시도입니다: " + status);
         }
+    }
+
+    @PostLoad
+    private void validateState() {
+        if (id != null && id <= 0) {
+            throw new IllegalArgumentException("지급 시도 식별자는 양수여야 합니다.");
+        }
+        if (sequence <= 0) {
+            throw new IllegalArgumentException("지급 시도 순번은 양수여야 합니다.");
+        }
+        if (refPayoutId == null || refPayoutId.isBlank()) {
+            throw new IllegalArgumentException("지급대행 참조 식별자는 필수입니다.");
+        }
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("멱등키는 필수입니다.");
+        }
+        Objects.requireNonNull(amount, "지급 금액은 필수입니다.");
+        Objects.requireNonNull(status, "지급 시도 상태는 필수입니다.");
+        Objects.requireNonNull(requestedAt, "지급 요청 시각은 필수입니다.");
     }
 }

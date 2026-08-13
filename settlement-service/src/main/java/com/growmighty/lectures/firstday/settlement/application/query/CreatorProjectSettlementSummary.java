@@ -2,7 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligationStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -11,7 +11,7 @@ public record CreatorProjectSettlementSummary(
         Long projectId,
         Money settlementBaseAmount,
         Money creatorPayoutAmount,
-        PayoutObligationStatus status,
+        PayoutStatus status,
         LocalDateTime confirmedAt,
         LocalDate scheduledDate,
         LocalDateTime completedAt

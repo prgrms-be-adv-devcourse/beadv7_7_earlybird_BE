@@ -17,7 +17,6 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class PaymentService {
     private final PaymentRepository paymentRepository;
-    private final PaymentGateway  paymentGateway; //취소 메서드 수정후 삭제 예정
     private final PaymentApprovalSagaOrchestrator paymentApprovalSagaService;
 
     @Transactional
@@ -68,7 +67,7 @@ public class PaymentService {
      * 프론트가 Payment 서비스의 Post /api/v1/payments/confirm API를 호출합니다.
      * 그렇게 되면 Payment 서비스가 토스 승인 API를 호출하고, 성공하면 PAID 및 Outbox에 저장하는데
      * 현재 세미 프로젝트 상황에서는 프론트가 구현되지 않아 실제로 프론트에서 동작여부를 확인할 수 업습니다.
-     *
+     * <p>
      * 대신 백엔드에서 Curl을 통해 실제 동작함을 확인헀습니다.
      *
      * @param paymentKey
@@ -81,15 +80,6 @@ public class PaymentService {
         return paymentApprovalSagaService.approve(paymentKey, pgOrderId, amount);
     }
 
-    @Transactional
-    public PaymentInfo cancel(Long paymentId) {
-        Payment payment = findPayment(paymentId);
-
-        paymentGateway.cancel(payment.getPaymentKey());
-        payment.cancel();
-        return PaymentInfo.from(paymentRepository.save(payment));
-    }
-
     @Transactional(readOnly = true)
     public PaymentInfo getPayment(Long paymentId) {
         Payment payment = findPayment(paymentId);
@@ -99,5 +89,12 @@ public class PaymentService {
     private Payment findPayment(Long paymentId) {
         return paymentRepository.findById(paymentId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentInfo getPaymentByOrderId(Long orderId) {
+        return paymentRepository.findByOrderId(orderId)
+            .map(PaymentInfo::from)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 주문의 결제입니다. " + orderId));
     }
 }
