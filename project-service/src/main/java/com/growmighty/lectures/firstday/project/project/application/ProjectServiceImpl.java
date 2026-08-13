@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
@@ -36,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,6 +47,7 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class ProjectServiceImpl implements ProjectService {
 
+    private static final int AUTOCOMPLETE_MAX_RESULTS = 10;
     /** reindexAllProjects() 페이징 단위 — ES bulk 호출/임베딩 벌크 저장 배치 크기와 동일하게 맞춘다. */
     private static final int REINDEX_PAGE_SIZE = 50;
 
@@ -83,6 +86,27 @@ public class ProjectServiceImpl implements ProjectService {
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
+                .toList();
+    }
+
+    /**
+     * ES는 후보 projectId 인덱스일 뿐, 콘텐츠/가시성의 소스오브트루스가 아니다(findAll과 동일한 원칙) —
+     * PENDING_REVIEW/REJECTED 상태로 색인된 문서나, 삭제 실패로 남아있는 stale 문서가 그대로 노출되지
+     * 않도록 여기서 MySQL로 다시 걸러 필터링/정렬/제한한다. 제목도 ES 문서가 아니라 DB 엔티티에서
+     * 가져오므로 수정 후 색인이 아직 안 따라잡은 상태에서도 최신 제목을 준다.
+     */
+    @Override
+    public List<ProjectSuggestion> autocomplete(String keyword) {
+        List<ProjectSuggestion> candidates = searchPort.autocomplete(keyword);
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        List<Long> candidateIds = candidates.stream().map(ProjectSuggestion::projectId).toList();
+        return projectRepository.findAllById(candidateIds).stream()
+                .filter(Project::isPublished)
+                .sorted(Comparator.comparing(Project::getProjectId))
+                .limit(AUTOCOMPLETE_MAX_RESULTS)
+                .map(p -> new ProjectSuggestion(p.getProjectId(), p.getTitle()))
                 .toList();
     }
 

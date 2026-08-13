@@ -8,9 +8,11 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectAutocompleteResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -60,6 +62,19 @@ public class ProjectController {
             @RequestParam(required = false) ProjectSort sort) {
         return projectService.findAll(keyword, categoryId, status, sort,
                 requesterRole != null ? requesterRole : UserRole.BACKER);
+    }
+
+    /**
+     * 제목(title) 자동완성. 하이브리드 검색(GET /api/v1/projects?keyword=)과 달리 title에 대한
+     * prefix 매치만 가볍게 수행하고, 최대 10개까지 {projectId, title}만 반환한다.
+     */
+    @GetMapping("/autocomplete")
+    public List<ProjectAutocompleteResponse> autocomplete(
+            @RequestParam @NotBlank(message = "검색어는 공백일 수 없습니다.")
+            @Size(max = 100, message = "검색어는 100자 이하여야 합니다.") String keyword) {
+        return projectService.autocomplete(keyword).stream()
+                .map(ProjectAutocompleteResponse::from)
+                .toList();
     }
 
     /** 내 프로젝트 목록. */

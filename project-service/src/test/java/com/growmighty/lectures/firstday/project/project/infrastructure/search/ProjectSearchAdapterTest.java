@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,7 @@ import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -55,6 +58,7 @@ class ProjectSearchAdapterTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         when(circuitBreakerFactory.create("projectSearch")).thenReturn(circuitBreaker);
+        when(circuitBreakerFactory.create("projectAutocomplete")).thenReturn(circuitBreaker);
         when(circuitBreaker.run(any(Supplier.class), any(Function.class))).thenAnswer(invocation -> {
             Supplier<Object> toRun = invocation.getArgument(0);
             Function<Throwable, Object> fallback = invocation.getArgument(1);
@@ -185,5 +189,45 @@ class ProjectSearchAdapterTest {
         when(elasticsearchOperations.save(anyList())).thenThrow(new RuntimeException("es down"));
 
         assertThatCode(() -> adapter.bulkIndex(List.of(project()))).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("자동완성이 성공하면 매치된 문서들의 projectId와 title을 반환한다")
+    @SuppressWarnings("unchecked")
+    void autocomplete_success_returnsSuggestions() {
+        SearchHits<ProjectDocument> hits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> hit = mock(SearchHit.class);
+        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "카카오 프로젝트", null, null, new float[1536]));
+        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(hits);
+
+        List<ProjectSuggestion> result = adapter.autocomplete("카카");
+
+        assertThat(result).containsExactly(new ProjectSuggestion(42L, "카카오 프로젝트"));
+    }
+
+    @Test
+    @DisplayName("자동완성 호출이 실패하면 503 예외로 변환한다")
+    void autocomplete_elasticsearchCallFailure_throwsServiceUnavailable() {
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenThrow(new RuntimeException("es down"));
+
+        assertThatThrownBy(() -> adapter.autocomplete("카카"))
+                .isInstanceOf(ServiceUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("매치되는 문서가 없으면 빈 리스트를 반환한다")
+    @SuppressWarnings("unchecked")
+    void autocomplete_noMatches_returnsEmptyList() {
+        SearchHits<ProjectDocument> hits = mock(SearchHits.class);
+        when(hits.stream()).thenReturn(java.util.stream.Stream.empty());
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(hits);
+
+        List<ProjectSuggestion> result = adapter.autocomplete("존재안함");
+
+        assertThat(result).isEmpty();
     }
 }

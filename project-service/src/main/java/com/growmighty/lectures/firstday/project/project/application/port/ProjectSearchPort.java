@@ -24,6 +24,9 @@ public interface ProjectSearchPort {
      */
     List<Long> search(String keyword);
 
+    /** title prefix 매치(자동완성). 매치 없으면 빈 리스트. ES 장애 시 ServiceUnavailableException. */
+    List<ProjectSuggestion> autocomplete(String prefix);
+
     /**
      * 재색인(reindexAllProjects) 전용 — 페이지 단위로 넘겨받은 프로젝트들을 한 번에 색인한다.
      * index()와 달리 이벤트를 발행하지 않고 즉시 동기 처리한다. 실패는 로그만 남기고 삼킨다 —

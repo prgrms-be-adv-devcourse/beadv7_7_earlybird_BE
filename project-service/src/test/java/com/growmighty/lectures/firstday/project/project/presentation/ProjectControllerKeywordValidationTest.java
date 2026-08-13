@@ -51,4 +51,17 @@ class ProjectControllerKeywordValidationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
     }
+
+    /**
+     * autocomplete의 keyword가 공백뿐이면(@NotBlank) ES/DB까지 가지 않고 400을 반환하는지 검증한다
+     * (리뷰 반영 — @Size만으로는 길이만 보므로 "   "도 통과해 불필요한 ES 호출이 발생했다).
+     */
+    @Test
+    @DisplayName("autocomplete의 keyword가 공백뿐이면 400과 표준 에러 봉투를 반환한다")
+    void autocomplete_blankKeyword_returns400() throws Exception {
+        mockMvc.perform(get("/api/v1/projects/autocomplete").param("keyword", "   "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
 }

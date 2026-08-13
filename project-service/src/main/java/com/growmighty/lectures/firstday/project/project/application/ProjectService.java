@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.project.project.application;
 import java.math.BigDecimal;
 
 import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectCreateRequest;
@@ -21,6 +22,9 @@ public interface ProjectService {
 
     /** requesterRole이 ADMIN이면 PENDING_REVIEW/REJECTED도 결과에 포함한다. */
     List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole);
+
+    /** title prefix 매치(자동완성). 매치 없으면 빈 리스트. ES 장애 시 ServiceUnavailableException. */
+    List<ProjectSuggestion> autocomplete(String keyword);
 
     ProjectResponse findById(Long projectId);
 
