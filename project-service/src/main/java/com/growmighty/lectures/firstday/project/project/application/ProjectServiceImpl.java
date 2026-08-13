@@ -148,6 +148,10 @@ public class ProjectServiceImpl implements ProjectService {
      * orderPort.hasOrderedReward()(HTTP 호출)를 트랜잭션 밖에서 먼저 끝내야 그 응답을 기다리는 동안
      * DB 커넥션을 물고 있지 않는다(#196). 존재/소유 확인도 무락 조회(getProject)로 여기서 먼저 끝내고,
      * 실제 삭제(배타 락 선점 포함)는 deleteInternal()에 위임한다.
+     *
+     * 이 체크는 빠른 실패 경로일 뿐 정합성 보장의 핵심은 아니다 — 여기서 false가 나와도 배타 락이
+     * 없는 틈에 새 decreaseStock()이 끼어들어 주문을 완성시킬 수 있다. 진짜 안전장치는
+     * deleteInternal()이 배타 락을 잡은 뒤 다시 확인하는 두 번째 체크다(그 주석 참고).
      */
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -165,6 +169,14 @@ public class ProjectServiceImpl implements ProjectService {
      * projectRepository.findByIdForDelete()(배타 락)로 Project를 맨 먼저 선점한다 —
      * ProjectRepository.findByIdForDelete() 주석 참고. delete()에서 이미 존재/소유/주문이력을
      * 확인했지만, 락 재획득 사이의 TOCTOU를 방어하기 위해 소유권을 여기서 다시 검증한다.
+     *
+     * hasOrderedReward()도 배타 락을 잡은 "직후"에 다시 확인해야 한다 — delete()의 사전 체크와 이
+     * 락 획득 사이의 틈에 새 decreaseStock()이 공유 락을 얻어 주문을 완성시켰을 수 있기 때문이다.
+     * decreaseStock()은 재고를 깎기 전에 항상 Project를 공유 락으로 먼저 잠그므로
+     * (RewardStockTransactionExecutor 참고), 이 배타 락을 잡은 시점 이후로는 어떤 decreaseStock()도
+     * 끼어들 수 없다. 그리고 order-service의 placeOrder()는 Order row를 재고 차감 HTTP 호출보다
+     * 먼저 커밋하므로, 그 이전에 완성된 주문은 이 재확인에 반드시 걸린다 — 그래서 이 시점의 체크만이
+     * 진짜 안전장치다.
      */
     @Override
     @Transactional
@@ -172,6 +184,9 @@ public class ProjectServiceImpl implements ProjectService {
         Project project = projectRepository.findByIdForDelete(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
         validateOwnership(project, requesterId);
+        if (orderPort.hasOrderedReward(projectId)) {
+            throw new IllegalStateException("후원(주문) 내역이 있는 프로젝트는 삭제할 수 없습니다. projectId=" + projectId);
+        }
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
         searchPort.remove(projectId);
