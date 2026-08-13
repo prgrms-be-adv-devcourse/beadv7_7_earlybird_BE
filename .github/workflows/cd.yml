@@ -73,9 +73,53 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
+  deploy-k8s:
+    name: deploy (k3s core three)
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      - uses: appleboy/ssh-action@v1
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
+        with:
+          # 데이터 박스(k3s 컨트롤 플레인) - #198 핵심 3종(config/discovery/gateway-server)의
+          # 파드는 nodeSelector로 앱 박스에 고정돼 있지만, kubectl 은 항상 컨트롤 플레인에
+          # 대고 실행해야 하므로 SSH 타겟은 데이터 박스다. 나머지는 앱 박스와 동일한 키/계정.
+          host: ${{ secrets.DATA_EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: '10m'
+          envs: JWT_SECRET,DEPLOY_SHA
+          script: |
+            set -e
+            # ec2-user는 /etc/rancher/k3s/k3s.yaml을 직접 읽을 수 있어(644, k3s 기본 권한)
+            # sudo 없이도 kubectl이 되지만, appleboy/ssh-action은 비대화형 셸이라
+            # .bash_profile의 KUBECONFIG 관례를 안 읽는다 - 여기서 명시한다.
+            export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+            cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
+            git fetch origin && git reset --hard origin/main
+            # user-service(발급)와 반드시 같은 값이어야 하는 시크릿을 매 배포마다 재적용 -
+            # 수동으로 한 번 만들어둔 뒤 방치되다 값이 어긋나는 사고를 막는다.
+            kubectl -n webapp create secret generic gateway-jwt \
+              --from-literal=JWT_SECRET="$JWT_SECRET" --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -f infrastructure/k8s/
+            for svc in config-server discovery-server gateway-server; do
+              kubectl -n webapp set image "deployment/$svc" \
+                "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$DEPLOY_SHA"
+            done
+            # :latest 로 rollout restart 하는 대신 :SHA 태그로 set image - 이래야 kubectl rollout
+            # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
+            for svc in config-server discovery-server gateway-server; do
+              kubectl -n webapp rollout status "deployment/$svc" --timeout=5m
+            done
+
   deploy:
     name: deploy
-    needs: build
+    needs: deploy-k8s
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
@@ -114,7 +158,10 @@ jobs:
             # :rollback) instead of only living on as an anonymous dangling image that a later
             # prune could sweep away. `docker image inspect` guards the first-ever deploy, where
             # :latest doesn't exist locally yet.
-            for svc in config-server discovery-server gateway-server order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
+            # config-server/discovery-server/gateway-server는 #198로 k8s 이전 완료 - 더 이상
+            # 이 박스에서 compose로 뜨지 않으므로 목록에서 뺐다 (안 그러면 존재하지 않는
+            # 이미지를 계속 태그하려다 조용히 no-op만 반복).
+            for svc in order-service project-service payment-service user-service cart-service settlement-service file-service board-service notification-service; do
               img="ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc"
               docker image inspect "$img:latest" > /dev/null 2>&1 && docker tag "$img:latest" "$img:rollback"
             done
