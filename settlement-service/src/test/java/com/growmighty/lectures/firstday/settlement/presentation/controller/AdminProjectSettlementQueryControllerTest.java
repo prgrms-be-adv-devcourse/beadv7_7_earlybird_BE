@@ -16,8 +16,8 @@ import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayo
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
-import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
-import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -45,7 +45,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     private ProjectSettlementService projectSettlementService;
 
     @Autowired
-    private ProjectSettlementRepository projectSettlementRepository;
+    private PayoutObligationRepository payoutObligationRepository;
 
     @Test
     @DisplayName("프로젝트 정산 내역이 없으면 관리자는 빈 목록을 조회한다")
@@ -118,9 +118,9 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 creatorId,
                 LocalDateTime.of(2026, 7, 1, 9, 0)
         );
-        ProjectSettlement completedSettlement = failThenCompletePayout(confirmed);
-        PayoutAttempt failedAttempt = completedSettlement.attempts().getFirst();
-        PayoutAttempt completedAttempt = completedSettlement.attempts().getLast();
+        PayoutObligation completedObligation = failThenCompletePayout(confirmed);
+        PayoutAttempt failedAttempt = completedObligation.attempts().getFirst();
+        PayoutAttempt completedAttempt = completedObligation.attempts().getLast();
 
         mockMvc.perform(get("/api/v1/settlements/all/{settlementId}", confirmed.settlementId()))
                 .andExpect(status().isOk())
@@ -221,50 +221,50 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     }
 
     private void failPayoutAttempt(ConfirmedProjectSettlement confirmed) {
-        ProjectSettlement settlement = projectSettlementRepository.findById(confirmed.settlementId())
+        PayoutObligation payoutObligation = payoutObligationRepository.findBySettlementId(confirmed.settlementId())
                 .orElseThrow();
-        PayoutAttempt attempt = settlement.startAttempt(
+        PayoutAttempt attempt = payoutObligation.startAttempt(
                 "admin-list-ref-payout",
                 "admin-list-idempotency",
                 LocalDateTime.of(2026, 7, 7, 9, 0)
         );
-        settlement.failAttempt(
+        payoutObligation.failAttempt(
                 attempt,
                 "admin-list-toss-payout",
                 "ADMIN_LIST_INVALID_ACCOUNT",
                 LocalDateTime.of(2026, 7, 7, 9, 0, 3),
                 false
         );
-        projectSettlementRepository.save(settlement);
+        payoutObligationRepository.save(payoutObligation);
     }
 
-    private ProjectSettlement failThenCompletePayout(ConfirmedProjectSettlement confirmed) {
-        ProjectSettlement settlement = projectSettlementRepository.findById(confirmed.settlementId())
+    private PayoutObligation failThenCompletePayout(ConfirmedProjectSettlement confirmed) {
+        PayoutObligation payoutObligation = payoutObligationRepository.findBySettlementId(confirmed.settlementId())
                 .orElseThrow();
-        PayoutAttempt firstAttempt = settlement.startAttempt(
+        PayoutAttempt firstAttempt = payoutObligation.startAttempt(
                 "admin-detail-ref-1",
                 "admin-detail-key-1",
                 LocalDateTime.of(2026, 7, 7, 9, 0)
         );
-        settlement.failAttempt(
+        payoutObligation.failAttempt(
                 firstAttempt,
                 "admin-detail-toss-1",
                 "BANK_TEMPORARILY_UNAVAILABLE",
                 LocalDateTime.of(2026, 7, 7, 9, 0, 3),
                 true
         );
-        settlement = projectSettlementRepository.save(settlement);
+        payoutObligation = payoutObligationRepository.save(payoutObligation);
 
-        PayoutAttempt secondAttempt = settlement.startAttempt(
+        PayoutAttempt secondAttempt = payoutObligation.startAttempt(
                 "admin-detail-ref-2",
                 "admin-detail-key-2",
                 LocalDateTime.of(2026, 7, 8, 9, 0)
         );
-        settlement.completeAttempt(
+        payoutObligation.completeAttempt(
                 secondAttempt,
                 "admin-detail-toss-2",
                 LocalDateTime.of(2026, 7, 8, 9, 0, 3)
         );
-        return projectSettlementRepository.save(settlement);
+        return payoutObligationRepository.save(payoutObligation);
     }
 }
