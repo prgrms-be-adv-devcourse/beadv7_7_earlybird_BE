@@ -12,6 +12,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.respons
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -69,7 +70,8 @@ public class ProjectController {
      */
     @GetMapping("/autocomplete")
     public List<ProjectAutocompleteResponse> autocomplete(
-            @RequestParam @Size(min = 1, max = 100, message = "검색어는 1자 이상 100자 이하여야 합니다.") String keyword) {
+            @RequestParam @NotBlank(message = "검색어는 공백일 수 없습니다.")
+            @Size(max = 100, message = "검색어는 100자 이하여야 합니다.") String keyword) {
         return projectService.autocomplete(keyword).stream()
                 .map(ProjectAutocompleteResponse::from)
                 .toList();
