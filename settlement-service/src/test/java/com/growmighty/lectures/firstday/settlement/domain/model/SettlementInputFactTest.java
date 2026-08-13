@@ -72,4 +72,21 @@ class SettlementInputFactTest {
                 Instant.parse("2026-07-18T00:05:00Z")
         )).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("완료 결제는 대사 대기에서 대사 완료로 전이한다")
+    void confirmsCompletedPaymentReconciliation() {
+        OrderPaymentFact fact = OrderPaymentFact.completed(
+                1001L,
+                "PAY-01J2X8P4QW6YV0M3",
+                101L,
+                Money.wons(50_000),
+                Instant.parse("2026-07-15T04:20:10Z")
+        );
+
+        fact.confirmReconciliation();
+
+        assertThat(fact.reconciliationStatus())
+                .isEqualTo(OrderPaymentFact.ReconciliationStatus.CONFIRMED);
+    }
 }
