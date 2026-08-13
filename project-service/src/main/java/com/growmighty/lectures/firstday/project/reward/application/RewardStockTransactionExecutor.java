@@ -50,6 +50,11 @@ public class RewardStockTransactionExecutor {
             .filter(ProjectStatusView::open)
             .orElseThrow(() -> new IllegalStateException(
                 "마감되었거나 진행중이 아닌 프로젝트의 리워드는 주문할 수 없습니다. rewardId=" + rewardId));
+        // 무제한 리워드(totalQuantity=null)는 decreaseStockAtomic을 아예 호출하지 않아 그 WHERE절의
+        // active=true 조건에 닿지 못한다 — active 체크를 여기서 먼저 해야 비활성화된 무제한 리워드도 막힌다.
+        if (!reward.isActive()) {
+            throw new IllegalStateException("판매 종료된 리워드는 주문할 수 없습니다. reward=" + reward.getName());
+        }
         if (reward.getTotalQuantity() == null) {
             return;
         }
