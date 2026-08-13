@@ -15,6 +15,13 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
     Optional<Refund> findByPaymentId(Long paymentId);
 
     @Query("""
+          select refund.paymentId
+          from Refund refund
+          where refund.paymentId in :paymentIds
+          """)
+    List<Long> findPaymentIdsByPaymentIdIn(@Param("paymentIds") List<Long> paymentIds);
+
+    @Query("""
         select refund.id
         from Refund refund
         where refund.status = :status
@@ -25,4 +32,12 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
         @Param("status") RefundStatus status,
         @Param("cutoff") LocalDateTime cutoff,
         Pageable pageable);
+
+    @Query("""
+      select refund.id
+      from Refund refund
+      where refund.status = :status
+      order by refund.createdAt asc
+      """)
+    List<Long> findRefundIdsByStatus(@Param("status") RefundStatus status, Pageable pageable);
 }

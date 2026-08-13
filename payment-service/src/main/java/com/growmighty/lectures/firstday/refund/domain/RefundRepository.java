@@ -11,5 +11,9 @@ public interface RefundRepository {
 
     Optional<Refund> findByPaymentId(Long paymentId);
 
+    List<Long> findExistingPaymentIds(List<Long> paymentIds);
+
     List<Long> findRecoveryTargetIds(LocalDateTime cutoff, int limit);
+
+    Optional<Long> findNextPlannedRefundId();
 }

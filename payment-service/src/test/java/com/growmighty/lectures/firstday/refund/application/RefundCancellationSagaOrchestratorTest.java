@@ -75,6 +75,19 @@ class RefundCancellationSagaOrchestratorTest {
         verify(refundService, never()).completeRefund(REFUND_ID);
     }
 
+    @Test
+    void cancelPlannedRefund_completesRefundAfterTossRefundSucceeds() {
+        RefundCancellationTarget target = target();
+        when(refundService.startPlannedRefund(REFUND_ID)).thenReturn(target);
+
+        orchestrator.cancelPlannedRefund(REFUND_ID);
+
+        var inOrder = inOrder(refundService, refundGateway);
+        inOrder.verify(refundService).startPlannedRefund(REFUND_ID);
+        inOrder.verify(refundGateway).refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
+        inOrder.verify(refundService).completeRefund(REFUND_ID);
+    }
+
     private RefundCancellationTarget target() {
         return new RefundCancellationTarget(
             REFUND_ID,
