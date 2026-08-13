@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -46,6 +47,16 @@ class RewardServiceImplStockChangeIdempotencyTest {
         when(rewardRepository.findById(anyLong())).thenReturn(Optional.of(reward));
         when(projectServiceProvider.getObject()).thenReturn(projectService);
         when(projectService.findStatusView(anyLong())).thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
+        // decreaseStockAtomic/restoreStockAtomic은 실제로는 DB에서 원자적 조건부 UPDATE를 수행하지만,
+        // 여기서는 순수 Mockito 목이라 그 UPDATE 효과를 도메인 메서드 호출로 흉내내 재현한다.
+        when(rewardRepository.decreaseStockAtomic(anyLong(), anyInt())).thenAnswer(invocation -> {
+            reward.decreaseStock(invocation.getArgument(1));
+            return 1;
+        });
+        when(rewardRepository.restoreStockAtomic(anyLong(), anyInt())).thenAnswer(invocation -> {
+            reward.restoreStock(invocation.getArgument(1));
+            return 1;
+        });
     }
 
     @Test

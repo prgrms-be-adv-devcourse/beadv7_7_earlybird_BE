@@ -18,10 +18,12 @@ import java.util.Optional;
 
 /**
  * decreaseStock/restoreStock의 실제 트랜잭션 본문만 담당하는 별도 빈.
- * RewardServiceImpl의 @Retryable 래퍼가 재시도마다 이 빈의 프록시를 다시 호출해야, 시도마다
- * 물리적으로 새 트랜잭션에서 실행된다는 게 (자기 자신 호출이 아니라) 코드 구조로도 명확해진다.
- * 트랜잭션 메서드는 반드시 public이어야 한다 — Spring 프록시 기반 @Transactional은 기본적으로
- * public 메서드만 인터셉트하고, package-private/protected는 어노테이션이 있어도 조용히 무시한다.
+ * RewardServiceImpl이 이 빈의 프록시를 통해 호출해야, registerStockChange의 유니크 제약 위반
+ * (DataIntegrityViolationException)을 트랜잭션이 완전히 끝난 뒤 RewardServiceImpl 쪽에서 잡을 수 있다
+ * (registerStockChange 문서 참고) — 같은 트랜잭션 안에서 잡으면 이미 rollback-only로 표시된 트랜잭션을
+ * 커밋 시도하다 UnexpectedRollbackException이 난다. 트랜잭션 메서드는 반드시 public이어야 한다 —
+ * Spring 프록시 기반 @Transactional은 기본적으로 public 메서드만 인터셉트하고, package-private/
+ * protected는 어노테이션이 있어도 조용히 무시한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,21 +32,58 @@ public class RewardStockTransactionExecutor {
     private final ObjectProvider<ProjectService> projectServiceProvider;
     private final StockChangeLogRepository stockChangeLogRepository;
 
+    /**
+     * 재고 차감은 엔티티를 읽어 수정 후 flush(낙관적 락)하는 대신 RewardRepository.decreaseStockAtomic로
+     * 원자적 조건부 UPDATE를 실행한다 — 고경합 상황에서 재시도를 반복 소진해 재고가 남았는데도 실패하는
+     * 문제를 없애고, DB WHERE 절 자체가 초과 판매를 막는다. quantity>0 검증과 무제한 리워드(totalQuantity
+     * null) no-op 처리만 애플리케이션에서 미리 걸러내고, "활성 상태인가"/"재고가 충분한가"는 UPDATE의
+     * WHERE 절이 원자적으로 검증한다 — 실패(영향 행 0건) 시에만 원인 구분용으로 다시 조회한다.
+     */
     @Transactional
     public void decreaseStock(Long rewardId, int quantity, Long orderId) {
         registerStockChange(orderId, rewardId, StockChangeOperation.DECREASE);
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("차감 수량은 1개 이상이어야 합니다.");
+        }
         Reward reward = getRewardEntity(rewardId);
         findProjectStatus(reward.getProjectId())
             .filter(ProjectStatusView::open)
             .orElseThrow(() -> new IllegalStateException(
                 "마감되었거나 진행중이 아닌 프로젝트의 리워드는 주문할 수 없습니다. rewardId=" + rewardId));
-        reward.decreaseStock(quantity);
+        if (reward.getTotalQuantity() == null) {
+            return;
+        }
+        int updated = rewardRepository.decreaseStockAtomic(rewardId, quantity);
+        if (updated == 0) {
+            Reward current = getRewardEntity(rewardId);
+            if (!current.isActive()) {
+                throw new IllegalStateException("판매 종료된 리워드는 주문할 수 없습니다. reward=" + current.getName());
+            }
+            throw new IllegalStateException(
+                "재고가 부족합니다. reward=" + current.getName() + ", 재고=" + current.getRemainingQuantity()
+                    + ", 요청=" + quantity);
+        }
     }
 
+    /** decreaseStock과 같은 이유로 원자적 조건부 UPDATE를 쓴다 — restoreStockAtomic 참고. */
     @Transactional
     public void restoreStock(Long rewardId, int quantity, Long orderId) {
         registerStockChange(orderId, rewardId, StockChangeOperation.RESTORE);
-        getRewardEntity(rewardId).restoreStock(quantity);
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("복원 수량은 1개 이상이어야 합니다.");
+        }
+        Reward reward = getRewardEntity(rewardId);
+        if (reward.getTotalQuantity() == null) {
+            return;
+        }
+        int updated = rewardRepository.restoreStockAtomic(rewardId, quantity);
+        if (updated == 0) {
+            Reward current = getRewardEntity(rewardId);
+            throw new IllegalStateException(
+                "복원 후 재고가 총 수량을 초과할 수 없습니다. reward=" + current.getName()
+                    + ", 재고=" + current.getRemainingQuantity() + ", 복원=" + quantity
+                    + ", 총수량=" + current.getTotalQuantity());
+        }
     }
 
     /**
