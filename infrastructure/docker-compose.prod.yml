@@ -55,22 +55,10 @@ services:
   discovery-server:
     profiles: ["local-only"]
 
+  # #198 Phase 5 - k8s(앱 박스 nodeSelector 고정, hostPort:8000)로 이전 완료. discovery-server/
+  # config-server와 동일 패턴 - compose 기본 `up -d` 대상에서 제외.
   gateway-server:
-    # #198 Phase 5 전까지는 여전히 compose로 뜬다 - discovery-server/config-server를 core-depends-on으로
-    # 기다리므로 이 둘도 앱 박스 자신의 IP로 다시 찾을 수 있어야 한다.
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-gateway-server:latest
-    # Compose concatenates list fields like `ports` across -f files by default, so a plain
-    # override here would publish BOTH 8000:8000 (from the base file) and whatever we add - not
-    # what we want. `!override` forces a full replace instead of merging.
-    ports: !override []
-    # base 파일의 depends_on: *core-depends-on 이 config-server/discovery-server: condition:
-    # service_healthy를 그대로 갖고 있어 둘 다 required: false 로 완화 (다른 9개 서비스와 동일한 이유).
-    depends_on:
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   # 아래 9개 business-service는 base 파일에서 *business-depends-on(-kafka) 앵커로
   # `depends_on.{config-server,discovery-server}.condition: service_healthy`,
@@ -199,9 +187,16 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    # gateway-server가 profile로 빠지면서 list 문법(- gateway-server)은 "depends on undefined
+    # service" 에러를 낸다 - map 문법 + required: false로 전환 (다른 9개 서비스와 동일한 이유).
+    # Caddy는 어차피 gateway-server를 컴포즈 서비스명이 아니라 IP(Caddyfile 참고)로 직접 찾아가므로
+    # 기동 순서 자체도 더 이상 의미 없다.
     depends_on:
-      - gateway-server
-      - fe
+      gateway-server:
+        condition: service_started
+        required: false
+      fe:
+        condition: service_started
     restart: unless-stopped
 
   # Built and pushed by beadv7_7_earlybird_FE's own GitHub Actions (ghcr.io, tagged :latest and

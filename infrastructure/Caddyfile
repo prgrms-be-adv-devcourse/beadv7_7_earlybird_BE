@@ -3,8 +3,13 @@ earlybird-team5-api.duckdns.org {
 }
 
 earlybird-team5.duckdns.org {
+	# gateway-server가 #198 Phase 5로 k8s(앱 박스 노드, hostPort:8000)로 옮겨가면서 compose
+	# 서비스명 대신 앱 박스 자신의 private IP를 직접 쓴다 - 물리적으로 같은 호스트라 Caddy
+	# 컨테이너에서도 그대로 도달 가능. extra_hosts 대신 명시적 IP를 쓰는 이유: Caddyfile은 이미
+	# git 관리되고 배포 때마다 재적용되므로(docker restart earlybird-caddy, #212), 숨겨진
+	# /etc/hosts 매핑보다 여기 명시하는 편이 더 디버깅하기 쉽다.
 	handle /api/* {
-		reverse_proxy gateway-server:8000
+		reverse_proxy 10.0.0.81:8000
 	}
 
 	handle {

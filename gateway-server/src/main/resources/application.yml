@@ -19,14 +19,24 @@ spring:
 # 둘 다 처리된다. 그러면 env var 쪽(config-server:8888)은 성공해도 이 파일의 localhost:8888 쪽이
 # 컨테이너 안에서 항상 실패해 fail-fast 로 기동이 죽는다 (실제로 겪음). on-profile 로 문서를 완전히
 # 분리하면 비활성 프로필의 문서는 애초에 import 대상으로 등록조차 되지 않아 이 문제가 없다.
+# '!docker' 단독으로는 k8s 프로필도 매칭되어 이 블록과 k8s 블록이 동시에 활성화되고 localhost:8888
+# 쪽이 실패해 fail-fast로 죽는다 - ai-service에서 실제로 겪은 함정(#296)이라 여기서도 명시적으로 제외.
 spring:
   config:
     activate:
-      on-profile: '!docker'
+      on-profile: '!docker & !k8s'
     import: configserver:http://localhost:8888
 ---
 spring:
   config:
     activate:
       on-profile: docker
+    import: configserver:http://config-server:8888
+---
+# k8s 클러스터 안에서는 같은 네임스페이스의 config-server Service를 DNS로 찾는다. docker 프로필과
+# 문자열이 똑같은 건 의도적 - compose 서비스명과 k8s Service명이 같기 때문(#198 Phase 3).
+spring:
+  config:
+    activate:
+      on-profile: k8s
     import: configserver:http://config-server:8888
