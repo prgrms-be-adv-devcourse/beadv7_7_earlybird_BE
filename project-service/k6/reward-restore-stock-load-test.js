@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { check } from 'k6';
-import { Counter } from 'k6/metrics';
+import { Counter, Trend } from 'k6/metrics';
 
 // reward-stock-load-test.js의 반대 방향 시나리오: 정산(settlement-service)이 실패한 프로젝트를
 // 일괄 환불할 때, 같은 리워드를 산 여러 백커의 restoreStock이 동시에 같은 행에 몰리는 상황을 재현한다.
@@ -13,6 +13,10 @@ const successCount = new Counter('reward_restore_success');
 const overflowCount = new Counter('reward_restore_overflow');
 const lockConflictCount = new Counter('reward_restore_lock_conflict');
 const unexpectedCount = new Counter('reward_restore_unexpected');
+
+const successDuration = new Trend('reward_restore_success_duration');
+const overflowDuration = new Trend('reward_restore_overflow_duration');
+const lockConflictDuration = new Trend('reward_restore_lock_conflict_duration');
 
 export const options = {
     scenarios: {
@@ -65,26 +69,30 @@ export function setup() {
     const rewardId = rewardRes.json('data.rewardId');
 
     // "전량 판매 완료" 상태를 만든다 — 이후 부하 단계에서 이만큼을 동시에 복원한다.
+    // orderId=0은 부하 단계(orderId = __VU*1000000+__ITER, __VU>=1)와 절대 겹치지 않는 setup 전용 값.
     const sellOutRes = http.post(
         `${BASE_URL}/internal/v1/rewards/${rewardId}/decrease-stock`,
-        JSON.stringify({ quantity: STOCK }),
+        JSON.stringify({ quantity: STOCK, orderId: 0 }),
         { headers: { 'Content-Type': 'application/json' } },
     );
     check(sellOutRes, { 'sold out for setup': (r) => r.status === 200 });
 
-    console.log(`[setup] projectId=${projectId} rewardId=${rewardId} stock=${STOCK} (전량 판매 완료 상태로 시작)`);
+    console.log(`[setup] projectId=${projectId} rewardId=${rewardId} stock=${STOCK} (전량 판매 완료 상태로 시작, 원자적 UPDATE 버전)`);
     return { rewardId };
 }
 
 export default function (data) {
+    // decrease 스크립트와 같은 이유로 orderId를 VU/ITER 조합으로 매번 다르게 보낸다(#195 멱등키).
+    const orderId = __VU * 1000000 + __ITER;
     const res = http.post(
         `${BASE_URL}/internal/v1/rewards/${data.rewardId}/restore-stock`,
-        JSON.stringify({ quantity: 1 }),
+        JSON.stringify({ quantity: 1, orderId }),
         { headers: { 'Content-Type': 'application/json' } },
     );
 
     if (res.status === 200) {
         successCount.add(1);
+        successDuration.add(res.timings.duration);
         return;
     }
 
@@ -92,8 +100,10 @@ export default function (data) {
         const message = res.json('error.message') || '';
         if (message.includes('초과할 수 없습니다')) {
             overflowCount.add(1);
+            overflowDuration.add(res.timings.duration);
         } else if (message.includes('동시 수정 충돌')) {
             lockConflictCount.add(1);
+            lockConflictDuration.add(res.timings.duration);
         } else {
             unexpectedCount.add(1);
         }
