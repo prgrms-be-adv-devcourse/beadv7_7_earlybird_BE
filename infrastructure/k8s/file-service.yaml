@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: file-service
+  namespace: webapp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: file-service
+  template:
+    metadata:
+      labels:
+        app: file-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      # 나머지 서비스가 앱 박스(compose)에 있는 동안은 core-three와 동일하게 그쪽에 고정 -
+      # extra_hosts/hostAliases로 서로 찾을 수 있어야 하므로 노드가 바뀌면 안 된다.
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      containers:
+        - name: file-service
+          image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-file-service:latest
+          ports:
+            - containerPort: 8087
+              hostPort: 8087
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: 400Mi
+              cpu: 100m
+            limits:
+              memory: 544Mi   # 기존 compose mem_limit과 동일
+          # file-service는 build.gradle에 Spring Security 의존성이 없어 /actuator/health가
+          # 기본적으로 인증 없이 열려 있다 - gateway-server 때 겪은 401 크래시루프(#198) 걱정 없음.
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8087
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8087
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8087
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: file-service
+  namespace: webapp
+spec:
+  type: ClusterIP
+  selector:
+    app: file-service
+  ports:
+    - name: http
+      port: 8087
+      targetPort: 8087
