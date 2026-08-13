@@ -33,6 +33,8 @@ public class RefundCancellationSagaOrchestrator {
         } catch (RefundGatewayException exception) {
             if (exception.getFailureType() == RefundGatewayFailureType.DEFINITIVE) {
                 refundService.failRefund(target.refundId());
+            } else {
+                refundService.scheduleRetry(target.refundId());
             }
 
             throw exception;
