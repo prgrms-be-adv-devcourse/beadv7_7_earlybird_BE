@@ -27,6 +27,11 @@ x-app-box-core-hosts: &app-box-core-hosts
     # file-service가 k8s로 이전된 뒤(파일럿) 추가 - Feign으로 호출하는 서비스가 생기면
     # 이 앵커를 이미 쓰는 모든 compose 서비스가 별도 수정 없이 자동으로 올바르게 찾는다.
     - "file-service:10.0.0.81"
+    # batch 2 (user/board/notification-service) 이전 후 추가 - 현재는 이 셋을 Feign으로 부르는
+    # compose 잔류 서비스가 없지만(repo 전체 grep 확인), 나중에 생겨도 수정 없이 바로 동작하도록.
+    - "user-service:10.0.0.81"
+    - "board-service:10.0.0.81"
+    - "notification-service:10.0.0.81"
 
 # #198 Phase 4 - gateway-server가 k8s로 옮겨간 뒤(Phase 5) Eureka로 이 9개 서비스를 lb://로
 # 호출하려면 두 가지가 다 필요하다: (1) Eureka에 컨테이너 ID 대신 서비스명으로 등록(config repo
@@ -108,17 +113,9 @@ services:
       discovery-server:
         required: false
 
+  # #198 batch 2 - k8s(앱 박스 nodeSelector 고정, hostPort:8083)로 이전 완료.
   user-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-user-service:latest
-    ports: ["8083:8083"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   cart-service:
     <<: *app-box-core-hosts
@@ -150,28 +147,10 @@ services:
     profiles: ["local-only"]
 
   board-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-board-service:latest
-    ports: ["8088:8088"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   notification-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-notification-service:latest
-    ports: ["8089:8089"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   caddy:
     image: caddy:2
