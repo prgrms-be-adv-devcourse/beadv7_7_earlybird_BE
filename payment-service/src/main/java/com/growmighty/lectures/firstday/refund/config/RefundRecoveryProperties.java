@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.refund.config;
 
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
@@ -17,6 +18,14 @@ public record RefundRecoveryProperties(
 
     @DefaultValue("100")
     @Positive
-    Integer batchSize
+    Integer batchSize,
+
+    @DefaultValue("3")
+    @PositiveOrZero
+    Integer maximumRetryCount,
+
+    @DefaultValue("PT5M")
+    @DurationMin(seconds = 1)
+    Duration retryDelay
     ) {
 }

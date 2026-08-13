@@ -7,8 +7,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,8 +29,9 @@ class BulkRefundSchedulerTest {
     private BulkRefundScheduler bulkRefundScheduler;
 
     @Test
-    void 계획된_환불_한건을_조회해_취소_Saga에_위임한다() {
-        when(refundRepository.findNextPlannedRefundId()).thenReturn(Optional.of(REFUND_ID));
+    void 실행_가능한_환불_한건을_조회해_취소_Saga에_위임한다() {
+        when(refundRepository.findNextCancelableRefundId(any(LocalDateTime.class)))
+            .thenReturn(Optional.of(REFUND_ID));
 
         bulkRefundScheduler.cancelNextPlannedRefund();
 

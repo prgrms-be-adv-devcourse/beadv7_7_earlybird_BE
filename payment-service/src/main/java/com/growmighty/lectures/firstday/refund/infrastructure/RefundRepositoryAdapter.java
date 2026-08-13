@@ -42,8 +42,12 @@ public class RefundRepositoryAdapter implements RefundRepository {
     }
 
     @Override
-    public Optional<Long> findNextPlannedRefundId() {
-        return jpaRepository.findRefundIdsByStatus(RefundStatus.PLANNED, PageRequest.of(0, 1))
-            .stream().findFirst();
+    public Optional<Long> findNextCancelableRefundId(LocalDateTime now) {
+        return jpaRepository.findNextCancelableRefundId(
+            RefundStatus.PLANNED,
+            RefundStatus.RETRY_PENDING,
+            now,
+            PageRequest.of(0,1)
+        ).stream().findFirst();
     }
 }

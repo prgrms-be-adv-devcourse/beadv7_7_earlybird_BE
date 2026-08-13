@@ -15,5 +15,5 @@ public interface RefundRepository {
 
     List<Long> findRecoveryTargetIds(LocalDateTime cutoff, int limit);
 
-    Optional<Long> findNextPlannedRefundId();
+    Optional<Long> findNextCancelableRefundId(LocalDateTime now);
 }

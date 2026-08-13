@@ -34,10 +34,17 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
         Pageable pageable);
 
     @Query("""
-      select refund.id
-      from Refund refund
-      where refund.status = :status
-      order by refund.createdAt asc
-      """)
-    List<Long> findRefundIdsByStatus(@Param("status") RefundStatus status, Pageable pageable);
+          select refund.id
+          from Refund refund
+          where refund.status = :plannedStatus
+             or (
+                 refund.status = :retryPendingStatus
+                 and refund.nextRetryAt <= :now
+             )
+          order by refund.createdAt asc
+          """)
+    List<Long> findNextCancelableRefundId(@Param("plannedStatus") RefundStatus plannedStatus,
+                                          @Param("retryPendingStatus") RefundStatus retryPendingStatus,
+                                          @Param("now") LocalDateTime now,
+                                          Pageable pageable);
 }
