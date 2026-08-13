@@ -19,8 +19,7 @@ public class SettlementRunInputRepositoryAdapter implements SettlementRunInputRe
     @Override
     @Transactional(readOnly = true)
     public List<OrderPaymentFact> findCompletedPayments(Instant startInclusive, Instant endExclusive) {
-        return paymentRepository.findAllByStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAscOrderIdAsc(
-                OrderPaymentFact.Status.COMPLETED,
+        return paymentRepository.findCompletedInRange(
                 startInclusive,
                 endExclusive,
                 Pageable.unpaged()
