@@ -326,6 +326,13 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
         entityManager.clear();
 
         OrderPaymentFact fact = orderPaymentFactRepository.findById(1001L).orElseThrow();
+        assertThat(fact.reconciliationStatus()).isEqualTo(OrderPaymentFact.ReconciliationStatus.PENDING);
+        fact.confirmReconciliation();
+        orderPaymentFactRepository.saveAndFlush(fact);
+        entityManager.clear();
+
+        fact = orderPaymentFactRepository.findById(1001L).orElseThrow();
+        assertThat(fact.reconciliationStatus()).isEqualTo(OrderPaymentFact.ReconciliationStatus.CONFIRMED);
         fact.cancel("PAY-01J2X8P4QW6YV0M3", 101L, Money.wons(50_000), cancelledAt);
         orderPaymentFactRepository.saveAndFlush(fact);
         entityManager.clear();

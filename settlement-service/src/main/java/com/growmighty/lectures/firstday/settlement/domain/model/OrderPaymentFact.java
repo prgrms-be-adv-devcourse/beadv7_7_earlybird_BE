@@ -29,6 +29,12 @@ public class OrderPaymentFact {
         CANCELLED
     }
 
+    public enum ReconciliationStatus {
+        PENDING,
+        REVIEW_REQUIRED,
+        CONFIRMED
+    }
+
     @Id
     @Column(name = "order_id", nullable = false, updatable = false)
     private Long orderId;
@@ -52,6 +58,10 @@ public class OrderPaymentFact {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reconciliation_status", nullable = false, length = 20)
+    private ReconciliationStatus reconciliationStatus;
+
     @Version
     private Long version;
 
@@ -70,6 +80,7 @@ public class OrderPaymentFact {
         this.projectId = projectId;
         this.paymentAmount = paymentAmount;
         this.status = Status.COMPLETED;
+        this.reconciliationStatus = ReconciliationStatus.PENDING;
         this.completedAt = completedAt;
         validateState();
     }
@@ -105,6 +116,13 @@ public class OrderPaymentFact {
         this.cancelledAt = cancelledAt;
     }
 
+    public void confirmReconciliation() {
+        if (status != Status.COMPLETED) {
+            throw new IllegalStateException("완료된 주문 결제만 대사 완료 처리할 수 있습니다.");
+        }
+        this.reconciliationStatus = ReconciliationStatus.CONFIRMED;
+    }
+
     public Long orderId() {
         return orderId;
     }
@@ -123,6 +141,10 @@ public class OrderPaymentFact {
 
     public Status status() {
         return status;
+    }
+
+    public ReconciliationStatus reconciliationStatus() {
+        return reconciliationStatus;
     }
 
     public Instant occurredAt() {
@@ -148,6 +170,7 @@ public class OrderPaymentFact {
             throw new IllegalArgumentException("주문 결제금액은 0원보다 커야 합니다.");
         }
         Objects.requireNonNull(status, "주문 결제 결과는 필수입니다.");
+        Objects.requireNonNull(reconciliationStatus, "주문 결제 대사 상태는 필수입니다.");
         Objects.requireNonNull(completedAt, "주문 결제 완료 시각은 필수입니다.");
         if (status == Status.COMPLETED && cancelledAt != null) {
             throw new IllegalArgumentException("완료 상태의 주문 결제는 취소 시각을 가질 수 없습니다.");
