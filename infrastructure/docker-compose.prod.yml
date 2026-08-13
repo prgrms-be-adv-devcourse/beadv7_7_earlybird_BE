@@ -24,6 +24,9 @@ x-app-box-core-hosts: &app-box-core-hosts
   extra_hosts:
     - "discovery-server:10.0.0.81"
     - "config-server:10.0.0.81"
+    # file-service가 k8s로 이전된 뒤(파일럿) 추가 - Feign으로 호출하는 서비스가 생기면
+    # 이 앵커를 이미 쓰는 모든 compose 서비스가 별도 수정 없이 자동으로 올바르게 찾는다.
+    - "file-service:10.0.0.81"
 
 # #198 Phase 4 - gateway-server가 k8s로 옮겨간 뒤(Phase 5) Eureka로 이 9개 서비스를 lb://로
 # 호출하려면 두 가지가 다 필요하다: (1) Eureka에 컨테이너 ID 대신 서비스명으로 등록(config repo
@@ -141,17 +144,10 @@ services:
       discovery-server:
         required: false
 
+  # #198 나머지 9개 서비스 마이그레이션 파일럿 - k8s(앱 박스 nodeSelector 고정, hostPort:8087)로
+  # 이전 완료. core-three와 동일 패턴 - compose 기본 `up -d` 대상에서 제외.
   file-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-file-service:latest
-    ports: ["8087:8087"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   board-service:
     <<: *app-box-core-hosts

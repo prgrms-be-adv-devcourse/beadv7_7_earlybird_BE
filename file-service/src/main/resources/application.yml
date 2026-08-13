@@ -14,14 +14,25 @@ spring:
 ---
 # 프로필별로 문서를 분리하는 이유는 gateway-server/application.yml 참고 — spring.config.import 를
 # env var 로 통째로 덮어쓰면 이 파일의 import 와 별개로 취급돼 둘 다 처리되는 문제가 있었다.
+# '!docker' 단독으로는 k8s 프로필도 매칭되어 이 블록과 k8s 블록이 동시에 활성화되고
+# localhost:8888 쪽이 실패해 fail-fast로 죽는다 - ai-service(#296)/gateway-server(#198)에서
+# 겪은 함정이라 처음부터 명시적으로 제외.
 spring:
   config:
     activate:
-      on-profile: '!docker'
+      on-profile: '!docker & !k8s'
     import: configserver:http://localhost:8888
 ---
 spring:
   config:
     activate:
       on-profile: docker
+    import: configserver:http://config-server:8888
+---
+# k8s 클러스터 안에서는 config-server를 같은 네임스페이스의 Service DNS로 찾는다. docker
+# 프로필과 문자열이 같은 건 의도적 - compose 서비스명과 k8s Service명이 같기 때문(#198 Phase 3).
+spring:
+  config:
+    activate:
+      on-profile: k8s
     import: configserver:http://config-server:8888
