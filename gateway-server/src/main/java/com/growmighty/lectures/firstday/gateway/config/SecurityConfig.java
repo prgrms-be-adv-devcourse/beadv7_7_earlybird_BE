@@ -45,6 +45,11 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeExchange(exchanges -> exchanges
                         // 인증 불필요
+                        // k8s livenessProbe/readinessProbe/startupProbe가 인증 없이 호출한다 -
+                        // 여기 빠지면 401을 fail로 해석해 정상 기동 중인 파드를 계속 재시작시킨다.
+                        // health 하위 경로(liveness/readiness 그룹)까지 포함, gateway/refresh 등
+                        // 다른 actuator 엔드포인트는 계속 인증 필요.
+                        .pathMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
                         .pathMatchers(HttpMethod.POST,
                                 URI_PREFIX_API + "/users/signup",
                                 URI_PREFIX_API + "/users/login",
