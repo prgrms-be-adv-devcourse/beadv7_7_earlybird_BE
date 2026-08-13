@@ -66,14 +66,16 @@ class RefundRecoveryServiceTest {
     }
 
     @Test
-    void recover_keepsRefundRequestedWhenPgPaymentIsPending() {
+    void recover_schedulesRefundRetryWhenPgPaymentIsPending() {
         givenRequestedRefund();
         givenPayment();
         when(paymentGateway.getPayment(PAYMENT_KEY)).thenReturn(pgPayment(PaymentGateway.PgPaymentStatus.PENDING));
 
         refundRecoveryService.recover(REFUND_ID);
 
-        verifyNoInteractions(refundService);
+        verify(refundService).scheduleRetry(REFUND_ID);
+        verify(refundService, never()).completeRefund(any());
+        verify(refundService, never()).failRefund(any());
     }
 
     @Test

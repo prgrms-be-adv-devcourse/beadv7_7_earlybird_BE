@@ -34,7 +34,7 @@ public class RefundRecoveryService {
             case CANCELLED -> refundService.completeRefund(refundId);
             case COMPLETED, FAILED, EXPIRED -> refundService.failRefund(refundId);
             case PENDING -> {
-                // 결과 미확정 환불은 복구 전까지 REQUESTED 상태 유지
+                refundService.scheduleRetry(refundId);
             }
         }
     }
