@@ -279,6 +279,16 @@ class PaymentServiceTest {
             return Optional.ofNullable(paymentsByOrderId.get(orderId));
         }
 
+        // 추가 : 일괄 환불 대상의 PAID 결제를 주문 ID 목록으로 조회
+        @Override
+        public List<Payment> findAllPaidByOrderIds(List<Long> orderIds) {
+            return orderIds.stream()
+                .map(paymentsByOrderId::get)
+                .filter(Objects::nonNull)
+                .filter(Payment::isPaid)
+                .toList();
+        }
+
         @Override
         public Optional<Payment> findByPgOrderId(String pgOrderId) {
             return Optional.ofNullable(paymentsByPgOrderId.get(pgOrderId));

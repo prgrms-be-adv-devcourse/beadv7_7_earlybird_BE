@@ -37,6 +37,11 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
     }
 
     @Override
+    public List<Payment> findAllPaidByOrderIds(List<Long> orderIds) {
+        return jpaRepository.findAllByOrderIdInAndStatus(orderIds, PaymentStatus.PAID);
+    }
+
+    @Override
     public List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit) {
         return jpaRepository.findIdsByStatusAndConfirmingAtBeforeOrderByConfirmingAtAsc(
             PaymentStatus.CONFIRMING,

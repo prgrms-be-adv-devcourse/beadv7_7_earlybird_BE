@@ -9,7 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -20,18 +22,26 @@ public class BulkRefundService {
 
     @Transactional
     public void plan(Long settlementId, List<Long> orderIds, RefundReason reason) {
-        for (Long orderId : orderIds) {
-            paymentRepository.findByOrderId(orderId)
-                .filter(Payment::isPaid)
-                .ifPresent(payment -> registerPlannedRefund(payment, settlementId, reason));
-        }
-    }
+        List<Payment> payments = paymentRepository.findAllPaidByOrderIds(orderIds);
 
-    private void registerPlannedRefund(Payment payment, Long settlementId, RefundReason reason) {
-        if (refundRepository.findByPaymentId(payment.getPaymentId()).isPresent()) {
+        if (payments.isEmpty()) {
             return;
         }
 
+        Set<Long> existingPaymentIds = new HashSet<>(
+            refundRepository.findExistingPaymentIds(
+                payments.stream()
+                    .map(Payment::getPaymentId)
+                    .toList()
+            )
+        );
+
+        payments.stream()
+            .filter(payment -> !existingPaymentIds.contains(payment.getPaymentId()))
+            .forEach(payment -> registerPlannedRefund(payment, settlementId, reason));
+    }
+
+    private void registerPlannedRefund(Payment payment, Long settlementId, RefundReason reason) {
         refundRepository.save(
             Refund.planned(
                 payment.getPaymentId(),

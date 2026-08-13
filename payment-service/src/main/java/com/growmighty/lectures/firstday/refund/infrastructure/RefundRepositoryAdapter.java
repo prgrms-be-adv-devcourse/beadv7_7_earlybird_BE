@@ -32,6 +32,11 @@ public class RefundRepositoryAdapter implements RefundRepository {
     }
 
     @Override
+    public List<Long> findExistingPaymentIds(List<Long> paymentIds) {
+        return jpaRepository.findPaymentIdsByPaymentIdIn(paymentIds);
+    }
+
+    @Override
     public List<Long> findRecoveryTargetIds(LocalDateTime cutoff, int limit) {
         return jpaRepository.findRecoveryTargetIds(RefundStatus.REQUESTED, cutoff, PageRequest.of(0, limit));
     }

@@ -13,6 +13,8 @@ public interface PaymentRepository {
 
     Optional<Payment> findByOrderId(Long orderId);
 
+    List<Payment> findAllPaidByOrderIds(List<Long> orderIds);
+
     List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit);
 
 }

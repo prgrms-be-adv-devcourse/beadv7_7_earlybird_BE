@@ -15,11 +15,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class BulkRefundServiceTest {
@@ -40,8 +38,8 @@ class BulkRefundServiceTest {
     @Test
     void PAID_결제를_사유와_함께_PLANNED_환불로_등록한다() {
         Payment payment = paidPayment();
-        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
-        when(refundRepository.findByPaymentId(PAYMENT_ID)).thenReturn(Optional.empty());
+        when(paymentRepository.findAllPaidByOrderIds(List.of(ORDER_ID))).thenReturn(List.of(payment));
+        when(refundRepository.findExistingPaymentIds(List.of(PAYMENT_ID))).thenReturn(List.of());
 
         bulkRefundService.plan(SETTLEMENT_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
 
@@ -50,6 +48,26 @@ class BulkRefundServiceTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(RefundStatus.PLANNED);
         assertThat(captor.getValue().getSettlementId()).isEqualTo(SETTLEMENT_ID);
         assertThat(captor.getValue().getReason()).isEqualTo(RefundReason.GOAL_FAILED);
+    }
+
+    @Test
+    void 이미_환불_이력이_있는_결제는_등록하지_않는다() {
+        Payment payment = paidPayment();
+        when(paymentRepository.findAllPaidByOrderIds(List.of(ORDER_ID))).thenReturn(List.of(payment));
+        when(refundRepository.findExistingPaymentIds(List.of(PAYMENT_ID))).thenReturn(List.of(PAYMENT_ID));
+
+        bulkRefundService.plan(SETTLEMENT_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
+
+        verify(refundRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void PAID_결제가_없으면_환불_이력을_조회하지_않는다() {
+        when(paymentRepository.findAllPaidByOrderIds(List.of(ORDER_ID))).thenReturn(List.of());
+
+        bulkRefundService.plan(SETTLEMENT_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
+
+        verifyNoInteractions(refundRepository);
     }
 
     private Payment paidPayment() {
