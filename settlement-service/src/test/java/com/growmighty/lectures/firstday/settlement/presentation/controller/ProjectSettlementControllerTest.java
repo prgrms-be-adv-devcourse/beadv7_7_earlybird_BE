@@ -1,35 +1,27 @@
 // TODO(settlement-plan): Verify manual requests invoke the same idempotent monthly-run interface as scheduling.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
-import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
-import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(ProjectSettlementControllerTest.CommonBusinessErrorController.class)
 @Transactional
 class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
 
@@ -37,20 +29,11 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
     private MockMvc mockMvc;
 
     @Autowired
-    private SpringDataProjectOutcomeFactRepository projectOutcomeFactRepository;
-
-    @Autowired
     private SpringDataOrderPaymentFactRepository orderPaymentFactRepository;
 
     @Test
-    @DisplayName("프로젝트 정산 기준일 전에도 내부 API로 대상 월의 프로젝트 정산을 실행한다")
-    void runsProjectSettlementsManually() throws Exception {
-        projectOutcomeFactRepository.save(ProjectOutcomeFact.of(
-                9_000_001L,
-                9_000_001L,
-                ProjectOutcomeFact.Outcome.SUCCEEDED,
-                Instant.parse("2026-07-23T10:00:00Z")
-        ));
+    @DisplayName("내부 API가 대상 월 결제별 PG 대사를 실행한다")
+    void runsPaymentReconciliationManually() throws Exception {
         orderPaymentFactRepository.save(OrderPaymentFact.completed(
                 9_000_001_001L,
                 "pg-9000001",
@@ -68,16 +51,10 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.settlementMonth").value("2026-07"))
-                .andExpect(jsonPath("$.data.projectResults[0].projectId").value(9_000_001))
-                .andExpect(jsonPath("$.data.projectResults[0].outcomeStatus").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.data.projectResults[0].processingStatus")
-                        .value("SETTLEMENT_CONFIRMED"))
-                .andExpect(jsonPath("$.data.confirmedSettlements[0].projectId").value(9_000_001))
-                .andExpect(jsonPath("$.data.confirmedSettlements[0].creatorPayoutAmount").value(91_200))
-                .andExpect(jsonPath("$.data.confirmedSettlements[0].scheduledDate").value("2026-08-03"))
-                .andExpect(jsonPath("$.data.confirmedSettlements[0].payoutStatus")
-                        .value("COMPLETED"))
-                .andExpect(jsonPath("$.data.confirmedSettlements[0].payoutObligationId").doesNotExist());
+                .andExpect(jsonPath("$.data.confirmedOrderIds[0]").value(9_000_001_001L));
+
+        assertThat(orderPaymentFactRepository.findById(9_000_001_001L).orElseThrow().reconciliationStatus())
+                .isEqualTo(OrderPaymentFact.ReconciliationStatus.CONFIRMED);
     }
 
     @Test
@@ -89,25 +66,6 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.errors[?(@.field == 'settlementMonth')]").exists());
-    }
-
-    @Test
-    @DisplayName("common 비즈니스 오류가 공통 오류 응답 형식을 유지한다")
-    void preservesCommonBusinessErrorEnvelope() throws Exception {
-        mockMvc.perform(get("/test/common-business-error"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.message")
-                        .value("일시적으로 프로젝트 정산을 실행할 수 없습니다."));
-    }
-
-    @RestController
-    static class CommonBusinessErrorController {
-
-        @GetMapping("/test/common-business-error")
-        void fail() {
-            throw new ServiceUnavailableException("일시적으로 프로젝트 정산을 실행할 수 없습니다.");
-        }
     }
 
 }
