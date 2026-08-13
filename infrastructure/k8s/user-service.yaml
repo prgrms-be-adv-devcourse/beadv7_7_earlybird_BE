@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: webapp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      containers:
+        - name: user-service
+          image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-user-service:latest
+          ports:
+            - containerPort: 8083
+              hostPort: 8083
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            # gateway-server와 반드시 같은 값이어야 한다(#164) - 이미 만들어둔 gateway-jwt Secret을
+            # 그대로 재사용한다 (동일한 값을 담은 별도 Secret을 또 만들면 동기화 대상만 늘어난다).
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-jwt
+                  key: JWT_SECRET
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: 420Mi
+              cpu: 100m
+            limits:
+              memory: 576Mi
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8083
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: webapp
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083
