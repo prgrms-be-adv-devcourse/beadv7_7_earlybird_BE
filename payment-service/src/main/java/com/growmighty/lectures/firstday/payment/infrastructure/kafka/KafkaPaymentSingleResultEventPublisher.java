@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.payment.infrastructure.kafka;
 
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentSingleResultEvent;
 import com.growmighty.lectures.firstday.payment.application.port.PaymentSingleResultEventPublisher;
-import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.PaymentSingleResultEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
