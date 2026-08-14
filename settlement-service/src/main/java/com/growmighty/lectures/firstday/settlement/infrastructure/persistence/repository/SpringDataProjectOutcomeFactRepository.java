@@ -12,6 +12,8 @@ public interface SpringDataProjectOutcomeFactRepository extends JpaRepository<Pr
 
     List<ProjectOutcomeFact> findAllByOrderByProjectId();
 
+    List<ProjectOutcomeFact> findAllByOutcomeOrderByProjectId(ProjectOutcomeFact.Outcome outcome);
+
     @Query("""
             select outcome
             from ProjectOutcomeFact outcome

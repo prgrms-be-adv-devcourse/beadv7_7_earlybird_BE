@@ -11,6 +11,11 @@ public interface SpringDataOrderPaymentFactRepository extends JpaRepository<Orde
 
     List<OrderPaymentFact> findAllByProjectIdOrderByOrderId(Long projectId);
 
+    List<OrderPaymentFact> findAllByProjectIdAndStatusOrderByOrderId(
+            Long projectId,
+            OrderPaymentFact.Status status
+    );
+
     @Query("""
             select payment from OrderPaymentFact payment
             where payment.status = com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact.Status.COMPLETED
