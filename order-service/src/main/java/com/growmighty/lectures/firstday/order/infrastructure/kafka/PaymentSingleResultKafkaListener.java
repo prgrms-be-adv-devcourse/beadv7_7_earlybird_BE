@@ -5,7 +5,6 @@ import com.growmighty.lectures.firstday.order.application.InternalOrderApiServic
 import com.growmighty.lectures.firstday.order.infrastructure.kafka.dto.PaymentSingleResultEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -16,10 +15,8 @@ public class PaymentSingleResultKafkaListener {
 
     @KafkaListener(
             topics = KafkaTopics.PAYMENT_SINGLE_RESULT,
-            groupId = "order-service",
-            containerFactory = "orderPaymentKafkaListenerContainerFactory")
-    public void consume(PaymentSingleResultEvent event, Acknowledgment acknowledgment) {
+            properties = "spring.json.type.mapping=paymentSingleResult:com.growmighty.lectures.firstday.order.infrastructure.kafka.dto.PaymentSingleResultEvent")
+    public void consume(PaymentSingleResultEvent event) {
         internalOrderApiService.applyPaymentStatus(event.orderId(), event.pgOrderId(), event.status());
-        acknowledgment.acknowledge();
     }
 }
