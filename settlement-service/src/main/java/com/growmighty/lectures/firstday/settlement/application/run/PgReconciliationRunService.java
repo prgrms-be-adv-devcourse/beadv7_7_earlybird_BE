@@ -8,43 +8,56 @@ import com.growmighty.lectures.firstday.settlement.application.port.toss.TossSet
 import com.growmighty.lectures.firstday.settlement.application.port.toss.TossSettlementReader;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliationRun;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PgReconciliationRunRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.SettlementRunInputRepository;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class ProjectSettlementRunService {
+@RequiredArgsConstructor
+public class PgReconciliationRunService {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final SettlementRunInputRepository inputRepository;
     private final TossSettlementReader tossSettlementReader;
+    private final PgReconciliationRunRepository runRepository;
+    private final Clock clock;
 
-    public ProjectSettlementRunService(
-            SettlementRunInputRepository inputRepository,
-            TossSettlementReader tossSettlementReader
-    ) {
-        this.inputRepository = inputRepository;
-        this.tossSettlementReader = tossSettlementReader;
-    }
+    @Transactional(noRollbackFor = SettlementException.class)
+    public PgReconciliationRunResult run(YearMonth settlementMonth) {
+        PgReconciliationRun running = runRepository.findRunningBySettlementMonth(settlementMonth).orElse(null);
+        if (running != null) {
+            return resultOf(running, List.of());
+        }
 
-    @Transactional
-    public ProjectSettlementRunResult run(YearMonth settlementMonth) {
-        List<OrderPaymentFact> payments = findCompletedPayments(settlementMonth);
-        reconcile(payments, findTossSettlements(settlementMonth));
-        payments.forEach(OrderPaymentFact::confirmReconciliation);
-        return new ProjectSettlementRunResult(
+        PgReconciliationRun run = runRepository.save(PgReconciliationRun.start(
                 settlementMonth,
-                payments.stream().map(OrderPaymentFact::orderId).toList()
-        );
+                LocalDateTime.now(clock)
+        ));
+        try {
+            List<OrderPaymentFact> payments = findCompletedPayments(settlementMonth);
+            reconcile(payments, findTossSettlements(settlementMonth));
+            payments.forEach(OrderPaymentFact::confirmReconciliation);
+            run.complete(LocalDateTime.now(clock));
+            return resultOf(runRepository.save(run), payments.stream().map(OrderPaymentFact::orderId).toList());
+        } catch (SettlementException exception) {
+            run.fail(LocalDateTime.now(clock));
+            runRepository.save(run);
+            throw exception;
+        }
     }
 
     private List<OrderPaymentFact> findCompletedPayments(YearMonth settlementMonth) {
@@ -91,10 +104,7 @@ public class ProjectSettlementRunService {
         }
     }
 
-    private static void reconcile(
-            List<OrderPaymentFact> payments,
-            List<TossSettlement> settlements
-    ) {
+    private static void reconcile(List<OrderPaymentFact> payments, List<TossSettlement> settlements) {
         if (!amountsByOrderId(payments).equals(amountsBySettlementOrderId(settlements))) {
             throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
         }
@@ -118,5 +128,9 @@ public class ProjectSettlementRunService {
             }
         }
         return amounts;
+    }
+
+    private static PgReconciliationRunResult resultOf(PgReconciliationRun run, List<Long> confirmedOrderIds) {
+        return new PgReconciliationRunResult(run.id(), run.settlementMonth(), run.status(), confirmedOrderIds);
     }
 }

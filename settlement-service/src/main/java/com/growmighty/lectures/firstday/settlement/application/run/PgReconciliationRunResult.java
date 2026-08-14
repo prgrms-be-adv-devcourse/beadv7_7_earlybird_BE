@@ -1,15 +1,17 @@
-// TODO(settlement-plan): Expose the monthly run status and reconciliation summary without leaking internal projections.
 package com.growmighty.lectures.firstday.settlement.application.run;
 
+import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliationRun;
 import java.time.YearMonth;
 import java.util.List;
 
-public record ProjectSettlementRunResult(
+public record PgReconciliationRunResult(
+        Long runId,
         YearMonth settlementMonth,
+        PgReconciliationRun.Status status,
         List<Long> confirmedOrderIds
 ) {
 
-    public ProjectSettlementRunResult {
+    public PgReconciliationRunResult {
         confirmedOrderIds = List.copyOf(confirmedOrderIds);
     }
 }
