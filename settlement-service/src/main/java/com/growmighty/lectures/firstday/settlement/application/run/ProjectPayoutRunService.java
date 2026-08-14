@@ -25,9 +25,10 @@ public class ProjectPayoutRunService {
     private final PayoutExecutor payoutExecutor;
     private final Clock clock;
 
-    public void run(YearMonth payoutMonth) {
-        if (runRepository.findRunningByPayoutMonth(payoutMonth).isPresent()) {
-            return;
+    public ProjectPayoutRunResult run(YearMonth payoutMonth) {
+        ProjectPayoutRun running = runRepository.findRunningByPayoutMonth(payoutMonth).orElse(null);
+        if (running != null) {
+            return resultOf(running);
         }
 
         ProjectPayoutRun run = runRepository.save(ProjectPayoutRun.start(payoutMonth, LocalDateTime.now(clock)));
@@ -46,7 +47,7 @@ public class ProjectPayoutRunService {
                 }
             }
             run.complete(LocalDateTime.now(clock));
-            runRepository.save(run);
+            return resultOf(runRepository.save(run));
         } catch (RuntimeException exception) {
             run.fail(LocalDateTime.now(clock));
             runRepository.save(run);
@@ -56,5 +57,9 @@ public class ProjectPayoutRunService {
 
     private boolean reconciled(OrderPaymentFact payment) {
         return payment.reconciliationStatus() == OrderPaymentFact.ReconciliationStatus.CONFIRMED;
+    }
+
+    private static ProjectPayoutRunResult resultOf(ProjectPayoutRun run) {
+        return new ProjectPayoutRunResult(run.id(), run.payoutMonth(), run.status());
     }
 }

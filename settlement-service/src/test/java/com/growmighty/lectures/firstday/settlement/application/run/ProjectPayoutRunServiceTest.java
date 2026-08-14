@@ -46,7 +46,8 @@ class ProjectPayoutRunServiceTest extends MySqlIntegrationTestSupport {
         outcomeRepository.save(outcome(2L, 20L));
         paymentRepository.save(reconciledPayment(101L, 1L, "2026-06-30T10:00:00Z"));
         paymentRepository.save(reconciledPayment(102L, 1L, "2026-07-31T10:00:00Z"));
-        paymentRepository.save(completedPayment(201L, 2L, "2026-07-31T10:00:00Z"));
+        paymentRepository.save(reconciledPayment(201L, 2L, "2026-06-30T10:00:00Z"));
+        paymentRepository.save(completedPayment(202L, 2L, "2026-07-31T10:00:00Z"));
         YearMonth payoutMonth = YearMonth.of(2026, 8);
 
         service.run(payoutMonth);

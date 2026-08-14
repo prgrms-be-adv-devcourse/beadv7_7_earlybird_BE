@@ -2,8 +2,11 @@
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import com.growmighty.lectures.firstday.settlement.application.run.PgReconciliationRunService;
-import com.growmighty.lectures.firstday.settlement.presentation.dto.response.ProjectSettlementRunResponse;
-import com.growmighty.lectures.firstday.settlement.presentation.dto.request.RunProjectSettlementsRequest;
+import com.growmighty.lectures.firstday.settlement.application.run.ProjectPayoutRunService;
+import com.growmighty.lectures.firstday.settlement.presentation.dto.request.RunPgReconciliationRequest;
+import com.growmighty.lectures.firstday.settlement.presentation.dto.request.RunProjectPayoutRequest;
+import com.growmighty.lectures.firstday.settlement.presentation.dto.response.PgReconciliationRunResponse;
+import com.growmighty.lectures.firstday.settlement.presentation.dto.response.ProjectPayoutRunResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,11 +20,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProjectSettlementController {
 
     private final PgReconciliationRunService pgReconciliationRunService;
+    private final ProjectPayoutRunService projectPayoutRunService;
 
-    @PostMapping("/runs")
-    public ProjectSettlementRunResponse run(@Valid @RequestBody RunProjectSettlementsRequest request) {
-        return ProjectSettlementRunResponse.from(
+    @PostMapping("/pg-reconciliations/runs")
+    public PgReconciliationRunResponse runPgReconciliation(
+            @Valid @RequestBody RunPgReconciliationRequest request
+    ) {
+        return PgReconciliationRunResponse.from(
                 pgReconciliationRunService.run(request.settlementMonth())
         );
+    }
+
+    @PostMapping("/project-payouts/runs")
+    public ProjectPayoutRunResponse runProjectPayout(@Valid @RequestBody RunProjectPayoutRequest request) {
+        return ProjectPayoutRunResponse.from(projectPayoutRunService.run(request.payoutMonth()));
     }
 }
