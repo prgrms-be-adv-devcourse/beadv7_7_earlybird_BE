@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.refund.application;
 
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
+import com.growmighty.lectures.firstday.payment.domain.vo.SensitiveValue;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundRecoveryTarget;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,7 +60,7 @@ class RefundRecoveryServiceTest {
 
     // 추가 : 복구 대상 DTO 생성, PG 조회 입력값
     private RefundRecoveryTarget recoveryTarget() {
-        return new RefundRecoveryTarget(REFUND_ID, PAYMENT_KEY);
+        return new RefundRecoveryTarget(REFUND_ID, new SensitiveValue(PAYMENT_KEY));
     }
 
     private PaymentGateway.PgPayment pgPayment(PaymentGateway.PgPaymentStatus status) {

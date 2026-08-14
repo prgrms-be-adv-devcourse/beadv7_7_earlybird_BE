@@ -37,7 +37,7 @@ class PaymentTest {
 
         assertThat(payment.getPgOrderId()).startsWith("order-" + ORDER_ID + "-");
         assertThat(payment.getPgOrderId()).hasSizeLessThanOrEqualTo(64);
-        assertThat(payment.getApproveIdempotencyKey()).isNotBlank();
+        assertThat(payment.getApproveIdempotencyKey().value()).isNotBlank();
     }
 
     @Test
@@ -50,7 +50,7 @@ class PaymentTest {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
         assertThat(payment.isConfirming()).isTrue();
         assertThat(payment.getConfirmingAt()).isNotNull();
-        assertThat(payment.getPaymentKey()).isEqualTo(PAYMENT_KEY);
+        assertThat(payment.getPaymentKey().value()).isEqualTo(PAYMENT_KEY);
     }
 
     @Test
@@ -62,7 +62,7 @@ class PaymentTest {
         payment.confirm(PAYMENT_KEY);
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-        assertThat(payment.getPaymentKey()).isEqualTo(PAYMENT_KEY);
+        assertThat(payment.getPaymentKey().value()).isEqualTo(PAYMENT_KEY);
         assertThat(payment.isPaid()).isTrue();
         assertThat(payment.getConfirmingAt()).isNull();
     }
