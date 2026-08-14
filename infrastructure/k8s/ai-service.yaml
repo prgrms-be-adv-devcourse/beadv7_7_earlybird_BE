@@ -44,3 +44,23 @@ spec:
     - port: 8090
       targetPort: 8090
   type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-service
+  namespace: webapp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-service
+  minReplicas: 1
+  maxReplicas: 2   # 데이터/앱 박스 둘 다 메모리 여유가 크지 않아 보수적으로 설정 - #225
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
