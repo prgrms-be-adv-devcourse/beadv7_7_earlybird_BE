@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: settlement-service
+  namespace: webapp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: settlement-service
+  template:
+    metadata:
+      labels:
+        app: settlement-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      containers:
+        - name: settlement-service
+          image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-settlement-service:latest
+          ports:
+            - containerPort: 8086
+              hostPort: 8086
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: 408Mi
+              cpu: 100m
+            limits:
+              memory: 544Mi
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8086
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8086
+            periodSeconds: 10
+            timeoutSeconds: 4
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8086
+            periodSeconds: 20
+            timeoutSeconds: 4
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: settlement-service
+  namespace: webapp
+spec:
+  type: ClusterIP
+  selector:
+    app: settlement-service
+  ports:
+    - name: http
+      port: 8086
+      targetPort: 8086

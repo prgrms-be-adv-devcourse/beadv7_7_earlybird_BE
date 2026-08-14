@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: webapp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      containers:
+        - name: payment-service
+          image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-payment-service:latest
+          ports:
+            - containerPort: 8082
+              hostPort: 8082
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            # 앱 박스 compose .env와 동일한 값 - Toss 테스트 모드 연동 중(PAYMENT_TOSS_SECRET_KEY가
+            # test_sk_ 접두사, 실결제 아님).
+            - name: PAYMENT_GATEWAY
+              value: "toss"
+            # @NotBlank 필수값 - 비어있으면 기동 자체가 실패한다 (#183). 앱 박스 .env에 있던
+            # 기존 값과 반드시 같아야 한다 - 값이 바뀌면 이미 암호화되어 저장된 기존 결제
+            # 데이터를 복호화할 수 없게 된다.
+            - name: PAYMENT_SECURITY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-secrets
+                  key: PAYMENT_SECURITY_ENCRYPTION_KEY
+            - name: PAYMENT_TOSS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-secrets
+                  key: PAYMENT_TOSS_SECRET_KEY
+                  optional: true
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: 456Mi
+              cpu: 100m
+            limits:
+              memory: 608Mi
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            periodSeconds: 10
+            timeoutSeconds: 4
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            periodSeconds: 20
+            timeoutSeconds: 4
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: webapp
+spec:
+  type: ClusterIP
+  selector:
+    app: payment-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082

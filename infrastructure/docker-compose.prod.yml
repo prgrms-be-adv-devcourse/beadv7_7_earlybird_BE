@@ -8,40 +8,10 @@
 # to gateway-server too since Caddy is the new front door. Caddy still reaches it by service name
 # over the Compose network without any host port published.
 #
-# Every service below also gets an `image:` pointing at the tag CD's build job (matrix over the
-# 12 services, see .github/workflows/cd.yml) pushes to GHCR. The base file's `build:` block is
-# still there (untouched, for local `docker compose up -d --build`) - adding `image:` here doesn't
-# remove it, it just gives `docker compose pull`/`up -d` something to pull instead of building.
-# CD's deploy step runs `pull` before `up -d`, so the image is always present locally and `up -d`
-# never falls back to building on the EC2 host (same pattern the `fe` service below already used).
-#
-# discovery-server/config-server가 #198로 k8s(앱 박스에 nodeSelector로 고정, hostPort로 노출)로
-# 옮겨간 뒤에도, 각 서비스가 이미 패키징하고 있는 application.yml/config repo의 docker 프로필은
-# 여전히 `config-server`/`discovery-server`라는 호스트명을 그대로 쓴다 - 그 호스트명이 가리키는
-# compose 컨테이너가 사라진 대신, 같은 앱 박스 자신의 private IP로 다시 매핑해서 재사용한다
-# (요청 IP만 바뀌고 이름/포트는 그대로라 12개 서비스 어느 것도 rebuild가 필요 없다).
-x-app-box-core-hosts: &app-box-core-hosts
-  extra_hosts:
-    - "discovery-server:10.0.0.81"
-    - "config-server:10.0.0.81"
-    # file-service가 k8s로 이전된 뒤(파일럿) 추가 - Feign으로 호출하는 서비스가 생기면
-    # 이 앵커를 이미 쓰는 모든 compose 서비스가 별도 수정 없이 자동으로 올바르게 찾는다.
-    - "file-service:10.0.0.81"
-    # batch 2 (user/board/notification-service) 이전 후 추가 - 현재는 이 셋을 Feign으로 부르는
-    # compose 잔류 서비스가 없지만(repo 전체 grep 확인), 나중에 생겨도 수정 없이 바로 동작하도록.
-    - "user-service:10.0.0.81"
-    - "board-service:10.0.0.81"
-    - "notification-service:10.0.0.81"
-
-# #198 Phase 4 - gateway-server가 k8s로 옮겨간 뒤(Phase 5) Eureka로 이 9개 서비스를 lb://로
-# 호출하려면 두 가지가 다 필요하다: (1) Eureka에 컨테이너 ID 대신 서비스명으로 등록(config repo
-# application-docker.yml의 eureka.instance.hostname), (2) gateway 파드가 그 이름을 앱 박스
-# 자신의 IP로 풀 수 있게 hostAliases(Phase 5 매니페스트) + 실제로 그 포트가 호스트에 열려 있을 것.
-# 지금까지는 "게이트웨이만 문을 연다" 원칙 때문에 business-service는 호스트 포트를 안 열었는데,
-# gateway 자신이 이제 다른 박스(k8s 파드, 물리적으로는 같은 앱 박스지만 별도 네트워크 네임스페이스)에서
-# 들어오므로 이 예외가 불가피하다. SG는 앱 박스 자기 자신이라 새 규칙은 필요 없지만(같은 호스트
-# 트래픽), 포트 자체는 host에 열리므로 base 파일의 "포트 안 연다" 불변식이 깨진다는 걸 명시해둔다 -
-# 각 서비스가 #198 나머지 단계에서 k8s로 이전될 때마다 여기서 한 줄씩 지우면 된다.
+# #198 완료 (2026-08-14): 12개 business-service(gateway/config/discovery/file-service 포함)
+# 전부 k8s로 이전됨. 이 파일에는 이제 앱 박스에서 compose로 뜨는 business-service가 하나도
+# 없다 - 아래는 전부 `profiles: ["local-only"]`로 compose 기본 `up -d` 대상에서 빼는 한 줄씩뿐.
+# kafka(base 파일, 이 오버라이드 대상 아님)/caddy/fe만 실제로 compose가 관리한다.
 services:
   # mysql/elasticsearch는 #256으로 2번째 EC2(데이터 박스)로 분리됐다 - 앱 박스에서는 더 이상
   # 로컬 컨테이너로 띄우지 않는다. base 파일(docker-compose.yml)의 정의 자체는 로컬 개발용으로
@@ -68,78 +38,27 @@ services:
   gateway-server:
     profiles: ["local-only"]
 
-  # 아래 9개 business-service는 base 파일에서 *business-depends-on(-kafka) 앵커로
-  # `depends_on.{config-server,discovery-server}.condition: service_healthy`,
-  # `depends_on.mysql.condition: service_healthy`를 물려받는다. mysql/config-server/
-  # discovery-server 전부 이 파일에서 local-only profile(또는 k8s 이전, #198 Phase 2/3)로
-  # 빠지므로, 셋 다 required: false를 얹어 "떠 있으면 기다리되 없어도 에러내지 않음"으로
-  # 바꾼다 - Compose는 depends_on 맵을 키 단위로 병합하므로 기존 condition은 그대로 남고
-  # required만 추가된다. (required: false가 없으면 "depends on undefined service"로 compose
-  # 자체가 안 뜬다 - profile로 뺀 서비스를 다른 서비스가 여전히 hard dependency로 참조하면
-  # 발생하는 에러, discovery-server 이전 때 실제로 겪음.)
+  # #198 batch 3 - k8s(앱 박스 nodeSelector 고정, hostPort로 노출)로 이전 완료. 나머지와
+  # 동일 패턴 - compose 기본 `up -d` 대상에서 제외. 이걸로 12개 business-service 전부 k8s로
+  # 이전됨.
   order-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-order-service:latest
-    ports: ["8080:8080"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   project-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-project-service:latest
-    ports: ["8081:8081"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   payment-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-payment-service:latest
-    ports: ["8082:8082"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   # #198 batch 2 - k8s(앱 박스 nodeSelector 고정, hostPort:8083)로 이전 완료.
   user-service:
     profiles: ["local-only"]
 
   cart-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-cart-service:latest
-    ports: ["8085:8085"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   settlement-service:
-    <<: *app-box-core-hosts
-    image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-settlement-service:latest
-    ports: ["8086:8086"]
-    depends_on:
-      mysql:
-        required: false
-      config-server:
-        required: false
-      discovery-server:
-        required: false
+    profiles: ["local-only"]
 
   # #198 나머지 9개 서비스 마이그레이션 파일럿 - k8s(앱 박스 nodeSelector 고정, hostPort:8087)로
   # 이전 완료. core-three와 동일 패턴 - compose 기본 `up -d` 대상에서 제외.

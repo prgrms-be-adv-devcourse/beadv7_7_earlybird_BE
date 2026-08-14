@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-service
+  namespace: webapp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: project-service
+  template:
+    metadata:
+      labels:
+        app: project-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      containers:
+        - name: project-service
+          image: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-project-service:latest
+          ports:
+            - containerPort: 8081
+              hostPort: 8081
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          resources:
+            requests:
+              memory: 528Mi
+              cpu: 100m
+            limits:
+              memory: 704Mi
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            periodSeconds: 10
+            timeoutSeconds: 4
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8081
+            periodSeconds: 20
+            timeoutSeconds: 4
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-service
+  namespace: webapp
+spec:
+  type: ClusterIP
+  selector:
+    app: project-service
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081

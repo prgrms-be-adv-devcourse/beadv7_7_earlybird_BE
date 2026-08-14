@@ -86,6 +86,8 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          PAYMENT_SECURITY_ENCRYPTION_KEY: ${{ secrets.PAYMENT_SECURITY_ENCRYPTION_KEY }}
+          PAYMENT_TOSS_SECRET_KEY: ${{ secrets.PAYMENT_TOSS_SECRET_KEY }}
           DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
         with:
           # 데이터 박스(k3s 컨트롤 플레인) - #198 핵심 3종(config/discovery/gateway-server)의
@@ -95,7 +97,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: '10m'
-          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,DEPLOY_SHA
+          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,DEPLOY_SHA
           script: |
             set -e
             # ec2-user는 /etc/rancher/k3s/k3s.yaml을 직접 읽을 수 있어(644, k3s 기본 권한)
@@ -115,14 +117,21 @@ jobs:
               --from-literal=GMAIL_USERNAME="$GMAIL_USERNAME" \
               --from-literal=GMAIL_APP_PASSWORD="$GMAIL_APP_PASSWORD" \
               --dry-run=client -o yaml | kubectl apply -f -
+            # payment-service의 AES-256 암호화 키 - 비어있으면 기동 자체가 실패한다 (#183).
+            # 앱 박스 .env에 있던 기존 값과 반드시 같아야 한다 (값이 바뀌면 기존 결제 데이터
+            # 복호화 불가). PAYMENT_TOSS_SECRET_KEY는 아직 fake 게이트웨이만 쓰므로 비어있어도 됨.
+            kubectl -n webapp create secret generic payment-secrets \
+              --from-literal=PAYMENT_SECURITY_ENCRYPTION_KEY="$PAYMENT_SECURITY_ENCRYPTION_KEY" \
+              --from-literal=PAYMENT_TOSS_SECRET_KEY="$PAYMENT_TOSS_SECRET_KEY" \
+              --dry-run=client -o yaml | kubectl apply -f -
             kubectl apply -f infrastructure/k8s/
-            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service; do
+            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service; do
               kubectl -n webapp set image "deployment/$svc" \
                 "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$DEPLOY_SHA"
             done
             # :latest 로 rollout restart 하는 대신 :SHA 태그로 set image - 이래야 kubectl rollout
             # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
-            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service; do
+            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service; do
               kubectl -n webapp rollout status "deployment/$svc" --timeout=5m
             done
 
@@ -159,22 +168,12 @@ jobs:
             # public 전환 불가) - pull 전 로그인 필요. config-server가 이미 같은 방식(PAT)으로
             # private config repo에 접근하는 것과 동일한 패턴.
             echo "$GHCR_PAT" | docker login ghcr.io -u krkhnh --password-stdin
-            # `pull` reassigning :latest to a new digest leaves the old digest dangling
-            # (<none>:<none>) - same thing used to happen when EC2 rebuilt images locally, and it
-            # silently ate ~10GB of disk before we noticed. Tag whatever :latest currently points
-            # at as :rollback BEFORE pulling, so the version this deploy is about to replace stays
-            # reachable by name (`docker compose ... up -d` with the service image swapped back to
-            # :rollback) instead of only living on as an anonymous dangling image that a later
-            # prune could sweep away. `docker image inspect` guards the first-ever deploy, where
-            # :latest doesn't exist locally yet.
-            # config-server/discovery-server/gateway-server/file-service/user-service/
-            # board-service/notification-service는 #198로 k8s 이전 완료 - 더 이상 이 박스에서
-            # compose로 뜨지 않으므로 목록에서 뺐다 (안 그러면 존재하지 않는 이미지를 계속
-            # 태그하려다 조용히 no-op만 반복).
-            for svc in order-service project-service payment-service cart-service settlement-service; do
-              img="ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc"
-              docker image inspect "$img:latest" > /dev/null 2>&1 && docker tag "$img:latest" "$img:rollback"
-            done
+            # #198 완료 (2026-08-14): 12개 BE 서비스 전부 k8s로 이전되어 이 박스에서 compose로
+            # 뜨는 business-service가 하나도 없다 - 예전엔 여기서 :latest를 :rollback으로
+            # 재태깅해 pull 직전 버전을 보존했지만(이미지 pull로 dangling <none>:<none>이
+            # ~10GB 디스크를 조용히 먹은 적 있었음), 이제 이 박스가 pull하는 이미지는 kafka/
+            # caddy/fe뿐이라 더 이상 필요 없다. business-service 롤백은 k8s
+            # `kubectl rollout undo`(deploy-k8s 잡의 :SHA 태그 기반)로 대체됨.
             # -f infrastructure/docker-compose.prod.yml 은 공용 base 파일 위에 AWS 전용
             # 오버라이드(서비스별 image: 태그, gateway-server 호스트 포트 등)를 얹는다 - 이유는
             # 그 파일 참고. 로컬 개발에서는 이 옵션을 절대 넘기지 않으므로 영향 없음.
@@ -197,7 +196,6 @@ jobs:
             # handle manually if it ever happens).
             docker restart earlybird-caddy
             # Safe to prune unconditionally: any image a running container still uses is never
-            # touched by `image prune`, and the one previous version worth keeping for a quick
-            # rollback was just re-tagged as :rollback above, so this only clears versions older
-            # than that (plus stray dangling layers from anything else on the host).
+            # touched by `image prune` - this only clears dangling/superseded layers from
+            # kafka/caddy/fe pulls (business-service images no longer land on this box at all).
             docker image prune -f
