@@ -8,16 +8,23 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutSta
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliationRun;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectPayoutRun;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PgReconciliationRunRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectPayoutRunRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.config.JpaAuditingConfig;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PayoutObligationRepositoryAdapter;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.PgReconciliationRunRepositoryAdapter;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectPayoutRunRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectSettlementRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,11 +34,19 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create")
-@Import({JpaAuditingConfig.class, ProjectSettlementRepositoryAdapter.class, PayoutObligationRepositoryAdapter.class})
+@Import({
+        JpaAuditingConfig.class,
+        ProjectSettlementRepositoryAdapter.class,
+        PayoutObligationRepositoryAdapter.class,
+        PgReconciliationRunRepositoryAdapter.class,
+        ProjectPayoutRunRepositoryAdapter.class
+})
 class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
     @Autowired private ProjectSettlementRepository projectSettlementRepository;
     @Autowired private PayoutObligationRepository payoutObligationRepository;
+    @Autowired private PgReconciliationRunRepository pgReconciliationRunRepository;
+    @Autowired private ProjectPayoutRunRepository projectPayoutRunRepository;
     @Autowired private EntityManager entityManager;
 
     @Test
@@ -78,6 +93,71 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
         assertThatThrownBy(() -> payoutObligationRepository.save(obligation(settlement, 10L)))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("월별 대사와 지급 실행을 각각 실행 중인 대상 월로 다시 읽는다")
+    void persistsRunningMonthlyRuns() {
+        YearMonth month = YearMonth.of(2026, 7);
+        pgReconciliationRunRepository.save(PgReconciliationRun.start(month, LocalDateTime.of(2026, 8, 3, 9, 0)));
+        projectPayoutRunRepository.save(ProjectPayoutRun.start(month, LocalDateTime.of(2026, 8, 5, 9, 0)));
+        entityManager.clear();
+
+        assertThat(pgReconciliationRunRepository.findRunningBySettlementMonth(month))
+                .get()
+                .extracting(PgReconciliationRun::status)
+                .isEqualTo(PgReconciliationRun.Status.RUNNING);
+        assertThat(projectPayoutRunRepository.findRunningByPayoutMonth(month))
+                .get()
+                .extracting(ProjectPayoutRun::status)
+                .isEqualTo(ProjectPayoutRun.Status.RUNNING);
+    }
+
+    @Test
+    @DisplayName("같은 대상 월의 실행 중인 PG 대사는 하나만 저장할 수 있다")
+    void rejectsDuplicateRunningPgReconciliationRunForMonth() {
+        YearMonth month = YearMonth.of(2026, 7);
+        pgReconciliationRunRepository.save(PgReconciliationRun.start(month, LocalDateTime.of(2026, 8, 3, 9, 0)));
+
+        assertThatThrownBy(() -> pgReconciliationRunRepository.save(
+                PgReconciliationRun.start(month, LocalDateTime.of(2026, 8, 3, 9, 1))
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("같은 대상 월의 실행 중인 프로젝트 지급은 하나만 저장할 수 있다")
+    void rejectsDuplicateRunningProjectPayoutRunForMonth() {
+        YearMonth month = YearMonth.of(2026, 8);
+        projectPayoutRunRepository.save(ProjectPayoutRun.start(month, LocalDateTime.of(2026, 8, 5, 9, 0)));
+
+        assertThatThrownBy(() -> projectPayoutRunRepository.save(
+                ProjectPayoutRun.start(month, LocalDateTime.of(2026, 8, 5, 9, 1))
+        )).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("종료된 월별 실행은 활성 키를 비워 같은 월 재실행을 허용한다")
+    void allowsRerunningFinishedMonthlyRuns() {
+        YearMonth month = YearMonth.of(2026, 7);
+        PgReconciliationRun reconciliationRun = pgReconciliationRunRepository.save(
+                PgReconciliationRun.start(month, LocalDateTime.of(2026, 8, 3, 9, 0))
+        );
+        ProjectPayoutRun payoutRun = projectPayoutRunRepository.save(
+                ProjectPayoutRun.start(month, LocalDateTime.of(2026, 8, 5, 9, 0))
+        );
+        reconciliationRun.requireReview(LocalDateTime.of(2026, 8, 3, 9, 1));
+        payoutRun.complete(LocalDateTime.of(2026, 8, 5, 9, 1));
+        pgReconciliationRunRepository.save(reconciliationRun);
+        projectPayoutRunRepository.save(payoutRun);
+
+        assertThat(pgReconciliationRunRepository.findRunningBySettlementMonth(month)).isEmpty();
+        assertThat(projectPayoutRunRepository.findRunningByPayoutMonth(month)).isEmpty();
+        assertThat(pgReconciliationRunRepository.save(
+                PgReconciliationRun.start(month, LocalDateTime.of(2026, 8, 4, 9, 0))
+        ).id()).isNotNull();
+        assertThat(projectPayoutRunRepository.save(
+                ProjectPayoutRun.start(month, LocalDateTime.of(2026, 9, 5, 9, 0))
+        ).id()).isNotNull();
     }
 
     private static ProjectSettlement settlement(Long projectId, Long creatorId) {
