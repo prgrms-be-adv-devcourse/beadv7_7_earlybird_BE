@@ -47,6 +47,8 @@ public class OrderApiService {
     private final OrderPaidCompletionService paidCompletionService;
     private final OrderStockFailureCompletionService stockFailureCompletionService;
     private final FundedAmountSynchronizationService fundedAmountSynchronizationService;
+    private final OrderCancellationPersistenceService cancellationPersistenceService;
+    private final OrderPaymentStatusOutboxRecoveryService paymentStatusRecoveryService;
 
     @Autowired
     public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
@@ -54,7 +56,9 @@ public class OrderApiService {
                            OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler,
                            OrderPaidCompletionService paidCompletionService,
                            OrderStockFailureCompletionService stockFailureCompletionService,
-                           FundedAmountSynchronizationService fundedAmountSynchronizationService) {
+                           FundedAmountSynchronizationService fundedAmountSynchronizationService,
+                           OrderCancellationPersistenceService cancellationPersistenceService,
+                           OrderPaymentStatusOutboxRecoveryService paymentStatusRecoveryService) {
         this.orderRepository = orderRepository;
         this.rewardPort = rewardPort;
         this.paymentPort = paymentPort;
@@ -65,6 +69,8 @@ public class OrderApiService {
         this.paidCompletionService = paidCompletionService;
         this.stockFailureCompletionService = stockFailureCompletionService;
         this.fundedAmountSynchronizationService = fundedAmountSynchronizationService;
+        this.cancellationPersistenceService = cancellationPersistenceService;
+        this.paymentStatusRecoveryService = paymentStatusRecoveryService;
     }
 
     OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
@@ -78,6 +84,8 @@ public class OrderApiService {
         this.paidCompletionService = null;
         this.stockFailureCompletionService = null;
         this.fundedAmountSynchronizationService = null;
+        this.cancellationPersistenceService = null;
+        this.paymentStatusRecoveryService = null;
     }
 
     /**
@@ -218,7 +226,12 @@ public class OrderApiService {
         stockHandler.releaseStock(order);
         order.cancel();
         log.info("order cancelled. orderId={}", orderId);
-        Order cancelledOrder = orderRepository.save(order);
+        Order cancelledOrder = cancellationPersistenceService != null
+                ? cancellationPersistenceService.saveCancelledWithPaymentStatus(order)
+                : orderRepository.save(order);
+        if (paymentStatusRecoveryService != null) {
+            paymentStatusRecoveryService.publishImmediately(cancelledOrder.getId(), cancelledOrder.getStatus());
+        }
         if (fundedAmountSynchronizationService != null) {
             fundedAmountSynchronizationService.synchronize(cancelledOrder.getProjectId());
         }

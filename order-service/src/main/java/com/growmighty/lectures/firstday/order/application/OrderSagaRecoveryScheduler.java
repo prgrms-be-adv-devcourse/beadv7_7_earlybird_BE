@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 public class OrderSagaRecoveryScheduler {
     private final OrderSagaRecoveryService orderSagaRecoveryService;
     private final CartCleanupRecoveryService cartCleanupRecoveryService;
+    private final OrderPaymentStatusOutboxRecoveryService paymentStatusOutboxRecoveryService;
 
     @Scheduled(fixedDelayString = "${order.saga.recovery-delay-ms:30000}")
     public void recover() {
@@ -20,5 +21,10 @@ public class OrderSagaRecoveryScheduler {
     @Scheduled(fixedDelayString = "${order.cart-cleanup.recovery-delay-ms:30000}")
     public void recoverCartCleanup() {
         cartCleanupRecoveryService.recoverPendingCleanups();
+    }
+
+    @Scheduled(fixedDelayString = "${order.payment-status-outbox.recovery-delay-ms:30000}")
+    public void publishPaymentStatuses() {
+        paymentStatusOutboxRecoveryService.publishPending();
     }
 }

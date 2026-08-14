@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 public class OrderPaidPersistenceService {
     private final OrderRepository orderRepository;
     private final CartCleanupOutboxRepository outboxRepository;
+    private final OrderPaymentStatusOutboxWriter paymentStatusOutboxWriter;
 
     @Transactional
     public Order savePaidWithCleanup(Order order) {
@@ -31,6 +32,7 @@ public class OrderPaidPersistenceService {
                             .map(OrderItem::getRewardId)
                             .toList(), LocalDateTime.now()));
         }
+        paymentStatusOutboxWriter.saveIfAbsent(savedOrder);
         return savedOrder;
     }
 }
