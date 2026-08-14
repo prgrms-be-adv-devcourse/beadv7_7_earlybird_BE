@@ -56,17 +56,20 @@ spec:
               path: /actuator/health
               port: 8088
             periodSeconds: 10
+            timeoutSeconds: 4
             failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /actuator/health
               port: 8088
             periodSeconds: 10
+            timeoutSeconds: 4
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: 8088
             periodSeconds: 20
+            timeoutSeconds: 4
 ---
 apiVersion: v1
 kind: Service
