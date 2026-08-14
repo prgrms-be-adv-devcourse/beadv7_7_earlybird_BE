@@ -37,11 +37,6 @@ public class RefundRepositoryAdapter implements RefundRepository {
     }
 
     @Override
-    public List<Long> findRecoveryTargetIds(LocalDateTime cutoff, int limit) {
-        return jpaRepository.findRecoveryTargetIds(RefundStatus.REQUESTED, cutoff, PageRequest.of(0, limit));
-    }
-
-    @Override
     public Optional<Long> findNextCancelableRefundId(LocalDateTime now) {
         return jpaRepository.findNextCancelableRefundId(
             RefundStatus.PLANNED,

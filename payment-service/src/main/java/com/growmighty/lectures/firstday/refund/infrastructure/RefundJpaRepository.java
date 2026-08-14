@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.refund.infrastructure;
 
+import com.growmighty.lectures.firstday.refund.application.dto.RefundRecoveryTarget;
 import com.growmighty.lectures.firstday.refund.domain.Refund;
 import com.growmighty.lectures.firstday.refund.domain.RefundStatus;
 import org.springframework.data.domain.Pageable;
@@ -21,17 +22,6 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
           """)
     List<Long> findPaymentIdsByPaymentIdIn(@Param("paymentIds") List<Long> paymentIds);
 
-    @Query("""
-        select refund.id
-        from Refund refund
-        where refund.status = :status
-          and refund.createdAt < :cutoff
-        order by refund.createdAt asc
-        """)
-    List<Long> findRecoveryTargetIds(
-        @Param("status") RefundStatus status,
-        @Param("cutoff") LocalDateTime cutoff,
-        Pageable pageable);
 
     @Query("""
           select refund.id
@@ -47,4 +37,21 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
                                           @Param("retryPendingStatus") RefundStatus retryPendingStatus,
                                           @Param("now") LocalDateTime now,
                                           Pageable pageable);
+
+    @Query("""
+      select new com.growmighty.lectures.firstday.refund.application.dto.RefundRecoveryTarget(
+          refund.id,
+          payment.paymentKey
+      )
+      from Refund refund
+      join Payment payment on payment.paymentId = refund.paymentId
+      where refund.status = :status
+        and refund.createdAt < :cutoff
+      order by refund.createdAt asc
+      """)
+    List<RefundRecoveryTarget> findTimedOutRequestedTargets(
+        @Param("status") RefundStatus status,
+        @Param("cutoff") LocalDateTime cutoff,
+        Pageable pageable
+    );
 }
