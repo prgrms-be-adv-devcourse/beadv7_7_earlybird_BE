@@ -1,9 +1,9 @@
 package com.growmighty.lectures.firstday.payment.application;
 
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentSingleResultEvent;
 import com.growmighty.lectures.firstday.payment.application.port.PaymentSingleResultEventPublisher;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
-import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.PaymentSingleResultEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

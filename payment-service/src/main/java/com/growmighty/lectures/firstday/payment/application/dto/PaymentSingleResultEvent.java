@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto;
+package com.growmighty.lectures.firstday.payment.application.dto;
 
 public record PaymentSingleResultEvent(
     Long orderId,
