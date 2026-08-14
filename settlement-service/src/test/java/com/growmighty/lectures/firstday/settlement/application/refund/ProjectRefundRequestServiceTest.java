@@ -134,6 +134,39 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("프로젝트 결과 뒤에 발생한 결제 취소가 있으면 부분 환불 Outbox를 만들지 않는다")
+    void rejectsCancellationOccurredAfterOutcome() {
+        long projectId = 6_105L;
+        Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
+        outcomeRepository.saveAndFlush(ProjectOutcomeFact.of(
+                projectId,
+                705L,
+                ProjectOutcomeFact.Outcome.FAILED,
+                outcomeAt
+        ));
+        paymentRepository.saveAndFlush(OrderPaymentFact.completed(
+                61_006L,
+                "PG-61006",
+                projectId,
+                Money.wons(50_000),
+                outcomeAt.minusSeconds(60)
+        ));
+        OrderPaymentFact cancelled = OrderPaymentFact.completed(
+                61_007L,
+                "PG-61007",
+                projectId,
+                Money.wons(30_000),
+                outcomeAt.minusSeconds(30)
+        );
+        cancelled.cancel("PG-61007", projectId, Money.wons(30_000), outcomeAt.plusSeconds(1));
+        paymentRepository.saveAndFlush(cancelled);
+
+        service().createDueRequests();
+
+        assertThat(outboxRepository.findByProjectId(projectId)).isEmpty();
+    }
+
+    @Test
     @DisplayName("발생 시각보다 이른 발행 완료 시각을 거부해도 Outbox는 미발행 상태를 유지한다")
     void keepsOutboxUnpublishedWhenPublishedAtIsBeforeOccurredAt() {
         long projectId = 6_104L;
