@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import java.time.LocalDateTime;
 
 @Component
 @RequiredArgsConstructor
@@ -16,7 +17,7 @@ public class BulkRefundScheduler {
 
     @Scheduled(fixedDelayString = "${payment.bulk-refund.schedule-fixed-delay:2000}")
     public void cancelNextPlannedRefund() {
-        refundRepository.findNextPlannedRefundId()
+        refundRepository.findNextCancelableRefundId(LocalDateTime.now())
             .ifPresent(refundId -> {
                 try {
                     refundCancellationSagaOrchestrator.cancelPlannedRefund(refundId);

@@ -34,7 +34,12 @@ class RefundRecoveryBatchServiceTest {
         refundRecoveryBatchService = new RefundRecoveryBatchService(
             refundRepository,
             refundRecoveryService,
-            new RefundRecoveryProperties(Duration.ofMinutes(3), BATCH_SIZE)
+            new RefundRecoveryProperties(
+                Duration.ofMinutes(3),
+                BATCH_SIZE,
+                3,
+                Duration.ofMinutes(5)
+            )
         );
     }
 

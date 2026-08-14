@@ -61,7 +61,7 @@ class RefundCancellationSagaOrchestratorTest {
     }
 
     @Test
-    void cancel_keepsRefundRequestedWhenTossRefundResultIsUncertain() {
+    void cancel_schedulesRefundRetryWhenTossRefundResultIsUncertain() {
         RefundCancellationTarget target = target();
         RefundGatewayException exception = gatewayException(RefundGatewayFailureType.UNCERTAIN);
         when(refundService.startRefund(ORDER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
@@ -71,6 +71,7 @@ class RefundCancellationSagaOrchestratorTest {
         assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, RefundReason.USER_CANCEL))
             .isSameAs(exception);
 
+        verify(refundService).scheduleRetry(REFUND_ID);
         verify(refundService, never()).failRefund(REFUND_ID);
         verify(refundService, never()).completeRefund(REFUND_ID);
     }

@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.refund.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.domain.*;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
+import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import com.growmighty.lectures.firstday.refund.domain.Refund;
 import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
@@ -10,12 +11,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 public class RefundService {
     private final PaymentRepository  paymentRepository;
     private final RefundRepository refundRepository;
     private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
+    private final RefundRecoveryProperties refundRecoveryProperties;
 
     @Transactional
     public RefundCancellationTarget startRefund(Long paymentId, RefundReason reason) {
@@ -43,6 +47,18 @@ public class RefundService {
             refund.getReason(),
             refund.getCancelIdempotencyKey()
         );
+    }
+
+    @Transactional
+    public void scheduleRetry(Long refundId) {
+        Refund refund = findRefund(refundId);
+        refund.scheduleRetry(
+            LocalDateTime.now(),
+            refundRecoveryProperties.maximumRetryCount(),
+            refundRecoveryProperties.retryDelay()
+        );
+
+        refundRepository.save(refund);
     }
 
     private Payment findPaidPayment(Long paymentId) {
