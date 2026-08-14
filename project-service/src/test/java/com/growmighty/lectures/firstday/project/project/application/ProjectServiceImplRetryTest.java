@@ -16,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -92,8 +93,8 @@ class ProjectServiceImplRetryTest {
         @Bean
         ProjectService projectService(ProjectRepository projectRepository, ProjectCategoryRepository projectCategoryRepository,
                                        ObjectProvider<ProjectService> selfProvider, ObjectProvider<RewardService> rewardServiceProvider,
-                                       OrderPort orderPort, ProjectSearchPort searchPort) {
-            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort);
+                                       OrderPort orderPort, ProjectSearchPort searchPort, ApplicationEventPublisher eventPublisher) {
+            return new ProjectServiceImpl(projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher);
         }
     }
 

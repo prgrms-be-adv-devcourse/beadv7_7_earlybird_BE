@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.core.Ordered;
 import org.springframework.retry.annotation.EnableRetry;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 // JPA Auditing은 config.JpaAuditingConfig에서 별도로 켠다 — 여기 직접 붙이면 @WebMvcTest 슬라이스가 깨진다.
@@ -16,6 +17,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 // 그래야 낙관적 락 충돌로 커밋이 실패해도 재시도마다 새 트랜잭션에서 엔티티를 다시 읽는다 (Reward.decreaseStock 참고).
 @EnableRetry(order = Ordered.LOWEST_PRECEDENCE - 1)
 @EnableScheduling
+// ProjectSearchIndexEventListener/ProjectClosedEventListener의 @Async가 이게 없으면 조용히
+// 무시되고 AFTER_COMMIT 콜백이 커밋한 스레드에서 그대로 동기 실행된다 — ES/Kafka가 느리거나
+// 죽어 있으면 그 지연이 그대로 호출자(배치/HTTP 요청 스레드)를 물고 늘어진다.
+@EnableAsync
 @EnableFeignClients
 public class ProjectServiceApplication {
     public static void main(String[] args) {

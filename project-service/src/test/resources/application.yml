@@ -16,6 +16,16 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  # 이 리포의 통합 테스트는 브로커 없이 돈다 — ProjectClosedEventListener가 커밋 후 Kafka로
+  # 발행하는데, max.block.ms 기본값(60000)이면 브로커 부재 시 그 시간만큼 백그라운드 스레드가
+  # 블로킹된다(@EnableAsync라 테스트 assertion 자체는 안 물리지만, 리소스 낭비/로그 노이즈는 남는다).
+  # 운영 config-repo(beadv7_7_earlybird_config)의 project-service.yml에도 짧은 값을 넣어야
+  # 브로커 장애 시 마감 배치가 프로젝트 1개당 60초씩 물리는 걸 막는다 — 이 리포에서는 그 리포를
+  # 직접 수정할 수 없다.
+  kafka:
+    producer:
+      properties:
+        max.block.ms: 3000
   ai:
     openai:
       api-key: test-key-not-a-real-key
