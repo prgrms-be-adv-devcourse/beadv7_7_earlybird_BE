@@ -8,7 +8,9 @@ import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayo
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.math.BigDecimal;
@@ -34,6 +36,9 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
     @Autowired
     private ProjectSettlementRepository projectSettlementRepository;
 
+    @Autowired
+    private PayoutObligationRepository payoutObligationRepository;
+
     @Test
     @DisplayName("검증된 프로젝트 입력으로 프로젝트 정산과 최초 지급 상태를 확정한다")
     void confirmsProjectSettlementAndInitialPayoutState() {
@@ -55,6 +60,7 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
 
         ConfirmedProjectSettlement result = projectSettlementService.confirm(command);
         ProjectSettlement settlement = projectSettlementRepository.findByProjectId(1L).orElseThrow();
+        PayoutObligation payoutObligation = payoutObligationRepository.findBySettlementId(settlement.id()).orElseThrow();
 
         assertThat(result)
                 .extracting(
@@ -70,8 +76,8 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         assertThat(settlement.paymentAndSettlementAgencyFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
         assertThat(settlement.platformFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
         assertThat(settlement.vatRate()).isEqualByComparingTo(new BigDecimal("0.10"));
-        assertThat(settlement.scheduledDate()).isEqualTo(LocalDate.of(2026, 8, 3));
-        assertThat(settlement.status()).isEqualTo(PayoutStatus.SCHEDULED);
+        assertThat(payoutObligation.scheduledDate()).isEqualTo(LocalDate.of(2026, 8, 3));
+        assertThat(payoutObligation.status()).isEqualTo(PayoutStatus.SCHEDULED);
     }
 
     @Test

@@ -18,8 +18,8 @@ import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayo
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
-import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
-import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -50,7 +50,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     private ProjectSettlementService projectSettlementService;
 
     @Autowired
-    private ProjectSettlementRepository projectSettlementRepository;
+    private PayoutObligationRepository payoutObligationRepository;
 
     @Test
     @DisplayName("Gateway 전달 사용자 식별자 없이 창작자 프로젝트 정산 조회를 요청하면 거부한다")
@@ -259,36 +259,36 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     }
 
     private void failPayoutAttempt(ConfirmedProjectSettlement confirmed) {
-        ProjectSettlement settlement = projectSettlementRepository.findById(confirmed.settlementId())
+        PayoutObligation payoutObligation = payoutObligationRepository.findBySettlementId(confirmed.settlementId())
                 .orElseThrow();
-        PayoutAttempt attempt = settlement.startAttempt(
+        PayoutAttempt attempt = payoutObligation.startAttempt(
                 "ref-payout-secret",
                 "idempotency-secret",
                 LocalDateTime.of(2026, 7, 7, 9, 0)
         );
-        settlement.failAttempt(
+        payoutObligation.failAttempt(
                 attempt,
                 "toss-payout-secret",
                 "INVALID_ACCOUNT",
                 LocalDateTime.of(2026, 7, 7, 9, 0, 3),
                 false
         );
-        projectSettlementRepository.save(settlement);
+        payoutObligationRepository.save(payoutObligation);
     }
 
     private void completePayoutAttempt(ConfirmedProjectSettlement confirmed) {
-        ProjectSettlement settlement = projectSettlementRepository.findById(confirmed.settlementId())
+        PayoutObligation payoutObligation = payoutObligationRepository.findBySettlementId(confirmed.settlementId())
                 .orElseThrow();
-        PayoutAttempt attempt = settlement.startAttempt(
+        PayoutAttempt attempt = payoutObligation.startAttempt(
                 "ref-completed-payout",
                 "completed-idempotency-key",
                 LocalDateTime.of(2026, 7, 7, 9, 0)
         );
-        settlement.completeAttempt(
+        payoutObligation.completeAttempt(
                 attempt,
                 "toss-completed-payout",
                 LocalDateTime.of(2026, 7, 7, 9, 0, 3)
         );
-        projectSettlementRepository.save(settlement);
+        payoutObligationRepository.save(payoutObligation);
     }
 }

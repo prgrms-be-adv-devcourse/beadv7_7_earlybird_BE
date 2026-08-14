@@ -98,13 +98,9 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    void storesKafkaInputsIdempotentlyAndAppliesCancellation() throws Exception {
+    void storesProjectStatusInputIdempotently() throws Exception {
         long projectId = 81_001L;
-        long orderId = 91_001L;
         UUID projectEventId = UUID.randomUUID();
-        UUID paymentCompletedEventId = UUID.randomUUID();
-        UUID paymentCancelledEventId = UUID.randomUUID();
-        UUID refundProcessedEventId = UUID.randomUUID();
 
         send(KafkaTopics.PROJECT_STATUS_CHANGED, projectId, new ProjectStatusChangedEvent(
                 projectEventId,
@@ -120,6 +116,19 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                 OffsetDateTime.parse("2026-08-01T09:00:00+09:00"),
                 new ProjectStatusChangedEvent.Payload(projectId, 701L, "SUCCEEDED")
         ));
+
+        assertThat(await(() -> inboxRepository.existsById(projectEventId.toString()))).isTrue();
+        assertThat(outcomeRepository.findById(projectId).orElseThrow().outcome())
+                .isEqualTo(ProjectOutcomeFact.Outcome.SUCCEEDED);
+    }
+
+    @Test
+    void appliesOrderPaymentCancellation() throws Exception {
+        long projectId = 81_005L;
+        long orderId = 91_005L;
+        UUID paymentCompletedEventId = UUID.randomUUID();
+        UUID paymentCancelledEventId = UUID.randomUUID();
+
         send(KafkaTopics.ORDER_PAYMENT_STATUS_CHANGED, orderId, new OrderPaymentStatusChangedEvent(
                 paymentCompletedEventId,
                 "OrderPaymentStatusChanged",
@@ -138,6 +147,20 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                         orderId, "PG-91001", projectId, 50_000L, "CANCELLED"
                 )
         ));
+
+        assertThat(await(() -> paymentRepository.findById(orderId)
+                .map(payment -> payment.status() == OrderPaymentFact.Status.CANCELLED)
+                .orElse(false))).isTrue();
+        assertThat(inboxRepository.existsById(paymentCompletedEventId.toString())).isTrue();
+        assertThat(inboxRepository.existsById(paymentCancelledEventId.toString())).isTrue();
+    }
+
+    @Test
+    void storesRefundProcessedInput() throws Exception {
+        long projectId = 81_006L;
+        long orderId = 91_006L;
+        UUID refundProcessedEventId = UUID.randomUUID();
+
         send(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT, projectId, new ProjectRefundProcessedEvent(
                 refundProcessedEventId,
                 "ProjectRefundProcessed",
@@ -147,12 +170,6 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
         ));
 
         assertThat(await(() -> inboxRepository.existsById(refundProcessedEventId.toString()))).isTrue();
-        assertThat(outcomeRepository.findById(projectId).orElseThrow().outcome())
-                .isEqualTo(ProjectOutcomeFact.Outcome.SUCCEEDED);
-        assertThat(paymentRepository.findById(orderId).orElseThrow().status())
-                .isEqualTo(OrderPaymentFact.Status.CANCELLED);
-        assertThat(inboxRepository.existsById(projectEventId.toString())).isTrue();
-        assertThat(inboxRepository.count()).isGreaterThanOrEqualTo(4);
     }
 
     @Test

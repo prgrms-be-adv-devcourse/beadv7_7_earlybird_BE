@@ -24,7 +24,7 @@ import java.util.Objects;
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_payout_attempt_ref_payout_id", columnNames = "ref_payout_id"),
                 @UniqueConstraint(name = "uk_payout_attempt_idempotency_key", columnNames = "idempotency_key"),
-                @UniqueConstraint(name = "uk_payout_attempt_sequence", columnNames = {"settlement_id", "sequence"})
+                @UniqueConstraint(name = "uk_payout_attempt_sequence", columnNames = {"payout_obligation_id", "sequence"})
         }
 )
 public class PayoutAttempt extends BaseEntity {
@@ -34,8 +34,8 @@ public class PayoutAttempt extends BaseEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "settlement_id", nullable = false, updatable = false)
-    private ProjectSettlement settlement;
+    @JoinColumn(name = "payout_obligation_id", nullable = false, updatable = false)
+    private PayoutObligation payoutObligation;
 
     @Column(name = "sequence", nullable = false, updatable = false)
     private int sequence;
@@ -69,7 +69,7 @@ public class PayoutAttempt extends BaseEntity {
     }
 
     private PayoutAttempt(
-            ProjectSettlement settlement,
+            PayoutObligation payoutObligation,
             int sequence,
             String refPayoutId,
             String tossPayoutId,
@@ -80,7 +80,7 @@ public class PayoutAttempt extends BaseEntity {
             LocalDateTime requestedAt,
             LocalDateTime completedAt
     ) {
-        this.settlement = Objects.requireNonNull(settlement, "프로젝트 정산은 필수입니다.");
+        this.payoutObligation = Objects.requireNonNull(payoutObligation, "지급 의무는 필수입니다.");
         this.sequence = sequence;
         this.refPayoutId = refPayoutId;
         this.tossPayoutId = tossPayoutId;
@@ -94,7 +94,7 @@ public class PayoutAttempt extends BaseEntity {
     }
 
     static PayoutAttempt requested(
-            ProjectSettlement settlement,
+            PayoutObligation payoutObligation,
             int sequence,
             String refPayoutId,
             String idempotencyKey,
@@ -102,7 +102,7 @@ public class PayoutAttempt extends BaseEntity {
             LocalDateTime requestedAt
     ) {
         return new PayoutAttempt(
-                settlement,
+                payoutObligation,
                 sequence,
                 refPayoutId,
                 null,

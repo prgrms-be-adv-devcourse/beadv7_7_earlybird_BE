@@ -11,8 +11,9 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutSta
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
-import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -39,16 +40,16 @@ class PayoutExecutionServiceTest {
     private static final Long SETTLEMENT_ID = 100L;
 
     private final List<String> events = new ArrayList<>();
-    private InMemoryProjectSettlementRepository settlementRepository;
+    private InMemoryPayoutObligationRepository payoutObligationRepository;
     private RecordingPayoutGateway payoutGateway;
     private PayoutExecutionService service;
 
     @BeforeEach
     void setUp() {
-        settlementRepository = new InMemoryProjectSettlementRepository(projectSettlement(), events);
+        payoutObligationRepository = new InMemoryPayoutObligationRepository(payoutObligation(), events);
         payoutGateway = new RecordingPayoutGateway(events);
         service = new PayoutExecutionService(
-                settlementRepository,
+                payoutObligationRepository,
                 payoutGateway,
                 TransactionOperations.withoutTransaction(),
                 CLOCK
@@ -68,7 +69,7 @@ class PayoutExecutionServiceTest {
         assertThat(events).containsExactly("save", "gateway", "save");
         assertThat(result.attemptStatus()).isEqualTo(PayoutAttemptStatus.REQUESTED);
         assertThat(result.payoutStatus()).isEqualTo(PayoutStatus.PROCESSING);
-        assertThat(settlementRepository.settlement().attempts().getFirst().tossPayoutId())
+        assertThat(payoutObligationRepository.payoutObligation().attempts().getFirst().tossPayoutId())
                 .isEqualTo("dummy-payout-1");
         assertThat(payoutGateway.requests().getFirst())
                 .extracting(
@@ -101,7 +102,7 @@ class PayoutExecutionServiceTest {
 
         assertThat(unknown.attemptStatus()).isEqualTo(PayoutAttemptStatus.UNKNOWN);
         assertThat(recovered.attemptStatus()).isEqualTo(PayoutAttemptStatus.IN_PROGRESS);
-        assertThat(settlementRepository.settlement().attemptCount()).isEqualTo(1);
+        assertThat(payoutObligationRepository.payoutObligation().attemptCount()).isEqualTo(1);
         assertThat(secondRequest.refPayoutId()).isEqualTo(firstRequest.refPayoutId());
         assertThat(secondRequest.idempotencyKey()).isEqualTo(firstRequest.idempotencyKey());
     }
@@ -126,7 +127,7 @@ class PayoutExecutionServiceTest {
 
         assertThat(failed.payoutStatus()).isEqualTo(PayoutStatus.RETRY_WAITING);
         assertThat(retried.attemptSequence()).isEqualTo(2);
-        assertThat(settlementRepository.settlement().attemptCount()).isEqualTo(2);
+        assertThat(payoutObligationRepository.payoutObligation().attemptCount()).isEqualTo(2);
         assertThat(secondRequest.refPayoutId()).isNotEqualTo(firstRequest.refPayoutId());
         assertThat(secondRequest.idempotencyKey()).isNotEqualTo(firstRequest.idempotencyKey());
     }
@@ -187,11 +188,16 @@ class PayoutExecutionServiceTest {
         assertThat(payoutGateway.requests()).hasSize(1);
     }
 
-    private static ProjectSettlement projectSettlement() {
+    private static PayoutObligation payoutObligation() {
         ProjectSettlement settlement = ProjectSettlement.confirm(
                 1L,
                 10L,
                 List.of(Money.wons(100_000)),
+                LocalDateTime.of(2026, 7, 26, 1, 0)
+        );
+        ReflectionTestUtils.setField(settlement, "id", SETTLEMENT_ID);
+        return PayoutObligation.schedule(
+                settlement,
                 CreatorPayoutProfile.registered(
                         10L,
                         "seller-10",
@@ -200,53 +206,44 @@ class PayoutExecutionServiceTest {
                         "********1234",
                         LocalDateTime.of(2026, 7, 26, 0, 0)
                 ),
-                LocalDate.of(2026, 8, 3),
-                LocalDateTime.of(2026, 7, 26, 1, 0)
+                LocalDate.of(2026, 8, 3)
         );
-        ReflectionTestUtils.setField(settlement, "id", SETTLEMENT_ID);
-        return settlement;
     }
 
-    private static final class InMemoryProjectSettlementRepository
-            implements ProjectSettlementRepository {
+    private static final class InMemoryPayoutObligationRepository implements PayoutObligationRepository {
 
-        private ProjectSettlement settlement;
+        private PayoutObligation payoutObligation;
         private final List<String> events;
 
-        private InMemoryProjectSettlementRepository(ProjectSettlement settlement, List<String> events) {
-            this.settlement = settlement;
+        private InMemoryPayoutObligationRepository(PayoutObligation payoutObligation, List<String> events) {
+            this.payoutObligation = payoutObligation;
             this.events = events;
         }
 
         @Override
-        public ProjectSettlement save(ProjectSettlement settlement) {
+        public PayoutObligation save(PayoutObligation payoutObligation) {
             events.add("save");
-            this.settlement = settlement;
-            return settlement;
+            this.payoutObligation = payoutObligation;
+            return payoutObligation;
         }
 
         @Override
-        public Optional<ProjectSettlement> findById(Long id) {
-            return Objects.equals(settlement.id(), id) ? Optional.of(settlement) : Optional.empty();
+        public Optional<PayoutObligation> findById(Long id) {
+            return Objects.equals(payoutObligation.id(), id) ? Optional.of(payoutObligation) : Optional.empty();
         }
 
         @Override
-        public Optional<ProjectSettlement> findByProjectId(Long projectId) {
-            return Objects.equals(settlement.projectId(), projectId) ? Optional.of(settlement) : Optional.empty();
+        public Optional<PayoutObligation> findBySettlementId(Long settlementId) {
+            return Objects.equals(payoutObligation.settlementId(), settlementId) ? Optional.of(payoutObligation) : Optional.empty();
         }
 
         @Override
-        public List<ProjectSettlement> findAllByCreatorIdOrderByConfirmedAtDescIdDesc(Long creatorId) {
-            return Objects.equals(settlement.creatorId(), creatorId) ? List.of(settlement) : List.of();
+        public List<PayoutObligation> findAllBySettlementIdIn(java.util.Collection<Long> settlementIds) {
+            return settlementIds.contains(payoutObligation.settlementId()) ? List.of(payoutObligation) : List.of();
         }
 
-        @Override
-        public List<ProjectSettlement> findAllByOrderByConfirmedAtDescIdDesc() {
-            return List.of(settlement);
-        }
-
-        private ProjectSettlement settlement() {
-            return settlement;
+        private PayoutObligation payoutObligation() {
+            return payoutObligation;
         }
     }
 

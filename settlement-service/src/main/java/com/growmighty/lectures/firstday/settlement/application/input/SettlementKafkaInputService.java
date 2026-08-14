@@ -3,13 +3,7 @@ package com.growmighty.lectures.firstday.settlement.application.input;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.OrderPaymentStatusChangedEvent;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectStatusChangedEvent;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.inbox.KafkaInboxEvent;
-import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataKafkaInboxEventRepository;
-import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
-import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.SettlementKafkaInputRepository;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Objects;
@@ -30,72 +24,64 @@ public class SettlementKafkaInputService {
     private static final String ORDER_PAYMENT_STATUS_CHANGED = "OrderPaymentStatusChanged";
     private static final String PROJECT_REFUND_PROCESSED = "ProjectRefundProcessed";
 
-    private final SpringDataKafkaInboxEventRepository inboxRepository;
-    private final SpringDataProjectOutcomeFactRepository outcomeRepository;
-    private final SpringDataOrderPaymentFactRepository paymentRepository;
+    private final SettlementKafkaInputRepository inputRepository;
 
     @Transactional
-    public void saveProjectStatus(String key, ProjectStatusChangedEvent event) {
-        validateProjectEvent(key, event);
-        if (inboxRepository.existsById(event.eventId().toString())) {
+    public void saveProjectStatus(SettlementKafkaInput.ProjectStatusChanged event) {
+        validateProjectEvent(event);
+        if (!inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant())) {
             return;
         }
 
         ProjectOutcomeFact incoming = ProjectOutcomeFact.of(
-                event.payload().projectId(),
-                event.payload().creatorId(),
-                requiredEnum(ProjectOutcomeFact.Outcome.class, event.payload().status(), "프로젝트 상태"),
+                event.projectId(),
+                event.creatorId(),
+                requiredEnum(ProjectOutcomeFact.Outcome.class, event.status(), "프로젝트 상태"),
                 event.occurredAt().toInstant()
         );
-        outcomeRepository.findById(incoming.projectId()).ifPresentOrElse(existing -> {
+        inputRepository.findProjectOutcome(incoming.projectId()).ifPresentOrElse(existing -> {
             if (!sameProjectOutcome(existing, incoming)) {
                 throw new IllegalArgumentException("기존 프로젝트 결과 사실과 충돌합니다.");
             }
-        }, () -> outcomeRepository.save(incoming));
-
-        saveInbox(event.eventId(), event.eventType(), event.occurredAt());
+        }, () -> inputRepository.save(incoming));
     }
 
     @Transactional
-    public void saveOrderPaymentStatus(String key, OrderPaymentStatusChangedEvent event) {
-        validateOrderEvent(key, event);
-        if (inboxRepository.existsById(event.eventId().toString())) {
+    public void saveOrderPaymentStatus(SettlementKafkaInput.OrderPaymentStatusChanged event) {
+        validateOrderEvent(event);
+        if (!inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant())) {
             return;
         }
 
         OrderPaymentFact.Status status = requiredEnum(
                 OrderPaymentFact.Status.class,
-                event.payload().status(),
+                event.status(),
                 "주문 결제 상태"
         );
-        OrderPaymentFact existing = paymentRepository.findById(event.payload().orderId()).orElse(null);
+        OrderPaymentFact existing = inputRepository.findOrderPayment(event.orderId()).orElse(null);
         if (status == OrderPaymentFact.Status.COMPLETED) {
             saveCompletedPayment(existing, event);
         } else {
             saveCancelledPayment(existing, event);
         }
-        saveInbox(event.eventId(), event.eventType(), event.occurredAt());
     }
 
     @Transactional
-    public void saveProjectRefundProcessed(String key, ProjectRefundProcessedEvent event) {
-        validateRefundResultEvent(key, event);
-        if (inboxRepository.existsById(event.eventId().toString())) {
-            return;
-        }
-        saveInbox(event.eventId(), event.eventType(), event.occurredAt());
+    public void saveProjectRefundProcessed(SettlementKafkaInput.ProjectRefundProcessed event) {
+        validateRefundResultEvent(event);
+        inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant());
     }
 
-    private void saveCompletedPayment(OrderPaymentFact existing, OrderPaymentStatusChangedEvent event) {
+    private void saveCompletedPayment(OrderPaymentFact existing, SettlementKafkaInput.OrderPaymentStatusChanged event) {
         OrderPaymentFact incoming = OrderPaymentFact.completed(
-                event.payload().orderId(),
-                event.payload().pgOrderId(),
-                event.payload().projectId(),
-                Money.wons(event.payload().paymentAmount()),
+                event.orderId(),
+                event.pgOrderId(),
+                event.projectId(),
+                Money.wons(event.paymentAmount()),
                 event.occurredAt().toInstant()
         );
         if (existing == null) {
-            paymentRepository.save(incoming);
+            inputRepository.save(incoming);
             return;
         }
         if (!sameCompletedPayment(existing, incoming)) {
@@ -103,59 +89,46 @@ public class SettlementKafkaInputService {
         }
     }
 
-    private static void saveCancelledPayment(OrderPaymentFact existing, OrderPaymentStatusChangedEvent event) {
+    private static void saveCancelledPayment(OrderPaymentFact existing, SettlementKafkaInput.OrderPaymentStatusChanged event) {
         if (existing == null) {
             throw new IllegalArgumentException("완료 사실 없이 주문 결제를 취소할 수 없습니다.");
         }
-        Money paymentAmount = Money.wons(event.payload().paymentAmount());
+        Money paymentAmount = Money.wons(event.paymentAmount());
         Instant cancelledAt = event.occurredAt().toInstant();
         if (existing.status() == OrderPaymentFact.Status.CANCELLED) {
-            if (!sameCancelledPayment(existing, event.payload().pgOrderId(), event.payload().projectId(), paymentAmount, cancelledAt)) {
+            if (!sameCancelledPayment(existing, event.pgOrderId(), event.projectId(), paymentAmount, cancelledAt)) {
                 throw new IllegalArgumentException("기존 주문 결제 취소 사실과 충돌합니다.");
             }
             return;
         }
-        existing.cancel(event.payload().pgOrderId(), event.payload().projectId(), paymentAmount, cancelledAt);
+        existing.cancel(event.pgOrderId(), event.projectId(), paymentAmount, cancelledAt);
     }
 
-    private void saveInbox(UUID eventId, String eventType, OffsetDateTime occurredAt) {
-        inboxRepository.save(KafkaInboxEvent.processed(eventId, eventType, occurredAt.toInstant()));
-    }
-
-    private static void validateProjectEvent(String key, ProjectStatusChangedEvent event) {
+    private static void validateProjectEvent(SettlementKafkaInput.ProjectStatusChanged event) {
         validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), PROJECT_STATUS_CHANGED);
-        if (event.payload() == null) {
-            throw new IllegalArgumentException("프로젝트 상태 payload는 필수입니다.");
-        }
-        validateKey(key, event.payload().projectId(), "projectId");
-        requirePositive(event.payload().creatorId(), "creatorId");
-        requiredEnum(ProjectOutcomeFact.Outcome.class, event.payload().status(), "프로젝트 상태");
+        validateKey(event.key(), event.projectId(), "projectId");
+        requirePositive(event.creatorId(), "creatorId");
+        requiredEnum(ProjectOutcomeFact.Outcome.class, event.status(), "프로젝트 상태");
     }
 
-    private static void validateOrderEvent(String key, OrderPaymentStatusChangedEvent event) {
+    private static void validateOrderEvent(SettlementKafkaInput.OrderPaymentStatusChanged event) {
         validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), ORDER_PAYMENT_STATUS_CHANGED);
-        if (event.payload() == null) {
-            throw new IllegalArgumentException("주문 결제 상태 payload는 필수입니다.");
-        }
-        validateKey(key, event.payload().orderId(), "orderId");
-        requirePositive(event.payload().projectId(), "projectId");
-        if (event.payload().pgOrderId() == null || event.payload().pgOrderId().isBlank()) {
+        validateKey(event.key(), event.orderId(), "orderId");
+        requirePositive(event.projectId(), "projectId");
+        if (event.pgOrderId() == null || event.pgOrderId().isBlank()) {
             throw new IllegalArgumentException("pgOrderId는 필수입니다.");
         }
-        if (event.payload().paymentAmount() == null || event.payload().paymentAmount() <= 0) {
+        if (event.paymentAmount() == null || event.paymentAmount() <= 0) {
             throw new IllegalArgumentException("paymentAmount는 0보다 커야 합니다.");
         }
-        requiredEnum(OrderPaymentFact.Status.class, event.payload().status(), "주문 결제 상태");
+        requiredEnum(OrderPaymentFact.Status.class, event.status(), "주문 결제 상태");
     }
 
-    private static void validateRefundResultEvent(String key, ProjectRefundProcessedEvent event) {
+    private static void validateRefundResultEvent(SettlementKafkaInput.ProjectRefundProcessed event) {
         validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), PROJECT_REFUND_PROCESSED);
-        if (event.payload() == null) {
-            throw new IllegalArgumentException("프로젝트 환불 처리 결과 payload는 필수입니다.");
-        }
-        validateKey(key, event.payload().settlementId(), "settlementId");
-        validateOrderIds(event.payload().orderIds());
-        if (event.payload().status() == null || event.payload().status().isBlank()) {
+        validateKey(event.key(), event.settlementId(), "settlementId");
+        validateOrderIds(event.orderIds());
+        if (event.status() == null || event.status().isBlank()) {
             throw new IllegalArgumentException("환불 처리 상태는 필수입니다.");
         }
     }

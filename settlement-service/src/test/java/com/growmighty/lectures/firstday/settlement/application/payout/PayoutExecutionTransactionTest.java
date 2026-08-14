@@ -11,7 +11,9 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutSta
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttemptStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
@@ -38,6 +40,9 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
     private ProjectSettlementRepository projectSettlementRepository;
 
     @Autowired
+    private PayoutObligationRepository payoutObligationRepository;
+
+    @Autowired
     private ObservingPayoutGateway payoutGateway;
 
     @Test
@@ -47,6 +52,10 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
                 501L,
                 601L,
                 List.of(Money.wons(100_000)),
+                LocalDateTime.of(2026, 7, 26, 10, 0)
+        ));
+        payoutObligationRepository.save(PayoutObligation.schedule(
+                settlement,
                 CreatorPayoutProfile.registered(
                         601L,
                         "seller-601",
@@ -55,8 +64,7 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
                         "********0601",
                         LocalDateTime.of(2026, 7, 26, 9, 0)
                 ),
-                LocalDate.of(2026, 8, 3),
-                LocalDateTime.of(2026, 7, 26, 10, 0)
+                LocalDate.of(2026, 8, 3)
         ));
         payoutGateway.observe(settlement.id());
 
@@ -65,7 +73,7 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
         assertThat(payoutGateway.transactionActiveDuringCall()).isFalse();
         assertThat(payoutGateway.observedAttemptStatus()).isEqualTo(PayoutAttemptStatus.REQUESTED);
         assertThat(result.payoutStatus()).isEqualTo(PayoutStatus.PROCESSING);
-        ProjectSettlement restored = projectSettlementRepository.findById(settlement.id()).orElseThrow();
+        PayoutObligation restored = payoutObligationRepository.findBySettlementId(settlement.id()).orElseThrow();
         assertThat(restored.attemptCount()).isEqualTo(1);
         assertThat(restored.attempts().getFirst().tossPayoutId()).isEqualTo("dummy-payout-501");
     }
@@ -76,28 +84,28 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
         @Bean
         @Primary
         ObservingPayoutGateway observingPayoutGateway(
-                ProjectSettlementRepository projectSettlementRepository
+                PayoutObligationRepository payoutObligationRepository
         ) {
-            return new ObservingPayoutGateway(projectSettlementRepository);
+            return new ObservingPayoutGateway(payoutObligationRepository);
         }
     }
 
     static final class ObservingPayoutGateway implements PayoutGateway {
 
-        private final ProjectSettlementRepository projectSettlementRepository;
+        private final PayoutObligationRepository payoutObligationRepository;
         private Long expectedSettlementId;
         private boolean transactionActiveDuringCall;
         private PayoutAttemptStatus observedAttemptStatus;
 
-        private ObservingPayoutGateway(ProjectSettlementRepository projectSettlementRepository) {
-            this.projectSettlementRepository = projectSettlementRepository;
+        private ObservingPayoutGateway(PayoutObligationRepository payoutObligationRepository) {
+            this.payoutObligationRepository = payoutObligationRepository;
         }
 
         @Override
         public PayoutGatewayResult requestScheduledPayout(ScheduledPayoutRequest request) {
             transactionActiveDuringCall = TransactionSynchronizationManager
                     .isActualTransactionActive();
-            ProjectSettlement persisted = projectSettlementRepository.findById(expectedSettlementId)
+            PayoutObligation persisted = payoutObligationRepository.findBySettlementId(expectedSettlementId)
                     .orElseThrow();
             observedAttemptStatus = persisted.attempts().getFirst().status();
             return new PayoutGatewayResult.Accepted(

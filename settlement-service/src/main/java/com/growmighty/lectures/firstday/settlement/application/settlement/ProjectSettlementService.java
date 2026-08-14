@@ -7,8 +7,10 @@ import static com.growmighty.lectures.firstday.settlement.application.error.Sett
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -22,6 +24,7 @@ public class ProjectSettlementService {
 
     private final ProjectSettlementRepository projectSettlementRepository;
     private final CreatorPayoutProfileRepository creatorPayoutProfileRepository;
+    private final PayoutObligationRepository payoutObligationRepository;
 
     @Transactional
     public ConfirmedProjectSettlement confirm(ConfirmProjectSettlementCommand command) {
@@ -29,7 +32,7 @@ public class ProjectSettlementService {
                 () -> projectSettlementRepository.findByProjectId(command.projectId()).orElse(null)
         );
         if (existingSettlement != null) {
-            return confirmedSettlement(existingSettlement);
+            return confirmedSettlement(existingSettlement, findPayoutObligation(existingSettlement.id()));
         }
 
         CreatorPayoutProfile payoutProfile = executePersistenceOperation(
@@ -45,8 +48,6 @@ public class ProjectSettlementService {
                     command.projectId(),
                     command.creatorId(),
                     command.orderPaymentAmounts(),
-                    payoutProfile,
-                    command.scheduledDate(),
                     command.confirmedAt()
             );
         } catch (IllegalArgumentException exception) {
@@ -55,24 +56,32 @@ public class ProjectSettlementService {
         ProjectSettlement settlement = executePersistenceOperation(
                 () -> projectSettlementRepository.save(settlementToSave)
         );
-        return confirmedSettlement(settlement);
+        PayoutObligation payoutObligation = executePersistenceOperation(() -> payoutObligationRepository.save(
+                PayoutObligation.schedule(settlement, payoutProfile, command.scheduledDate())
+        ));
+        return confirmedSettlement(settlement, payoutObligation);
     }
 
     @Transactional(readOnly = true)
     public Optional<ConfirmedProjectSettlement> findConfirmedByProjectId(Long projectId) {
         return executePersistenceOperation(() -> projectSettlementRepository.findByProjectId(projectId))
-                .map(this::confirmedSettlement);
+                .map(settlement -> confirmedSettlement(settlement, findPayoutObligation(settlement.id())));
     }
 
-    private ConfirmedProjectSettlement confirmedSettlement(ProjectSettlement settlement) {
+    private ConfirmedProjectSettlement confirmedSettlement(ProjectSettlement settlement, PayoutObligation payoutObligation) {
         return new ConfirmedProjectSettlement(
                 settlement.projectId(),
                 settlement.creatorId(),
                 settlement.id(),
                 settlement.creatorPayoutAmount(),
-                settlement.status(),
-                settlement.scheduledDate()
+                payoutObligation.status(),
+                payoutObligation.scheduledDate()
         );
+    }
+
+    private PayoutObligation findPayoutObligation(Long settlementId) {
+        return executePersistenceOperation(() -> payoutObligationRepository.findBySettlementId(settlementId))
+                .orElseThrow(() -> new SettlementException(SETTLEMENT_DATA_INCONSISTENT));
     }
 
     private <T> T executePersistenceOperation(Supplier<T> operation) {
