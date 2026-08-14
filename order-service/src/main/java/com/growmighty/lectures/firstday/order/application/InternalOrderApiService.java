@@ -42,10 +42,14 @@ public class InternalOrderApiService {
 
     // 결제 결과에 대한 처리
     public OrderResult applyPaymentStatus(Long orderId, String paymentStatus) {
+        return applyPaymentStatus(orderId, null, paymentStatus);
+    }
+
+    public OrderResult applyPaymentStatus(Long orderId, String pgOrderId, String paymentStatus) {
         PaymentResult paymentResult = switch (paymentStatus) {
-            case "PAID" -> PaymentResult.success(null, null);
-            case "FAILED", "CANCELLED" -> PaymentResult.failure(null);
-            case "READY", "CONFIRMING" -> PaymentResult.pending(null);
+            case "PAID" -> PaymentResult.success(null, pgOrderId, null);
+            case "FAILED", "CANCELLED" -> PaymentResult.failure(pgOrderId, null);
+            case "READY", "CONFIRMING" -> PaymentResult.pending(pgOrderId, null);
             default -> throw new IllegalArgumentException("Unsupported payment status=" + paymentStatus);
         };
         return applyPaymentResult(orderId, paymentResult);
