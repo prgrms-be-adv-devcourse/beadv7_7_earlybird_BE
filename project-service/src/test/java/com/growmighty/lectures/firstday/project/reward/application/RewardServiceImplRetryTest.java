@@ -142,7 +142,7 @@ class RewardServiceImplRetryTest {
         when(projectService.findStatusView(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L))
                 .thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
-        RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, 5);
+        RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, false, 5);
 
         RewardResponse response = rewardService.update(1L, 1L, request);
 
@@ -155,7 +155,7 @@ class RewardServiceImplRetryTest {
     void update_exhaustsRetries_throwsConcurrentUpdateFailed() {
         when(projectService.findStatusView(anyLong()))
                 .thenThrow(new ObjectOptimisticLockingFailureException(Reward.class, 1L));
-        RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, 5);
+        RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, false, 5);
 
         assertThatThrownBy(() -> rewardService.update(1L, 1L, request))
                 .isInstanceOf(ConcurrentUpdateFailedException.class);
@@ -166,7 +166,7 @@ class RewardServiceImplRetryTest {
     @DisplayName("update: 락 충돌이 아닌 검증 예외(increaseQuantity 누락)는 재시도 없이 원래 타입 그대로 전파된다")
     void update_nonLockException_notMasked() {
         when(projectService.findStatusView(anyLong())).thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
-        RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, null);
+        RewardUpdateRequest request = new RewardUpdateRequest(null, null, null, null, false, null);
 
         assertThatThrownBy(() -> rewardService.update(1L, 1L, request))
                 .isInstanceOf(IllegalArgumentException.class)

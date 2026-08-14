@@ -74,7 +74,7 @@ class RewardServiceImplOwnershipTest {
 
     @Test
     void update_byNonOwner_rejected() {
-        RewardUpdateRequest request = new RewardUpdateRequest("새 이름", null, null, null, null);
+        RewardUpdateRequest request = new RewardUpdateRequest("새 이름", null, null, null, false, null);
 
         assertThatThrownBy(() -> rewardService.update(1L, OTHER_USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)

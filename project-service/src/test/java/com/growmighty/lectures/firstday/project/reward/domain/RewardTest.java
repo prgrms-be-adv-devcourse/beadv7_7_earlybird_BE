@@ -152,7 +152,7 @@ class RewardTest {
     void updateBeforePublish_changesOnlyNonNullFields() {
         Reward reward = reward(10);
 
-        reward.updateBeforePublish("새 이름", null, BigDecimal.valueOf(35_000), null);
+        reward.updateBeforePublish("새 이름", null, BigDecimal.valueOf(35_000), null, false);
         assertThat(reward.getName()).isEqualTo("새 이름");
         assertThat(reward.getDescription()).isEqualTo("설명");
         assertThat(reward.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(35_000));
@@ -164,7 +164,7 @@ class RewardTest {
     void updateBeforePublish_totalQuantity_syncsRemaining() {
         Reward reward = reward(10);
 
-        reward.updateBeforePublish(null, null, null, 20);
+        reward.updateBeforePublish(null, null, null, 20, false);
         assertThat(reward.getTotalQuantity()).isEqualTo(20);
         assertThat(reward.getRemainingQuantity()).isEqualTo(20);
     }
@@ -207,7 +207,7 @@ class RewardTest {
         reward.decreaseStock(3);
         assertThat(reward.getRemainingQuantity()).isEqualTo(7);
 
-        reward.updateBeforePublish(null, null, null, 20);
+        reward.updateBeforePublish(null, null, null, 20, false);
         assertThat(reward.getTotalQuantity()).isEqualTo(20);
         assertThat(reward.getRemainingQuantity()).isEqualTo(17);
     }
@@ -218,7 +218,7 @@ class RewardTest {
         Reward reward = reward(10);
         reward.decreaseStock(8);
 
-        assertThatThrownBy(() -> reward.updateBeforePublish(null, null, null, 5))
+        assertThatThrownBy(() -> reward.updateBeforePublish(null, null, null, 5, false))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -227,8 +227,38 @@ class RewardTest {
     void updateBeforePublish_blankName_throws() {
         Reward reward = reward(10);
 
-        assertThatThrownBy(() -> reward.updateBeforePublish("   ", null, null, null))
+        assertThatThrownBy(() -> reward.updateBeforePublish("   ", null, null, null, false))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(reward.getName()).isEqualTo("[얼리버드] 노트커버 1개");
+    }
+
+    @Test
+    @DisplayName("clearTotalQuantity=true면 유한 재고를 다시 무제한으로 되돌릴 수 있다")
+    void updateBeforePublish_clearTotalQuantity_makesUnlimited() {
+        Reward reward = reward(10);
+
+        reward.updateBeforePublish(null, null, null, null, true);
+        assertThat(reward.getTotalQuantity()).isNull();
+        assertThat(reward.getRemainingQuantity()).isNull();
+    }
+
+    @Test
+    @DisplayName("totalQuantity와 clearTotalQuantity를 동시에 지정하면 예외가 발생한다")
+    void updateBeforePublish_totalQuantityAndClear_throws() {
+        Reward reward = reward(10);
+
+        assertThatThrownBy(() -> reward.updateBeforePublish(null, null, null, 5, true))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("이미 판매된 수량이 있으면 무제한으로 되돌릴 수 없다")
+    void updateBeforePublish_clearTotalQuantity_withSoldAmount_throws() {
+        Reward reward = reward(10);
+        reward.decreaseStock(3);
+
+        assertThatThrownBy(() -> reward.updateBeforePublish(null, null, null, null, true))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(reward.getTotalQuantity()).isEqualTo(10);
     }
 }

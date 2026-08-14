@@ -142,7 +142,7 @@ public class Reward extends BaseEntity {
      * 없다"는 가정이 항상 맞지는 않기 때문(프로젝트가 아직 PENDING_REVIEW여도 order-service가 프로젝트
      * 상태를 확인하지 않고 재고를 차감할 수 있는 경로가 있어, 이미 팔린 수량이 있을 수 있다).
      */
-    public void updateBeforePublish(String name, String description, BigDecimal price, Integer totalQuantity) {
+    public void updateBeforePublish(String name, String description, BigDecimal price, Integer totalQuantity, boolean clearTotalQuantity) {
         if (name != null) {
             if (name.isBlank()) {
                 throw new IllegalArgumentException("이름은 빈 값일 수 없습니다.");
@@ -156,7 +156,18 @@ public class Reward extends BaseEntity {
             validatePrice(price);
             this.price = price;
         }
-        if (totalQuantity != null) {
+        if (clearTotalQuantity && totalQuantity != null) {
+            throw new IllegalArgumentException("totalQuantity와 clearTotalQuantity는 동시에 지정할 수 없습니다.");
+        }
+        if (clearTotalQuantity) {
+            int sold = soldQuantity();
+            if (sold > 0) {
+                throw new IllegalArgumentException(
+                    "이미 판매된 수량(" + sold + "개)이 있는 리워드는 무제한으로 되돌릴 수 없습니다.");
+            }
+            this.totalQuantity = null;
+            this.remainingQuantity = null;
+        } else if (totalQuantity != null) {
             if (totalQuantity < 0) {
                 throw new IllegalArgumentException("수량은 0개 이상이어야 합니다. 입력값: " + totalQuantity);
             }
