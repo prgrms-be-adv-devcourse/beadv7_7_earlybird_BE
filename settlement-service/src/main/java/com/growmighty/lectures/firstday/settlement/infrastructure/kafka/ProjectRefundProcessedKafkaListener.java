@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.kafka;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
+import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInput;
 import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInputService;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
 import lombok.RequiredArgsConstructor;
@@ -25,10 +26,12 @@ public class ProjectRefundProcessedKafkaListener {
     )
     public void consume(ConsumerRecord<String, String> record, Acknowledgment acknowledgment)
             throws JsonProcessingException {
-        inputService.saveProjectRefundProcessed(
+        ProjectRefundProcessedEvent event = objectMapper.readValue(record.value(), ProjectRefundProcessedEvent.class);
+        inputService.saveProjectRefundProcessed(new SettlementKafkaInput.ProjectRefundProcessed(
                 record.key(),
-                objectMapper.readValue(record.value(), ProjectRefundProcessedEvent.class)
-        );
+                event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(),
+                event.payload().settlementId(), event.payload().orderIds(), event.payload().status()
+        ));
         acknowledgment.acknowledge();
     }
 }

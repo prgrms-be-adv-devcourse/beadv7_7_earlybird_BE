@@ -2,13 +2,12 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInput;
 import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInputService;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.infrastructure.config.JpaAuditingConfig;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.OrderPaymentStatusChangedEvent;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectStatusChangedEvent;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.SettlementKafkaInputRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataKafkaInboxEventRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
@@ -23,7 +22,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create")
-@Import({JpaAuditingConfig.class, SettlementKafkaInputService.class})
+@Import({JpaAuditingConfig.class, SettlementKafkaInputService.class, SettlementKafkaInputRepositoryAdapter.class})
 class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
@@ -42,46 +41,38 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
     @DisplayName("Project·Order 이벤트를 Inbox와 입력 사실에 한 번만 반영한다")
     void storesProjectAndOrderFactsIdempotently() {
         UUID projectEventId = UUID.randomUUID();
-        inputService.saveProjectStatus("101", new ProjectStatusChangedEvent(
+        inputService.saveProjectStatus(new SettlementKafkaInput.ProjectStatusChanged(
+                "101",
                 projectEventId,
                 "ProjectStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-07-31T18:00:00+09:00"),
-                new ProjectStatusChangedEvent.Payload(101L, 9L, "SUCCEEDED")
+                101L, 9L, "SUCCEEDED"
         ));
-        inputService.saveProjectStatus("101", new ProjectStatusChangedEvent(
+        inputService.saveProjectStatus(new SettlementKafkaInput.ProjectStatusChanged(
+                "101",
                 projectEventId,
                 "ProjectStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-07-31T18:00:00+09:00"),
-                new ProjectStatusChangedEvent.Payload(101L, 9L, "SUCCEEDED")
+                101L, 9L, "SUCCEEDED"
         ));
 
-        inputService.saveOrderPaymentStatus("1001", new OrderPaymentStatusChangedEvent(
+        inputService.saveOrderPaymentStatus(new SettlementKafkaInput.OrderPaymentStatusChanged(
+                "1001",
                 UUID.randomUUID(),
                 "OrderPaymentStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-07-15T13:20:10+09:00"),
-                new OrderPaymentStatusChangedEvent.Payload(
-                        1001L,
-                        "PAY-01J2X8P4QW6YV0M3",
-                        101L,
-                        50_000L,
-                        "COMPLETED"
-                )
+                1001L, "PAY-01J2X8P4QW6YV0M3", 101L, 50_000L, "COMPLETED"
         ));
-        inputService.saveOrderPaymentStatus("1001", new OrderPaymentStatusChangedEvent(
+        inputService.saveOrderPaymentStatus(new SettlementKafkaInput.OrderPaymentStatusChanged(
+                "1001",
                 UUID.randomUUID(),
                 "OrderPaymentStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-07-18T09:05:00+09:00"),
-                new OrderPaymentStatusChangedEvent.Payload(
-                        1001L,
-                        "PAY-01J2X8P4QW6YV0M3",
-                        101L,
-                        50_000L,
-                        "CANCELLED"
-                )
+                1001L, "PAY-01J2X8P4QW6YV0M3", 101L, 50_000L, "CANCELLED"
         ));
 
         ProjectOutcomeFact outcome = outcomeRepository.findById(101L).orElseThrow();
@@ -97,16 +88,17 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
     @DisplayName("Payment 환불 batch 결과는 Inbox에만 한 번 기록한다")
     void storesRefundResultOnlyInInbox() {
         UUID eventId = UUID.randomUUID();
-        ProjectRefundProcessedEvent event = new ProjectRefundProcessedEvent(
+        SettlementKafkaInput.ProjectRefundProcessed event = new SettlementKafkaInput.ProjectRefundProcessed(
+                "101",
                 eventId,
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-01T09:05:00+09:00"),
-                new ProjectRefundProcessedEvent.Payload("101", List.of(1001L, 1002L), "COMPLETED")
+                "101", List.of(1001L, 1002L), "COMPLETED"
         );
 
-        inputService.saveProjectRefundProcessed("101", event);
-        inputService.saveProjectRefundProcessed("101", event);
+        inputService.saveProjectRefundProcessed(event);
+        inputService.saveProjectRefundProcessed(event);
 
         assertThat(inboxRepository.count()).isEqualTo(1);
         assertThat(outcomeRepository.count()).isZero();

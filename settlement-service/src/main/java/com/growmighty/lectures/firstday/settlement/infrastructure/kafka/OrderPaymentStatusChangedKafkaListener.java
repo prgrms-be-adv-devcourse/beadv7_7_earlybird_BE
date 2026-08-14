@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.kafka;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
+import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInput;
 import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInputService;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.OrderPaymentStatusChangedEvent;
 import lombok.RequiredArgsConstructor;
@@ -25,10 +26,13 @@ public class OrderPaymentStatusChangedKafkaListener {
     )
     public void consume(ConsumerRecord<String, String> record, Acknowledgment acknowledgment)
             throws JsonProcessingException {
-        inputService.saveOrderPaymentStatus(
+        OrderPaymentStatusChangedEvent event = objectMapper.readValue(record.value(), OrderPaymentStatusChangedEvent.class);
+        inputService.saveOrderPaymentStatus(new SettlementKafkaInput.OrderPaymentStatusChanged(
                 record.key(),
-                objectMapper.readValue(record.value(), OrderPaymentStatusChangedEvent.class)
-        );
+                event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(),
+                event.payload().orderId(), event.payload().pgOrderId(), event.payload().projectId(),
+                event.payload().paymentAmount(), event.payload().status()
+        ));
         acknowledgment.acknowledge();
     }
 }
