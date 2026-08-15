@@ -43,10 +43,9 @@ public class RefundService {
 
         return new RefundCancellationTarget(
             refund.getId(),
-            payment.getPaymentKey(),
+            payment.getPaymentKey().value(),
             refund.getReason(),
-            refund.getCancelIdempotencyKey()
-        );
+            refund.getCancelIdempotencyKey().value());
     }
 
     @Transactional
@@ -111,7 +110,7 @@ public class RefundService {
     public void failRefund(Long refundId) {
         Refund refund = findRefund(refundId);
 
-        if (refund.reconcileFailed()) { // <-- 이미 정합화된 환불은 no-op
+        if (refund.reconcileFailed()) {
             refundRepository.save(refund);
         }
     }
@@ -126,9 +125,9 @@ public class RefundService {
 
         return new RefundCancellationTarget(
             refund.getId(),
-            payment.getPaymentKey(),
+            payment.getPaymentKey().value(),
             refund.getReason(),
-            refund.getCancelIdempotencyKey()
+            refund.getCancelIdempotencyKey().value()
         );
     }
 }

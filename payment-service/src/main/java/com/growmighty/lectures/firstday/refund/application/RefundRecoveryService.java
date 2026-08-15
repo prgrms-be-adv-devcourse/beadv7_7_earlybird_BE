@@ -12,7 +12,7 @@ public class RefundRecoveryService {
     private final RefundService refundService;
 
     public void recover(RefundRecoveryTarget target) {
-        PaymentGateway.PgPayment pgPayment = paymentGateway.getPayment(target.paymentKey());
+        PaymentGateway.PgPayment pgPayment = paymentGateway.getPayment(target.paymentKey().value());
 
         switch (pgPayment.status()) {
             case CANCELLED -> refundService.completeRefund(target.refundId());

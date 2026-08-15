@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.payment.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import com.growmighty.lectures.firstday.payment.infrastructure.security.PaymentSensitiveDataConverter;
+import com.growmighty.lectures.firstday.payment.domain.vo.SensitiveValue;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -35,16 +35,14 @@ public class Payment extends BaseEntity {
     @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
     private String pgOrderId;
 
-    @Convert(converter = PaymentSensitiveDataConverter.class)
     @Column(name = "payment_key", length = 512)
-    private String paymentKey;
+    private SensitiveValue paymentKey;
 
     @Version
     private Long version;
 
-    @Convert(converter = PaymentSensitiveDataConverter.class)
     @Column(name = "approve_idempotency_key", nullable = false, length = 512)
-    private String approveIdempotencyKey;
+    private SensitiveValue approveIdempotencyKey;
 
     @Column(name = "confirming_At")
     private LocalDateTime confirmingAt;
@@ -68,7 +66,7 @@ public class Payment extends BaseEntity {
         this.orderId = orderId;
         this.pgOrderId = generatePgOrderId(orderId);
         this.amount = amount;
-        this.approveIdempotencyKey = UUID.randomUUID().toString();
+        this.approveIdempotencyKey = new SensitiveValue(UUID.randomUUID().toString());
         this.status = PaymentStatus.READY;
     }
 
@@ -96,7 +94,7 @@ public class Payment extends BaseEntity {
 
         validatePaymentKey(paymentKey);
 
-        this.paymentKey = paymentKey;
+        this.paymentKey = new SensitiveValue(paymentKey);
         this.status = PaymentStatus.CONFIRMING;
         confirmingAt = LocalDateTime.now();
     }
@@ -105,7 +103,7 @@ public class Payment extends BaseEntity {
         if (this.status != PaymentStatus.CONFIRMING) {
             throw new IllegalStateException("CONFIRMING 상태에서만 승인할 수 있습니다. 현재 상태: " + this.status);
         }
-        if (!this.paymentKey.equals(paymentKey)) {
+        if (!this.paymentKey.value().equals(paymentKey)) {
             throw new IllegalStateException("승인 요청 paymentKey가 일치하지 않습니다.");
         }
         this.confirmedAt = LocalDateTime.now();
@@ -182,7 +180,7 @@ public class Payment extends BaseEntity {
             throw new IllegalStateException("CONFIRMING 또는 FAILED 상태의 결제만 승인 정합화할 수 있습니다. status = " + this.status);
         }
 
-        if(!this.paymentKey.equals(paymentKey)) {
+        if (!this.paymentKey.value().equals(paymentKey)) { // <-- VO 내부 값 비교
             throw new IllegalStateException("승인 요청 paymentKey가 일치하지 않습니다.");
         }
 
@@ -211,7 +209,7 @@ public class Payment extends BaseEntity {
         String approvedPgOrderId,
         BigDecimal approvedAmount
     ) {
-        if (!this.paymentKey.equals(approvedPaymentKey)) {
+        if (!this.paymentKey.value().equals(approvedPaymentKey)) {
             throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
         }
 

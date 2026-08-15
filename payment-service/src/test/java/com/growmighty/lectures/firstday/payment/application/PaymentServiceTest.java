@@ -145,7 +145,7 @@ class PaymentServiceTest {
         assertThat(paymentGateway.requestedPgOrderId).isEqualTo(prepared.pgOrderId());
         assertThat(paymentGateway.requestedAmount).isEqualByComparingTo(AMOUNT);
         assertThat(paymentGateway.requestedIdempotencyKey)
-            .isEqualTo(saved.getApproveIdempotencyKey());
+            .isEqualTo(saved.getApproveIdempotencyKey().value());
     }
 
     @Test
@@ -166,7 +166,7 @@ class PaymentServiceTest {
         Payment saved = paymentRepository.findByPgOrderId(prepared.pgOrderId()).orElseThrow();
 
         assertThat(saved.getStatus()).isEqualTo(PaymentStatus.CONFIRMING);
-        assertThat(saved.getPaymentKey()).isEqualTo("payment-key-1");
+        assertThat(saved.getPaymentKey().value()).isEqualTo("payment-key-1");
     }
 
     @Test

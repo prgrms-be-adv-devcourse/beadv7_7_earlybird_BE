@@ -59,7 +59,7 @@ public class PaymentConfirmationService {
             payment.getPaymentId(),
             payment.getPgOrderId(),
             payment.getAmount(),
-            payment.getApproveIdempotencyKey()
+            payment.getApproveIdempotencyKey().value() // <-- PG에는 평문 값만 전달
         );
     }
 
@@ -108,13 +108,13 @@ public class PaymentConfirmationService {
             throw new IllegalStateException("CONFIRMING 상태의 결제만 복구할 수 있습니다. 현재 상태 : " + payment.getStatus());
         }
 
-        if (payment.getPaymentKey() == null || payment.getPaymentKey().isBlank()) {
+        if (payment.getPaymentKey() == null) { // <-- VO는 생성 시 공백을 거부함
             throw new IllegalStateException("CONFIRMING 상태의 결제에 paymentKey가 없습니다. paymentId = " + paymentId);
         }
 
         return new PaymentRecoveryTarget(
             payment.getPaymentId(),
-            payment.getPaymentKey()
+            payment.getPaymentKey().value() // <-- PG 조회에는 평문 값만 전달
         );
     }
 
@@ -123,7 +123,7 @@ public class PaymentConfirmationService {
         Payment payment = paymentRepository.findByPgOrderId(pgPayment.pgOrderId())
             .orElseThrow(() -> new EntityNotFoundException("paymentKey 에 해당하는 결제가 없습니다."));
 
-        if (!payment.getPaymentKey().equals(pgPayment.paymentKey())) {
+        if (!payment.getPaymentKey().value().equals(pgPayment.paymentKey())) { // <-- VO 내부 값 비교
             throw new IllegalStateException("PG 결제 키가 일치하지 않습니다.");
         }
 
