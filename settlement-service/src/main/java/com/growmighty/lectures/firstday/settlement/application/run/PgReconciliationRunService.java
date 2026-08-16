@@ -3,6 +3,10 @@ package com.growmighty.lectures.firstday.settlement.application.run;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
+import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPaymentRecovery;
+import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPaymentRecovery.OrderPayment;
+import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPaymentRecovery.ProjectPayments;
+import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPaymentRecoveryReader;
 import com.growmighty.lectures.firstday.settlement.application.port.toss.TossSettlement;
 import com.growmighty.lectures.firstday.settlement.application.port.toss.TossSettlementQuery;
 import com.growmighty.lectures.firstday.settlement.application.port.toss.TossSettlementReader;
@@ -18,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +37,7 @@ public class PgReconciliationRunService {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final SettlementRunInputRepository inputRepository;
+    private final OrderPaymentRecoveryReader orderPaymentRecoveryReader;
     private final TossSettlementReader tossSettlementReader;
     private final PgReconciliationRunRepository runRepository;
     private final Clock clock;
@@ -49,15 +55,45 @@ public class PgReconciliationRunService {
         ));
         try {
             List<OrderPaymentFact> payments = findCompletedPayments(settlementMonth);
-            reconcile(payments, findTossSettlements(settlementMonth));
-            payments.forEach(OrderPaymentFact::confirmReconciliation);
-            run.complete(LocalDateTime.now(clock));
-            return resultOf(runRepository.save(run), payments.stream().map(OrderPaymentFact::orderId).toList());
+            if (matchesToss(payments, findTossSettlements(settlementMonth))) {
+                return complete(run, payments);
+            }
+            return recoverOrRequireReview(run, payments, settlementMonth);
         } catch (SettlementException exception) {
             run.fail(LocalDateTime.now(clock));
             runRepository.save(run);
             throw exception;
         }
+    }
+
+    private PgReconciliationRunResult recoverOrRequireReview(
+            PgReconciliationRun run,
+            List<OrderPaymentFact> payments,
+            YearMonth settlementMonth
+    ) {
+        boolean recoveredPaymentsMatch = false;
+        try {
+            OrderPaymentRecovery recovery = orderPaymentRecoveryReader.recover(
+                    payments.stream().map(OrderPaymentFact::projectId).collect(java.util.stream.Collectors.toSet()),
+                    settlementMonth
+            );
+            recoveredPaymentsMatch = matchesRecoveredPayments(payments, recovery);
+        } catch (IllegalArgumentException exception) {
+            // 계약 오류는 재시도로 해소되지 않으므로 운영 검토 대상으로 남긴다.
+        }
+        List<TossSettlement> recheckedSettlements = findTossSettlements(settlementMonth);
+        if (recoveredPaymentsMatch && matchesToss(payments, recheckedSettlements)) {
+            return complete(run, payments);
+        }
+        payments.forEach(OrderPaymentFact::requireReview);
+        run.requireReview(LocalDateTime.now(clock));
+        return resultOf(runRepository.save(run), List.of());
+    }
+
+    private PgReconciliationRunResult complete(PgReconciliationRun run, List<OrderPaymentFact> payments) {
+        payments.forEach(OrderPaymentFact::confirmReconciliation);
+        run.complete(LocalDateTime.now(clock));
+        return resultOf(runRepository.save(run), payments.stream().map(OrderPaymentFact::orderId).toList());
     }
 
     private List<OrderPaymentFact> findCompletedPayments(YearMonth settlementMonth) {
@@ -104,17 +140,46 @@ public class PgReconciliationRunService {
         }
     }
 
-    private static void reconcile(List<OrderPaymentFact> payments, List<TossSettlement> settlements) {
-        if (!amountsByOrderId(payments).equals(amountsBySettlementOrderId(settlements))) {
-            throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
+    private static boolean matchesRecoveredPayments(
+            List<OrderPaymentFact> payments,
+            OrderPaymentRecovery recovery
+    ) {
+        Map<Long, OrderPaymentFact> paymentsByOrderId = new HashMap<>();
+        for (OrderPaymentFact payment : payments) {
+            if (paymentsByOrderId.put(payment.orderId(), payment) != null) {
+                return false;
+            }
         }
+        List<ProjectPayments> recoveredProjects = recovery.projects();
+        if (recoveredProjects.stream().flatMap(project -> project.orders().stream()).count() != payments.size()) {
+            return false;
+        }
+        for (ProjectPayments project : recoveredProjects) {
+            for (OrderPayment recovered : project.orders()) {
+                OrderPaymentFact payment = paymentsByOrderId.get(recovered.orderId());
+                if (payment == null
+                        || !payment.projectId().equals(project.projectId())
+                        || !payment.pgOrderId().equals(recovered.pgOrderId())
+                        || !payment.paymentAmount().equals(recovered.paymentAmount())
+                        || recovered.orderStatus() != OrderPayment.Status.PAID) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean matchesToss(List<OrderPaymentFact> payments, List<TossSettlement> settlements) {
+        Map<String, Money> paymentAmounts = amountsByOrderId(payments);
+        Map<String, Money> settlementAmounts = amountsBySettlementOrderId(settlements);
+        return paymentAmounts != null && paymentAmounts.equals(settlementAmounts);
     }
 
     private static Map<String, Money> amountsByOrderId(List<OrderPaymentFact> payments) {
         Map<String, Money> amounts = new LinkedHashMap<>();
         for (OrderPaymentFact payment : payments) {
             if (amounts.put(payment.pgOrderId(), payment.paymentAmount()) != null) {
-                throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
+                return null;
             }
         }
         return amounts;
@@ -124,7 +189,7 @@ public class PgReconciliationRunService {
         Map<String, Money> amounts = new LinkedHashMap<>();
         for (TossSettlement settlement : settlements) {
             if (amounts.put(settlement.orderId(), settlement.amount()) != null) {
-                throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE);
+                return null;
             }
         }
         return amounts;
