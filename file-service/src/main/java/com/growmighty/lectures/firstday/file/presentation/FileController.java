@@ -1,24 +1,35 @@
 package com.growmighty.lectures.firstday.file.presentation;
 
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.file.application.FileService;
 import com.growmighty.lectures.firstday.file.domain.FileOwnerType;
 import com.growmighty.lectures.firstday.file.presentation.dto.FileResponse;
+import com.growmighty.lectures.firstday.file.presentation.dto.PresignedUploadRequest;
+import com.growmighty.lectures.firstday.file.presentation.dto.PresignedUploadResponse;
 import com.growmighty.lectures.firstday.file.presentation.dto.RegisterFileRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 /**
- * 파일 메타데이터 API. 실제 업로드(저장소 연동)는 범위 밖 — storedUrl 은 클라이언트가
- * 이미 업로드를 마친 경로/URL 이라고 가정하고 그 메타데이터만 등록한다.
- * TODO(팀): 업로드 방식(직접 업로드 vs presigned URL) 확정 필요.
+ * 파일 메타데이터 API. 업로드는 presigned URL 로 클라이언트가 스토리지에 직접 올리고,
+ * 성공 후 register 로 메타데이터만 등록한다 (소유권 연결은 register 가 맡음).
  */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/files")
 public class FileController {
     private final FileService fileService;
+
+    @PostMapping("/presigned-upload")
+    public PresignedUploadResponse presign(
+            @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+            @Valid @RequestBody PresignedUploadRequest request
+    ) {
+        return PresignedUploadResponse.from(fileService.issuePresignedUpload(request.toCommand(requesterId)));
+    }
 
     @PostMapping
     public FileResponse register(@RequestBody RegisterFileRequest request) {

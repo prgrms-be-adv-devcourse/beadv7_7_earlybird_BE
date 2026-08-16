@@ -10,6 +10,9 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
+    // presigned upload URL 발급(S3Presigner) — 버전은 루트 build.gradle의 awssdk bom이 관리
+    implementation 'software.amazon.awssdk:s3'
+
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'

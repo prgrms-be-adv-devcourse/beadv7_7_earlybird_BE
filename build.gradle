@@ -31,6 +31,8 @@ subprojects {
             mavenBom "org.springframework.cloud:spring-cloud-dependencies:2025.1.2"
             // Boot 4 BOM 은 Testcontainers 버전을 더 이상 관리하지 않아 직접 가져온다.
             mavenBom "org.testcontainers:testcontainers-bom:1.21.3"
+            // file-service의 S3 presigned URL 발급(S3Presigner)에 필요 — Boot BOM이 관리하지 않는다.
+            mavenBom "software.amazon.awssdk:bom:2.53.1"
         }
     }
 
