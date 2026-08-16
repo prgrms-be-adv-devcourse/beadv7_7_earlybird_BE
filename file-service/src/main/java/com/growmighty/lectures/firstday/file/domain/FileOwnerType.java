@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.file.domain;
 
-/** 당장 쓰는 타입은 PROJECT 하나. 향후 REVIEW, USER_AVATAR 등으로 확장한다. */
+/** PROJECT: 프로젝트 썸네일. REVIEW: 후기 사진(board-service). 향후 USER_AVATAR 등으로 확장 가능. */
 public enum FileOwnerType {
-    PROJECT
+    PROJECT,
+    REVIEW
 }
