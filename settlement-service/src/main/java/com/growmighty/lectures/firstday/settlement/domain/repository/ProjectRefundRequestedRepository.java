@@ -12,5 +12,7 @@ public interface ProjectRefundRequestedRepository {
 
     Optional<ProjectRefundRequested> findByRefundRequestId(String refundRequestId);
 
+    List<ProjectRefundRequested> findAllByOrderByOccurredAtDescProjectIdDesc();
+
     List<ProjectRefundRequested> findPending();
 }

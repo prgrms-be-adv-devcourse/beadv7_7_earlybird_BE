@@ -36,6 +36,12 @@ public class ProjectRefundRequestedRepositoryAdapter
 
     @Override
     @Transactional(readOnly = true)
+    public List<ProjectRefundRequested> findAllByOrderByOccurredAtDescProjectIdDesc() {
+        return repository.findAllByOrderByOccurredAtDescProjectIdDesc();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ProjectRefundRequested> findPending() {
         return repository.findTop100ByPublishedAtIsNullOrderByOccurredAt();
     }

@@ -4,6 +4,7 @@ package com.growmighty.lectures.firstday.settlement.presentation.controller;
 import com.growmighty.lectures.firstday.settlement.application.query.AdminProjectSettlementQueryService;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectSettlementDetailResponse;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectSettlementListItemResponse;
+import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectRefundDetailResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,5 +29,10 @@ public class AdminProjectSettlementQueryController {
     @GetMapping("/{settlementId}")
     public AdminProjectSettlementDetailResponse findDetail(@PathVariable Long settlementId) {
         return AdminProjectSettlementDetailResponse.from(queryService.findDetail(settlementId));
+    }
+
+    @GetMapping("/refunds/{projectId}")
+    public AdminProjectRefundDetailResponse findRefundDetail(@PathVariable Long projectId) {
+        return AdminProjectRefundDetailResponse.from(queryService.findRefundDetail(projectId));
     }
 }
