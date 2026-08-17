@@ -2,6 +2,8 @@ package com.growmighty.lectures.firstday.file.application;
 
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.file.application.dto.RegisterFileCommand;
+import com.growmighty.lectures.firstday.file.application.port.ProjectPort;
 import com.growmighty.lectures.firstday.file.domain.File;
 import com.growmighty.lectures.firstday.file.domain.FileOwnerType;
 import com.growmighty.lectures.firstday.file.domain.FileRepository;
@@ -29,11 +31,35 @@ class FileServiceTest {
     @Mock
     private S3PresignedUploadGenerator presignedUploadGenerator;
 
+    @Mock
+    private ProjectPort projectPort;
+
     private FileService fileService;
 
     @BeforeEach
     void setUp() {
-        fileService = new FileService(fileRepository, presignedUploadGenerator);
+        fileService = new FileService(fileRepository, presignedUploadGenerator, projectPort);
+    }
+
+    @Test
+    void 프로젝트_소유자가_등록하면_성공한다() {
+        RegisterFileCommand command = new RegisterFileCommand(FileOwnerType.PROJECT, 10L, 42L,
+            "https://cdn.example.com/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
+        when(projectPort.getCreatorId(10L)).thenReturn(42L);
+        when(fileRepository.save(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> inv.getArgument(0));
+
+        fileService.register(command);
+    }
+
+    @Test
+    void 프로젝트_소유자가_아니면_등록이_403으로_거부된다() {
+        RegisterFileCommand command = new RegisterFileCommand(FileOwnerType.PROJECT, 10L, 999L,
+            "https://cdn.example.com/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
+        when(projectPort.getCreatorId(10L)).thenReturn(42L);
+
+        assertThatThrownBy(() -> fileService.register(command))
+            .isInstanceOf(BusinessException.class);
+        verify(fileRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
