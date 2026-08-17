@@ -74,7 +74,7 @@ sequenceDiagram
 
 ## API
 
-게이트웨이 라우트: `/api/v1/files/**` — StripPrefix 없이 경로 그대로 file-service에 전달되므로(다른 서비스들과 동일한 관례, `gateway-server.yml` 참고), 컨트롤러도 `@RequestMapping("/api/v1/files")`로 매핑돼 있다. `POST /api/v1/files/presigned-upload`는 인증 필요(gateway `authorizeExchange` 기본값), 나머지 세 엔드포인트는 현재 별도 인가 규칙이 걸려 있지 않다.
+게이트웨이 라우트: `/api/v1/files/**` — StripPrefix 없이 경로 그대로 file-service에 전달되므로(다른 서비스들과 동일한 관례, `gateway-server.yml` 참고), 컨트롤러도 `@RequestMapping("/api/v1/files")`로 매핑돼 있다. 게이트웨이가 `/api/v1/files/**` 전체를 `authenticated()`로 막아둬서(별도 `permitAll` 없음) 네 엔드포인트 모두 `X-User-Id` 없이는 호출 자체가 안 된다. 그중 `register`/`delete`는 거기서 한 단계 더 나아가 애플리케이션 레벨 소유권 검증도 한다 — 아래 각 엔드포인트 설명과 [보안 고려사항](#보안-고려사항) 참고.
 
 | Method | Path | 설명 |
 |---|---|---|
@@ -110,7 +110,7 @@ sequenceDiagram
 
 ### `POST /api/v1/files` (register)
 
-presigned PUT이 끝난 뒤, 그 결과(`storedUrl`)를 실제 소유자(`ownerType`/`ownerId`)와 연결하는 단계. presign 단계는 아직 없는 리소스(예: 생성 전 프로젝트)에 대한 업로드도 허용해야 해서 소유권 연결을 이 단계로 분리했다 — presign 요청 시점엔 `ownerId`를 아예 받지 않는다.
+인증 필요 (`X-User-Id` 헤더). presigned PUT이 끝난 뒤, 그 결과(`storedUrl`)를 실제 소유자(`ownerType`/`ownerId`)와 연결하는 단계. presign 단계는 아직 없는 리소스(예: 생성 전 프로젝트)에 대한 업로드도 허용해야 해서 소유권 연결을 이 단계로 분리했다 — presign 요청 시점엔 `ownerId`를 아예 받지 않는다.
 
 요청:
 ```json
@@ -125,6 +125,8 @@ presigned PUT이 끝난 뒤, 그 결과(`storedUrl`)를 실제 소유자(`ownerT
 }
 ```
 
+`ownerType=PROJECT`면 요청자(`X-User-Id`)가 `ownerId` 프로젝트의 창작자인지 확인한 뒤 등록한다 — 아니면 403, project-service 확인 자체가 실패하면(타임아웃 등) 503. `ownerType=REVIEW`는 아직 이 확인을 하지 않는다(알려진 한계, [보안 고려사항](#보안-고려사항) 참고). `File`에는 요청자가 `uploaderId`로 함께 저장돼 `DELETE`의 본인 확인에 쓰인다.
+
 응답 `FileResponse`는 `File` 엔티티 필드를 그대로 반영한다 (`id`, `ownerType`, `ownerId`, `storedUrl`, `originalName`, `contentType`, `fileSize`, `sortOrder`).
 
 ### `GET /api/v1/files?ownerType=PROJECT&ownerId=10`
@@ -133,7 +135,7 @@ presigned PUT이 끝난 뒤, 그 결과(`storedUrl`)를 실제 소유자(`ownerT
 
 ### `DELETE /api/v1/files/{fileId}`
 
-메타데이터 레코드만 삭제한다 — **S3 오브젝트 자체는 지우지 않는다** (아래 [현재 구현 범위](#현재-구현-범위-및-미해결-과제) 참고).
+인증 필요 (`X-User-Id` 헤더). 삭제 요청자가 그 파일을 등록한 `uploaderId`와 다르면 403. 메타데이터 레코드만 삭제한다 — **S3 오브젝트 자체는 지우지 않는다** (아래 [현재 구현 범위](#현재-구현-범위-및-미해결-과제) 참고).
 
 ## 도메인 모델
 
@@ -152,7 +154,9 @@ File
 
 생성자(`File.register`)에서 `ownerId`/`storedUrl`/`fileSize`에 대한 최소 불변식만 검증한다(null/blank/음수 금지) — 나머지 검증(파일 형식, 크기 상한 등)은 presign 단계(Bean Validation)와 업로드 자체(스토리지 쪽 제약)에서 이미 걸러졌다고 보고 도메인에서는 반복하지 않는다.
 
-레이어 구성은 이 저장소의 다른 서비스와 동일한 패턴이다: `presentation`(컨트롤러 + DTO) → `application`(서비스 + 커맨드/인포 DTO) → `domain`(엔티티 + 리포지토리 인터페이스) → `infrastructure`(JPA 구현체, S3 presign 구현체).
+레이어 구성은 이 저장소의 다른 서비스와 동일한 패턴이다: `presentation`(컨트롤러 + DTO) → `application`(서비스 + 커맨드/인포 DTO + `port`의 크로스 서비스 인터페이스) → `domain`(엔티티 + 리포지토리 인터페이스) → `infrastructure`(JPA 구현체, S3 presign 구현체, `client`의 project-service HTTP 어댑터).
+
+프로젝트 소유권 확인은 `application/port/ProjectPort` 인터페이스로 추상화돼 있고, 실제 구현(`infrastructure/client/ProjectHttpClient`)은 `RestClient` + `CircuitBreakerFactory`로 project-service를 호출한다 — cart-service가 project-service를 호출하는 것과 같은 패턴(`RewardHttpClient`).
 
 ## 설정
 
