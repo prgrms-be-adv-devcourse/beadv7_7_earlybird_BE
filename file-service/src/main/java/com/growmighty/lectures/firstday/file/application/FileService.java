@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.file.application;
 
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.file.application.dto.FileInfo;
 import com.growmighty.lectures.firstday.file.application.dto.PresignedUploadCommand;
@@ -10,6 +11,7 @@ import com.growmighty.lectures.firstday.file.domain.FileOwnerType;
 import com.growmighty.lectures.firstday.file.domain.FileRepository;
 import com.growmighty.lectures.firstday.file.infrastructure.S3PresignedUploadGenerator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +30,7 @@ public class FileService {
     @Transactional
     public FileInfo register(RegisterFileCommand command) {
         File file = File.register(
-            command.ownerType(), command.ownerId(), command.storedUrl(), command.originalName(),
+            command.ownerType(), command.ownerId(), command.uploaderId(), command.storedUrl(), command.originalName(),
             command.contentType(), command.fileSize(), command.sortOrder());
         return FileInfo.from(fileRepository.save(file));
     }
@@ -41,9 +43,12 @@ public class FileService {
     }
 
     @Transactional
-    public void delete(Long fileId) {
-        fileRepository.findById(fileId)
+    public void delete(Long fileId, Long requesterId) {
+        File file = fileRepository.findById(fileId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 파일입니다. fileId=" + fileId));
+        if (!file.isUploadedBy(requesterId)) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "본인이 업로드한 파일만 삭제할 수 있습니다. fileId=" + fileId);
+        }
         fileRepository.deleteById(fileId);
     }
 }

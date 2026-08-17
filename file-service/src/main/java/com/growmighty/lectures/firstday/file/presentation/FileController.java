@@ -32,8 +32,11 @@ public class FileController {
     }
 
     @PostMapping
-    public FileResponse register(@RequestBody RegisterFileRequest request) {
-        return FileResponse.from(fileService.register(request.toCommand()));
+    public FileResponse register(
+            @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+            @RequestBody RegisterFileRequest request
+    ) {
+        return FileResponse.from(fileService.register(request.toCommand(requesterId)));
     }
 
     @GetMapping
@@ -44,8 +47,8 @@ public class FileController {
     }
 
     @DeleteMapping("/{fileId}")
-    public Void delete(@PathVariable Long fileId) {
-        fileService.delete(fileId);
+    public Void delete(@PathVariable Long fileId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+        fileService.delete(fileId, requesterId);
         return null;
     }
 }

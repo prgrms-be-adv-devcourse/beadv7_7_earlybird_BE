@@ -174,10 +174,14 @@ AWS 자격증명은 애플리케이션 설정이 아니라 **AWS SDK 기본 자�
 - **오브젝트 키 경로 조작 방지**: `originalName`에서 뽑은 확장자를 검증 없이 키에 이어붙이면 `a.jpg/../../secret` 같은 입력으로 키에 `/`나 `..`가 섞여 들어갈 수 있다. 확장자는 `^\.[a-zA-Z0-9]{1,10}$` 패턴에 맞을 때만 반영하고, 아니면 통째로 버린다.
 - **업로드 용량 상한 없음 (알려진 한계)**: presigned PUT 방식은 S3 스펙상 URL 자체에 최대 업로드 크기를 강제할 방법이 없다(그러려면 presigned POST policy로 바꿔야 함). 지금은 URL 발급 자체가 인증된 사용자에게만 나간다는 점으로 위험을 낮췄고, 실제 남용이 관측되면 버킷 lifecycle 정책이나 CDN 단에서 별도로 제한을 추가해야 한다.
 - **presigned URL 유효시간**: 10분으로 제한해 탈취/재사용 가능 시간을 최소화한다.
+- **`register`/`delete`는 인증된 사용자만 호출 가능**: 게이트웨이가 `/api/v1/files/**` 전체를 `authenticated()`로 막아둬서(별도 permitAll 없음) `X-User-Id` 없는 호출 자체가 불가능하다.
+- **`DELETE`는 업로더 본인만 가능**: `File`에 `uploaderId`(register 시 JWT `X-User-Id`)를 저장해두고, 삭제 요청자가 그 값과 다르면 403(`BusinessException`)으로 거부한다 — 그 전에는 로그인만 하면 다른 사람이 올린 파일도 지울 수 있는 IDOR였다.
+- **`register`는 아직 "ownerId(프로젝트/리뷰)를 요청자가 실제로 소유하는지"를 검증하지 않는다 (알려진 한계)**: 로그인한 사용자라면 자신이 정상적으로 presign→PUT까지 마친 파일이라도, 그 파일을 자기 것이 아닌 임의의 `ownerId`(다른 사람의 프로젝트/리뷰)에 등록해버릴 수 있다 — 예를 들어 다른 창작자의 프로젝트 썸네일을 자기가 올린 이미지로 바꿔치기하는 것도 지금 구조상 막혀있지 않다. `ownerType=PROJECT`는 project-service가 이미 board-service용으로 노출해 둔 `GET /internal/v1/projects/{projectId}/creator`를 file-service가 호출해 `requesterId == creatorId`를 확인하면 막을 수 있다(새 Feign client 필요, project-service 코드 변경은 불필요). `ownerType=REVIEW`는 board-service에 동등한 내부 API가 아직 없어 이번 범위(file-service/project-service)에서는 막을 수 없다 — board-service 쪽에 후속 이슈가 필요하다.
 
 ## 현재 구현 범위 및 미해결 과제
 
-- **실제 S3 버킷/자격증명이 아직 없다.** 이 저장소 어디에도 실 버킷 이름, IAM 자격증명, CDN 도메인이 설정돼 있지 않다. `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_S3_BUCKET`/`AWS_S3_CDN_BASE_URL`을 `infrastructure/docker-compose.yml`/`.env.example`에 추가해야 로컬/도커 환경에서 실제로 동작한다 (ai-service의 `OPENAI_API_KEY` 패턴과 동일하게 처리하면 됨).
+- **실제 S3 버킷/자격증명이 아직 없다.** 운영이 k8s 기반이라 `.env` 개념이 없고 GitHub Secrets → `cd.yml`(`kubectl create secret`) → Deployment `secretKeyRef` 흐름을 쓴다(`payment-secrets` 등과 동일 패턴) — 이 흐름으로 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_S3_BUCKET`/`AWS_S3_CDN_BASE_URL`을 연결해야 실제로 동작한다. 요청 이슈: #354.
+- **`register`가 요청자의 `ownerId` 소유 여부를 검증하지 않는다.** 위 보안 고려사항 참고 — PROJECT는 기존 API 재사용으로 닫을 수 있고, REVIEW는 board-service 쪽 작업이 필요하다.
 - **`DELETE /api/v1/files/{fileId}`가 S3 오브젝트를 지우지 않는다.** 메타데이터만 삭제되고 실제 스토리지 오브젝트는 고아로 남는다 — 스토리지 정리는 별도 배치나 버킷 lifecycle 정책으로 처리해야 한다.
 - **presign만 하고 실제로 `register`가 호출되지 않은 업로드(고아 오브젝트)를 정리하는 배치가 없다.** 오브젝트 키에 `requesterId`가 들어가 있어 추적 자체는 가능하지만, 자동 정리는 아직 구현돼 있지 않다.
 - **presigned PUT의 업로드 용량 상한을 걸 수 없다** — 위 보안 고려사항 참고.

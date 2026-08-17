@@ -13,7 +13,7 @@ public record RegisterFileRequest(
         @NonNull Long fileSize,
         int sortOrder
 ) {
-    public RegisterFileCommand toCommand() {
-        return new RegisterFileCommand(ownerType, ownerId, storedUrl, originalName, contentType, fileSize, sortOrder);
+    public RegisterFileCommand toCommand(Long requesterId) {
+        return new RegisterFileCommand(ownerType, ownerId, requesterId, storedUrl, originalName, contentType, fileSize, sortOrder);
     }
 }
