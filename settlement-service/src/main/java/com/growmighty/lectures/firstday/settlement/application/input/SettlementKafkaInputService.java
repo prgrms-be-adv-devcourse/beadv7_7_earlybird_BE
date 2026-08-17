@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.settlement.application.input;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.SettlementKafkaInputRepository;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -25,6 +27,7 @@ public class SettlementKafkaInputService {
     private static final String PROJECT_REFUND_PROCESSED = "ProjectRefundProcessed";
 
     private final SettlementKafkaInputRepository inputRepository;
+    private final ProjectRefundRequestedRepository refundRequestedRepository;
 
     @Transactional
     public void saveProjectStatus(SettlementKafkaInput.ProjectStatusChanged event) {
@@ -69,7 +72,13 @@ public class SettlementKafkaInputService {
     @Transactional
     public void saveProjectRefundProcessed(SettlementKafkaInput.ProjectRefundProcessed event) {
         validateRefundResultEvent(event);
-        inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant());
+        if (!inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant())) {
+            return;
+        }
+        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(event.settlementId())
+                .orElseThrow(() -> new IllegalArgumentException("환불 요청을 찾을 수 없습니다."));
+        request.recordPaymentResult(event.status(), event.occurredAt().toInstant(), event.orderIds());
+        refundRequestedRepository.save(request);
     }
 
     private void saveCompletedPayment(OrderPaymentFact existing, SettlementKafkaInput.OrderPaymentStatusChanged event) {

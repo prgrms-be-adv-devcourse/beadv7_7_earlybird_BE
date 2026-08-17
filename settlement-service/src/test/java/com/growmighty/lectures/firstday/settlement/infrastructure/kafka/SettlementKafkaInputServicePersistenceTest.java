@@ -1,17 +1,22 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInput;
 import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInputService;
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.config.JpaAuditingConfig;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.ProjectRefundRequestedRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.adapter.SettlementKafkaInputRepositoryAdapter;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataKafkaInboxEventRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -20,9 +25,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create")
-@Import({JpaAuditingConfig.class, SettlementKafkaInputService.class, SettlementKafkaInputRepositoryAdapter.class})
+@Import({
+        JpaAuditingConfig.class,
+        SettlementKafkaInputService.class,
+        SettlementKafkaInputRepositoryAdapter.class,
+        ProjectRefundRequestedRepositoryAdapter.class
+})
 class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSupport {
 
     @Autowired
@@ -36,6 +48,9 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
 
     @Autowired
     private SpringDataOrderPaymentFactRepository paymentRepository;
+
+    @Autowired
+    private ProjectRefundRequestedRepository refundRequestedRepository;
 
     @Test
     @DisplayName("Project·Order 이벤트를 Inbox와 입력 사실에 한 번만 반영한다")
@@ -85,23 +100,84 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
     }
 
     @Test
-    @DisplayName("Payment 환불 batch 결과는 Inbox에만 한 번 기록한다")
-    void storesRefundResultOnlyInInbox() {
+    @DisplayName("Payment 환불 batch 결과를 Inbox와 기존 Outbox에 한 번 기록한다")
+    void storesRefundResultInInboxAndOutbox() {
+        ProjectRefundRequested request = refundRequest("refund-request-101", 101L, List.of(1001L, 1002L));
+        refundRequestedRepository.save(request);
         UUID eventId = UUID.randomUUID();
         SettlementKafkaInput.ProjectRefundProcessed event = new SettlementKafkaInput.ProjectRefundProcessed(
-                "101",
+                request.refundRequestId(),
                 eventId,
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-01T09:05:00+09:00"),
-                "101", List.of(1001L, 1002L), "COMPLETED"
+                request.refundRequestId(), List.of(1001L, 1002L), "COMPLETED"
         );
 
         inputService.saveProjectRefundProcessed(event);
         inputService.saveProjectRefundProcessed(event);
 
         assertThat(inboxRepository.count()).isEqualTo(1);
+        ProjectRefundRequested stored = refundRequestedRepository.findByRefundRequestId(request.refundRequestId())
+                .orElseThrow();
+        assertThat(stored.paymentResultStatus()).isEqualTo("COMPLETED");
+        assertThat(stored.paymentResultAt()).isEqualTo(event.occurredAt().toInstant());
         assertThat(outcomeRepository.count()).isZero();
         assertThat(paymentRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("다른 결과가 같은 환불 요청을 덮어쓰지 않고 Inbox도 함께 롤백한다")
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void rejectsConflictingRefundResult() {
+        ProjectRefundRequested request = refundRequest("refund-request-102", 102L, List.of(1003L));
+        refundRequestedRepository.save(request);
+        inputService.saveProjectRefundProcessed(refundResult(
+                request.refundRequestId(), UUID.randomUUID(), "COMPLETED", "2026-08-01T09:05:00+09:00", List.of(1003L)
+        ));
+
+        assertThatThrownBy(() -> inputService.saveProjectRefundProcessed(refundResult(
+                request.refundRequestId(), UUID.randomUUID(), "FAILED", "2026-08-01T09:06:00+09:00", List.of(1003L)
+        ))).isInstanceOf(IllegalStateException.class);
+
+        ProjectRefundRequested stored = refundRequestedRepository.findByRefundRequestId(request.refundRequestId())
+                .orElseThrow();
+        assertThat(stored.paymentResultStatus()).isEqualTo("COMPLETED");
+        assertThat(inboxRepository.count()).isEqualTo(1);
+    }
+
+    private static SettlementKafkaInput.ProjectRefundProcessed refundResult(
+            String refundRequestId,
+            UUID eventId,
+            String status,
+            String occurredAt,
+            List<Long> orderIds
+    ) {
+        return new SettlementKafkaInput.ProjectRefundProcessed(
+                refundRequestId,
+                eventId,
+                "ProjectRefundProcessed",
+                1,
+                OffsetDateTime.parse(occurredAt),
+                refundRequestId,
+                orderIds,
+                status
+        );
+    }
+
+    private static ProjectRefundRequested refundRequest(String refundRequestId, Long projectId, List<Long> orderIds) {
+        Instant occurredAt = Instant.parse("2026-08-01T00:00:00Z");
+        return ProjectRefundRequested.request(
+                refundRequestId,
+                ProjectOutcomeFact.of(projectId, 9L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
+                orderIds.stream().map(orderId -> OrderPaymentFact.completed(
+                        orderId,
+                        "PG-" + orderId,
+                        projectId,
+                        com.growmighty.lectures.firstday.settlement.domain.model.Money.wons(50_000),
+                        occurredAt.minusSeconds(1)
+                )).toList(),
+                occurredAt
+        );
     }
 }
