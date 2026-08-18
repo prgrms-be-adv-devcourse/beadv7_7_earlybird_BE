@@ -125,7 +125,7 @@ sequenceDiagram
 }
 ```
 
-`ownerType=PROJECT`면 요청자(`X-User-Id`)가 `ownerId` 프로젝트의 창작자인지 확인한 뒤 등록한다 — 아니면 403, project-service 확인 자체가 실패하면(타임아웃 등) 503. `ownerType=REVIEW`는 아직 이 확인을 하지 않는다(알려진 한계, [보안 고려사항](#보안-고려사항) 참고). `File`에는 요청자가 `uploaderId`로 함께 저장돼 `DELETE`의 본인 확인에 쓰인다.
+모든 필드는 Bean Validation으로 검증한다(`@NotNull`/`@NotBlank`/`@Positive`) — 비거나 0 이하인 값은 400으로 거부되고 필드별 오류가 응답에 담긴다. `storedUrl`도 검증 대상이다: presign이 발급하는 키 형식(`{cdn-base-url}/files/{요청자 uploaderId}/...`)과 일치하지 않으면 400으로 거부한다 — 이게 없으면 본인이 실제로 업로드한 오브젝트가 아니라 임의의 외부 URL(예: 악성 사이트)을 등록해버릴 수 있다. `ownerType=PROJECT`면 그다음 요청자(`X-User-Id`)가 `ownerId` 프로젝트의 창작자인지 확인한 뒤 등록한다 — 아니면 403, project-service 확인 자체가 실패하면(타임아웃 등) 503. `ownerType=REVIEW`는 아직 이 확인을 하지 않는다(알려진 한계, [보안 고려사항](#보안-고려사항) 참고). `File`에는 요청자가 `uploaderId`로 함께 저장돼 `DELETE`의 본인 확인에 쓰인다.
 
 응답 `FileResponse`는 `File` 엔티티 필드를 그대로 반영한다 (`id`, `ownerType`, `ownerId`, `storedUrl`, `originalName`, `contentType`, `fileSize`, `sortOrder`).
 
@@ -176,6 +176,7 @@ AWS 자격증명은 애플리케이션 설정이 아니라 **AWS SDK 기본 자�
 
 - **`contentType` 허용 목록**: presign 시 임의 MIME 타입(예: `text/html`)을 허용하면, 공격자가 그 타입으로 PUT한 오브젝트가 CDN에서 그대로 그 MIME으로 서빙되어 저장형 XSS로 이어질 수 있다. 이미지 업로드 용도이므로 `image/jpeg|png|webp|gif`로 제한했다.
 - **오브젝트 키 경로 조작 방지**: `originalName`에서 뽑은 확장자를 검증 없이 키에 이어붙이면 `a.jpg/../../secret` 같은 입력으로 키에 `/`나 `..`가 섞여 들어갈 수 있다. 확장자는 `^\.[a-zA-Z0-9]{1,10}$` 패턴에 맞을 때만 반영하고, 아니면 통째로 버린다.
+- **`register`의 `storedUrl` 출처 검증**: 검증 없이 그대로 저장하면 본인이 presign 받아 실제로 올린 오브젝트가 아니라 임의의 외부 URL(예: 악성 사이트)을 등록해버릴 수 있다. presign이 발급하는 키 형식(`files/{uploaderId}/...`)에 맞는 `storedUrl`만 허용한다 — `{cdn-base-url}/files/{uploaderId}/`로 시작하지 않으면 400.
 - **업로드 용량 상한 없음 (알려진 한계)**: presigned PUT 방식은 S3 스펙상 URL 자체에 최대 업로드 크기를 강제할 방법이 없다(그러려면 presigned POST policy로 바꿔야 함). 지금은 URL 발급 자체가 인증된 사용자에게만 나간다는 점으로 위험을 낮췄고, 실제 남용이 관측되면 버킷 lifecycle 정책이나 CDN 단에서 별도로 제한을 추가해야 한다.
 - **presigned URL 유효시간**: 10분으로 제한해 탈취/재사용 가능 시간을 최소화한다.
 - **`register`/`delete`는 인증된 사용자만 호출 가능**: 게이트웨이가 `/api/v1/files/**` 전체를 `authenticated()`로 막아둬서(별도 permitAll 없음) `X-User-Id` 없는 호출 자체가 불가능하다.

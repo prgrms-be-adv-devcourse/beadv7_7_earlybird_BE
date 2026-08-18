@@ -34,17 +34,19 @@ class FileServiceTest {
     @Mock
     private ProjectPort projectPort;
 
+    private static final String CDN_BASE_URL = "https://cdn.example.com";
+
     private FileService fileService;
 
     @BeforeEach
     void setUp() {
-        fileService = new FileService(fileRepository, presignedUploadGenerator, projectPort);
+        fileService = new FileService(fileRepository, presignedUploadGenerator, projectPort, CDN_BASE_URL);
     }
 
     @Test
     void 프로젝트_소유자가_등록하면_성공한다() {
         RegisterFileCommand command = new RegisterFileCommand(FileOwnerType.PROJECT, 10L, 42L,
-            "https://cdn.example.com/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
+            CDN_BASE_URL + "/files/42/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
         when(projectPort.getCreatorId(10L)).thenReturn(42L);
         when(fileRepository.save(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -54,8 +56,30 @@ class FileServiceTest {
     @Test
     void 프로젝트_소유자가_아니면_등록이_403으로_거부된다() {
         RegisterFileCommand command = new RegisterFileCommand(FileOwnerType.PROJECT, 10L, 999L,
-            "https://cdn.example.com/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
+            CDN_BASE_URL + "/files/999/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
         when(projectPort.getCreatorId(10L)).thenReturn(42L);
+
+        assertThatThrownBy(() -> fileService.register(command))
+            .isInstanceOf(BusinessException.class);
+        verify(fileRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void 본인_presign_키_형식이_아닌_storedUrl은_등록이_거부된다() {
+        RegisterFileCommand command = new RegisterFileCommand(FileOwnerType.PROJECT, 10L, 42L,
+            "https://attacker.example.com/malware.exe", "a.jpg", "image/jpeg", 100L, 0);
+
+        assertThatThrownBy(() -> fileService.register(command))
+            .isInstanceOf(BusinessException.class);
+        verify(fileRepository, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(projectPort, never()).getCreatorId(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void 다른_사람의_presign_키_경로를_가리키는_storedUrl은_등록이_거부된다() {
+        // 자기 자신이 presign 받은 URL이 아니라 남의 uploaderId 경로를 그대로 베낀 storedUrl.
+        RegisterFileCommand command = new RegisterFileCommand(FileOwnerType.PROJECT, 10L, 42L,
+            CDN_BASE_URL + "/files/999/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
 
         assertThatThrownBy(() -> fileService.register(command))
             .isInstanceOf(BusinessException.class);

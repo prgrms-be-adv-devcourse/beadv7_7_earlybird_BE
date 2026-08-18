@@ -34,7 +34,7 @@ public class FileController {
     @PostMapping
     public FileResponse register(
             @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-            @RequestBody RegisterFileRequest request
+            @Valid @RequestBody RegisterFileRequest request
     ) {
         return FileResponse.from(fileService.register(request.toCommand(requesterId)));
     }

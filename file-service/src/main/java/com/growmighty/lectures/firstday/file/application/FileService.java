@@ -11,7 +11,7 @@ import com.growmighty.lectures.firstday.file.domain.File;
 import com.growmighty.lectures.firstday.file.domain.FileOwnerType;
 import com.growmighty.lectures.firstday.file.domain.FileRepository;
 import com.growmighty.lectures.firstday.file.infrastructure.S3PresignedUploadGenerator;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,11 +19,23 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class FileService {
     private final FileRepository fileRepository;
     private final S3PresignedUploadGenerator presignedUploadGenerator;
     private final ProjectPort projectPort;
+    private final String cdnBaseUrl;
+
+    public FileService(
+            FileRepository fileRepository,
+            S3PresignedUploadGenerator presignedUploadGenerator,
+            ProjectPort projectPort,
+            @Value("${aws.s3.cdn-base-url}") String cdnBaseUrl
+    ) {
+        this.fileRepository = fileRepository;
+        this.presignedUploadGenerator = presignedUploadGenerator;
+        this.projectPort = projectPort;
+        this.cdnBaseUrl = cdnBaseUrl;
+    }
 
     public PresignedUploadInfo issuePresignedUpload(PresignedUploadCommand command) {
         return presignedUploadGenerator.generate(command.requesterId(), command.contentType(), command.originalName());
@@ -31,6 +43,7 @@ public class FileService {
 
     @Transactional
     public FileInfo register(RegisterFileCommand command) {
+        validateStoredUrlOrigin(command);
         // REVIEW는 board-service에 소유권 확인용 내부 API가 아직 없어 검증하지 못한다 (알려진 한계,
         // file-service/README.md 참고).
         if (command.ownerType() == FileOwnerType.PROJECT) {
@@ -44,6 +57,17 @@ public class FileService {
             command.ownerType(), command.ownerId(), command.uploaderId(), command.storedUrl(), command.originalName(),
             command.contentType(), command.fileSize(), command.sortOrder());
         return FileInfo.from(fileRepository.save(file));
+    }
+
+    // storedUrl을 검증 없이 그대로 저장하면, 본인이 presign 받아 실제로 올린 오브젝트가 아니라
+    // 임의의 외부 URL(예: 악성 사이트)을 등록해버릴 수 있다 — presign이 발급하는 키 형식
+    // (files/{requesterId}/...)에 맞는 storedUrl만 허용한다.
+    private void validateStoredUrlOrigin(RegisterFileCommand command) {
+        String expectedPrefix = cdnBaseUrl + "/files/" + command.uploaderId() + "/";
+        if (!command.storedUrl().startsWith(expectedPrefix)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST,
+                "본인이 presign 발급받아 업로드한 storedUrl만 등록할 수 있습니다.");
+        }
     }
 
     @Transactional(readOnly = true)
