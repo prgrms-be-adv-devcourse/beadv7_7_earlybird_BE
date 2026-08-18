@@ -42,6 +42,7 @@ jobs:
           - file-service
           - board-service
           - notification-service
+          - ai-service
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,13 +129,13 @@ jobs:
             kubectl -n webapp create secret generic ai-openai \
               --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
             kubectl apply -f infrastructure/k8s/
-            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service; do
+            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
               kubectl -n webapp set image "deployment/$svc" \
                 "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$DEPLOY_SHA"
             done
             # :latest 로 rollout restart 하는 대신 :SHA 태그로 set image - 이래야 kubectl rollout
             # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
-            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service; do
+            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
               kubectl -n webapp rollout status "deployment/$svc" --timeout=5m
             done
 
