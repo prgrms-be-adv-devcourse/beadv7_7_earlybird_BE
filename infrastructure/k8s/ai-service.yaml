@@ -4,7 +4,7 @@ metadata:
   name: ai-service
   namespace: webapp
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: ai-service
@@ -60,8 +60,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: ai-service
-  minReplicas: 1
-  maxReplicas: 2   # 데이터/앱 박스 둘 다 메모리 여유가 크지 않아 보수적으로 설정 - #225
+  minReplicas: 2
+  maxReplicas: 3
   metrics:
     - type: Resource
       resource:
