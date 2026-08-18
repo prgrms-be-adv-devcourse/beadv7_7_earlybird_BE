@@ -135,7 +135,7 @@ sequenceDiagram
 
 ### `DELETE /api/v1/files/{fileId}`
 
-인증 필요 (`X-User-Id` 헤더). 삭제 요청자가 그 파일을 등록한 `uploaderId`와 다르면 403. 메타데이터 레코드만 삭제한다 — **S3 오브젝트 자체는 지우지 않는다** (아래 [현재 구현 범위](#현재-구현-범위-및-미해결-과제) 참고).
+인증 필요 (`X-User-Id` 헤더). 삭제 요청자가 그 파일을 등록한 `uploaderId`와 다르면 403. **소프트 딜리트**다 — `File` 엔티티에 `@SQLDelete`/`@SQLRestriction`(Hibernate)을 걸어, 실제로는 `deleted_at`을 채우는 UPDATE로 대체되고 이후 모든 조회에서 자동으로 제외된다. S3 오브젝트 자체는 이 요청으로 지우지 않는다 — 정리는 별도 배치나 버킷 lifecycle 정책이 담당한다(아래 [현재 구현 범위](#현재-구현-범위-및-미해결-과제) 참고).
 
 ## 도메인 모델
 
@@ -187,6 +187,6 @@ AWS 자격증명은 애플리케이션 설정이 아니라 **AWS SDK 기본 자�
 
 - **실제 S3 버킷/자격증명이 아직 없다.** 운영이 k8s 기반이라 `.env` 개념이 없고 GitHub Secrets → `cd.yml`(`kubectl create secret`) → Deployment `secretKeyRef` 흐름을 쓴다(`payment-secrets` 등과 동일 패턴) — 이 흐름으로 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_S3_BUCKET`/`AWS_S3_CDN_BASE_URL`을 연결해야 실제로 동작한다. 요청 이슈: #354.
 - **`register`의 `ownerId` 소유권 검증이 `REVIEW` 타입은 아직 안 된다.** 위 보안 고려사항 참고 — board-service 쪽 내부 API 작업이 필요하다.
-- **`DELETE /api/v1/files/{fileId}`가 S3 오브젝트를 지우지 않는다.** 메타데이터만 삭제되고 실제 스토리지 오브젝트는 고아로 남는다 — 스토리지 정리는 별도 배치나 버킷 lifecycle 정책으로 처리해야 한다.
+- **`DELETE /api/v1/files/{fileId}`는 소프트 딜리트라 S3 오브젝트를 지우지 않는다(의도된 정책).** 메타데이터는 `deleted_at`만 채워지고 실제 스토리지 오브젝트는 그대로 남는다 — 스토리지 정리는 별도 배치나 버킷 lifecycle 정책으로 처리해야 한다.
 - **presign만 하고 실제로 `register`가 호출되지 않은 업로드(고아 오브젝트)를 정리하는 배치가 없다.** 오브젝트 키에 `requesterId`가 들어가 있어 추적 자체는 가능하지만, 자동 정리는 아직 구현돼 있지 않다.
 - **presigned PUT의 업로드 용량 상한을 걸 수 없다** — 위 보안 고려사항 참고.

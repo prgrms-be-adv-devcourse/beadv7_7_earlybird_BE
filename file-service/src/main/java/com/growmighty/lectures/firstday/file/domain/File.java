@@ -2,18 +2,27 @@ package com.growmighty.lectures.firstday.file.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 
 /**
  * 파일 메타데이터. 파일 주인을 owner_type + owner_id 다형 참조로 두어,
  * 프로젝트 이미지 외(리뷰 사진 등)로 확장해도 테이블 추가가 없다.
+ *
+ * <p>삭제는 소프트 딜리트다 — {@code deleteById}가 실제 DELETE 대신 {@code deleted_at}을
+ * 채우는 UPDATE로 대체되고(@SQLDelete), 모든 조회에는 {@code deleted_at IS NULL}이 자동으로
+ * 걸린다(@SQLRestriction). S3 오브젝트 정리는 별도 배치/lifecycle 정책이 담당한다.
  */
 @Entity
 @Table(name = "files")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@SQLDelete(sql = "UPDATE files SET deleted_at = NOW() WHERE id = ?")
+@SQLRestriction("deleted_at IS NULL")
 public class File extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,6 +55,10 @@ public class File extends BaseEntity {
     /** 프로젝트 이미지 노출 순서 */
     @Column(nullable = false)
     private Integer sortOrder;
+
+    /** null이면 살아있는 레코드. 삭제 시각은 {@code @SQLDelete}가 채운다. */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     private File(FileOwnerType ownerType, Long ownerId, Long uploaderId, String storedUrl, String originalName,
                  String contentType, Long fileSize, int sortOrder) {
