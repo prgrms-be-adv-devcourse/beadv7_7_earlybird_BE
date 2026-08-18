@@ -29,6 +29,16 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: k8s
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASSWORD
             - name: JAVA_TOOL_OPTIONS
               value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
             - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED

@@ -29,6 +29,16 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: k8s
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASSWORD
             # 앱 박스 compose .env와 동일한 값 - Toss 테스트 모드 연동 중(PAYMENT_TOSS_SECRET_KEY가
             # test_sk_ 접두사, 실결제 아님).
             - name: PAYMENT_GATEWAY

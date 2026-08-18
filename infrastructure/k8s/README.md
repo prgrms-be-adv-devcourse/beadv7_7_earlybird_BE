@@ -15,17 +15,23 @@ kubectl apply -f infrastructure/k8s/
 
 **이 디렉터리에는 시크릿 값을 절대 커밋하지 않는다.** `kubectl create secret`으로 수동 부트스트랩하거나, (CD 연동 이후 — #198 Phase 6 참고) GitHub Actions 시크릿으로부터 배포 파이프라인이 매 배포마다 재적용하도록 한다.
 
-현재는 시크릿이 필요 없음(`ai-service`는 `ghcr-secret`만 필요, 이미 클러스터에 부트스트랩되어 있음). 핵심 3종 마이그레이션이 진행되면서 이 섹션도 늘어날 예정:
+현재는 cd.yml의 `deploy-k8s` 잡이 GitHub Actions 시크릿으로부터 매 배포마다 재적용한다 (아래는 그 예시 — 전체 목록은 `cd.yml` 참고):
 
 ```bash
-# config-server (Phase 3) — git-remote 모드는 GitHub PAT 필요
+# config-server — git-remote 모드는 GitHub PAT 필요
 kubectl -n webapp create secret generic config-server-git \
   --from-literal=GIT_USERNAME=<github-id> \
   --from-literal=GIT_PERSONAL_ACCESS_TOKEN=<ghp_...>
 
-# gateway-server (Phase 5) — user-service의 JWT_SECRET(앱 박스 .env)과 반드시 동일한 값이어야 함
+# gateway-server — user-service의 JWT_SECRET과 반드시 동일한 값이어야 함
 kubectl -n webapp create secret generic gateway-jwt \
   --from-literal=JWT_SECRET=<user-service의 JWT_SECRET과 동일한 값>
+
+# 9개 DB-backed 서비스 공용 (#164) — 데이터 박스 mysql 컨테이너의 MYSQL_USER/MYSQL_PASSWORD
+# (docker-compose.data.yml, 그 박스의 .env로만 관리)와 반드시 동일한 값이어야 함
+kubectl -n webapp create secret generic db-credentials \
+  --from-literal=DB_USERNAME=<계정> \
+  --from-literal=DB_PASSWORD=<비밀번호>
 ```
 
 ## 롤백

@@ -1,15 +1,18 @@
 # 2번째 EC2(MySQL/ES 전용 데이터 박스)에서만 수동으로 띄우는 compose 파일 — #256.
 # docker-compose.yml/docker-compose.prod.yml 어느 쪽에도 속하지 않고, cd.yml 자동 배포 대상도
 # 아니다. mysql/elasticsearch 서비스 정의는 docker-compose.yml과 동일하게 유지하되(로컬 개발용
-# 베이스 파일은 절대 건드리지 않음), root 비밀번호만 .env(gitignore, 이 박스에만 존재)로 분리했다.
+# 베이스 파일은 절대 건드리지 않음), root 비밀번호와 애플리케이션 계정(DB_USERNAME/DB_PASSWORD,
+# #164)만 .env(gitignore, 이 박스에만 존재)로 분리했다. DB_USERNAME/DB_PASSWORD는 k8s db-credentials
+# Secret(cd.yml이 GitHub Actions 시크릿으로부터 매 배포마다 재적용)과 반드시 같은 값이어야 한다 —
+# 이 박스는 CD 자동 배포 대상이 아니라서 값을 새로 발급/교체할 때 이 .env도 수동으로 맞춰줘야 한다.
 services:
   mysql:
     image: mysql:8.4
     container_name: earlybird-mysql
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_USER=earlybird
-      - MYSQL_PASSWORD=earlybird
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
       - TZ=Asia/Seoul
     command:
       - --character-set-server=utf8mb4

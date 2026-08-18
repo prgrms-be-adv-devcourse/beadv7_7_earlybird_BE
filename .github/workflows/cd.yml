@@ -92,6 +92,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
         with:
           # 데이터 박스(k3s 컨트롤 플레인) - #198 핵심 3종(config/discovery/gateway-server)의
@@ -105,7 +107,7 @@ jobs:
           # probe 실패로 재시작 몇 번 거치고 나면 결국 뜬다는 게 관찰된 패턴이라 실패 처리 대신
           # 기다려주는 쪽으로 조정.
           command_timeout: '20m'
-          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DEPLOY_SHA
+          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DB_USERNAME,DB_PASSWORD,DEPLOY_SHA
           script: |
             set -e
             # ec2-user는 /etc/rancher/k3s/k3s.yaml을 직접 읽을 수 있어(644, k3s 기본 권한)
@@ -134,6 +136,14 @@ jobs:
               --dry-run=client -o yaml | kubectl apply -f -
             kubectl -n webapp create secret generic ai-openai \
               --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
+            # DB 계정/비밀번호 - 9개 서비스(order/project/payment/user/cart/settlement/file/board/
+            # notification)가 전부 이 Secret 하나를 공유한다 (#164). 데이터 박스 mysql 컨테이너의
+            # MYSQL_USER/MYSQL_PASSWORD(docker-compose.data.yml, 그 박스의 .env로만 관리)와 반드시
+            # 같은 값이어야 한다 - 값이 어긋나면 전 서비스 DB 연결이 한꺼번에 끊긴다.
+            kubectl -n webapp create secret generic db-credentials \
+              --from-literal=DB_USERNAME="$DB_USERNAME" \
+              --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+              --dry-run=client -o yaml | kubectl apply -f -
             # file-service presigned upload (#354) - 버킷/리전/CDN 도메인은 config-server의
             # file-service.yml 기본값(earlybird-files/ap-northeast-2)이 그대로 맞으므로 여기서
             # 오버라이드하지 않는다. 자격증명만 SDK 기본 체인이 읽는 환경변수로 주입.

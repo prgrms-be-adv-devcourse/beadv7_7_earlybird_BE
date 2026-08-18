@@ -29,6 +29,16 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: k8s
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASSWORD
             # gateway-server와 반드시 같은 값이어야 한다(#164) - 이미 만들어둔 gateway-jwt Secret을
             # 그대로 재사용한다 (동일한 값을 담은 별도 Secret을 또 만들면 동기화 대상만 늘어난다).
             - name: JWT_SECRET
