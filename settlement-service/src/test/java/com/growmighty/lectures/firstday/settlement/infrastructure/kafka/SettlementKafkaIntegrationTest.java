@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
+import java.util.stream.StreamSupport;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -285,11 +286,13 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
             commandConsumer.subscribe(List.of(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND));
             publisher.publishPending();
 
-            ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(
-                    commandConsumer,
-                    KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND,
-                    Duration.ofSeconds(10)
-            );
+            ConsumerRecord<String, String> record = StreamSupport.stream(KafkaTestUtils
+                            .getRecords(commandConsumer, Duration.ofSeconds(10))
+                            .records(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND)
+                            .spliterator(), false)
+                    .filter(candidate -> request.refundRequestId().equals(candidate.key()))
+                    .findFirst()
+                    .orElseThrow();
             ProjectRefundRequestedEvent event = objectMapper.readValue(
                     record.value(),
                     ProjectRefundRequestedEvent.class
