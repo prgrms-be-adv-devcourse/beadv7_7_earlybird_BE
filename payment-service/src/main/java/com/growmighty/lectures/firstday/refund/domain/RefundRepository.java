@@ -19,6 +19,8 @@ public interface RefundRepository {
 
     boolean existsFailedBySettlementId(Long settlementId);
 
+    boolean existsCompletedBySettlementId(Long settlementId);
+
     List<BulkRefundOrder> findOrdersBySettlementIds(List<Long> settlementIds);
 
 }

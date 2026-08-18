@@ -71,13 +71,14 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
     @Query("""
       select new com.growmighty.lectures.firstday.refund.domain.BulkRefundOrder(
           refund.settlementId,
-          payment.orderId
+          payment.orderId,
+          refund.status
       )
       from Refund refund
       join Payment payment on payment.paymentId = refund.paymentId
       where refund.settlementId in :settlementIds
       order by refund.settlementId asc, refund.id asc
-      """)
+    """)
     List<BulkRefundOrder> findOrdersBySettlementIds(
         @Param("settlementIds") List<Long> settlementIds
     );

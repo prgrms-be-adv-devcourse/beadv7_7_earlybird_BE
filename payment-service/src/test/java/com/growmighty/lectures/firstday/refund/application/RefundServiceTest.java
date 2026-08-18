@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.refund.application;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import com.growmighty.lectures.firstday.refund.domain.*;
@@ -39,9 +38,6 @@ class RefundServiceTest {
 
     @Mock
     private RefundRepository refundRepository;
-
-    @Mock
-    private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
 
     @Mock
     private BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
@@ -119,16 +115,16 @@ class RefundServiceTest {
         verify(paymentRepository).save(payment);
     }
 
-    // 추가 : 일괄 취소의 마지막 환불 성공 시 완료 결과 Outbox 저장
+    // 변경 : 일괄 취소의 성공·실패 결과 Outbox를 상태별로 저장
     @Test
-    void completeRefund_savesCompletedBulkRefundResultOutbox() {
+    void completeRefund_savesBulkRefundResultOutboxesByStatus() {
         Payment payment = paidPayment();
         Refund refund = plannedRefund();
         refund.startRequest();
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
         when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
-        when(bulkRefundResultOutboxRepository.existsBySettlementId(SETTLEMENT_ID)).thenReturn(false);
         when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsCompletedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
         when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(false);
 
         refundService.completeRefund(REFUND_ID);
@@ -159,7 +155,6 @@ class RefundServiceTest {
         Refund refund = plannedRefund();
         refund.startRequest();
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
-        when(bulkRefundResultOutboxRepository.existsBySettlementId(SETTLEMENT_ID)).thenReturn(false);
         when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
         when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
 
@@ -178,7 +173,6 @@ class RefundServiceTest {
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
         when(refundRecoveryProperties.maximumRetryCount()).thenReturn(0);
         when(refundRecoveryProperties.retryDelay()).thenReturn(Duration.ofMinutes(1));
-        when(bulkRefundResultOutboxRepository.existsBySettlementId(SETTLEMENT_ID)).thenReturn(false);
         when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
         when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
 

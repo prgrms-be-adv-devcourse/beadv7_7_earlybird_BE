@@ -87,19 +87,20 @@ public class RefundService {
 
     private void recordBulkRefundResultIfCompleted(Long settlementId) {
         if (settlementId == null
-            || bulkRefundResultOutboxRepository.existsBySettlementId(settlementId)
             || refundRepository.existsInProgressBySettlementId(settlementId)
         ) {
             return;
         }
 
-        BulkRefundResultStatus resultStatus =
+        saveBulkRefundResultIfAbsent(
+            settlementId,
+            BulkRefundResultStatus.COMPLETED,
+            refundRepository.existsCompletedBySettlementId(settlementId)
+        );
+        saveBulkRefundResultIfAbsent(
+            settlementId,
+            BulkRefundResultStatus.FAILED,
             refundRepository.existsFailedBySettlementId(settlementId)
-                ? BulkRefundResultStatus.FAILED
-                : BulkRefundResultStatus.COMPLETED;
-
-        bulkRefundResultOutboxRepository.save(
-            BulkRefundResultOutbox.pending(settlementId, resultStatus)
         );
     }
 
@@ -115,6 +116,20 @@ public class RefundService {
                 pgOrderId,
                 status
             )
+        );
+    }
+
+    private void saveBulkRefundResultIfAbsent(
+        Long settlementId,
+        BulkRefundResultStatus resultStatus,
+        boolean resultExists
+    ) {
+        if (!resultExists || bulkRefundResultOutboxRepository.existsBySettlementIdAndResultStatus(settlementId, resultStatus)) {
+            return;
+        }
+
+        bulkRefundResultOutboxRepository.save(
+            BulkRefundResultOutbox.pending(settlementId, resultStatus)
         );
     }
 

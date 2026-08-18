@@ -5,7 +5,7 @@ import java.util.List;
 public interface BulkRefundResultOutboxRepository {
     BulkRefundResultOutbox save(BulkRefundResultOutbox outbox);
 
-    boolean existsBySettlementId(Long settlementId);
+    boolean existsBySettlementIdAndResultStatus(Long settlementId, BulkRefundResultStatus resultStatus);
 
     List<BulkRefundResultOutbox> findPending(int limit);
 }

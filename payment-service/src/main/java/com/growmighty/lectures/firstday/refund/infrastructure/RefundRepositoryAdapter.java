@@ -64,6 +64,11 @@ public class RefundRepositoryAdapter implements RefundRepository {
     }
 
     @Override
+    public boolean existsCompletedBySettlementId(Long settlementId) {
+        return jpaRepository.existsBySettlementIdAndStatusIn(settlementId, List.of(RefundStatus.COMPLETED));
+    }
+
+    @Override
     public List<BulkRefundOrder> findOrdersBySettlementIds(List<Long> settlementIds) {
         return jpaRepository.findOrdersBySettlementIds(settlementIds);
     }

@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 @Table(
     name = "bulk_refund_result_outbox",
     uniqueConstraints = @UniqueConstraint(
-        name = "uk_bulk_refund_result_outbox_settlement_id",
-        columnNames = "settlement_id"
+        name = "uk_bulk_refund_result_outbox_settlement_id_result_status",
+        columnNames = {"settlement_id", "result_status"}
     ),
     indexes = @Index(
         name = "idx_bulk_refund_result_outbox_status_id",

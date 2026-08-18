@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.refund.infrastructure;
 import com.growmighty.lectures.firstday.refund.domain.BulkRefundResultOutbox;
 import com.growmighty.lectures.firstday.refund.domain.BulkRefundResultOutboxRepository;
 import com.growmighty.lectures.firstday.refund.domain.BulkRefundResultOutboxStatus;
+import com.growmighty.lectures.firstday.refund.domain.BulkRefundResultStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
@@ -21,8 +22,8 @@ public class BulkRefundResultOutboxRepositoryAdapter implements BulkRefundResult
     }
 
     @Override
-    public boolean existsBySettlementId(Long settlementId) {
-        return jpaRepository.existsBySettlementId(settlementId);
+    public boolean existsBySettlementIdAndResultStatus(Long settlementId, BulkRefundResultStatus resultStatus) {
+        return jpaRepository.existsBySettlementIdAndResultStatus(settlementId, resultStatus);
     }
 
     @Override

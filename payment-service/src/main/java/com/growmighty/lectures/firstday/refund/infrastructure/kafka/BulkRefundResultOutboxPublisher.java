@@ -2,10 +2,7 @@ package com.growmighty.lectures.firstday.refund.infrastructure.kafka;
 
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
 import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
-import com.growmighty.lectures.firstday.refund.domain.BulkRefundOrder;
-import com.growmighty.lectures.firstday.refund.domain.BulkRefundResultOutbox;
-import com.growmighty.lectures.firstday.refund.domain.BulkRefundResultOutboxRepository;
-import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
+import com.growmighty.lectures.firstday.refund.domain.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -45,22 +42,32 @@ public class BulkRefundResultOutboxPublisher {
             return;
         }
 
-        Map<Long, List<Long>> orderIdsBySettlementId =
+        Map<Long, List<BulkRefundOrder>> orderIdsBySettlementId =
             refundRepository.findOrdersBySettlementIds(
                 outboxes.stream()
                     .map(BulkRefundResultOutbox::getSettlementId)
                     .toList()
-            ).stream().collect(Collectors.groupingBy(
-                BulkRefundOrder::settlementId,
-                Collectors.mapping(BulkRefundOrder::orderId, Collectors.toList())
-            ));
+            ).stream().collect(Collectors.groupingBy(BulkRefundOrder::settlementId));
 
         for (BulkRefundResultOutbox outbox : outboxes) {
-            publish(
-                outbox,
-                orderIdsBySettlementId.get(outbox.getSettlementId())
-            );
+            List<Long> orderIds = orderIdsBySettlementId.getOrDefault(outbox.getSettlementId(), List.of())
+                .stream()
+                .filter(order -> hasSameResultStatus(
+                    order.refundStatus(),
+                    outbox.getResultStatus()
+                ))
+                .map(BulkRefundOrder::orderId)
+                .toList();
+
+            publish(outbox, orderIds);
         }
+    }
+
+    private boolean hasSameResultStatus(RefundStatus refundStatus, BulkRefundResultStatus resultStatus) {
+        return switch (resultStatus) {
+            case COMPLETED -> refundStatus == RefundStatus.COMPLETED;
+            case FAILED -> refundStatus == RefundStatus.FAILED;
+        };
     }
 
     private void publish(BulkRefundResultOutbox outbox, List<Long> orderIds) {
@@ -87,7 +94,10 @@ public class BulkRefundResultOutboxPublisher {
     private ProjectRefundProcessedEvent eventOf(BulkRefundResultOutbox outbox, List<Long> orderIds) {
         return new ProjectRefundProcessedEvent(
             UUID.nameUUIDFromBytes(
-                ("ProjectRefundProcessed: " + outbox.getSettlementId())
+                ("ProjectRefundProcessed: "
+                    + outbox.getSettlementId()
+                    + ":"
+                    + outbox.getResultStatus().getCode())
                     .getBytes(StandardCharsets.UTF_8)
             ),
             EVENT_TYPE,
