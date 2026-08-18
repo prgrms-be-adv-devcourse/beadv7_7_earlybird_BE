@@ -32,6 +32,8 @@ Cloudinary(혹은 유사 서비스)가 제공하는 "unsigned upload preset"에 
 
 file-service가 **자격증명 없이도 정해진 시간 동안 S3에 PUT 할 수 있는 서명된 URL**을 발급하고, 브라우저는 그 URL로 파일 바이트를 S3에 직접 PUT 한다. 파일 바이트는 file-service도, 게이트웨이도 거치지 않는다.
 
+> **정확한 표현은 "애플리케이션 서버(file-service)를 거치지 않는다"다.** 스토리지가 진짜 AWS S3면 브라우저가 AWS로 직접 붙어 우리 인프라를 아예 안 거치지만, [MinIO를 같은 EC2에서 Caddy 뒤에 자체 호스팅](#minio-s3-호환-자체-호스팅)하는 경우엔 데이터 흐름이 **브라우저 → Caddy(reverse proxy) → MinIO**라 파일 바이트가 Caddy는 지나간다. 다만 이 경우에도 file-service의 CPU/메모리/스레드는 여전히 전혀 쓰지 않는다(file-service가 하는 일은 "서명 계산" 뿐, Caddy는 그 흐름 밖에 있는 별도 프로세스다) — 아래 "서버 부하" 이득은 두 경우 모두 그대로 유효하다.
+
 ```mermaid
 sequenceDiagram
     participant FE as Browser
@@ -47,7 +49,7 @@ sequenceDiagram
     FS-->>FE: {uploadUrl, storedUrl, requiredHeaders}
 
     FE->>S3: PUT uploadUrl (파일 바이트, Content-Type 헤더 포함)
-    Note over FE,S3: 게이트웨이/file-service를 거치지 않고 직접 전송
+    Note over FE,S3: 게이트웨이/file-service(애플리케이션 서버)는 거치지 않는다.<br/>MinIO 자체 호스팅이면 Caddy(reverse proxy)는 거친다.
 
     FE->>GW: POST /api/v1/files (register: storedUrl 등 메타데이터)
     GW->>FS: register
@@ -106,7 +108,7 @@ sequenceDiagram
 ```
 - 오브젝트 키 형식: `files/{requesterId}/{yyyy}/{MM}/{uuid}{확장자}`. `requesterId`를 포함시킨 이유는 나중에 "이 업로드를 누가 요청했는지"를 키만 보고 추적하거나(예: 정리 배치가 특정 유저의 orphan 오브젝트를 찾을 때), 프로젝트 연결 없이 버려진 업로드를 구분하기 위함이다.
 - URL 유효시간: 10분 (`S3PresignedUploadGenerator.EXPIRATION`).
-- 브라우저는 응답의 `uploadUrl`로 `requiredHeaders`를 그대로 실어 `PUT`(파일 바이트가 body)하면 된다. 이 요청은 file-service/게이트웨이를 거치지 않고 S3로 직접 간다.
+- 브라우저는 응답의 `uploadUrl`로 `requiredHeaders`를 그대로 실어 `PUT`(파일 바이트가 body)하면 된다. 이 요청은 file-service/게이트웨이(애플리케이션 서버)를 거치지 않는다 — 스토리지가 AWS S3면 그대로 S3로, MinIO 자체 호스팅이면 Caddy를 거쳐 MinIO로 간다([MinIO 절](#minio-s3-호환-자체-호스팅) 참고).
 
 ### `POST /api/v1/files` (register)
 
@@ -178,16 +180,20 @@ AWS 자격증명은 애플리케이션 설정이 아니라 **AWS SDK 기본 자�
 AWS 계정이 팀 소유가 아니라서 새 과금 리소스(S3 버킷)를 만들기 부담스러운 경우, `endpoint-override`만 채우면 **코드 변경 없이** MinIO 같은 S3 호환 스토리지로 붙을 수 있다 (`S3Config`가 `endpoint-override`가 비어있지 않으면 `S3Presigner`에 그 엔드포인트 + path-style 접근을 설정한다).
 
 ```bash
-AWS_S3_ENDPOINT_OVERRIDE=https://files-<도메인>       # MinIO의 공개 HTTPS 주소
-AWS_S3_CDN_BASE_URL=https://files-<도메인>/<버킷명>    # path-style이라 버킷이 path에 온다 — cdn-base-url에 버킷명까지 포함해야 함
-AWS_REGION=<MinIO 서버에 설정된 region과 반드시 동일>   # 다르면 서명 검증 실패
-AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY               # MinIO 쪽 액세스 키
+AWS_S3_ENDPOINT_OVERRIDE=https://earlybird-team5.duckdns.org   # 새 서브도메인 필요 없음 — 기존 도메인 그대로
+AWS_S3_CDN_BASE_URL=https://earlybird-team5.duckdns.org/earlybird-files  # path-style이라 cdn-base-url에 버킷명까지 포함
+AWS_REGION=<MinIO 서버에 설정된 region과 반드시 동일>              # 다르면 서명 검증 실패
+AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY                         # MinIO 쪽 액세스 키
 ```
 
 - **`cdn-base-url`에 버킷명이 들어가는 이유**: AWS S3(virtual-hosted style)는 버킷이 호스트에 있어(`bucket.s3.region.amazonaws.com`) `cdnBaseUrl + "/" + key`만으로 충분하지만, MinIO는 path-style(`host/bucket/key`)이라 버킷을 `cdn-base-url` 쪽에 직접 넣어줘야 최종 `storedUrl`이 올바른 경로가 된다.
 - **region 불일치는 조용히 안 깨지고 서명 검증 실패로 나타난다.** SigV4 서명이 region 문자열을 포함하므로, file-service의 `AWS_REGION`과 MinIO 서버 자신의 region 설정이 다르면 presign은 성공하지만 실제 PUT이 `SignatureDoesNotMatch`로 거부된다.
-- **presigned PUT이 브라우저에서 직접 MinIO로 붙어야 하므로**, MinIO를 외부에 노출하는 게이트(HTTPS + 리버스 프록시)가 필요하다 — 이 저장소는 Caddy(`infrastructure/Caddyfile`)로 이미 `earlybird-team5.duckdns.org`를 서빙하고 있으니, 같은 EC2에 MinIO 컨테이너를 띄우고 DuckDNS 서브도메인(예: `files-earlybird-team5.duckdns.org`) 하나를 추가로 등록해 Caddy가 그 서브도메인을 MinIO로 리버스 프록시하도록 블록을 하나 더 추가하는 방식이 기존 구조와 가장 잘 맞는다. Caddy는 Let's Encrypt 인증서 발급도 자동으로 처리한다.
-- MinIO 버킷에도 AWS S3와 동일하게 CORS 설정이 필요하다(브라우저 PUT은 cross-origin preflight를 탄다).
+- **새 도메인 없이 기존 Caddy 도메인 재사용**: presigned PUT이 브라우저에서 직접 MinIO로 붙어야 해서 외부 노출이 필요하지만, 새 DuckDNS 서브도메인은 필요 없다. path-style URL이 `host/{버킷명}/{key}` 형태라 버킷명(`earlybird-files`)이 항상 고정된 첫 경로 세그먼트이므로, 기존 `earlybird-team5.duckdns.org`에 `/api/*`와 나란히 `handle /earlybird-files/* { reverse_proxy minio:9000 }` 블록만 추가하면 된다(`infrastructure/Caddyfile`) — 기존 TLS 인증서도 그대로 쓴다. **이때 Caddy가 `/earlybird-files` prefix를 벗겨내면 안 된다** — `/api/*`처럼 StripPrefix를 적용하면 MinIO가 버킷을 못 찾는다.
+- **Caddy가 이 흐름에서 실제로 파일 바이트를 relay한다** (AWS S3를 쓸 때와 달리) — Caddy의 요청 body 크기 제한과 타임아웃(presigned URL 유효시간 10분보다 짧으면 안 됨)을 같이 확인해야 한다.
+- MinIO는 API(`9000`)/Console(`9001`) 포트를 쓰는데, `9000`은 Caddy를 통해서만 접근하도록 외부에 직접 노출하지 않는다. Caddy·MinIO가 같은 Docker network에 있어야 `minio:9000`으로 접근 가능하다.
+- MinIO 데이터는 EC2의 볼륨(`/data`)에만 있다 — AWS S3와 달리 그 EC2가 사라지면 데이터도 같이 사라지므로 백업 방식을 별도로 정해야 한다.
+- MinIO 버킷에도 AWS S3와 동일하게 CORS 설정이 필요하다(브라우저 PUT은 cross-origin preflight를 탄다). 버킷은 public으로 열 필요 없이 presigned URL 전용 접근으로 충분하다.
+- 인프라 설정 체크리스트는 [이슈 #354](https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/354)에 정리돼 있다.
 
 ## 보안 고려사항
 
