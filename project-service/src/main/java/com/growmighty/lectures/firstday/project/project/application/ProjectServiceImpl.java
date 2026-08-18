@@ -17,11 +17,13 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.respons
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
+import com.growmighty.lectures.firstday.project.project.infrastructure.kafka.ProjectClosedEvent;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -63,6 +65,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     private final OrderPort orderPort;
     private final ProjectSearchPort searchPort;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -343,6 +346,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.updateFundedAmount(fundedAmount);
         project.closeByDeadline();
         deactivateRewards(projectId);
+        eventPublisher.publishEvent(new ProjectClosedEvent(projectId));
     }
 
     @Recover

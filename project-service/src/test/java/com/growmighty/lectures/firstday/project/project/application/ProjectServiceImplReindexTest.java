@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +33,7 @@ class ProjectServiceImplReindexTest {
     private final RewardService rewardService = mock(RewardService.class);
     private final OrderPort orderPort = mock(OrderPort.class);
     private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
@@ -44,7 +46,7 @@ class ProjectServiceImplReindexTest {
     void setUp() {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
-                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort);
+                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher);
     }
 
     @Test

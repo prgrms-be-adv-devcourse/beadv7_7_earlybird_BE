@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -35,6 +36,7 @@ class ProjectServiceImplAutocompleteTest {
     private final RewardService rewardService = mock(RewardService.class);
     private final OrderPort orderPort = mock(OrderPort.class);
     private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
@@ -47,7 +49,7 @@ class ProjectServiceImplAutocompleteTest {
     void setUp() {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
-                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort);
+                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher);
     }
 
     /** Project.register()는 항상 PENDING_REVIEW(비공개)로 시작한다 — approve() 호출 시 IN_PROGRESS(공개)로 전환. */
