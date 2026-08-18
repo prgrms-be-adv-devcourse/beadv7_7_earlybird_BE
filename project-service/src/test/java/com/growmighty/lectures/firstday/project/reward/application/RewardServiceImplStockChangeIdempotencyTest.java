@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -23,7 +24,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** decreaseStock/restoreStock의 (orderId, rewardId, operation) 멱등성 체크(#195)만 좁게 검증한다. */
+/**
+ * decreaseStock/restoreStock의 (orderId, rewardId, operation) 멱등성 체크(#195)를 주로 검증하고,
+ * decreaseStockAtomic이 아예 호출되지 않는 무제한 리워드 분기(totalQuantity=null)의 active 체크 회귀도 함께 막는다.
+ */
 class RewardServiceImplStockChangeIdempotencyTest {
 
     private static final ProjectStatusView PUBLISHED_OPEN_VIEW =
@@ -98,5 +102,19 @@ class RewardServiceImplStockChangeIdempotencyTest {
 
         assertThat(reward.getRemainingQuantity()).isEqualTo(7);
         verify(rewardRepository, never()).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("decreaseStock: 비활성화된 무제한 리워드는 decreaseStockAtomic을 타지 않아도 주문이 거부된다")
+    void decreaseStock_inactiveUnlimitedReward_throws() {
+        Reward unlimitedReward = Reward.register(1L, "무제한 굿즈", "설명", BigDecimal.valueOf(5_000), null);
+        unlimitedReward.deactivate();
+        when(rewardRepository.findById(anyLong())).thenReturn(Optional.of(unlimitedReward));
+
+        assertThatThrownBy(() -> rewardService.decreaseStock(1L, 1, 300L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("판매 종료된 리워드는 주문할 수 없습니다");
+
+        verify(rewardRepository, never()).decreaseStockAtomic(anyLong(), anyInt());
     }
 }

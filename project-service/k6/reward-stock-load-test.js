@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { check } from 'k6';
-import { Counter } from 'k6/metrics';
+import { Counter, Trend } from 'k6/metrics';
 
 // 설계 문서: docs/superpowers/specs/2026-07-31-reward-stock-k6-load-test-design.md
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8081';
@@ -12,6 +12,10 @@ const successCount = new Counter('reward_decrease_success');
 const outOfStockCount = new Counter('reward_decrease_out_of_stock');
 const lockConflictCount = new Counter('reward_decrease_lock_conflict');
 const unexpectedCount = new Counter('reward_decrease_unexpected');
+
+const successDuration = new Trend('reward_decrease_success_duration');
+const outOfStockDuration = new Trend('reward_decrease_out_of_stock_duration');
+const lockConflictDuration = new Trend('reward_decrease_lock_conflict_duration');
 
 export const options = {
     scenarios: {
@@ -63,19 +67,24 @@ export function setup() {
     check(rewardRes, { 'reward created': (r) => r.status === 200 });
     const rewardId = rewardRes.json('data.rewardId');
 
-    console.log(`[setup] projectId=${projectId} rewardId=${rewardId} stock=${STOCK}`);
+    console.log(`[setup] projectId=${projectId} rewardId=${rewardId} stock=${STOCK} (원자적 UPDATE 버전)`);
     return { rewardId };
 }
 
 export default function (data) {
+    // orderId는 (orderId, rewardId, operation) 멱등키의 일부라 필수값이 됨(#195) — VU/ITER 조합으로
+    // 매 요청마다 서로 다른 "주문"을 흉내낸다. 같은 값을 재사용하면 두 번째 요청부터 멱등 no-op으로
+    // 걸러져 부하테스트가 실제 경합을 재현하지 못한다.
+    const orderId = __VU * 1000000 + __ITER;
     const res = http.post(
         `${BASE_URL}/internal/v1/rewards/${data.rewardId}/decrease-stock`,
-        JSON.stringify({ quantity: 1 }),
+        JSON.stringify({ quantity: 1, orderId }),
         { headers: { 'Content-Type': 'application/json' } },
     );
 
     if (res.status === 200) {
         successCount.add(1);
+        successDuration.add(res.timings.duration);
         return;
     }
 
@@ -83,8 +92,10 @@ export default function (data) {
         const message = res.json('error.message') || '';
         if (message.includes('재고가 부족합니다')) {
             outOfStockCount.add(1);
+            outOfStockDuration.add(res.timings.duration);
         } else if (message.includes('동시 수정 충돌')) {
             lockConflictCount.add(1);
+            lockConflictDuration.add(res.timings.duration);
         } else {
             unexpectedCount.add(1);
         }
