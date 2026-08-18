@@ -1,19 +1,24 @@
-// TODO(settlement-plan): Consolidate repeated aggregate-to-query mapping and include new run or payout states without N+1 reads.
 package com.growmighty.lectures.firstday.settlement.application.query;
 
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_REFUND_REQUEST_NOT_FOUND;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_NOT_FOUND;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,15 +27,27 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AdminProjectSettlementQueryService {
 
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
     private final ProjectSettlementRepository projectSettlementRepository;
     private final PayoutObligationRepository payoutObligationRepository;
+    private final ProjectRefundRequestedRepository refundRequestedRepository;
 
     @Transactional(readOnly = true)
-    public List<AdminProjectSettlementSummary> findAll() {
+    public List<AdminSettlementEntry> findAll() {
         List<ProjectSettlement> settlements = projectSettlementRepository.findAllByOrderByConfirmedAtDescIdDesc();
         Map<Long, PayoutObligation> obligations = obligationsBySettlementId(settlements);
-        return settlements.stream()
-                .map(settlement -> toSummary(settlement, requiredObligation(obligations, settlement.id())))
+        return Stream.concat(
+                        settlements.stream().map(settlement -> toPayoutEntry(
+                                settlement,
+                                requiredObligation(obligations, settlement.id())
+                        )),
+                        refundRequestedRepository.findAllByOrderByOccurredAtDescProjectIdDesc().stream()
+                                .map(this::toRefundEntry)
+                )
+                .sorted(Comparator.comparing(AdminSettlementEntry::sortAt).reversed()
+                        .thenComparing(AdminSettlementEntry::type)
+                        .thenComparing(AdminSettlementEntry::sortId, Comparator.reverseOrder()))
                 .toList();
     }
 
@@ -68,17 +85,59 @@ public class AdminProjectSettlementQueryService {
         );
     }
 
-    private AdminProjectSettlementSummary toSummary(ProjectSettlement settlement, PayoutObligation payoutObligation) {
-        return new AdminProjectSettlementSummary(
-                settlement.id(),
+    @Transactional(readOnly = true)
+    public AdminProjectRefundDetail findRefundDetail(Long projectId) {
+        ProjectRefundRequested request = refundRequestedRepository.findByProjectId(projectId)
+                .orElseThrow(() -> new SettlementException(PROJECT_REFUND_REQUEST_NOT_FOUND));
+        return new AdminProjectRefundDetail(
+                request.projectId(),
+                request.reason(),
+                publishStatus(request),
+                request.occurredAt(),
+                request.publishedAt(),
+                processingStatus(request),
+                request.paymentResultAt(),
+                request.payments().stream()
+                        .map(payment -> new AdminProjectRefundDetail.Payment(payment.orderId(), payment.pgOrderId()))
+                        .toList()
+        );
+    }
+
+    private AdminSettlementEntry toPayoutEntry(ProjectSettlement settlement, PayoutObligation payoutObligation) {
+        return new AdminSettlementEntry(
+                AdminSettlementEntry.Type.PAYOUT,
                 settlement.projectId(),
-                settlement.creatorId(),
-                settlement.baseAmount(),
-                settlement.creatorPayoutAmount(),
-                payoutObligation.status(),
-                settlement.confirmedAt(),
-                payoutObligation.scheduledDate(),
-                completedAt(payoutObligation)
+                atSeoul(settlement.confirmedAt()),
+                settlement.id(),
+                new AdminSettlementEntry.Payout(
+                        settlement.id(),
+                        settlement.creatorId(),
+                        settlement.baseAmount(),
+                        settlement.creatorPayoutAmount(),
+                        payoutObligation.status(),
+                        settlement.confirmedAt(),
+                        payoutObligation.scheduledDate()
+                ),
+                null
+        );
+    }
+
+    private AdminSettlementEntry toRefundEntry(ProjectRefundRequested request) {
+        return new AdminSettlementEntry(
+                AdminSettlementEntry.Type.REFUND,
+                request.projectId(),
+                request.occurredAt(),
+                request.projectId(),
+                null,
+                new AdminSettlementEntry.Refund(
+                        request.reason(),
+                        publishStatus(request),
+                        request.occurredAt(),
+                        request.publishedAt(),
+                        processingStatus(request),
+                        request.paymentResultAt(),
+                        request.payments().size()
+                )
         );
     }
 
@@ -99,9 +158,28 @@ public class AdminProjectSettlementQueryService {
         return payoutObligation;
     }
 
+    private static AdminSettlementEntry.RefundPublishStatus publishStatus(ProjectRefundRequested request) {
+        return request.published()
+                ? AdminSettlementEntry.RefundPublishStatus.PUBLISHED
+                : AdminSettlementEntry.RefundPublishStatus.REQUESTED;
+    }
+
+    private static AdminSettlementEntry.RefundProcessingStatus processingStatus(ProjectRefundRequested request) {
+        if (request.paymentResultStatus() == null) {
+            return AdminSettlementEntry.RefundProcessingStatus.AWAITING_RESULT;
+        }
+        return "COMPLETED".equals(request.paymentResultStatus())
+                ? AdminSettlementEntry.RefundProcessingStatus.COMPLETED
+                : AdminSettlementEntry.RefundProcessingStatus.ACTION_REQUIRED;
+    }
+
     private static LocalDateTime completedAt(PayoutObligation payoutObligation) {
         return payoutObligation.successfulAttempt()
-                .map(attempt -> attempt.completedAt())
+                .map(PayoutAttempt::completedAt)
                 .orElse(null);
+    }
+
+    private static Instant atSeoul(LocalDateTime localDateTime) {
+        return localDateTime.atZone(SEOUL).toInstant();
     }
 }

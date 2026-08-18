@@ -170,11 +170,15 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("/settlements/all 은 /settlements/* 와일드카드가 아니라 ADMIN 전용 규칙에 매칭된다 (CREATOR면 403)")
-    void settlementsAll_withCreatorToken_isForbidden() {
+    @DisplayName("관리자 정산 목록과 상세는 CREATOR 토큰으로 호출할 수 없다")
+    void adminSettlementPaths_withCreatorToken_areForbidden() {
         String token = issueToken(UserRole.CREATOR);
 
         webTestClient.get().uri("/api/v1/settlements/all")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isForbidden();
+        webTestClient.get().uri("/api/v1/settlements/all/refunds/1")
                 .header("Authorization", "Bearer " + token)
                 .exchange()
                 .expectStatus().isForbidden();
@@ -279,6 +283,8 @@ class SecurityConfigTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/settlements", List.of(UserRole.CREATOR)),
                 Arguments.of(HttpMethod.GET, "/api/v1/settlements/1", List.of(UserRole.CREATOR)),
                 Arguments.of(HttpMethod.GET, "/api/v1/settlements/all", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.GET, "/api/v1/settlements/all/1", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.GET, "/api/v1/settlements/all/refunds/1", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.POST, "/api/v1/settlements/close", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.GET, "/api/v1/reports", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.POST, "/api/v1/reports/1/process", List.of(UserRole.ADMIN))

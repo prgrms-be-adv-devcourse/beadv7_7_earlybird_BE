@@ -105,7 +105,9 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.DELETE, URI_PREFIX_API + "/notices/*").hasAnyRole(CREATOR.getCode(), ADMIN.getCode())
 
                         // settlements
-                        .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/settlements/all").hasRole(ADMIN.getCode())
+                        .pathMatchers(HttpMethod.GET,
+                                URI_PREFIX_API + "/settlements/all",
+                                URI_PREFIX_API + "/settlements/all/**").hasRole(ADMIN.getCode())
                         .pathMatchers(HttpMethod.GET,
                                 URI_PREFIX_API + "/settlements",
                                 URI_PREFIX_API + "/settlements/*").hasRole(CREATOR.getCode())

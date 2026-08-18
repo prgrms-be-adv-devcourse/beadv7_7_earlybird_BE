@@ -160,16 +160,20 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
         long projectId = 81_006L;
         long orderId = 91_006L;
         UUID refundProcessedEventId = UUID.randomUUID();
+        ProjectRefundRequested request = request(projectId, orderId, "PG-91006");
+        outboxRepository.save(request);
 
-        send(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT, projectId, new ProjectRefundProcessedEvent(
+        send(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT, request.refundRequestId(), new ProjectRefundProcessedEvent(
                 refundProcessedEventId,
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
-                new ProjectRefundProcessedEvent.Payload(Long.toString(projectId), List.of(orderId), "COMPLETED")
+                new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "COMPLETED")
         ));
 
         assertThat(await(() -> inboxRepository.existsById(refundProcessedEventId.toString()))).isTrue();
+        assertThat(outboxRepository.findByRefundRequestId(request.refundRequestId()).orElseThrow()
+                .paymentResultStatus()).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -269,12 +273,16 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     private void send(String topic, long key, Object event) throws Exception {
+        send(topic, Long.toString(key), event);
+    }
+
+    private void send(String topic, String key, Object event) throws Exception {
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getBrokersAsString(),
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
         ))) {
-            producer.send(new ProducerRecord<>(topic, Long.toString(key), objectMapper.writeValueAsString(event))).get();
+            producer.send(new ProducerRecord<>(topic, key, objectMapper.writeValueAsString(event))).get();
         }
     }
 

@@ -64,6 +64,12 @@ public class ProjectRefundRequested extends BaseEntity {
     @Column(name = "published_at")
     private Instant publishedAt;
 
+    @Column(name = "payment_result_status", length = 30)
+    private String paymentResultStatus;
+
+    @Column(name = "payment_result_at")
+    private Instant paymentResultAt;
+
     @Version
     private Long version;
 
@@ -126,6 +132,30 @@ public class ProjectRefundRequested extends BaseEntity {
         this.publishedAt = completedAt;
     }
 
+    public void recordPaymentResult(String status, Instant resultAt, List<Long> orderIds) {
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("환불 처리 결과 상태는 필수입니다.");
+        }
+        Instant processedAt = Objects.requireNonNull(resultAt, "환불 처리 결과 시각은 필수입니다.");
+        if (processedAt.isBefore(occurredAt)) {
+            throw new IllegalArgumentException("환불 처리 결과 시각은 환불 요청 시각보다 빠를 수 없습니다.");
+        }
+        Set<Long> requestedOrderIds = payments.stream().map(Payment::orderId).collect(java.util.stream.Collectors.toSet());
+        if (orderIds == null
+                || orderIds.size() != requestedOrderIds.size()
+                || !requestedOrderIds.equals(new HashSet<>(orderIds))) {
+            throw new IllegalArgumentException("환불 처리 결과의 주문 목록이 환불 요청과 일치하지 않습니다.");
+        }
+        if (paymentResultStatus == null) {
+            paymentResultStatus = status;
+            paymentResultAt = processedAt;
+            return;
+        }
+        if (!paymentResultStatus.equals(status) || !paymentResultAt.equals(processedAt)) {
+            throw new IllegalStateException("기존 환불 처리 결과와 충돌합니다.");
+        }
+    }
+
     public String refundRequestId() {
         return refundRequestId;
     }
@@ -154,6 +184,14 @@ public class ProjectRefundRequested extends BaseEntity {
         return publishedAt != null;
     }
 
+    public String paymentResultStatus() {
+        return paymentResultStatus;
+    }
+
+    public Instant paymentResultAt() {
+        return paymentResultAt;
+    }
+
     private static ProjectCancellationReason cancellationReason(ProjectOutcomeFact.Outcome outcome) {
         return switch (outcome) {
             case FAILED -> ProjectCancellationReason.PROJECT_FAILED;
@@ -174,6 +212,15 @@ public class ProjectRefundRequested extends BaseEntity {
         Objects.requireNonNull(occurredAt, "이벤트 발생 시각은 필수입니다.");
         if (payments == null || payments.isEmpty()) {
             throw new IllegalArgumentException("프로젝트 환불 요청에는 하나 이상의 결제가 필요합니다.");
+        }
+        if ((paymentResultStatus == null) != (paymentResultAt == null)) {
+            throw new IllegalArgumentException("환불 처리 결과 상태와 시각은 함께 있어야 합니다.");
+        }
+        if (paymentResultStatus != null && paymentResultStatus.isBlank()) {
+            throw new IllegalArgumentException("환불 처리 결과 상태는 비어 있을 수 없습니다.");
+        }
+        if (paymentResultAt != null && paymentResultAt.isBefore(occurredAt)) {
+            throw new IllegalArgumentException("환불 처리 결과 시각은 환불 요청 시각보다 빠를 수 없습니다.");
         }
         Set<Long> orderIds = new HashSet<>();
         Set<String> pgOrderIds = new HashSet<>();
