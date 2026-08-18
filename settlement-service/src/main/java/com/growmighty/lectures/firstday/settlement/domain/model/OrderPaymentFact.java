@@ -123,6 +123,13 @@ public class OrderPaymentFact {
         this.reconciliationStatus = ReconciliationStatus.CONFIRMED;
     }
 
+    public void requireReview() {
+        if (status != Status.COMPLETED) {
+            throw new IllegalStateException("완료된 주문 결제만 대사 검토 필요 처리할 수 있습니다.");
+        }
+        this.reconciliationStatus = ReconciliationStatus.REVIEW_REQUIRED;
+    }
+
     public Long orderId() {
         return orderId;
     }
