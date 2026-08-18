@@ -59,7 +59,7 @@ sequenceDiagram
 
 - **서버 부하**: 파일 바이트가 file-service를 지나가지 않으므로, 업로드 트래픽이 늘어도 file-service의 CPU/메모리/스레드는 영향받지 않는다. file-service가 실제로 하는 일은 "서명 계산" 하나뿐이고, 이건 로컬 SigV4 연산이라 네트워크 호출조차 없다(`S3PresignedUploadGeneratorTest`가 실제 자격증명 없이도 이 부분을 테스트할 수 있는 이유이기도 하다).
 - **보안 통제**: URL 발급 자체가 우리 JWT 인증(`X-User-Id` 필수 헤더)을 통과해야만 나간다 — Cloudinary unsigned upload처럼 "preset만 알면 누구나"가 아니다. 발급된 URL은 정확히 하나의 `(bucket, key, contentType)` 조합에 대해서만, 정해진 시간(10분) 동안만 유효하다. 이 프로젝트에서는 여기에 더해 `contentType`을 이미지 MIME 허용 목록으로 제한하고(`PresignedUploadRequest`), 오브젝트 키에 들어가는 확장자를 영숫자로만 제한한다(`S3PresignedUploadGenerator`) — presign 자체는 안전해도 "무엇을 PUT 하게 허용할지"는 우리가 계속 통제해야 하는 지점이기 때문이다. 자세한 내용은 아래 [보안 고려사항](#보안-고려사항) 참고.
-- **인프라 종속성**: 이미 이 조직이 쓰는 S3(호환) 스토리지를 그대로 쓴다 — 새 SaaS 벤더가 늘지 않는다.
+- **인프라 종속성**: S3 API 호환 스토리지면 무엇이든 쓸 수 있다 — 새 SaaS 벤더가 늘지 않는다. AWS 계정이 팀 소유가 아니라 과금 리소스를 새로 만들기 부담스러운 상황이라, 이미 떠 있는 EC2(앱 박스) 위에 [MinIO](#minio-s3-호환-자체-호스팅)를 직접 올리는 선택지도 코드 변경 없이(설정만으로) 지원한다.
 - **트레이드오프로 받아들인 것**: presigned PUT은 S3 스펙상 "이 URL로는 최대 N바이트까지만 업로드 가능"이라는 제약을 걸 수 없다(이걸 걸려면 브라우저 form 기반의 presigned **POST** policy로 바꿔야 하는데, FE는 이미 "브라우저가 uploadUrl로 파일 바이트를 직접 PUT"하는 흐름으로 구현을 끝낸 상태라 계약을 바꾸면 양쪽 다시 작업이 필요하다). 지금은 인증된 사용자만 URL을 받을 수 있다는 점으로 위험을 낮추고, 실제 남용이 확인되면 버킷 lifecycle 정책이나 CDN(CloudFront 등) 단에서 크기 제한을 추가하는 쪽으로 남겨뒀다.
 
 세 후보를 한 표로 정리하면:
@@ -167,10 +167,27 @@ aws:
   s3:
     bucket: ${AWS_S3_BUCKET:earlybird-files}
     region: ${AWS_REGION:ap-northeast-2}
+    endpoint-override: ${AWS_S3_ENDPOINT_OVERRIDE:}
     cdn-base-url: ${AWS_S3_CDN_BASE_URL:https://${aws.s3.bucket}.s3.${aws.s3.region}.amazonaws.com}
 ```
 
 AWS 자격증명은 애플리케이션 설정이 아니라 **AWS SDK 기본 자격증명 체인**(`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` 환경변수, 인스턴스 프로필 등)을 그대로 쓴다(`S3Config`) — 커스텀 자격증명 처리 코드를 만들지 않았다.
+
+### MinIO (S3 호환 자체 호스팅)
+
+AWS 계정이 팀 소유가 아니라서 새 과금 리소스(S3 버킷)를 만들기 부담스러운 경우, `endpoint-override`만 채우면 **코드 변경 없이** MinIO 같은 S3 호환 스토리지로 붙을 수 있다 (`S3Config`가 `endpoint-override`가 비어있지 않으면 `S3Presigner`에 그 엔드포인트 + path-style 접근을 설정한다).
+
+```bash
+AWS_S3_ENDPOINT_OVERRIDE=https://files-<도메인>       # MinIO의 공개 HTTPS 주소
+AWS_S3_CDN_BASE_URL=https://files-<도메인>/<버킷명>    # path-style이라 버킷이 path에 온다 — cdn-base-url에 버킷명까지 포함해야 함
+AWS_REGION=<MinIO 서버에 설정된 region과 반드시 동일>   # 다르면 서명 검증 실패
+AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY               # MinIO 쪽 액세스 키
+```
+
+- **`cdn-base-url`에 버킷명이 들어가는 이유**: AWS S3(virtual-hosted style)는 버킷이 호스트에 있어(`bucket.s3.region.amazonaws.com`) `cdnBaseUrl + "/" + key`만으로 충분하지만, MinIO는 path-style(`host/bucket/key`)이라 버킷을 `cdn-base-url` 쪽에 직접 넣어줘야 최종 `storedUrl`이 올바른 경로가 된다.
+- **region 불일치는 조용히 안 깨지고 서명 검증 실패로 나타난다.** SigV4 서명이 region 문자열을 포함하므로, file-service의 `AWS_REGION`과 MinIO 서버 자신의 region 설정이 다르면 presign은 성공하지만 실제 PUT이 `SignatureDoesNotMatch`로 거부된다.
+- **presigned PUT이 브라우저에서 직접 MinIO로 붙어야 하므로**, MinIO를 외부에 노출하는 게이트(HTTPS + 리버스 프록시)가 필요하다 — 이 저장소는 Caddy(`infrastructure/Caddyfile`)로 이미 `earlybird-team5.duckdns.org`를 서빙하고 있으니, 같은 EC2에 MinIO 컨테이너를 띄우고 DuckDNS 서브도메인(예: `files-earlybird-team5.duckdns.org`) 하나를 추가로 등록해 Caddy가 그 서브도메인을 MinIO로 리버스 프록시하도록 블록을 하나 더 추가하는 방식이 기존 구조와 가장 잘 맞는다. Caddy는 Let's Encrypt 인증서 발급도 자동으로 처리한다.
+- MinIO 버킷에도 AWS S3와 동일하게 CORS 설정이 필요하다(브라우저 PUT은 cross-origin preflight를 탄다).
 
 ## 보안 고려사항
 
@@ -184,7 +201,7 @@ AWS 자격증명은 애플리케이션 설정이 아니라 **AWS SDK 기본 자�
 
 ## 현재 구현 범위 및 미해결 과제
 
-- **실제 S3 버킷/자격증명이 아직 없다.** 운영이 k8s 기반이라 `.env` 개념이 없고 GitHub Secrets → `cd.yml`(`kubectl create secret`) → Deployment `secretKeyRef` 흐름을 쓴다(`payment-secrets` 등과 동일 패턴) — 이 흐름으로 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_S3_BUCKET`/`AWS_S3_CDN_BASE_URL`을 연결해야 실제로 동작한다. 요청 이슈: #354.
+- **실제 스토리지(버킷/자격증명)가 아직 없다.** AWS S3든 [MinIO 자체 호스팅](#minio-s3-호환-자체-호스팅)이든 결정이 필요하고, 운영이 k8s 기반이라 `.env` 개념이 없고 GitHub Secrets → `cd.yml`(`kubectl create secret`) → Deployment `secretKeyRef` 흐름을 쓴다(`payment-secrets` 등과 동일 패턴) — 이 흐름으로 자격증명/버킷 값을 연결해야 실제로 동작한다. 요청 이슈: #354.
 - **`register`의 `ownerId` 소유권 검증이 `REVIEW` 타입은 아직 안 된다.** 위 보안 고려사항 참고 — board-service 쪽 내부 API 작업이 필요하다.
 - **`DELETE /api/v1/files/{fileId}`가 S3 오브젝트를 지우지 않는다.** 메타데이터만 삭제되고 실제 스토리지 오브젝트는 고아로 남는다 — 스토리지 정리는 별도 배치나 버킷 lifecycle 정책으로 처리해야 한다.
 - **presign만 하고 실제로 `register`가 호출되지 않은 업로드(고아 오브젝트)를 정리하는 배치가 없다.** 오브젝트 키에 `requesterId`가 들어가 있어 추적 자체는 가능하지만, 자동 정리는 아직 구현돼 있지 않다.
