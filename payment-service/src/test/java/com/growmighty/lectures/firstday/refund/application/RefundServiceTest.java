@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.refund.application;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import com.growmighty.lectures.firstday.refund.domain.*;
@@ -38,6 +39,9 @@ class RefundServiceTest {
 
     @Mock
     private RefundRepository refundRepository;
+
+    @Mock
+    private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
 
     @Mock
     private BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
