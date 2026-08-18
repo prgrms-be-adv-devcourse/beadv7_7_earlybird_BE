@@ -56,7 +56,7 @@ public class FileService {
         File file = File.register(
             command.ownerType(), command.ownerId(), command.uploaderId(), command.storedUrl(), command.originalName(),
             command.contentType(), command.fileSize(), command.sortOrder());
-        return FileInfo.from(fileRepository.save(file));
+        return toFileInfo(fileRepository.save(file));
     }
 
     // storedUrl을 검증 없이 그대로 저장하면, 본인이 presign 받아 실제로 올린 오브젝트가 아니라
@@ -73,8 +73,15 @@ public class FileService {
     @Transactional(readOnly = true)
     public List<FileInfo> getFilesByOwner(FileOwnerType ownerType, Long ownerId) {
         return fileRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId).stream()
-            .map(FileInfo::from)
+            .map(this::toFileInfo)
             .toList();
+    }
+
+    // 버킷이 private이라 원본 storedUrl은 클라이언트가 직접 열 수 없다 — 응답 시점마다
+    // 짧게 만료되는(5분) presigned GET URL로 바꿔서 내려준다. 전부 공개 콘텐츠라 발급 자체엔
+    // 별도 인가가 없다(비로그인 요청도 GET /api/v1/files는 permitAll).
+    private FileInfo toFileInfo(File file) {
+        return FileInfo.from(file, presignedUploadGenerator.presignDownload(file.getStoredUrl()));
     }
 
     @Transactional

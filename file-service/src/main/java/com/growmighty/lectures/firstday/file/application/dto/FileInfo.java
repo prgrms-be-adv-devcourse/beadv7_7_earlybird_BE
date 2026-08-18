@@ -13,12 +13,12 @@ public record FileInfo(
         Long fileSize,
         int sortOrder
 ) {
-    public static FileInfo from(File file) {
+    public static FileInfo from(File file, String downloadUrl) {
         return new FileInfo(
                 file.getId(),
                 file.getOwnerType(),
                 file.getOwnerId(),
-                file.getStoredUrl(),
+                downloadUrl,
                 file.getOriginalName(),
                 file.getContentType(),
                 file.getFileSize(),

@@ -105,7 +105,7 @@ sequenceDiagram
 }
 ```
 - 오브젝트 키 형식: `files/{requesterId}/{yyyy}/{MM}/{uuid}{확장자}`. `requesterId`를 포함시킨 이유는 나중에 "이 업로드를 누가 요청했는지"를 키만 보고 추적하거나(예: 정리 배치가 특정 유저의 orphan 오브젝트를 찾을 때), 프로젝트 연결 없이 버려진 업로드를 구분하기 위함이다.
-- URL 유효시간: 10분 (`S3PresignedUploadGenerator.EXPIRATION`).
+- URL 유효시간: 10분 (`S3PresignedUploadGenerator.UPLOAD_EXPIRATION`).
 - 브라우저는 응답의 `uploadUrl`로 `requiredHeaders`를 그대로 실어 `PUT`(파일 바이트가 body)하면 된다. 이 요청은 file-service/게이트웨이를 거치지 않고 S3로 직접 간다.
 
 ### `POST /api/v1/files` (register)
@@ -127,11 +127,11 @@ sequenceDiagram
 
 모든 필드는 Bean Validation으로 검증한다(`@NotNull`/`@NotBlank`/`@Positive`) — 비거나 0 이하인 값은 400으로 거부되고 필드별 오류가 응답에 담긴다. `storedUrl`도 검증 대상이다: presign이 발급하는 키 형식(`{cdn-base-url}/files/{요청자 uploaderId}/...`)과 일치하지 않으면 400으로 거부한다 — 이게 없으면 본인이 실제로 업로드한 오브젝트가 아니라 임의의 외부 URL(예: 악성 사이트)을 등록해버릴 수 있다. `ownerType=PROJECT`면 그다음 요청자(`X-User-Id`)가 `ownerId` 프로젝트의 창작자인지 확인한 뒤 등록한다 — 아니면 403, project-service 확인 자체가 실패하면(타임아웃 등) 503. `ownerType=REVIEW`는 아직 이 확인을 하지 않는다(알려진 한계, [보안 고려사항](#보안-고려사항) 참고). `File`에는 요청자가 `uploaderId`로 함께 저장돼 `DELETE`의 본인 확인에 쓰인다.
 
-응답 `FileResponse`는 `File` 엔티티 필드를 그대로 반영한다 (`id`, `ownerType`, `ownerId`, `storedUrl`, `originalName`, `contentType`, `fileSize`, `sortOrder`).
+응답 `FileResponse`는 `File` 엔티티 필드를 반영하되, `storedUrl`은 DB에 저장된 원본 값이 아니라 **응답 시점에 새로 발급한 5분짜리 presigned GET URL**이다(`FileService.toFileInfo`) — 버킷이 private이라 원본 값은 클라이언트가 직접 열 수 없다.
 
 ### `GET /api/v1/files?ownerType=PROJECT&ownerId=10`
 
-해당 소유자의 파일 목록을 `FileResponse` 배열로 반환한다.
+해당 소유자의 파일 목록을 `FileResponse` 배열로 반환한다. `storedUrl`은 위와 동일하게 요청마다 새로 발급되는 5분짜리 presigned GET URL이다. 인증 불필요 — 프로젝트 썸네일/후기 사진은 전부 공개 콘텐츠라는 정책 결정에 따라 게이트웨이가 이 경로의 GET만 `permitAll`로 열어둔다(비로그인 방문자도 프로젝트를 둘러볼 수 있어야 함, 이슈 #376). `POST`/`DELETE`는 계속 인증이 필요하다 — 조회는 공개, 게시/삭제는 인증(+ 소유권 확인)으로 나뉜다.
 
 ### `DELETE /api/v1/files/{fileId}`
 
@@ -178,7 +178,8 @@ AWS 자격증명은 애플리케이션 설정이 아니라 **AWS SDK 기본 자�
 - **오브젝트 키 경로 조작 방지**: `originalName`에서 뽑은 확장자를 검증 없이 키에 이어붙이면 `a.jpg/../../secret` 같은 입력으로 키에 `/`나 `..`가 섞여 들어갈 수 있다. 확장자는 `^\.[a-zA-Z0-9]{1,10}$` 패턴에 맞을 때만 반영하고, 아니면 통째로 버린다.
 - **`register`의 `storedUrl` 출처 검증**: 검증 없이 그대로 저장하면 본인이 presign 받아 실제로 올린 오브젝트가 아니라 임의의 외부 URL(예: 악성 사이트)을 등록해버릴 수 있다. presign이 발급하는 키 형식(`files/{uploaderId}/...`)에 맞는 `storedUrl`만 허용한다 — `{cdn-base-url}/files/{uploaderId}/`로 시작하지 않으면 400.
 - **업로드 용량 상한 없음 (알려진 한계)**: presigned PUT 방식은 S3 스펙상 URL 자체에 최대 업로드 크기를 강제할 방법이 없다(그러려면 presigned POST policy로 바꿔야 함). 지금은 URL 발급 자체가 인증된 사용자에게만 나간다는 점으로 위험을 낮췄고, 실제 남용이 관측되면 버킷 lifecycle 정책이나 CDN 단에서 별도로 제한을 추가해야 한다.
-- **presigned URL 유효시간**: 10분으로 제한해 탈취/재사용 가능 시간을 최소화한다.
+- **presigned URL 유효시간**: 업로드(PUT) URL은 10분, 조회(GET) URL은 5분으로 제한해 탈취/재사용 가능 시간을 최소화한다.
+- **조회(GET)는 인가 검사가 없다 (의도된 설계)**: `PROJECT`/`REVIEW` 파일이 전부 공개 콘텐츠라는 정책 결정에 따라, presigned GET 발급 자체엔 소유권/로그인 확인이 없다 — 비로그인 사용자도 발급받을 수 있다. 이건 접근 제어가 아니라 "버킷을 직접 노출하지 않고 file-service가 중개한다"는 목적이다(원본 URL을 변경 없이 유지하면서 나중에 스토리지 백엔드를 바꿀 수 있음, 버킷 자체는 계속 private 유지 가능). 향후 비공개 콘텐츠 타입이 추가되면 그때 `toFileInfo`에 인가 검사를 넣어야 한다.
 - **`register`/`delete`는 인증된 사용자만 호출 가능**: 게이트웨이가 `/api/v1/files/**` 전체를 `authenticated()`로 막아둬서(별도 permitAll 없음) `X-User-Id` 없는 호출 자체가 불가능하다.
 - **`DELETE`는 업로더 본인만 가능**: `File`에 `uploaderId`(register 시 JWT `X-User-Id`)를 저장해두고, 삭제 요청자가 그 값과 다르면 403(`BusinessException`)으로 거부한다 — 그 전에는 로그인만 하면 다른 사람이 올린 파일도 지울 수 있는 IDOR였다.
 - **`register`의 `ownerId` 소유권 검증은 `PROJECT`만 된다.** `ownerType=PROJECT`면 project-service가 board-service용으로 이미 노출해 둔 `GET /internal/v1/projects/{projectId}/creator`를 file-service가 호출해(`ProjectPort`/`ProjectHttpClient`, Eureka-to-Eureka 직접 호출, project-service 코드 변경 없음) `requesterId == creatorId`가 아니면 403으로 거부한다. 이 확인 호출 자체가 실패하면(서킷 OPEN, 타임아웃 등) **낙관적으로 통과시키지 않고 503으로 거부한다(fail-closed)** — 소유권 검증은 보안 경계라 project-service 장애를 우회 수단으로 쓸 수 있으면 안 되기 때문이다(cart의 리워드 조회처럼 장애 시 낙관적으로 통과시키는 것과는 반대 방향 선택). `ownerType=REVIEW`는 board-service에 동등한 내부 API가 아직 없어 이번 범위(file-service/project-service)에서는 검증할 수 없다 — board-service 쪽에 후속 이슈가 필요하다.

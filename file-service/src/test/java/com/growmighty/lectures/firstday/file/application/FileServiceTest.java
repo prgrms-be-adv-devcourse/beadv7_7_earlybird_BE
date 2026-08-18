@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.file.application;
 
 import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.file.application.dto.FileInfo;
 import com.growmighty.lectures.firstday.file.application.dto.RegisterFileCommand;
 import com.growmighty.lectures.firstday.file.application.port.ProjectPort;
 import com.growmighty.lectures.firstday.file.domain.File;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,13 +46,17 @@ class FileServiceTest {
     }
 
     @Test
-    void 프로젝트_소유자가_등록하면_성공한다() {
+    void 프로젝트_소유자가_등록하면_성공하고_presigned_다운로드_URL을_반환한다() {
         RegisterFileCommand command = new RegisterFileCommand(FileOwnerType.PROJECT, 10L, 42L,
             CDN_BASE_URL + "/files/42/a.jpg", "a.jpg", "image/jpeg", 100L, 0);
         when(projectPort.getCreatorId(10L)).thenReturn(42L);
         when(fileRepository.save(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> inv.getArgument(0));
+        when(presignedUploadGenerator.presignDownload(CDN_BASE_URL + "/files/42/a.jpg"))
+            .thenReturn("https://s3.example.com/presigned-get?sig=abc");
 
-        fileService.register(command);
+        FileInfo info = fileService.register(command);
+
+        assertThat(info.storedUrl()).isEqualTo("https://s3.example.com/presigned-get?sig=abc");
     }
 
     @Test
@@ -84,6 +90,20 @@ class FileServiceTest {
         assertThatThrownBy(() -> fileService.register(command))
             .isInstanceOf(BusinessException.class);
         verify(fileRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void 소유자_기준_조회는_presigned_다운로드_URL을_반환한다() {
+        File file = File.register(FileOwnerType.PROJECT, 10L, 42L, CDN_BASE_URL + "/files/42/a.jpg", "a.jpg",
+            "image/jpeg", 100L, 0);
+        when(fileRepository.findByOwnerTypeAndOwnerId(FileOwnerType.PROJECT, 10L)).thenReturn(List.of(file));
+        when(presignedUploadGenerator.presignDownload(CDN_BASE_URL + "/files/42/a.jpg"))
+            .thenReturn("https://s3.example.com/presigned-get?sig=abc");
+
+        List<FileInfo> result = fileService.getFilesByOwner(FileOwnerType.PROJECT, 10L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).storedUrl()).isEqualTo("https://s3.example.com/presigned-get?sig=abc");
     }
 
     @Test

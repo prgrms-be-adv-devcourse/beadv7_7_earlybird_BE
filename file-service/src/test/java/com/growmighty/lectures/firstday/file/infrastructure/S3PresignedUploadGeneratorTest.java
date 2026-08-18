@@ -49,4 +49,13 @@ class S3PresignedUploadGeneratorTest {
         assertThat(info.storedUrl()).doesNotContain("..");
         assertThat(info.storedUrl()).matches(".*/[0-9a-fA-F-]{36}$");
     }
+
+    @Test
+    void storedUrl에서_key를_되짚어_5분짜리_다운로드_presign을_생성한다() {
+        String downloadUrl = generator.presignDownload("https://cdn.example.com/files/42/2026/08/uuid.jpg");
+
+        assertThat(downloadUrl).contains("earlybird-files");
+        assertThat(downloadUrl).contains("files/42/2026/08/uuid.jpg");
+        assertThat(downloadUrl).contains("X-Amz-Expires=300");
+    }
 }
