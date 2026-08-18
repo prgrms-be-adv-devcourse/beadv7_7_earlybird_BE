@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
     ),
     indexes = @Index(
         name = "idx_bulk_refund_result_outbox_status_id",
-        columnList = "status, id"
+        columnList = "outbox_status, id"
     )
 )
 @Getter

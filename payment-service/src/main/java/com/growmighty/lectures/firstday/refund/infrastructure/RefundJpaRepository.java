@@ -54,4 +54,25 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
         @Param("cutoff") LocalDateTime cutoff,
         Pageable pageable
     );
+
+
+    @Query("""
+      select count(refund) > 0
+      from Refund refund
+      where refund.settlementId = :settlementId
+        and refund.status in :statuses
+      """)
+    boolean existsBySettlementIdAndStatusIn(
+        @Param("settlementId") Long settlementId,
+        @Param("statuses") List<RefundStatus> status
+    );
+
+    @Query("""
+      select payment.orderId
+      from Refund refund
+      join Payment payment on payment.paymentId = refund.paymentId
+      where refund.settlementId = :settlementId
+      order by refund.id asc
+      """)
+    List<Long> findOrderIdsBySettlementId(@Param("settlementId") Long settlementId);
 }

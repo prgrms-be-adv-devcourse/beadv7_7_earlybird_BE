@@ -45,4 +45,25 @@ public class RefundRepositoryAdapter implements RefundRepository {
             PageRequest.of(0,1)
         ).stream().findFirst();
     }
+
+    @Override
+    public boolean existsInProgressBySettlementId(Long settlementId) {
+        return jpaRepository.existsBySettlementIdAndStatusIn(
+            settlementId,
+            List.of(RefundStatus.PLANNED, RefundStatus.REQUESTED, RefundStatus.RETRY_PENDING)
+        );
+    }
+
+    @Override
+    public boolean existsFailedBySettlementId(Long settlementId) {
+        return jpaRepository.existsBySettlementIdAndStatusIn(
+            settlementId,
+            List.of(RefundStatus.FAILED)
+        );
+    }
+
+    @Override
+    public List<Long> findOrderIdsBySettlementId(Long settlementId) {
+        return jpaRepository.findOrderIdsBySettlementId(settlementId);
+    }
 }
