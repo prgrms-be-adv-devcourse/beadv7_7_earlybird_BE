@@ -57,6 +57,7 @@ public class RefundService {
         );
 
         refundRepository.save(refund);
+        recordBulkRefundResultIfCompleted(refund.getSettlementId());
     }
 
     private Payment findPaidPayment(Long paymentId) {
