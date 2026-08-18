@@ -17,6 +17,7 @@ public class BulkRefundScheduler {
 
     @Scheduled(fixedDelayString = "${payment.bulk-refund.schedule-fixed-delay:2000}")
     public void cancelNextPlannedRefund() {
+        // TODO: 다중 인스턴스 확장 시 조건부 UPDATE로 환불 작업을 원자적으로 선점해야 한다. // <--
         refundRepository.findNextCancelableRefundId(LocalDateTime.now())
             .ifPresent(refundId -> {
                 try {

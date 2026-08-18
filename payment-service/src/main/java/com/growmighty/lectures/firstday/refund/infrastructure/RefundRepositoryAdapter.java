@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.refund.infrastructure;
 
+import com.growmighty.lectures.firstday.refund.domain.BulkRefundOrder;
 import com.growmighty.lectures.firstday.refund.domain.Refund;
 import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
 import com.growmighty.lectures.firstday.refund.domain.RefundStatus;
@@ -63,7 +64,7 @@ public class RefundRepositoryAdapter implements RefundRepository {
     }
 
     @Override
-    public List<Long> findOrderIdsBySettlementId(Long settlementId) {
-        return jpaRepository.findOrderIdsBySettlementId(settlementId);
+    public List<BulkRefundOrder> findOrdersBySettlementIds(List<Long> settlementIds) {
+        return jpaRepository.findOrdersBySettlementIds(settlementIds);
     }
 }

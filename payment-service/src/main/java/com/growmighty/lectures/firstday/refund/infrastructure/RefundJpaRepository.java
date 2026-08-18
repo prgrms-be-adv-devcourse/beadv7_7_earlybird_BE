@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.refund.infrastructure;
 
 import com.growmighty.lectures.firstday.refund.application.dto.RefundRecoveryTarget;
+import com.growmighty.lectures.firstday.refund.domain.BulkRefundOrder;
 import com.growmighty.lectures.firstday.refund.domain.Refund;
 import com.growmighty.lectures.firstday.refund.domain.RefundStatus;
 import org.springframework.data.domain.Pageable;
@@ -68,11 +69,16 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
     );
 
     @Query("""
-      select payment.orderId
+      select new com.growmighty.lectures.firstday.refund.domain.BulkRefundOrder(
+          refund.settlementId,
+          payment.orderId
+      )
       from Refund refund
       join Payment payment on payment.paymentId = refund.paymentId
-      where refund.settlementId = :settlementId
-      order by refund.id asc
+      where refund.settlementId in :settlementIds
+      order by refund.settlementId asc, refund.id asc
       """)
-    List<Long> findOrderIdsBySettlementId(@Param("settlementId") Long settlementId);
+    List<BulkRefundOrder> findOrdersBySettlementIds(
+        @Param("settlementIds") List<Long> settlementIds
+    );
 }

@@ -5,18 +5,18 @@ import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
-import com.growmighty.lectures.firstday.refund.domain.Refund;
-import com.growmighty.lectures.firstday.refund.domain.RefundReason;
-import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
-import com.growmighty.lectures.firstday.refund.domain.RefundStatus;
+import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
+import com.growmighty.lectures.firstday.refund.domain.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,6 +30,7 @@ class RefundServiceTest {
     private static final Long PAYMENT_ID = 1L;
     private static final Long ORDER_ID = 1L;
     private static final Long REFUND_ID = 1L;
+    private static final Long SETTLEMENT_ID = 2L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key";
 
@@ -41,6 +42,12 @@ class RefundServiceTest {
 
     @Mock
     private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
+
+    @Mock
+    private BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
+
+    @Mock
+    private RefundRecoveryProperties refundRecoveryProperties;
 
     @InjectMocks
     private RefundService refundService;
@@ -112,6 +119,26 @@ class RefundServiceTest {
         verify(paymentRepository).save(payment);
     }
 
+    // 추가 : 일괄 취소의 마지막 환불 성공 시 완료 결과 Outbox 저장
+    @Test
+    void completeRefund_savesCompletedBulkRefundResultOutbox() {
+        Payment payment = paidPayment();
+        Refund refund = plannedRefund();
+        refund.startRequest();
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
+        when(bulkRefundResultOutboxRepository.existsBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+
+        refundService.completeRefund(REFUND_ID);
+
+        ArgumentCaptor<BulkRefundResultOutbox> captor = ArgumentCaptor.forClass(BulkRefundResultOutbox.class);
+        verify(bulkRefundResultOutboxRepository).save(captor.capture());
+        assertThat(captor.getValue().getSettlementId()).isEqualTo(SETTLEMENT_ID);
+        assertThat(captor.getValue().getResultStatus()).isEqualTo(BulkRefundResultStatus.COMPLETED);
+    }
+
     @Test
     void failRefund_marksRefundFailedAndKeepsPaymentPaid() {
         Payment payment = paidPayment();
@@ -124,6 +151,42 @@ class RefundServiceTest {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         verify(refundRepository).save(refund);
         verifyNoInteractions(paymentRepository);
+    }
+
+    // 추가 : 일괄 취소의 마지막 환불 최종 실패 시 실패 결과 Outbox 저장
+    @Test
+    void failRefund_savesFailedBulkRefundResultOutbox() {
+        Refund refund = plannedRefund();
+        refund.startRequest();
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+        when(bulkRefundResultOutboxRepository.existsBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
+
+        refundService.failRefund(REFUND_ID);
+
+        ArgumentCaptor<BulkRefundResultOutbox> captor = ArgumentCaptor.forClass(BulkRefundResultOutbox.class);
+        verify(bulkRefundResultOutboxRepository).save(captor.capture());
+        assertThat(captor.getValue().getResultStatus()).isEqualTo(BulkRefundResultStatus.FAILED);
+    }
+
+    // 추가 : 최대 재시도 초과로 최종 실패한 일괄 취소 결과 Outbox 저장
+    @Test
+    void scheduleRetry_savesFailedBulkRefundResultOutboxWhenRetryLimitExceeded() {
+        Refund refund = plannedRefund();
+        refund.startRequest();
+        when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
+        when(refundRecoveryProperties.maximumRetryCount()).thenReturn(0);
+        when(refundRecoveryProperties.retryDelay()).thenReturn(Duration.ofMinutes(1));
+        when(bulkRefundResultOutboxRepository.existsBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
+
+        refundService.scheduleRetry(REFUND_ID);
+
+        ArgumentCaptor<BulkRefundResultOutbox> captor = ArgumentCaptor.forClass(BulkRefundResultOutbox.class);
+        verify(bulkRefundResultOutboxRepository).save(captor.capture());
+        assertThat(captor.getValue().getResultStatus()).isEqualTo(BulkRefundResultStatus.FAILED);
     }
 
     // 추가 : 정합화가 먼저 완료한 환불의 실패 처리는 무시
@@ -154,6 +217,13 @@ class RefundServiceTest {
     // 추가 : Saga 시작 전 REQUESTED 환불 생성
     private Refund requestedRefund() {
         Refund refund = Refund.request(PAYMENT_ID, AMOUNT, RefundReason.USER_CANCEL);
+        ReflectionTestUtils.setField(refund, "id", REFUND_ID);
+        return refund;
+    }
+
+    // 추가 : 일괄 취소용 PLANNED 환불 생성
+    private Refund plannedRefund() {
+        Refund refund = Refund.planned(PAYMENT_ID, SETTLEMENT_ID, AMOUNT, RefundReason.GOAL_FAILED);
         ReflectionTestUtils.setField(refund, "id", REFUND_ID);
         return refund;
     }
