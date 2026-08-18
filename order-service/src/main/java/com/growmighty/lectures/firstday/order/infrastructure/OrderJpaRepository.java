@@ -54,11 +54,11 @@ public interface OrderJpaRepository extends JpaRepository<Order, Long> {
 
     @Query("""
         select o from Order o
-        where o.projectId in :projectIds
+        where month(o.createdAt) = :projectMonth
           and o.status in :statuses
         order by o.projectId asc, o.id asc
         """)
-    List<Order> findByProjectIdsAndStatusIn(
-            @Param("projectIds") List<Long> projectIds,
+    List<Order> findByProjectMonthAndStatusIn(
+            @Param("projectMonth") int projectMonth,
             @Param("statuses") List<OrderStatus> statuses);
 }

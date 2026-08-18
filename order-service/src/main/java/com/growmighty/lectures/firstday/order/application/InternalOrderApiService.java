@@ -136,16 +136,11 @@ public class InternalOrderApiService {
     }
 
     @Transactional(readOnly = true)
-    public ProjectPaymentsView getProjectPayments(List<Long> requestedProjectIds) {
-        List<Long> projectIds = requestedProjectIds.stream()
-                .distinct()
-                .sorted()
-                .toList();
+    public ProjectPaymentsView getProjectPayments(int projectMonth) {
         Map<Long, List<ProjectPaymentsView.OrderPayment>> ordersByProjectId = new TreeMap<>();
-        projectIds.forEach(projectId -> ordersByProjectId.put(projectId, new ArrayList<>()));
 
-        List<Order> orders = orderRepository.findByProjectIdsAndStatusIn(
-                projectIds, List.of(OrderStatus.PAID, OrderStatus.CANCELLED));
+        List<Order> orders = orderRepository.findByProjectMonthAndStatusIn(
+                projectMonth, List.of(OrderStatus.PAID, OrderStatus.CANCELLED));
         List<Long> missingOrderIds = orders.stream()
                 .filter(order -> order.getPgOrderId() == null || order.getPgOrderId().isBlank())
                 .map(Order::getId)
@@ -154,7 +149,7 @@ public class InternalOrderApiService {
             throw new IllegalStateException("Missing PG order IDs for settlement orders. orderIds=" + missingOrderIds);
         }
 
-        orders.forEach(order -> ordersByProjectId.get(order.getProjectId())
+        orders.forEach(order -> ordersByProjectId.computeIfAbsent(order.getProjectId(), key -> new ArrayList<>())
                 .add(new ProjectPaymentsView.OrderPayment(
                         order.getId(), order.getPgOrderId(), order.getTotalAmount().getValue(),
                         order.getStatus().name())));
