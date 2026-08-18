@@ -4,9 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.domain.*;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
-import com.growmighty.lectures.firstday.refund.domain.Refund;
-import com.growmighty.lectures.firstday.refund.domain.RefundReason;
-import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
+import com.growmighty.lectures.firstday.refund.domain.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +17,7 @@ public class RefundService {
     private final PaymentRepository  paymentRepository;
     private final RefundRepository refundRepository;
     private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
+    private final BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
     private final RefundRecoveryProperties refundRecoveryProperties;
 
     @Transactional
@@ -81,6 +80,26 @@ public class RefundService {
         refundRepository.save(refund);
         paymentRepository.save(payment);
         savePaymentStatusOutboxIfAbsent(payment.getPaymentId(), payment.getOrderId(), payment.getPgOrderId(), payment.getStatus());
+
+        recordBulkRefundResultIfCompleted(refund.getSettlementId());
+    }
+
+    private void recordBulkRefundResultIfCompleted(Long settlementId) {
+        if (settlementId == null
+            || bulkRefundResultOutboxRepository.existsBySettlementId(settlementId)
+            || refundRepository.existsInProgressBySettlementId(settlementId)
+        ) {
+            return;
+        }
+
+        BulkRefundResultStatus resultStatus =
+            refundRepository.existsFailedBySettlementId(settlementId)
+                ? BulkRefundResultStatus.FAILED
+                : BulkRefundResultStatus.COMPLETED;
+
+        bulkRefundResultOutboxRepository.save(
+            BulkRefundResultOutbox.pending(settlementId, resultStatus)
+        );
     }
 
     private void savePaymentStatusOutboxIfAbsent(Long paymentId, Long orderId, String pgOrderId, PaymentStatus status) {
@@ -112,6 +131,7 @@ public class RefundService {
 
         if (refund.reconcileFailed()) {
             refundRepository.save(refund);
+            recordBulkRefundResultIfCompleted(refund.getSettlementId());
         }
     }
 
