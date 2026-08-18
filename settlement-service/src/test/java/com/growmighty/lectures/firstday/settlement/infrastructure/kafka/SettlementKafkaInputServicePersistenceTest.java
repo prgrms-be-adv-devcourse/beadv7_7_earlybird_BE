@@ -122,8 +122,49 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
                 .orElseThrow();
         assertThat(stored.paymentResultStatus()).isEqualTo("COMPLETED");
         assertThat(stored.paymentResultAt()).isEqualTo(event.occurredAt().toInstant());
+        assertThat(stored.failedOrderIds()).isEmpty();
         assertThat(outcomeRepository.count()).isZero();
         assertThat(paymentRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("실패한 환불 batch 결과의 주문 목록만 기존 Outbox에 기록한다")
+    void storesFailedRefundOrderIdsInOutbox() {
+        ProjectRefundRequested request = refundRequest("refund-request-103", 103L, List.of(1004L, 1005L));
+        refundRequestedRepository.save(request);
+        SettlementKafkaInput.ProjectRefundProcessed event = refundResult(
+                request.refundRequestId(),
+                UUID.randomUUID(),
+                "FAILED",
+                "2026-08-01T09:05:00+09:00",
+                List.of(1005L)
+        );
+
+        inputService.saveProjectRefundProcessed(event);
+
+        ProjectRefundRequested stored = refundRequestedRepository.findByRefundRequestId(request.refundRequestId())
+                .orElseThrow();
+        assertThat(stored.paymentResultStatus()).isEqualTo("FAILED");
+        assertThat(stored.failedOrderIds()).containsExactly(1005L);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("환불 요청에 없는 실패 주문은 기록하지 않고 Inbox도 롤백한다")
+    void rejectsFailedOrderOutsideRefundRequest() {
+        ProjectRefundRequested request = refundRequest("refund-request-104", 104L, List.of(1006L));
+        refundRequestedRepository.save(request);
+        UUID eventId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> inputService.saveProjectRefundProcessed(refundResult(
+                request.refundRequestId(), eventId, "FAILED", "2026-08-01T09:05:00+09:00", List.of(1007L)
+        ))).isInstanceOf(IllegalArgumentException.class);
+
+        ProjectRefundRequested stored = refundRequestedRepository.findByRefundRequestId(request.refundRequestId())
+                .orElseThrow();
+        assertThat(stored.paymentResultStatus()).isNull();
+        assertThat(stored.failedOrderIds()).isEmpty();
+        assertThat(inboxRepository.existsById(eventId.toString())).isFalse();
     }
 
     @Test

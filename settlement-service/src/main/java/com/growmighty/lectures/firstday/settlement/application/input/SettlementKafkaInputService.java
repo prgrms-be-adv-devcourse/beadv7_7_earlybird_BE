@@ -137,9 +137,7 @@ public class SettlementKafkaInputService {
         validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), PROJECT_REFUND_PROCESSED);
         validateKey(event.key(), event.settlementId(), "settlementId");
         validateOrderIds(event.orderIds());
-        if (event.status() == null || event.status().isBlank()) {
-            throw new IllegalArgumentException("환불 처리 상태는 필수입니다.");
-        }
+        requiredEnum(RefundProcessingStatus.class, event.status(), "환불 처리 상태");
     }
 
     private static void validateEnvelope(
@@ -231,5 +229,10 @@ public class SettlementKafkaInputService {
                 && Objects.equals(existing.projectId(), projectId)
                 && Objects.equals(existing.paymentAmount(), paymentAmount)
                 && Objects.equals(existing.cancelledAt(), cancelledAt);
+    }
+
+    private enum RefundProcessingStatus {
+        COMPLETED,
+        FAILED
     }
 }

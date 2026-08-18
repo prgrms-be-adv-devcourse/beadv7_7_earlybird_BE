@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
+import java.util.stream.StreamSupport;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -61,7 +62,8 @@ import org.springframework.kafka.test.utils.KafkaTestUtils;
                 KafkaTopics.PAYMENT_BULK_CANCEL_RESULT,
                 KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND,
                 KafkaTopics.PROJECT_STATUS_CHANGED_DLT,
-                KafkaTopics.ORDER_PAYMENT_STATUS_CHANGED_DLT
+                KafkaTopics.ORDER_PAYMENT_STATUS_CHANGED_DLT,
+                KafkaTopics.PAYMENT_BULK_CANCEL_RESULT_DLT
         }
 )
 class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
@@ -156,7 +158,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
-    void storesRefundProcessedInput() throws Exception {
+    void storesFailedRefundProcessedInput() throws Exception {
         long projectId = 81_006L;
         long orderId = 91_006L;
         UUID refundProcessedEventId = UUID.randomUUID();
@@ -168,12 +170,43 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
-                new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "COMPLETED")
+                new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "FAILED")
         ));
 
         assertThat(await(() -> inboxRepository.existsById(refundProcessedEventId.toString()))).isTrue();
         assertThat(outboxRepository.findByRefundRequestId(request.refundRequestId()).orElseThrow()
-                .paymentResultStatus()).isEqualTo("COMPLETED");
+                .paymentResultStatus()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void routesUnsupportedRefundResultStatusToDltWithoutSavingInbox() throws Exception {
+        long projectId = 81_007L;
+        long orderId = 91_007L;
+        UUID invalidEventId = UUID.randomUUID();
+        ProjectRefundRequested request = request(projectId, orderId, "PG-91007");
+        outboxRepository.save(request);
+
+        try (Consumer<String, String> dltConsumer = consumer("refund-result-dlt")) {
+            dltConsumer.subscribe(List.of(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT_DLT));
+            send(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT, request.refundRequestId(), new ProjectRefundProcessedEvent(
+                    invalidEventId,
+                    "ProjectRefundProcessed",
+                    1,
+                    OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
+                    new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "PENDING")
+            ));
+
+            ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(
+                    dltConsumer,
+                    KafkaTopics.PAYMENT_BULK_CANCEL_RESULT_DLT,
+                    Duration.ofSeconds(10)
+            );
+
+            assertThat(record.value()).contains(invalidEventId.toString());
+            assertThat(inboxRepository.existsById(invalidEventId.toString())).isFalse();
+            assertThat(outboxRepository.findByRefundRequestId(request.refundRequestId()).orElseThrow()
+                    .paymentResultStatus()).isNull();
+        }
     }
 
     @Test
@@ -253,11 +286,13 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
             commandConsumer.subscribe(List.of(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND));
             publisher.publishPending();
 
-            ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(
-                    commandConsumer,
-                    KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND,
-                    Duration.ofSeconds(10)
-            );
+            ConsumerRecord<String, String> record = StreamSupport.stream(KafkaTestUtils
+                            .getRecords(commandConsumer, Duration.ofSeconds(10))
+                            .records(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND)
+                            .spliterator(), false)
+                    .filter(candidate -> request.refundRequestId().equals(candidate.key()))
+                    .findFirst()
+                    .orElseThrow();
             ProjectRefundRequestedEvent event = objectMapper.readValue(
                     record.value(),
                     ProjectRefundRequestedEvent.class

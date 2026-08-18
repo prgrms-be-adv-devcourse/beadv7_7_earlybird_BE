@@ -72,10 +72,8 @@ class ProjectRefundRequestedKafkaPublisherTest {
         ProjectRefundRequested request = request();
         when(outboxRepository.findPending()).thenReturn(List.of(request));
         when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(request.refundRequestId()), any()))
-                .thenReturn(
-                        CompletableFuture.failedFuture(new IllegalStateException("broker unavailable")),
-                        CompletableFuture.completedFuture(null)
-                );
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("broker unavailable")))
+                .thenReturn(CompletableFuture.completedFuture(null));
 
         publisher().publishPending();
         publisher().publishPending();
