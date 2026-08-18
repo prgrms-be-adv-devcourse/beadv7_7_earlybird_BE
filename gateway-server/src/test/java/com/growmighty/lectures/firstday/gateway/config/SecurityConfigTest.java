@@ -127,6 +127,27 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("파일 조회 경로는 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
+    void filesGet_withoutToken_isNotRejectedBySecurityLayer() {
+        webTestClient.get().uri("/api/v1/files?ownerType=PROJECT&ownerId=1")
+                .exchange()
+                .expectStatus().value(status ->
+                        Assertions.assertThat(status).isNotEqualTo(HttpStatus.UNAUTHORIZED.value()));
+    }
+
+    @Test
+    @DisplayName("파일 등록/삭제는 Authorization 헤더 없이 호출하면 401 (조회만 공개)")
+    void filesWrite_withoutToken_isUnauthorized() {
+        webTestClient.post().uri("/api/v1/files")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        webTestClient.delete().uri("/api/v1/files/1")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
     @DisplayName("PG 웹훅 경로는 Authorization 헤더 없이도 보안 계층에서 거부되지 않는다")
     void paymentsWebhook_withoutToken_isNotRejectedBySecurityLayer() {
         webTestClient.post().uri("/api/v1/payments/webhook")
