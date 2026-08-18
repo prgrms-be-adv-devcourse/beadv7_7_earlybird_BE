@@ -100,10 +100,9 @@ jobs:
           host: ${{ secrets.DATA_EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          # rollout status 타임아웃을 5m→10m로 올린 만큼(#370) 여유를 둔다 - 13개 서비스가
-          # 거의 동시에 재시작해 순간적으로 노드 리소스 경합이 생겨도(memory request 상시 69%+),
-          # probe 실패로 재시작 몇 번 거치고 나면 결국 뜬다는 게 관찰된 패턴이라 실패 처리 대신
-          # 기다려주는 쪽으로 조정.
+          # 서비스별 set image + rollout status 를 순차화(#370)하면서 늘어난 배포 소요 시간에 맞춰
+          # 유지 - 13개 서비스가 각자 최대 10분(rollout status --timeout)까지 걸릴 수 있는 최악의
+          # 경우를 감안한 여유값이지, 순차화 이후엔 정상 케이스에서 이 시간이 다 걸리지 않는다.
           command_timeout: '20m'
           envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DEPLOY_SHA
           script: |
@@ -142,13 +141,22 @@ jobs:
               --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
               --dry-run=client -o yaml | kubectl apply -f -
             kubectl apply -f infrastructure/k8s/
+            # :latest 로 rollout restart 하는 대신 :SHA 태그로 set image - 이래야 kubectl rollout
+            # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
+            #
+            # set image 를 전부 먼저 쏘고 rollout status 를 나중에 도는 두 개의 분리된 루프였을 때는,
+            # 13개 서비스 전부 strategy: Recreate 라 set image 즉시 기존 파드가 죽고 새 파드가 뜨는데
+            # 그 set image 루프 자체가 몇 초 안에 끝나 13개 JVM이 거의 동시에 콜드 스타트했다. 이
+            # 노드(2 vCPU)는 정상 상태에서도 CPU/메모리 여유가 크지 않아 동시 기동 시 CPU가 100%까지
+            # 차면서 startup probe가 계속 실패해 재시작을 반복했고, rollout status 타임아웃을
+            # 5m→10m로 올려도(#372) 마찬가지로 실패했다 - 심지어 Deployment의 서버 사이드
+            # progressDeadlineSeconds(기본값 600s, kubectl --timeout 과 무관하게 컨트롤러가 자체
+            # 추적)까지 넘겨버려 "exceeded its progress deadline" 에러로 rollout 자체가 실패
+            # 처리됐다. set image와 rollout status를 서비스당 하나의 루프로 묶어 한 번에 최대 1개
+            # 서비스만 재시작하게 해 동시성 자체를 없앤다.
             for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
               kubectl -n webapp set image "deployment/$svc" \
                 "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$DEPLOY_SHA"
-            done
-            # :latest 로 rollout restart 하는 대신 :SHA 태그로 set image - 이래야 kubectl rollout
-            # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
-            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
               kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
             done
 
