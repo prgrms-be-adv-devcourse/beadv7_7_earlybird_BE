@@ -275,6 +275,11 @@ services:
     # mem_limit/percentage 를 반복한다.)
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      # DB_USERNAME/DB_PASSWORD - PAYMENT_SECURITY_ENCRYPTION_KEY와 같은 이유로 기본값을 안 준다(#164) -
+      # config repo도 더 이상 기본값이 없으므로, 로컬 mysql 서비스(위 블록)의 MYSQL_USER/MYSQL_PASSWORD와
+      # 같은 값을 infrastructure/.env 에 직접 채워야 한다 (.env.example 참고).
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
     mem_limit: 704m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
@@ -295,6 +300,8 @@ services:
     # 키워드 매치로만 폴백된다(ProjectEmbeddingService).
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     mem_limit: 704m
@@ -317,6 +324,8 @@ services:
     # 두면 빈 문자열이 주입되어 FakePaymentGateway/TossPaymentGateway 둘 다 안 만들어지고 기동이 깨진다.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
       # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
       # 오늘 docker stats 실측 454.2MiB * 1.3 여유 → 608m 로 반올림.
@@ -341,6 +350,8 @@ services:
     # JWT 발급 키 — gateway-server 와 반드시 같은 값이어야 한다 (#164).
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
       # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
       # 오늘 docker stats 실측 442.8MiB * 1.3 여유 → 576m 로 반올림.
@@ -363,6 +374,8 @@ services:
     # 오늘 docker stats 실측 504.5MiB * 1.3 여유 → 672m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
     mem_limit: 672m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
@@ -381,6 +394,8 @@ services:
     # 오늘 docker stats 실측 407.3MiB * 1.3 여유 → 544m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
     mem_limit: 544m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
@@ -399,6 +414,8 @@ services:
     # 오늘 docker stats 실측 418.2MiB * 1.3 여유 → 544m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
     mem_limit: 544m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
@@ -417,6 +434,8 @@ services:
     # 값이 없으면(로컬 .env 미설정) 빈 문자열로 들어가고, board-service.yml 의 ":" 기본값이 마저 받아준다.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
       # mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
       # 오늘 docker stats 실측 484MiB * 1.3 여유 → 640m 로 반올림.
@@ -440,6 +459,8 @@ services:
     # 오늘 docker stats 실측 421.8MiB * 1.3 여유 → 576m 로 반올림.
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
     mem_limit: 576m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
