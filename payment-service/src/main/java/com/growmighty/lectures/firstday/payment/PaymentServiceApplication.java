@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({PaymentRecoveryProperties.class, RefundRecoveryProperties.class})
 @EntityScan(basePackages = {
     "com.growmighty.lectures.firstday.payment.domain",
+    "com.growmighty.lectures.firstday.payment.infrastructure.security", // <-- auto-apply Converter 등록
     "com.growmighty.lectures.firstday.refund.domain"
 })
 @EnableJpaRepositories(basePackages = {

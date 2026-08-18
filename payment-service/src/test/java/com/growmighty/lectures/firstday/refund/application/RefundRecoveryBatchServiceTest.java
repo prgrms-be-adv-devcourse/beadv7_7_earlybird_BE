@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.refund.application;
 
+import com.growmighty.lectures.firstday.payment.domain.vo.SensitiveValue;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundRecoveryTarget;
 import com.growmighty.lectures.firstday.refund.application.port.RefundRecoveryTargetReader;
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
@@ -71,6 +72,6 @@ class RefundRecoveryBatchServiceTest {
 
     // 추가 : 복구 대상 DTO 생성, 배치 테스트 공통 입력값
     private RefundRecoveryTarget target(Long refundId) {
-        return new RefundRecoveryTarget(refundId, "payment-key-" + refundId);
+        return new RefundRecoveryTarget(refundId, new SensitiveValue("payment-key-" + refundId));
     }
 }

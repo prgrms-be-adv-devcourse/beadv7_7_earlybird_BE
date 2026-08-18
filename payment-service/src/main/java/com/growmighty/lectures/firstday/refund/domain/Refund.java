@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.refund.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
-import com.growmighty.lectures.firstday.payment.infrastructure.security.PaymentSensitiveDataConverter;
+import com.growmighty.lectures.firstday.payment.domain.vo.SensitiveValue;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -39,9 +39,8 @@ public class Refund extends BaseEntity {
     @Column(nullable = false)
     private RefundStatus status;
 
-    @Convert(converter = PaymentSensitiveDataConverter.class)
     @Column(name = "cancel_idempotency_key", nullable = false, length = 512)
-    private String cancelIdempotencyKey;
+    private SensitiveValue cancelIdempotencyKey;
 
     /** 실패 시 null — 재시도 대상 */
     @Column
@@ -64,7 +63,7 @@ public class Refund extends BaseEntity {
         this.settlementId = settlementId;
         this.amount = amount;
         this.reason = reason;
-        this.cancelIdempotencyKey = UUID.randomUUID().toString();
+        this.cancelIdempotencyKey = new SensitiveValue(UUID.randomUUID().toString()); // <-- 민감 값 VO로 저장
         this.status = status;
         this.retryCount = 0;
     }
