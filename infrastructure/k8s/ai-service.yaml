@@ -21,6 +21,11 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: k8s
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-openai
+                  key: OPENAI_API_KEY
             - name: JAVA_TOOL_OPTIONS
               value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
           resources:
