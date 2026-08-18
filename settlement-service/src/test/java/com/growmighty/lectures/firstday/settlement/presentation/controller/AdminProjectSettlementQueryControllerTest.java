@@ -152,7 +152,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 projectId, 96_000_001L, Instant.parse("2026-08-03T00:00:00Z")
         );
         request.markPublished(Instant.parse("2026-08-03T00:01:00Z"));
-        request.recordPaymentResult("COMPLETED", Instant.parse("2026-08-03T00:02:00Z"), List.of(96_000_001L));
+        request.recordPaymentResult("FAILED", Instant.parse("2026-08-03T00:02:00Z"), List.of(96_000_001L));
         refundRequestedRepository.save(request);
 
         mockMvc.perform(get("/api/v1/settlements/all/refunds/{projectId}", projectId))
@@ -160,11 +160,12 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 .andExpect(jsonPath("$.data.projectId").value(projectId))
                 .andExpect(jsonPath("$.data.reason").value("PROJECT_FAILED"))
                 .andExpect(jsonPath("$.data.publishStatus").value("PUBLISHED"))
-                .andExpect(jsonPath("$.data.processingStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.processingStatus").value("ACTION_REQUIRED"))
                 .andExpect(jsonPath("$.data.paymentResultAt").value("2026-08-03T09:02:00+09:00"))
                 .andExpect(jsonPath("$.data.payments.length()").value(1))
                 .andExpect(jsonPath("$.data.payments[0].orderId").value(96_000_001L))
-                .andExpect(jsonPath("$.data.payments[0].pgOrderId").value("PG-96000001"));
+                .andExpect(jsonPath("$.data.payments[0].pgOrderId").value("PG-96000001"))
+                .andExpect(jsonPath("$.data.payments[0].actionRequired").value(true));
     }
 
     @Test

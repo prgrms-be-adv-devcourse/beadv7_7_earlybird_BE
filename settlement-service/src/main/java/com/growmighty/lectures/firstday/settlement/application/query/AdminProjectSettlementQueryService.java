@@ -98,7 +98,9 @@ public class AdminProjectSettlementQueryService {
                 processingStatus(request),
                 request.paymentResultAt(),
                 request.payments().stream()
-                        .map(payment -> new AdminProjectRefundDetail.Payment(payment.orderId(), payment.pgOrderId()))
+                        .map(payment -> new AdminProjectRefundDetail.Payment(
+                                payment.orderId(), payment.pgOrderId(), request.failedOrderIds().contains(payment.orderId())
+                        ))
                         .toList()
         );
     }

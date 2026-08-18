@@ -33,10 +33,10 @@ public record AdminProjectRefundDetailResponse(
         );
     }
 
-    public record PaymentResponse(Long orderId, String pgOrderId) {
+    public record PaymentResponse(Long orderId, String pgOrderId, boolean actionRequired) {
 
         private static PaymentResponse from(AdminProjectRefundDetail.Payment payment) {
-            return new PaymentResponse(payment.orderId(), payment.pgOrderId());
+            return new PaymentResponse(payment.orderId(), payment.pgOrderId(), payment.actionRequired());
         }
     }
 

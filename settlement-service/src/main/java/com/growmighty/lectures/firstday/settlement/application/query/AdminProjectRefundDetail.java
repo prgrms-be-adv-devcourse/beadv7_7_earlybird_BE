@@ -15,6 +15,6 @@ public record AdminProjectRefundDetail(
         List<Payment> payments
 ) {
 
-    public record Payment(Long orderId, String pgOrderId) {
+    public record Payment(Long orderId, String pgOrderId, boolean actionRequired) {
     }
 }
