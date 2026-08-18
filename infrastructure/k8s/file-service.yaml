@@ -35,6 +35,18 @@ spec:
               value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
             - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
               value: "true"
+            # presigned upload (#354) - AWS SDK 기본 자격증명 체인이 읽는 이름 그대로.
+            # 버킷/리전/CDN 도메인은 config-server file-service.yml 기본값을 그대로 쓴다.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: file-service-s3
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: file-service-s3
+                  key: AWS_SECRET_ACCESS_KEY
           resources:
             requests:
               memory: 400Mi
