@@ -15,7 +15,7 @@ public class FundedAmountReconciliationScheduler {
 
     private final ProjectService projectService;
 
-    @Scheduled(fixedRate = 60 * 60 * 1000)
+    @Scheduled(fixedDelayString = "${project.reconcile.scheduled-fixed-delay:3600000}")
     public void reconcile() {
         projectService.reconcileFundedAmounts();
     }

@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.respons
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -48,8 +49,8 @@ public class ProjectInternalController {
      * project-service의 주기적 pull(OrderPort.getFundedAmount)은 이 push가 유실됐을 때의 안전망이다.
      */
     @PutMapping("/{projectId}/funded-amount")
-    public Void updateFundedAmount(@PathVariable Long projectId, @Valid @RequestBody FundedAmountUpdateRequest request) {
+    public ResponseEntity<Void> updateFundedAmount(@PathVariable Long projectId, @Valid @RequestBody FundedAmountUpdateRequest request) {
         projectService.updateFundedAmount(projectId, request.fundedAmount());
-        return null;
+        return ResponseEntity.noContent().build();
     }
 }

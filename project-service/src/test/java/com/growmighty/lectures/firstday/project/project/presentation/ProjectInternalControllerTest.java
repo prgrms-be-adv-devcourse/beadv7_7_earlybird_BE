@@ -36,7 +36,7 @@ class ProjectInternalControllerTest {
         mockMvc.perform(put("/internal/v1/projects/{projectId}/funded-amount", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fundedAmount\": 500000}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isNoContent());
 
         verify(projectService).updateFundedAmount(eq(1L), eq(BigDecimal.valueOf(500000)));
     }
