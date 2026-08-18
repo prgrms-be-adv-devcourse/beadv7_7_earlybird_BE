@@ -7,4 +7,10 @@ public record SensitiveValue(String value) {
             throw new IllegalArgumentException("민감 값은 필수입니다.");
         }
     }
+
+    // 추가 : 로그와 예외 메시지의 민감 값 노출 방지
+    @Override
+    public String toString() {
+        return "SensitiveValue[REDACTED]";
+    }
 }
