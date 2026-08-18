@@ -38,4 +38,10 @@ public class FileService {
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 파일입니다. fileId=" + fileId));
         fileRepository.deleteById(fileId);
     }
+
+    /** 서비스 간 내부 호출 전용(project-service가 프로젝트 삭제 시 소유 파일을 정리할 때 사용) — 개별 소유권 확인 없이 owner 단위로 지운다. */
+    @Transactional
+    public void deleteByOwner(FileOwnerType ownerType, Long ownerId) {
+        fileRepository.deleteByOwnerTypeAndOwnerId(ownerType, ownerId);
+    }
 }

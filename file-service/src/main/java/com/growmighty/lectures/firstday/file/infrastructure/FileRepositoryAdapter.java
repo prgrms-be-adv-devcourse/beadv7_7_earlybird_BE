@@ -33,4 +33,9 @@ public class FileRepositoryAdapter implements FileRepository {
     public void deleteById(Long id) {
         jpaRepository.deleteById(id);
     }
+
+    @Override
+    public void deleteByOwnerTypeAndOwnerId(FileOwnerType ownerType, Long ownerId) {
+        jpaRepository.deleteByOwnerTypeAndOwnerId(ownerType, ownerId);
+    }
 }
