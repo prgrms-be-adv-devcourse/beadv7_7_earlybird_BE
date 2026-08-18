@@ -10,6 +10,8 @@ import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossErro
 import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossPaymentResponse;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.RateLimiter;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import io.github.resilience4j.retry.Retry;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -38,13 +40,16 @@ public class TossPaymentGateway implements PaymentGateway {
     private final Retry paymentLookupRetry;
     private final CircuitBreaker paymentLookupCircuitBreaker;
 
+    private final RateLimiter tossApiRateLimiter;
+
     public TossPaymentGateway(
         RestClient tossRestClient,
         ObjectMapper objectMapper,
         @Qualifier("paymentApprovalRetry") Retry paymentApprovalRetry,
         @Qualifier("paymentApprovalCircuitBreaker") CircuitBreaker paymentApprovalCircuitBreaker,
         @Qualifier("paymentLookupRetry") Retry paymentLookupRetry,
-        @Qualifier("paymentLookupCircuitBreaker") CircuitBreaker paymentLookupCircuitBreaker
+        @Qualifier("paymentLookupCircuitBreaker") CircuitBreaker paymentLookupCircuitBreaker,
+        @Qualifier("tossApiRateLimiter") RateLimiter tossApiRateLimiter
     ) {
         this.tossRestClient = tossRestClient;
         this.objectMapper = objectMapper;
@@ -52,16 +57,24 @@ public class TossPaymentGateway implements PaymentGateway {
         this.paymentApprovalCircuitBreaker = paymentApprovalCircuitBreaker;
         this.paymentLookupRetry = paymentLookupRetry;
         this.paymentLookupCircuitBreaker = paymentLookupCircuitBreaker;
+        this.tossApiRateLimiter = tossApiRateLimiter;
     }
 
     @Override
     public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
         Supplier<PgApproval> approvalSupplier = () -> requestApproval(paymentKey, pgOrderId, amount, idempotencyKey);
-        Supplier<PgApproval> retrySupplier = Retry.decorateSupplier(paymentApprovalRetry, approvalSupplier);
+        Supplier<PgApproval> rateLimitedSupplier = RateLimiter.decorateSupplier(tossApiRateLimiter, approvalSupplier);
+        Supplier<PgApproval> retrySupplier = Retry.decorateSupplier(paymentApprovalRetry, rateLimitedSupplier);
         Supplier<PgApproval> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentApprovalCircuitBreaker, retrySupplier);
 
         try {
             return circuitBreakerSupplier.get();
+        } catch (RequestNotPermitted exception) {
+            throw new PaymentGatewayException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                PaymentGatewayFailureType.UNCERTAIN,
+                "토스 결제 승인 요청 한도를 초과했습니다. 잠시 후 재시도합니다."
+            );
         } catch (CallNotPermittedException exception) {
             throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
@@ -112,11 +125,18 @@ public class TossPaymentGateway implements PaymentGateway {
     @Override
     public PgPayment getPayment(String paymentKey) {
         Supplier<PgPayment> lookupSupplier = () -> requestPayment(paymentKey);
-        Supplier<PgPayment> retrySupplier = Retry.decorateSupplier(paymentLookupRetry, lookupSupplier);
+        Supplier<PgPayment> rateLimitedSupplier = RateLimiter.decorateSupplier(tossApiRateLimiter, lookupSupplier);
+        Supplier<PgPayment> retrySupplier = Retry.decorateSupplier(paymentLookupRetry, rateLimitedSupplier);
         Supplier<PgPayment> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentLookupCircuitBreaker, retrySupplier);
 
         try {
             return circuitBreakerSupplier.get();
+        } catch (RequestNotPermitted exception) {
+            throw new PaymentGatewayException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                PaymentGatewayFailureType.UNCERTAIN,
+                "토스 결제 조회 요청 한도를 초과했습니다. 잠시 후 재시도합니다."
+            );
         } catch (CallNotPermittedException exception) {
             throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
