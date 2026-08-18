@@ -8,7 +8,7 @@ public record ProjectRefundProcessedEvent(
     UUID eventId,
     String eventType,
     int schemaVersion,
-    OffsetDateTime occuredAt,
+    OffsetDateTime occurredAt,
     Payload payload
 ) {
     public record Payload(
