@@ -22,7 +22,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class BulkRefundServiceTest {
 
-    private static final Long SETTLEMENT_ID = 1L;
+    private static final Long REFUND_REQUEST_ID = 1L;
     private static final Long ORDER_ID = 2L;
     private static final Long PAYMENT_ID = 3L;
 
@@ -41,12 +41,12 @@ class BulkRefundServiceTest {
         when(paymentRepository.findAllPaidByOrderIds(List.of(ORDER_ID))).thenReturn(List.of(payment));
         when(refundRepository.findExistingPaymentIds(List.of(PAYMENT_ID))).thenReturn(List.of());
 
-        bulkRefundService.plan(SETTLEMENT_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
+        bulkRefundService.plan(REFUND_REQUEST_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
 
         ArgumentCaptor<Refund> captor = ArgumentCaptor.forClass(Refund.class);
         verify(refundRepository).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(RefundStatus.PLANNED);
-        assertThat(captor.getValue().getSettlementId()).isEqualTo(SETTLEMENT_ID);
+        assertThat(captor.getValue().getRefundRequestId()).isEqualTo(REFUND_REQUEST_ID);
         assertThat(captor.getValue().getReason()).isEqualTo(RefundReason.GOAL_FAILED);
     }
 
@@ -56,7 +56,7 @@ class BulkRefundServiceTest {
         when(paymentRepository.findAllPaidByOrderIds(List.of(ORDER_ID))).thenReturn(List.of(payment));
         when(refundRepository.findExistingPaymentIds(List.of(PAYMENT_ID))).thenReturn(List.of(PAYMENT_ID));
 
-        bulkRefundService.plan(SETTLEMENT_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
+        bulkRefundService.plan(REFUND_REQUEST_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
 
         verify(refundRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
@@ -65,7 +65,7 @@ class BulkRefundServiceTest {
     void PAID_결제가_없으면_환불_이력을_조회하지_않는다() {
         when(paymentRepository.findAllPaidByOrderIds(List.of(ORDER_ID))).thenReturn(List.of());
 
-        bulkRefundService.plan(SETTLEMENT_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
+        bulkRefundService.plan(REFUND_REQUEST_ID, List.of(ORDER_ID), RefundReason.GOAL_FAILED);
 
         verifyNoInteractions(refundRepository);
     }

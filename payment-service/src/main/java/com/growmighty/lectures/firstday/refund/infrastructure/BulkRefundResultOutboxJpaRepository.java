@@ -10,7 +10,7 @@ import java.util.List;
 
 public interface BulkRefundResultOutboxJpaRepository extends JpaRepository<BulkRefundResultOutbox, Long> {
 
-    boolean existsBySettlementIdAndResultStatus(Long settlementId, BulkRefundResultStatus resultStatus);
+    boolean existsByRefundRequestIdAndResultStatus(Long refundRequestId, BulkRefundResultStatus resultStatus);
 
     List<BulkRefundResultOutbox> findByOutboxStatusOrderById(BulkRefundResultOutboxStatus outboxStatus, Pageable pageable);
 }

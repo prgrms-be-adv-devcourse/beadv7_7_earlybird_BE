@@ -12,7 +12,7 @@ public record ProjectRefundProcessedEvent(
     Payload payload
 ) {
     public record Payload(
-        String settlementId,
+        Long refundRequestId,
         List<Long> orderIds,
         String status
     ) {

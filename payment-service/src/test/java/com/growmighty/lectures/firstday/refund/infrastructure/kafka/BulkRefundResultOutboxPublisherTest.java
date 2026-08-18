@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class BulkRefundResultOutboxPublisherTest {
 
-    private static final Long FIRST_SETTLEMENT_ID = 10L;
+    private static final Long FIRST_REFUND_REQUEST_ID = 10L;
 
     @Mock
     private BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
@@ -41,18 +41,18 @@ class BulkRefundResultOutboxPublisherTest {
     @Test
     void publishPending_groupsOrderIdsByRefundStatus() {
         BulkRefundResultOutbox first = BulkRefundResultOutbox.pending(
-            FIRST_SETTLEMENT_ID,
+            FIRST_REFUND_REQUEST_ID,
             BulkRefundResultStatus.COMPLETED
         );
         BulkRefundResultOutbox second = BulkRefundResultOutbox.pending(
-            FIRST_SETTLEMENT_ID,
+            FIRST_REFUND_REQUEST_ID,
             BulkRefundResultStatus.FAILED
         );
         when(bulkRefundResultOutboxRepository.findPending(100)).thenReturn(List.of(first, second));
-        when(refundRepository.findOrdersBySettlementIds(List.of(FIRST_SETTLEMENT_ID, FIRST_SETTLEMENT_ID)))
+        when(refundRepository.findOrdersByRefundRequestIds(List.of(FIRST_REFUND_REQUEST_ID, FIRST_REFUND_REQUEST_ID)))
             .thenReturn(List.of(
-                new BulkRefundOrder(FIRST_SETTLEMENT_ID, 101L, RefundStatus.COMPLETED),
-                new BulkRefundOrder(FIRST_SETTLEMENT_ID, 102L, RefundStatus.FAILED)
+                new BulkRefundOrder(FIRST_REFUND_REQUEST_ID, 101L, RefundStatus.COMPLETED),
+                new BulkRefundOrder(FIRST_REFUND_REQUEST_ID, 102L, RefundStatus.FAILED)
             ));
         when(kafkaTemplate.send(
             eq(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT),
@@ -64,7 +64,7 @@ class BulkRefundResultOutboxPublisherTest {
 
         ArgumentCaptor<ProjectRefundProcessedEvent> captor =
             ArgumentCaptor.forClass(ProjectRefundProcessedEvent.class);
-        verify(refundRepository).findOrdersBySettlementIds(List.of(FIRST_SETTLEMENT_ID, FIRST_SETTLEMENT_ID));
+        verify(refundRepository).findOrdersByRefundRequestIds(List.of(FIRST_REFUND_REQUEST_ID, FIRST_REFUND_REQUEST_ID));
         verify(kafkaTemplate, times(2)).send(
             eq(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT),
             any(String.class),
@@ -80,6 +80,9 @@ class BulkRefundResultOutboxPublisherTest {
             .extracting(event -> event.payload().status())
             .containsExactly("COMPLETED", "FAILED");
         assertThat(captor.getAllValues())
+            .extracting(event -> event.payload().refundRequestId())
+            .containsExactly(FIRST_REFUND_REQUEST_ID, FIRST_REFUND_REQUEST_ID);
+        assertThat(captor.getAllValues())
             .extracting(ProjectRefundProcessedEvent::eventId)
             .doesNotHaveDuplicates();
     }
@@ -88,17 +91,17 @@ class BulkRefundResultOutboxPublisherTest {
     @Test
     void publishPending_keepsOutboxPendingWhenKafkaPublishFails() {
         BulkRefundResultOutbox outbox = BulkRefundResultOutbox.pending(
-            FIRST_SETTLEMENT_ID,
+            FIRST_REFUND_REQUEST_ID,
             BulkRefundResultStatus.COMPLETED
         );
         CompletableFuture<SendResult<String, ProjectRefundProcessedEvent>> failedFuture = new CompletableFuture<>();
         failedFuture.completeExceptionally(new IllegalStateException("Kafka unavailable"));
         when(bulkRefundResultOutboxRepository.findPending(100)).thenReturn(List.of(outbox));
-        when(refundRepository.findOrdersBySettlementIds(List.of(FIRST_SETTLEMENT_ID)))
-            .thenReturn(List.of(new BulkRefundOrder(FIRST_SETTLEMENT_ID, 101L, RefundStatus.COMPLETED)));
+        when(refundRepository.findOrdersByRefundRequestIds(List.of(FIRST_REFUND_REQUEST_ID)))
+            .thenReturn(List.of(new BulkRefundOrder(FIRST_REFUND_REQUEST_ID, 101L, RefundStatus.COMPLETED)));
         when(kafkaTemplate.send(
             eq(KafkaTopics.PAYMENT_BULK_CANCEL_RESULT),
-            eq(String.valueOf(FIRST_SETTLEMENT_ID)),
+            eq(String.valueOf(FIRST_REFUND_REQUEST_ID)),
             any(ProjectRefundProcessedEvent.class)
         )).thenReturn(failedFuture);
 

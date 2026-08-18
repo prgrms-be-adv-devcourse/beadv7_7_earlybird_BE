@@ -25,8 +25,8 @@ public class Refund extends BaseEntity {
     @Column(nullable = false, unique = true)
     private Long paymentId;
 
-    @Column(name = "settlement_id")
-    private Long settlementId;
+    @Column(name = "refund_request_id")
+    private Long refundRequestId;
 
     @Column(nullable = false)
     private BigDecimal amount;
@@ -52,7 +52,7 @@ public class Refund extends BaseEntity {
     @Column(name = "next_retry_at")
     private LocalDateTime nextRetryAt;
 
-    private Refund(Long paymentId, Long settlementId, BigDecimal amount, RefundReason reason, RefundStatus status) {
+    private Refund(Long paymentId, Long refundRequestId, BigDecimal amount, RefundReason reason, RefundStatus status) {
         if (paymentId == null) {
             throw new IllegalArgumentException("paymentId는 필수입니다.");
         }
@@ -60,7 +60,7 @@ public class Refund extends BaseEntity {
             throw new IllegalArgumentException("환불 금액은 0원보다 커야 합니다. 입력값: " + amount);
         }
         this.paymentId = paymentId;
-        this.settlementId = settlementId;
+        this.refundRequestId = refundRequestId;
         this.amount = amount;
         this.reason = reason;
         this.cancelIdempotencyKey = new SensitiveValue(UUID.randomUUID().toString()); // <-- 민감 값 VO로 저장
@@ -70,11 +70,11 @@ public class Refund extends BaseEntity {
 
     public static Refund planned(
         Long paymentId,
-        Long settlementId,
+        Long refundRequestId,
         BigDecimal amount,
         RefundReason reason
     ) {
-        return new Refund(paymentId, settlementId, amount, reason, RefundStatus.PLANNED);
+        return new Refund(paymentId, refundRequestId, amount, reason, RefundStatus.PLANNED);
     }
 
     public static Refund request(Long paymentId, BigDecimal amount, RefundReason reason) {

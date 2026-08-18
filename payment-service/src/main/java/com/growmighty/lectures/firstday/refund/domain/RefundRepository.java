@@ -15,12 +15,12 @@ public interface RefundRepository {
 
     Optional<Long> findNextCancelableRefundId(LocalDateTime now);
 
-    boolean existsInProgressBySettlementId(Long settlementId);
+    boolean existsInProgressByRefundRequestId(Long refundRequestId);
 
-    boolean existsFailedBySettlementId(Long settlementId);
+    boolean existsFailedByRefundRequestId(Long refundRequestId);
 
-    boolean existsCompletedBySettlementId(Long settlementId);
+    boolean existsCompletedByRefundRequestId(Long refundRequestId);
 
-    List<BulkRefundOrder> findOrdersBySettlementIds(List<Long> settlementIds);
+    List<BulkRefundOrder> findOrdersByRefundRequestIds(List<Long> refundRequestIds);
 
 }

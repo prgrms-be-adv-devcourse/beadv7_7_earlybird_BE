@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 @Table(
     name = "bulk_refund_result_outbox",
     uniqueConstraints = @UniqueConstraint(
-        name = "uk_bulk_refund_result_outbox_settlement_id_result_status",
-        columnNames = {"settlement_id", "result_status"}
+        name = "uk_bulk_refund_result_outbox_refund_request_id_result_status",
+        columnNames = {"refund_request_id", "result_status"}
     ),
     indexes = @Index(
         name = "idx_bulk_refund_result_outbox_status_id",
@@ -27,8 +27,8 @@ public class BulkRefundResultOutbox extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "settlement_id", nullable = false)
-    private Long settlementId;
+    @Column(name = "refund_request_id", nullable = false)
+    private Long refundRequestId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "result_status", nullable = false)
@@ -43,14 +43,14 @@ public class BulkRefundResultOutbox extends BaseEntity {
 
     private LocalDateTime sentAt;
 
-    private BulkRefundResultOutbox(Long settlementId, BulkRefundResultStatus resultStatus) {
-        this.settlementId = settlementId;
+    private BulkRefundResultOutbox(Long refundRequestId, BulkRefundResultStatus resultStatus) {
+        this.refundRequestId = refundRequestId;
         this.resultStatus = resultStatus;
         this.outboxStatus = BulkRefundResultOutboxStatus.PENDING;
     }
 
-    public static BulkRefundResultOutbox pending(Long settlementId, BulkRefundResultStatus resultStatus) {
-        return new BulkRefundResultOutbox(settlementId, resultStatus);
+    public static BulkRefundResultOutbox pending(Long refundRequestId, BulkRefundResultStatus resultStatus) {
+        return new BulkRefundResultOutbox(refundRequestId, resultStatus);
     }
 
     public void markSent() {

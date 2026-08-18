@@ -30,7 +30,7 @@ class RefundServiceTest {
     private static final Long PAYMENT_ID = 1L;
     private static final Long ORDER_ID = 1L;
     private static final Long REFUND_ID = 1L;
-    private static final Long SETTLEMENT_ID = 2L;
+    private static final Long REFUND_REQUEST_ID = 2L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key";
 
@@ -127,15 +127,15 @@ class RefundServiceTest {
         refund.startRequest();
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
         when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
-        when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
-        when(refundRepository.existsCompletedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
-        when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(false);
+        when(refundRepository.existsInProgressByRefundRequestId(REFUND_REQUEST_ID)).thenReturn(false);
+        when(refundRepository.existsCompletedByRefundRequestId(REFUND_REQUEST_ID)).thenReturn(true);
+        when(refundRepository.existsFailedByRefundRequestId(REFUND_REQUEST_ID)).thenReturn(false);
 
         refundService.completeRefund(REFUND_ID);
 
         ArgumentCaptor<BulkRefundResultOutbox> captor = ArgumentCaptor.forClass(BulkRefundResultOutbox.class);
         verify(bulkRefundResultOutboxRepository).save(captor.capture());
-        assertThat(captor.getValue().getSettlementId()).isEqualTo(SETTLEMENT_ID);
+        assertThat(captor.getValue().getRefundRequestId()).isEqualTo(REFUND_REQUEST_ID);
         assertThat(captor.getValue().getResultStatus()).isEqualTo(BulkRefundResultStatus.COMPLETED);
     }
 
@@ -159,8 +159,8 @@ class RefundServiceTest {
         Refund refund = plannedRefund();
         refund.startRequest();
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
-        when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
-        when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
+        when(refundRepository.existsInProgressByRefundRequestId(REFUND_REQUEST_ID)).thenReturn(false);
+        when(refundRepository.existsFailedByRefundRequestId(REFUND_REQUEST_ID)).thenReturn(true);
 
         refundService.failRefund(REFUND_ID);
 
@@ -177,8 +177,8 @@ class RefundServiceTest {
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
         when(refundRecoveryProperties.maximumRetryCount()).thenReturn(0);
         when(refundRecoveryProperties.retryDelay()).thenReturn(Duration.ofMinutes(1));
-        when(refundRepository.existsInProgressBySettlementId(SETTLEMENT_ID)).thenReturn(false);
-        when(refundRepository.existsFailedBySettlementId(SETTLEMENT_ID)).thenReturn(true);
+        when(refundRepository.existsInProgressByRefundRequestId(REFUND_REQUEST_ID)).thenReturn(false);
+        when(refundRepository.existsFailedByRefundRequestId(REFUND_REQUEST_ID)).thenReturn(true);
 
         refundService.scheduleRetry(REFUND_ID);
 
@@ -221,7 +221,7 @@ class RefundServiceTest {
 
     // 추가 : 일괄 취소용 PLANNED 환불 생성
     private Refund plannedRefund() {
-        Refund refund = Refund.planned(PAYMENT_ID, SETTLEMENT_ID, AMOUNT, RefundReason.GOAL_FAILED);
+        Refund refund = Refund.planned(PAYMENT_ID, REFUND_REQUEST_ID, AMOUNT, RefundReason.GOAL_FAILED);
         ReflectionTestUtils.setField(refund, "id", REFUND_ID);
         return refund;
     }
