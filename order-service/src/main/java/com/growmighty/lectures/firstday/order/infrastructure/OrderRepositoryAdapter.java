@@ -39,6 +39,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
+    public Optional<Order> findByIdWithItemsForUpdate(Long id) {
+        return jpaRepository.findByIdWithItemsForUpdate(id);
+    }
+
+    @Override
     public Optional<Order> findByUserIdAndOrderIdempotencyKey(Long userId, UUID orderIdempotencyKey) {
         return jpaRepository.findByUserIdAndOrderIdempotencyKey(userId, orderIdempotencyKey);
     }

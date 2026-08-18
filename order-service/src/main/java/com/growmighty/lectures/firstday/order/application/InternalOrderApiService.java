@@ -16,7 +16,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 
@@ -26,34 +25,27 @@ public class InternalOrderApiService {
     private final OrderRepository orderRepository;
     private final OrderPaymentResultHandler paymentResultHandler;
     private final OrderPaidCompletionService paidCompletionService;
-    private final OrderStockHandler stockHandler;
     private final OrderCancellationPersistenceService cancellationPersistenceService;
-    private final OrderPaymentStatusOutboxRecoveryService paymentStatusRecoveryService;
-    private final FundedAmountSynchronizationService fundedAmountSynchronizationService;
+    private final OrderCancellationCompletionService cancellationCompletionService;
 
     @Autowired
     public InternalOrderApiService(OrderRepository orderRepository, OrderPaymentResultHandler paymentResultHandler,
-                                   OrderPaidCompletionService paidCompletionService, OrderStockHandler stockHandler,
+                                   OrderPaidCompletionService paidCompletionService,
                                    OrderCancellationPersistenceService cancellationPersistenceService,
-                                   OrderPaymentStatusOutboxRecoveryService paymentStatusRecoveryService,
-                                   FundedAmountSynchronizationService fundedAmountSynchronizationService) {
+                                   OrderCancellationCompletionService cancellationCompletionService) {
         this.orderRepository = orderRepository;
         this.paymentResultHandler = paymentResultHandler;
         this.paidCompletionService = paidCompletionService;
-        this.stockHandler = stockHandler;
         this.cancellationPersistenceService = cancellationPersistenceService;
-        this.paymentStatusRecoveryService = paymentStatusRecoveryService;
-        this.fundedAmountSynchronizationService = fundedAmountSynchronizationService;
+        this.cancellationCompletionService = cancellationCompletionService;
     }
 
     InternalOrderApiService(OrderRepository orderRepository, OrderPaymentResultHandler paymentResultHandler) {
         this.orderRepository = orderRepository;
         this.paymentResultHandler = paymentResultHandler;
         this.paidCompletionService = null;
-        this.stockHandler = null;
         this.cancellationPersistenceService = null;
-        this.paymentStatusRecoveryService = null;
-        this.fundedAmountSynchronizationService = null;
+        this.cancellationCompletionService = null;
     }
 
     // 결제 결과에 대한 처리
@@ -75,29 +67,12 @@ public class InternalOrderApiService {
     }
 
     private OrderResult applyPaymentCancellation(Long orderId, String pgOrderId) {
-        Order order = getOrderWithItems(orderId);
-        if (pgOrderId != null && order.getPgOrderId() != null
-                && !Objects.equals(order.getPgOrderId(), pgOrderId)) {
-            throw new IllegalStateException("Payment cancellation PG order ID mismatch. orderId=" + orderId);
+        if (cancellationPersistenceService == null) {
+            throw new IllegalStateException("Order cancellation finalization is unavailable. orderId=" + orderId);
         }
-        order.assignPgOrderId(pgOrderId);
-
-        if (!order.isCancelled()) {
-            order.validateCancellationAllowed();
-            if (stockHandler != null) {
-                stockHandler.releaseStock(order);
-            }
-            order.cancel();
-        }
-
-        Order cancelledOrder = cancellationPersistenceService != null
-                ? cancellationPersistenceService.saveCancelledWithPaymentStatus(order)
-                : orderRepository.save(order);
-        if (paymentStatusRecoveryService != null) {
-            paymentStatusRecoveryService.publishImmediately(cancelledOrder.getId(), cancelledOrder.getStatus());
-        }
-        if (fundedAmountSynchronizationService != null) {
-            fundedAmountSynchronizationService.synchronize(cancelledOrder.getProjectId());
+        Order cancelledOrder = cancellationPersistenceService.finalizeCancellation(orderId, pgOrderId);
+        if (cancellationCompletionService != null) {
+            cancellationCompletionService.complete(cancelledOrder);
         }
         return OrderResult.from(cancelledOrder);
     }

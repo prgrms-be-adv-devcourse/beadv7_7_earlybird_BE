@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.order.infrastructure.client;
 
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
+import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.PayBody;
@@ -45,10 +46,10 @@ public class PaymentHttpClient implements PaymentPort {
 
         PaymentDetailsApiData data = response.data();
         if (!paymentId.equals(data.paymentId())) {
-            throw new IllegalStateException("Payment cancellation ID mismatch. paymentId=" + paymentId);
+            throw new ServiceUnavailableException("Payment cancellation ID mismatch. paymentId=" + paymentId);
         }
         if (data.amount() == null || amount.compareTo(data.amount()) != 0) {
-            throw new IllegalStateException("Payment cancellation amount mismatch. paymentId=" + paymentId);
+            throw new ServiceUnavailableException("Payment cancellation amount mismatch. paymentId=" + paymentId);
         }
 
         PaymentResult.Status status = "CANCELLED".equals(data.status())
@@ -68,11 +69,12 @@ public class PaymentHttpClient implements PaymentPort {
 
         PaymentDetailsApiData data = response.data();
         if (!orderId.equals(data.orderId())) {
-            throw new IllegalStateException("Payment order ID mismatch. orderId=" + orderId);
+            throw new ServiceUnavailableException("Payment order ID mismatch. orderId=" + orderId);
         }
         PaymentResult.Status status = switch (data.status()) {
             case "PAID" -> PaymentResult.Status.SUCCESS;
-            case "FAILED", "CANCELLED" -> PaymentResult.Status.FAILURE;
+            case "CANCELLED" -> PaymentResult.Status.CANCELLED;
+            case "FAILED" -> PaymentResult.Status.FAILURE;
             case "READY", "CONFIRMING" -> PaymentResult.Status.PENDING;
             default -> PaymentResult.Status.UNKNOWN;
         };
@@ -88,7 +90,8 @@ public class PaymentHttpClient implements PaymentPort {
         BigDecimal amount = data.amount() != null ? data.amount() : requestedAmount;
         return switch (data.status()) {
             case "PAID" -> PaymentResult.success(data.paymentId(), data.pgOrderId(), amount);
-            case "FAILED", "CANCELLED" -> PaymentResult.failure(data.pgOrderId(), amount);
+            case "CANCELLED" -> PaymentResult.cancelled(data.paymentId(), data.pgOrderId(), amount);
+            case "FAILED" -> PaymentResult.failure(data.pgOrderId(), amount);
             case "READY", "CONFIRMING" -> PaymentResult.pending(data.pgOrderId(), amount);
             default -> PaymentResult.unknown(data.pgOrderId(), amount);
         };

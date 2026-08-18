@@ -6,7 +6,6 @@ import com.growmighty.lectures.firstday.order.application.dto.OrderLine;
 import com.growmighty.lectures.firstday.order.application.dto.OrderResult;
 import com.growmighty.lectures.firstday.order.application.dto.PlaceOrderCommand;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
-import com.growmighty.lectures.firstday.order.application.port.PaymentPort.CancellationResult;
 import com.growmighty.lectures.firstday.order.application.port.CartPort;
 import com.growmighty.lectures.firstday.order.application.port.RewardPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
@@ -46,9 +45,8 @@ public class OrderApiService {
     private final OrderCartHandler cartHandler;
     private final OrderPaidCompletionService paidCompletionService;
     private final OrderStockFailureCompletionService stockFailureCompletionService;
-    private final FundedAmountSynchronizationService fundedAmountSynchronizationService;
-    private final OrderCancellationPersistenceService cancellationPersistenceService;
-    private final OrderPaymentStatusOutboxRecoveryService paymentStatusRecoveryService;
+    private final OrderCancellationOrchestrationService cancellationOrchestrationService;
+    private final OrderCancellationCompletionService cancellationCompletionService;
 
     @Autowired
     public OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort,
@@ -56,9 +54,8 @@ public class OrderApiService {
                            OrderPaymentResultHandler paymentResultHandler, OrderCartHandler cartHandler,
                            OrderPaidCompletionService paidCompletionService,
                            OrderStockFailureCompletionService stockFailureCompletionService,
-                           FundedAmountSynchronizationService fundedAmountSynchronizationService,
-                           OrderCancellationPersistenceService cancellationPersistenceService,
-                           OrderPaymentStatusOutboxRecoveryService paymentStatusRecoveryService) {
+                           OrderCancellationOrchestrationService cancellationOrchestrationService,
+                           OrderCancellationCompletionService cancellationCompletionService) {
         this.orderRepository = orderRepository;
         this.rewardPort = rewardPort;
         this.paymentPort = paymentPort;
@@ -68,9 +65,8 @@ public class OrderApiService {
         this.cartHandler = cartHandler;
         this.paidCompletionService = paidCompletionService;
         this.stockFailureCompletionService = stockFailureCompletionService;
-        this.fundedAmountSynchronizationService = fundedAmountSynchronizationService;
-        this.cancellationPersistenceService = cancellationPersistenceService;
-        this.paymentStatusRecoveryService = paymentStatusRecoveryService;
+        this.cancellationOrchestrationService = cancellationOrchestrationService;
+        this.cancellationCompletionService = cancellationCompletionService;
     }
 
     OrderApiService(OrderRepository orderRepository, RewardPort rewardPort, PaymentPort paymentPort) {
@@ -83,9 +79,11 @@ public class OrderApiService {
         this.cartHandler = null;
         this.paidCompletionService = null;
         this.stockFailureCompletionService = null;
-        this.fundedAmountSynchronizationService = null;
-        this.cancellationPersistenceService = null;
-        this.paymentStatusRecoveryService = null;
+        OrderCancellationPersistenceService finalizer =
+                new OrderCancellationPersistenceService(orderRepository, null, stockHandler);
+        this.cancellationOrchestrationService = new OrderCancellationOrchestrationService(
+                orderRepository, paymentPort, remoteCalls, finalizer);
+        this.cancellationCompletionService = null;
     }
 
     /**
@@ -205,47 +203,16 @@ public class OrderApiService {
         validateRequesterId(requesterId);
         Order order = getOrderWithItems(orderId);
         verifyOwner(order, requesterId);
-        if (order.isCancelled()) {
-            throw new IllegalStateException("Order is already cancelled. orderId=" + orderId);
+        if (!order.isCancelled()) {
+            order.validateCancellationAllowed();
+            verifyCancellationAllowedByProject(order);
         }
-
-        order.validateCancellationAllowed();
-        verifyCancellationAllowedByProject(order);
-        PaymentResult payment = remoteCalls.execute("payment-get-by-order",
-                () -> paymentPort.getPaymentResult(order.getId()));
-        validatePaymentForCancellation(order, payment);
-        Long paymentId = payment.paymentId();
-        CancellationResult cancellation = remoteCalls.execute("payment-cancel",
-                () -> paymentPort.cancel(paymentId, order.getTotalAmount().getValue()));
-        if (cancellation == null || cancellation.status() != PaymentResult.Status.SUCCESS
-                || !paymentId.equals(cancellation.paymentId())
-                || !order.getId().equals(cancellation.orderId())) {
-            throw new IllegalStateException("Payment cancellation failed or pending. orderId=" + orderId);
-        }
-
-        stockHandler.releaseStock(order);
-        order.cancel();
+        Order cancelledOrder = cancellationOrchestrationService.cancel(orderId);
         log.info("order cancelled. orderId={}", orderId);
-        Order cancelledOrder = cancellationPersistenceService != null
-                ? cancellationPersistenceService.saveCancelledWithPaymentStatus(order)
-                : orderRepository.save(order);
-        if (paymentStatusRecoveryService != null) {
-            paymentStatusRecoveryService.publishImmediately(cancelledOrder.getId(), cancelledOrder.getStatus());
-        }
-        if (fundedAmountSynchronizationService != null) {
-            fundedAmountSynchronizationService.synchronize(cancelledOrder.getProjectId());
+        if (cancellationCompletionService != null) {
+            cancellationCompletionService.complete(cancelledOrder);
         }
         return OrderResult.from(cancelledOrder);
-    }
-
-    private void validatePaymentForCancellation(Order order, PaymentResult payment) {
-        if (payment == null || payment.status() != PaymentResult.Status.SUCCESS || payment.paymentId() == null) {
-            throw new IllegalStateException("Paid payment was not found for cancellation. orderId=" + order.getId());
-        }
-        if (payment.amount() == null
-                || order.getTotalAmount().getValue().compareTo(payment.amount()) != 0) {
-            throw new IllegalStateException("Payment amount mismatch. orderId=" + order.getId());
-        }
     }
 
     @Transactional(readOnly = true)

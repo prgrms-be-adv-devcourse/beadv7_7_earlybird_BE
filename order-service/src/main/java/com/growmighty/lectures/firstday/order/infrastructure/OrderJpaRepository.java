@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderItem;
 import com.growmighty.lectures.firstday.order.domain.OrderStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -20,6 +21,10 @@ public interface OrderJpaRepository extends JpaRepository<Order, Long> {
 
     @Query("select distinct o from Order o left join fetch o.items where o.id = :id")
     Optional<Order> findByIdWithItems(@Param("id") Long id);
+
+    @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select distinct o from Order o left join fetch o.items where o.id = :id")
+    Optional<Order> findByIdWithItemsForUpdate(@Param("id") Long id);
 
     @Query("select distinct o from Order o left join fetch o.items where o.userId = :userId and o.orderIdempotencyKey = :orderIdempotencyKey")
     Optional<Order> findByUserIdAndOrderIdempotencyKey(
