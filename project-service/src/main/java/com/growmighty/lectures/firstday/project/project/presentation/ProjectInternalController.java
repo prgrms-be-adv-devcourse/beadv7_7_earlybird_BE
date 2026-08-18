@@ -2,11 +2,16 @@ package com.growmighty.lectures.firstday.project.project.presentation;
 
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.project.domain.ProjectStatus;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.request.FundedAmountUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,5 +42,15 @@ public class ProjectInternalController {
     @GetMapping("/{projectId}/creator")
     public ProjectCreatorResponse getCreator(@PathVariable Long projectId) {
         return projectService.getCreator(projectId);
+    }
+
+    /**
+     * order-service가 결제 확정/취소 시 호출(push)한다 — 절대값 덮어쓰기라 멱등적.
+     * project-service의 주기적 pull(OrderPort.getFundedAmount)은 이 push가 유실됐을 때의 안전망이다.
+     */
+    @PutMapping("/{projectId}/funded-amount")
+    public ResponseEntity<Void> updateFundedAmount(@PathVariable Long projectId, @Valid @RequestBody FundedAmountUpdateRequest request) {
+        projectService.updateFundedAmount(projectId, request.fundedAmount());
+        return ResponseEntity.noContent().build();
     }
 }

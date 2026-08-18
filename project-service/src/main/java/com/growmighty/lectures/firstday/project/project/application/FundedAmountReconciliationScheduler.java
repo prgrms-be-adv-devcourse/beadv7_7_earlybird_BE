@@ -5,10 +5,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * IN_PROGRESS 프로젝트의 fundedAmount를 1분마다 order-service pull 조회로 보정한다.
- * push(주문 확정/취소 시 order-service가 직접 알려주는 방식)는 아직 order-service에 발신 코드가
- * 없어 만들지 않는다 — 이 스케줄러가 push 없이도 fundedAmount를 최신으로 유지하는 유일한 경로다
- * (docs/superpowers/specs/2026-07-28-funded-amount-pull-sync-design.md 참고).
+ * IN_PROGRESS 프로젝트의 fundedAmount를 order-service push(주문 확정/취소 시 즉시 반영)로
+ * 최신 상태를 유지한다. 이 스케줄러는 1시간마다 pull 조회로 재확인하는 백스톱이다 — push가
+ * 네트워크 오류 등으로 유실된 경우를 대비한 안전망이며, 평상시 실시간 반영은 push가 담당한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -16,7 +15,7 @@ public class FundedAmountReconciliationScheduler {
 
     private final ProjectService projectService;
 
-    @Scheduled(fixedRate = 60 * 1000)
+    @Scheduled(fixedDelayString = "${project.reconcile.scheduled-fixed-delay:3600000}")
     public void reconcile() {
         projectService.reconcileFundedAmounts();
     }

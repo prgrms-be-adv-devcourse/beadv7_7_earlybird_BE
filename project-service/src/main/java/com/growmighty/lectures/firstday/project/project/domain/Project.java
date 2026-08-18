@@ -58,8 +58,8 @@ public class Project {
     @Column(nullable = false)
     private BigDecimal goalAmount;
 
-    // updateFundedAmount()로 갱신된다 — project-service가 1분마다 order-service를 pull 조회해
-    // 이 값을 확정 누적 총액으로 덮어쓴다(FundedAmountReconciliationScheduler 참고).
+    // updateFundedAmount()로 갱신된다 — order-service가 결제 확정/취소 시 push로 즉시 갱신하고,
+    // 유실 대비 백스톱으로 1시간마다 pull 재확인한다(FundedAmountReconciliationScheduler 참고).
     @Column(nullable = false)
     private BigDecimal fundedAmount;
 
