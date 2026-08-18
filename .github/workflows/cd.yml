@@ -100,7 +100,11 @@ jobs:
           host: ${{ secrets.DATA_EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: '10m'
+          # rollout status 타임아웃을 5m→10m로 올린 만큼(#370) 여유를 둔다 - 13개 서비스가
+          # 거의 동시에 재시작해 순간적으로 노드 리소스 경합이 생겨도(memory request 상시 69%+),
+          # probe 실패로 재시작 몇 번 거치고 나면 결국 뜬다는 게 관찰된 패턴이라 실패 처리 대신
+          # 기다려주는 쪽으로 조정.
+          command_timeout: '20m'
           envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DEPLOY_SHA
           script: |
             set -e
@@ -145,7 +149,7 @@ jobs:
             # :latest 로 rollout restart 하는 대신 :SHA 태그로 set image - 이래야 kubectl rollout
             # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
             for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
-              kubectl -n webapp rollout status "deployment/$svc" --timeout=5m
+              kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
             done
 
   deploy:
