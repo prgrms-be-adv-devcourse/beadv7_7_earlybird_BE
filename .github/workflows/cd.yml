@@ -90,6 +90,8 @@ jobs:
           PAYMENT_SECURITY_ENCRYPTION_KEY: ${{ secrets.PAYMENT_SECURITY_ENCRYPTION_KEY }}
           PAYMENT_TOSS_SECRET_KEY: ${{ secrets.PAYMENT_TOSS_SECRET_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
         with:
           # 데이터 박스(k3s 컨트롤 플레인) - #198 핵심 3종(config/discovery/gateway-server)의
@@ -99,7 +101,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: '10m'
-          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,DEPLOY_SHA
+          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DEPLOY_SHA
           script: |
             set -e
             # ec2-user는 /etc/rancher/k3s/k3s.yaml을 직접 읽을 수 있어(644, k3s 기본 권한)
@@ -128,6 +130,13 @@ jobs:
               --dry-run=client -o yaml | kubectl apply -f -
             kubectl -n webapp create secret generic ai-openai \
               --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
+            # file-service presigned upload (#354) - 버킷/리전/CDN 도메인은 config-server의
+            # file-service.yml 기본값(earlybird-files/ap-northeast-2)이 그대로 맞으므로 여기서
+            # 오버라이드하지 않는다. 자격증명만 SDK 기본 체인이 읽는 환경변수로 주입.
+            kubectl -n webapp create secret generic file-service-s3 \
+              --from-literal=AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+              --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+              --dry-run=client -o yaml | kubectl apply -f -
             kubectl apply -f infrastructure/k8s/
             for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
               kubectl -n webapp set image "deployment/$svc" \
