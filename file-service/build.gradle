@@ -10,10 +10,22 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
+    // presigned upload URL 발급(S3Presigner) — 버전은 루트 build.gradle의 awssdk bom이 관리
+    implementation 'software.amazon.awssdk:s3'
+
+    // register 시 project-service의 GET /internal/v1/projects/{id}/creator를 호출해
+    // 프로젝트 소유권을 확인하는 데 필요 (Spring Cloud 추상화 + Resilience4j 구현체)
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+
+    // 소프트 딜리트(@SQLDelete/@SQLRestriction) 검증용 실제 MySQL 통합 테스트
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mysql'
 
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
