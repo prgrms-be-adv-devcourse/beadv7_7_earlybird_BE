@@ -154,4 +154,21 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     void autocomplete_blankKeyword_returnsEmptyWithoutCallingEs() {
         assertThat(adapter.autocomplete("   ")).isEmpty();
     }
+
+    @Test
+    @DisplayName("nori 사전에 없는 속어가 흔한 조사 음절로 쪼개져도, 그 음절 하나만 겹치는 무관한 문서는 안 나온다")
+    void search_oovSlangSplitIntoCommonParticle_doesNotMatchUnrelatedDocuments() {
+        // "냥이"는 nori 사전에 없어 ["냥", "이"]로 쪼개진다. "이"는 "장인이"/"입니다"처럼 거의 모든
+        // 자연스러운 한국어 문장에 등장하는 조사라, minimum_should_match 없이는 이 음절 하나만
+        // 겹쳐도 매치된다(2026-08-19 실측 확인된 버그, 동일한 문장으로 재현).
+        Project unrelated = Project.register(1L, null, "수제 가죽 노트커버", 1L,
+                "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.", "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        Project saved = projectRepository.save(unrelated);
+        savedProjectIds.add(saved.getProjectId());
+        adapter.index(saved);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(adapter.search("냥이")).doesNotContain(saved.getProjectId()));
+    }
 }

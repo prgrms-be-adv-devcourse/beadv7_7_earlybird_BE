@@ -42,6 +42,12 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final int MAX_RESULTS = 200;
     /** ES 후보 과다조회 한도 — 최종 10개 컷은 ProjectServiceImpl이 MySQL 가시성 필터링 후 수행한다. */
     private static final int AUTOCOMPLETE_CANDIDATE_LIMIT = 50;
+    /**
+     * 검색어 토큰이 2개 이하면 전부, 3개 이상이면 70%를 일치시켜야 match clause가 통과한다 — nori가
+     * 사전에 없는 속어를 음절 단위로 쪼갤 때(예: "냥이"→"냥"+"이") "이"처럼 흔한 조사 음절 하나만
+     * 겹쳐도 매치되는 것을 막는다. ES 공식 문서가 typo/부분 매치 튜닝용으로 권장하는 결합 스펙.
+     */
+    private static final String MATCH_MINIMUM_SHOULD_MATCH = "2<70%";
 
     private final ElasticsearchOperations elasticsearchOperations;
     private final CircuitBreakerFactory circuitBreakerFactory;
@@ -121,10 +127,10 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 vectorList.add(f);
             }
             query = Query.of(q -> q.bool(b -> b
-                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f)))
-                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f)))
+                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
 
-                    .should(s -> s.match(m -> m.field("description").query(keyword)))
+                    .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
                     .should(s -> s.knn(k -> k
                             .field("embedding")
                             .queryVector(vectorList)
@@ -134,9 +140,9 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                             .boost(10.0f)))));
         } else {
             query = Query.of(q -> q.bool(b -> b
-                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f)))
-                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f)))
-                    .should(s -> s.match(m -> m.field("description").query(keyword)))));
+                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                    .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
         }
 
         NativeQuery nativeQuery = NativeQuery.builder()
