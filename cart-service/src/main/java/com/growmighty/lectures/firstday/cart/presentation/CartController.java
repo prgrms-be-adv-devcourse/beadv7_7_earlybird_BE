@@ -22,55 +22,35 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/users/{userId}/cart")
+@RequestMapping("/api/v1/carts")
 public class CartController {
     private final CartService cartService;
 
     // TODO(예정): 권한 관련 설정, cart -> order 성공 시 해당 reward들 비우는 부분 추가
 
     @GetMapping
-    public CartResponse getCart(@PathVariable Long userId,
-                                @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                @RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
-        validateRequester(userId, requesterId);
+    public CartResponse getCart(@RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         return CartResponse.from(cartService.getCart(requesterId));
     }
 
     @PostMapping("/items")
-    public CartResponse addItems(@PathVariable Long userId,
-                                 @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                 @Valid @RequestBody AddCartItemsRequest request) {
-        validateRequester(userId, requesterId);
+    public CartResponse addItems(@RequestHeader(JwtHeaders.USER_ID) Long requesterId, @Valid @RequestBody AddCartItemsRequest request) {
         return CartResponse.from(cartService.addItems(request.toCommand(requesterId)));
     }
 
     @PatchMapping("/items")
-    public CartResponse updateItems(@PathVariable Long userId,
-                                    @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
-                                    @Valid @RequestBody UpdateCartItemsRequest request) {
-        validateRequester(userId, requesterId);
+    public CartResponse updateItems(@RequestHeader(JwtHeaders.USER_ID) Long requesterId, @Valid @RequestBody UpdateCartItemsRequest request) {
         return CartResponse.from(cartService.updateItems(request.toCommand(requesterId)));
     }
 
     @DeleteMapping("/items/{rewardId}")
-    public CartResponse removeItem(@PathVariable Long userId,
-                                   @PathVariable Long rewardId,
-                                   @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
-        validateRequester(userId, requesterId);
+    public CartResponse removeItem(@PathVariable Long rewardId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         return CartResponse.from(cartService.removeItem(requesterId, rewardId));
     }
 
     @DeleteMapping
-    public Void clear(@PathVariable Long userId,
-                      @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
-        validateRequester(userId, requesterId);
+    public Void clear(@RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
         cartService.clear(requesterId);
         return null;
-    }
-
-    private void validateRequester(Long userId, Long requesterId) {
-        if (!requesterId.equals(userId)) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "Cart access denied. userId=" + userId);
-        }
     }
 }
