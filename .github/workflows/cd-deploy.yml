@@ -1,83 +1,27 @@
-name: CD
+name: CD Deploy
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [CD Build]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '배포할 이미지 태그 (커밋 SHA, 또는 수동으로 push해둔 태그, 예: v0.0.1)'
+        required: true
+        default: 'latest'
 
 env:
-  # 하드코딩 - github.repository 는 실제 대소문자(...beadv7_7_earlybird_BE)를 그대로 담지만
-  # Docker/GHCR 이미지 이름은 소문자여야 한다 (FE deploy.yml 과 동일한 이유).
-  IMAGE_PREFIX: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be
-  # workflow_run 컨텍스트의 github.sha 는 이 CD 워크플로 자체가 default 브랜치에서 체크아웃한
-  # 커밋이지, CI 를 트리거한 커밋이 아니다 (흔한 함정). workflow_dispatch 에는 애초에
-  # event.workflow_run 이 없으므로 그때는 github.sha 로 폴백한다.
-  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  # workflow_dispatch로 수동 실행하면 입력한 태그를, CD Build 완료로 자동 실행되면 그
+  # 빌드가 만든 커밋 SHA 태그를 배포한다. 어느 쪽도 아니면(이론상 발생 안 함) latest로 폴백.
+  IMAGE_TAG: ${{ inputs.tag || github.event.workflow_run.head_sha || 'latest' }}
 
 jobs:
-  build:
-    name: build (${{ matrix.service }})
-    runs-on: ubuntu-latest
-    # workflow_run은 브랜치/결과와 무관하게 모든 CI 실행마다 발생하므로 여기서 게이팅한다:
-    # main 브랜치에서 실제로 성공한 CI 실행만 배포한다. workflow_dispatch는 연결된
-    # workflow_run 이벤트가 없으므로 이 조건을 완전히 우회한다.
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      matrix:
-        service:
-          - config-server
-          - discovery-server
-          - gateway-server
-          - order-service
-          - project-service
-          - payment-service
-          - user-service
-          - cart-service
-          - settlement-service
-          - file-service
-          - board-service
-          - notification-service
-          - ai-service
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.DEPLOY_SHA }}
-
-      # cache-from/cache-to: type=gha 를 쓰려면 기본 docker 드라이버가 아니라
-      # docker-container 드라이버가 필요하다.
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # 서비스 12개가 각자 다른 러너에서 병렬로 빌드되므로, EC2(2 vCPU) 한 대에서 buildx
-      # bake로 전부 동시에 빌드했다가 CPU 경합으로 sshd까지 응답 없어졌던 문제(CD #148)
-      # 자체가 사라진다. 모든 서비스가 동일한 루트 Dockerfile을 MODULE 인자만 바꿔 쓴다
-      # (infrastructure/docker-compose.yml의 x-build-defaults와 동일한 패턴).
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          build-args: MODULE=${{ matrix.service }}
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest
-            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ env.DEPLOY_SHA }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-
   deploy-k8s:
     name: deploy (k3s core three)
-    needs: build
     runs-on: ubuntu-latest
+    # workflow_run은 브랜치/결과와 무관하게 모든 CD Build 실행마다 발생하므로 여기서 게이팅한다:
+    # main 브랜치에서 실제로 성공한 빌드만 배포한다. workflow_dispatch는 연결된
+    # workflow_run 이벤트가 없으므로 이 조건을 완전히 우회한다.
     if: |
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
@@ -94,7 +38,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           DB_USERNAME: ${{ secrets.DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DEPLOY_SHA: ${{ env.DEPLOY_SHA }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
         with:
           # 데이터 박스(k3s 컨트롤 플레인) - #198 핵심 3종(config/discovery/gateway-server)의
           # 파드는 nodeSelector로 앱 박스에 고정돼 있지만, kubectl 은 항상 컨트롤 플레인에
@@ -107,7 +51,7 @@ jobs:
           # probe 실패로 재시작 몇 번 거치고 나면 결국 뜬다는 게 관찰된 패턴이라 실패 처리 대신
           # 기다려주는 쪽으로 조정.
           command_timeout: '20m'
-          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DB_USERNAME,DB_PASSWORD,DEPLOY_SHA
+          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DB_USERNAME,DB_PASSWORD,IMAGE_TAG
           script: |
             set -e
             # ec2-user는 /etc/rancher/k3s/k3s.yaml을 직접 읽을 수 있어(644, k3s 기본 권한)
@@ -154,9 +98,9 @@ jobs:
             kubectl apply -f infrastructure/k8s/
             for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
               kubectl -n webapp set image "deployment/$svc" \
-                "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$DEPLOY_SHA"
+                "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$IMAGE_TAG"
             done
-            # :latest 로 rollout restart 하는 대신 :SHA 태그로 set image - 이래야 kubectl rollout
+            # :latest 로 rollout restart 하는 대신 :태그 로 set image - 이래야 kubectl rollout
             # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
             for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
               kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
@@ -200,7 +144,7 @@ jobs:
             # 재태깅해 pull 직전 버전을 보존했지만(이미지 pull로 dangling <none>:<none>이
             # ~10GB 디스크를 조용히 먹은 적 있었음), 이제 이 박스가 pull하는 이미지는 kafka/
             # caddy/fe뿐이라 더 이상 필요 없다. business-service 롤백은 k8s
-            # `kubectl rollout undo`(deploy-k8s 잡의 :SHA 태그 기반)로 대체됨.
+            # `kubectl rollout undo`(deploy-k8s 잡의 태그 기반)로 대체됨.
             # -f infrastructure/docker-compose.prod.yml 은 공용 base 파일 위에 AWS 전용
             # 오버라이드(서비스별 image: 태그, gateway-server 호스트 포트 등)를 얹는다 - 이유는
             # 그 파일 참고. 로컬 개발에서는 이 옵션을 절대 넘기지 않으므로 영향 없음.
