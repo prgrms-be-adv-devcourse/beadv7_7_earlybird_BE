@@ -60,6 +60,11 @@ jobs:
             # .bash_profile의 KUBECONFIG 관례를 안 읽는다 - 여기서 명시한다.
             export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
             cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
+            # reset 전 커밋을 남겨둔다 - 이 박스의 HEAD가 곧 "마지막으로 배포된 커밋"이므로,
+            # 별도 상태 저장소 없이도 이걸 기준으로 이번에 실제 바뀐 서비스 모듈을 가려낼 수 있다
+            # (아래 #385 변경 감지). force-push로 main 히스토리가 재작성돼도(#387) diff 자체는
+            # 트리 내용 비교라 이 두 커밋 객체만 로컬에 남아있으면 문제없이 동작한다.
+            PREV_SHA=$(git rev-parse HEAD)
             git fetch origin && git reset --hard origin/main
             # user-service(발급)/gateway-server(검증) 둘 다 이제 이 Secret 하나를 같이 읽는다
             # (#198 batch 2로 user-service도 k8s로 옮겨오면서 앱 박스 .env와의 수동 동기화가
@@ -97,15 +102,39 @@ jobs:
               --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
               --dry-run=client -o yaml | kubectl apply -f -
             kubectl apply -f infrastructure/k8s/
-            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
-              kubectl -n webapp set image "deployment/$svc" \
-                "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$IMAGE_TAG"
-            done
             # :latest 로 rollout restart 하는 대신 :태그 로 set image - 이래야 kubectl rollout
             # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
-            for svc in config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service; do
-              kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
-            done
+            #
+            # #385: 매 배포마다 13개 서비스를 전부 재시작하면 리소스가 넉넉하지 않은 두 EC2에
+            # 불필요한 부하가 걸린다 - PREV_SHA..HEAD diff로 실제 경로가 바뀐 서비스만 골라
+            # 그 서비스만 set image/rollout 한다. common/(모든 서비스가 컴파일에 물고 들어가는
+            # 공유 모듈)이나 루트 빌드 설정이 바뀌면 diff 경로만으로는 영향 범위를 알 수 없으므로
+            # 안전하게 전체 재배포로 취급한다. 빌드(cd-build.yml)는 그대로 매번 13개 서비스
+            # 이미지를 전부 새로 태그해 두므로, 배포만 걸러도 태그 불일치 없이 안전하다.
+            ALL_SERVICES="config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service"
+            CHANGED_PATHS=$(git diff --name-only "$PREV_SHA" HEAD)
+            if [ -z "$CHANGED_PATHS" ]; then
+              CHANGED_SERVICES=""
+            elif echo "$CHANGED_PATHS" | grep -qE '^(common/|build\.gradle|settings\.gradle|gradlew|Dockerfile)'; then
+              CHANGED_SERVICES="$ALL_SERVICES"
+            else
+              CHANGED_SERVICES=""
+              for svc in $ALL_SERVICES; do
+                echo "$CHANGED_PATHS" | grep -q "^$svc/" && CHANGED_SERVICES="$CHANGED_SERVICES $svc"
+              done
+            fi
+            if [ -z "$CHANGED_SERVICES" ]; then
+              echo "변경된 서비스 모듈 없음 ($PREV_SHA..$(git rev-parse HEAD)) - k8s 배포 스킵"
+            else
+              echo "변경된 서비스만 배포:$CHANGED_SERVICES"
+              for svc in $CHANGED_SERVICES; do
+                kubectl -n webapp set image "deployment/$svc" \
+                  "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$IMAGE_TAG"
+              done
+              for svc in $CHANGED_SERVICES; do
+                kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
+              done
+            fi
 
   deploy:
     name: deploy
