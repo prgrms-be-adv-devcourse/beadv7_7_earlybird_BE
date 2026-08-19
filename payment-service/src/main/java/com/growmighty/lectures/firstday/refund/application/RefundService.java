@@ -57,7 +57,7 @@ public class RefundService {
         );
 
         refundRepository.save(refund);
-        recordBulkRefundResultIfCompleted(refund.getSettlementId());
+        recordBulkRefundResultIfCompleted(refund.getRefundRequestId());
     }
 
     private Payment findPaidPayment(Long paymentId) {
@@ -82,25 +82,25 @@ public class RefundService {
         paymentRepository.save(payment);
         savePaymentStatusOutboxIfAbsent(payment.getPaymentId(), payment.getOrderId(), payment.getPgOrderId(), payment.getStatus());
 
-        recordBulkRefundResultIfCompleted(refund.getSettlementId());
+        recordBulkRefundResultIfCompleted(refund.getRefundRequestId());
     }
 
-    private void recordBulkRefundResultIfCompleted(Long settlementId) {
-        if (settlementId == null
-            || refundRepository.existsInProgressBySettlementId(settlementId)
+    private void recordBulkRefundResultIfCompleted(Long refundRequestId) {
+        if (refundRequestId == null
+            || refundRepository.existsInProgressByRefundRequestId(refundRequestId)
         ) {
             return;
         }
 
         saveBulkRefundResultIfAbsent(
-            settlementId,
+            refundRequestId,
             BulkRefundResultStatus.COMPLETED,
-            refundRepository.existsCompletedBySettlementId(settlementId)
+            refundRepository.existsCompletedByRefundRequestId(refundRequestId)
         );
         saveBulkRefundResultIfAbsent(
-            settlementId,
+            refundRequestId,
             BulkRefundResultStatus.FAILED,
-            refundRepository.existsFailedBySettlementId(settlementId)
+            refundRepository.existsFailedByRefundRequestId(refundRequestId)
         );
     }
 
@@ -120,16 +120,16 @@ public class RefundService {
     }
 
     private void saveBulkRefundResultIfAbsent(
-        Long settlementId,
+        Long refundRequestId,
         BulkRefundResultStatus resultStatus,
         boolean resultExists
     ) {
-        if (!resultExists || bulkRefundResultOutboxRepository.existsBySettlementIdAndResultStatus(settlementId, resultStatus)) {
+        if (!resultExists || bulkRefundResultOutboxRepository.existsByRefundRequestIdAndResultStatus(refundRequestId, resultStatus)) {
             return;
         }
 
         bulkRefundResultOutboxRepository.save(
-            BulkRefundResultOutbox.pending(settlementId, resultStatus)
+            BulkRefundResultOutbox.pending(refundRequestId, resultStatus)
         );
     }
 
@@ -147,7 +147,7 @@ public class RefundService {
 
         if (refund.reconcileFailed()) {
             refundRepository.save(refund);
-            recordBulkRefundResultIfCompleted(refund.getSettlementId());
+            recordBulkRefundResultIfCompleted(refund.getRefundRequestId());
         }
     }
 

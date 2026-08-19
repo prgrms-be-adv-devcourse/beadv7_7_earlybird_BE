@@ -42,15 +42,15 @@ public class BulkRefundResultOutboxPublisher {
             return;
         }
 
-        Map<Long, List<BulkRefundOrder>> orderIdsBySettlementId =
-            refundRepository.findOrdersBySettlementIds(
+        Map<Long, List<BulkRefundOrder>> ordersByRefundRequestId =
+            refundRepository.findOrdersByRefundRequestIds(
                 outboxes.stream()
-                    .map(BulkRefundResultOutbox::getSettlementId)
+                    .map(BulkRefundResultOutbox::getRefundRequestId)
                     .toList()
-            ).stream().collect(Collectors.groupingBy(BulkRefundOrder::settlementId));
+            ).stream().collect(Collectors.groupingBy(BulkRefundOrder::refundRequestId));
 
         for (BulkRefundResultOutbox outbox : outboxes) {
-            List<Long> orderIds = orderIdsBySettlementId.getOrDefault(outbox.getSettlementId(), List.of())
+            List<Long> orderIds = ordersByRefundRequestId.getOrDefault(outbox.getRefundRequestId(), List.of())
                 .stream()
                 .filter(order -> hasSameResultStatus(
                     order.refundStatus(),
@@ -74,7 +74,7 @@ public class BulkRefundResultOutboxPublisher {
         try {
             kafkaTemplate.send(
                 KafkaTopics.PAYMENT_BULK_CANCEL_RESULT,
-                String.valueOf(outbox.getSettlementId()),
+                String.valueOf(outbox.getRefundRequestId()),
                 eventOf(outbox, orderIds)
             ).get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
@@ -82,10 +82,10 @@ public class BulkRefundResultOutboxPublisher {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             outbox.increaseRetryCount();
-            log.warn("일괄 취소 결과 kafka 발행이 인터럽트 되었습니다. settlementId = {}", outbox.getSettlementId(), exception);
+            log.warn("일괄 취소 결과 kafka 발행이 인터럽트 되었습니다. refundRequestId = {}", outbox.getRefundRequestId(), exception);
         } catch (ExecutionException | TimeoutException | RuntimeException exception) {
             outbox.increaseRetryCount();
-            log.warn("일괄 취소 결과 kafka 발행에 실패했습니다. settlementId = {}", outbox.getSettlementId(), exception);
+            log.warn("일괄 취소 결과 kafka 발행에 실패했습니다. refundRequestId = {}", outbox.getRefundRequestId(), exception);
         }
 
         bulkRefundResultOutboxRepository.save(outbox);
@@ -95,7 +95,7 @@ public class BulkRefundResultOutboxPublisher {
         return new ProjectRefundProcessedEvent(
             UUID.nameUUIDFromBytes(
                 ("ProjectRefundProcessed: "
-                    + outbox.getSettlementId()
+                    + outbox.getRefundRequestId()
                     + ":"
                     + outbox.getResultStatus().getCode())
                     .getBytes(StandardCharsets.UTF_8)
@@ -104,7 +104,7 @@ public class BulkRefundResultOutboxPublisher {
             SCHEMA_VERSION,
             OffsetDateTime.now(),
             new ProjectRefundProcessedEvent.Payload(
-                String.valueOf(outbox.getSettlementId()),
+                outbox.getRefundRequestId(),
                 orderIds,
                 outbox.getResultStatus().getCode()
             )

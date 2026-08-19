@@ -21,7 +21,7 @@ public class BulkRefundService {
     private final RefundRepository refundRepository;
 
     @Transactional
-    public void plan(Long settlementId, List<Long> orderIds, RefundReason reason) {
+    public void plan(Long refundRequestId, List<Long> orderIds, RefundReason reason) {
         List<Payment> payments = paymentRepository.findAllPaidByOrderIds(orderIds);
 
         if (payments.isEmpty()) {
@@ -38,14 +38,14 @@ public class BulkRefundService {
 
         payments.stream()
             .filter(payment -> !existingPaymentIds.contains(payment.getPaymentId()))
-            .forEach(payment -> registerPlannedRefund(payment, settlementId, reason));
+            .forEach(payment -> registerPlannedRefund(payment, refundRequestId, reason));
     }
 
-    private void registerPlannedRefund(Payment payment, Long settlementId, RefundReason reason) {
+    private void registerPlannedRefund(Payment payment, Long refundRequestId, RefundReason reason) {
         refundRepository.save(
             Refund.planned(
                 payment.getPaymentId(),
-                settlementId,
+                refundRequestId,
                 payment.getAmount(),
                 reason
             )

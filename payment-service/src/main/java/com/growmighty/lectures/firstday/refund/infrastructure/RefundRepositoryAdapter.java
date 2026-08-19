@@ -48,28 +48,28 @@ public class RefundRepositoryAdapter implements RefundRepository {
     }
 
     @Override
-    public boolean existsInProgressBySettlementId(Long settlementId) {
-        return jpaRepository.existsBySettlementIdAndStatusIn(
-            settlementId,
+    public boolean existsInProgressByRefundRequestId(Long refundRequestId) {
+        return jpaRepository.existsByRefundRequestIdAndStatusIn(
+            refundRequestId,
             List.of(RefundStatus.PLANNED, RefundStatus.REQUESTED, RefundStatus.RETRY_PENDING)
         );
     }
 
     @Override
-    public boolean existsFailedBySettlementId(Long settlementId) {
-        return jpaRepository.existsBySettlementIdAndStatusIn(
-            settlementId,
+    public boolean existsFailedByRefundRequestId(Long refundRequestId) {
+        return jpaRepository.existsByRefundRequestIdAndStatusIn(
+            refundRequestId,
             List.of(RefundStatus.FAILED)
         );
     }
 
     @Override
-    public boolean existsCompletedBySettlementId(Long settlementId) {
-        return jpaRepository.existsBySettlementIdAndStatusIn(settlementId, List.of(RefundStatus.COMPLETED));
+    public boolean existsCompletedByRefundRequestId(Long refundRequestId) {
+        return jpaRepository.existsByRefundRequestIdAndStatusIn(refundRequestId, List.of(RefundStatus.COMPLETED));
     }
 
     @Override
-    public List<BulkRefundOrder> findOrdersBySettlementIds(List<Long> settlementIds) {
-        return jpaRepository.findOrdersBySettlementIds(settlementIds);
+    public List<BulkRefundOrder> findOrdersByRefundRequestIds(List<Long> refundRequestIds) {
+        return jpaRepository.findOrdersByRefundRequestIds(refundRequestIds);
     }
 }

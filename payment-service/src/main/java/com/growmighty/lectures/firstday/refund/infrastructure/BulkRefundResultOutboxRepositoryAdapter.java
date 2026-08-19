@@ -22,8 +22,8 @@ public class BulkRefundResultOutboxRepositoryAdapter implements BulkRefundResult
     }
 
     @Override
-    public boolean existsBySettlementIdAndResultStatus(Long settlementId, BulkRefundResultStatus resultStatus) {
-        return jpaRepository.existsBySettlementIdAndResultStatus(settlementId, resultStatus);
+    public boolean existsByRefundRequestIdAndResultStatus(Long refundRequestId, BulkRefundResultStatus resultStatus) {
+        return jpaRepository.existsByRefundRequestIdAndResultStatus(refundRequestId, resultStatus);
     }
 
     @Override

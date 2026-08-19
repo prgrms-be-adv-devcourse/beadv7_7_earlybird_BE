@@ -17,7 +17,7 @@ public class PaymentKafkaListener {
     @KafkaListener(topics = KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND)
     public void onBulkCancelCommand(PaymentBulkCancelCommand command) {
         bulkRefundService.plan(
-            command.settlementId(),
+            command.refundRequestId(),
             command.orderIds(),
             RefundReason.fromCode(command.reason())
         );

@@ -60,26 +60,26 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
     @Query("""
       select count(refund) > 0
       from Refund refund
-      where refund.settlementId = :settlementId
+      where refund.refundRequestId = :refundRequestId
         and refund.status in :statuses
       """)
-    boolean existsBySettlementIdAndStatusIn(
-        @Param("settlementId") Long settlementId,
+    boolean existsByRefundRequestIdAndStatusIn(
+        @Param("refundRequestId") Long refundRequestId,
         @Param("statuses") List<RefundStatus> status
     );
 
     @Query("""
       select new com.growmighty.lectures.firstday.refund.domain.BulkRefundOrder(
-          refund.settlementId,
+          refund.refundRequestId,
           payment.orderId,
           refund.status
       )
       from Refund refund
       join Payment payment on payment.paymentId = refund.paymentId
-      where refund.settlementId in :settlementIds
-      order by refund.settlementId asc, refund.id asc
+      where refund.refundRequestId in :refundRequestIds
+      order by refund.refundRequestId asc, refund.id asc
     """)
-    List<BulkRefundOrder> findOrdersBySettlementIds(
-        @Param("settlementIds") List<Long> settlementIds
+    List<BulkRefundOrder> findOrdersByRefundRequestIds(
+        @Param("refundRequestIds") List<Long> refundRequestIds
     );
 }
