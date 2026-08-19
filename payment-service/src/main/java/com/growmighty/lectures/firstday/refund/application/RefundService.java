@@ -6,6 +6,7 @@ import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellatio
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import com.growmighty.lectures.firstday.refund.domain.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ public class RefundService {
     private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
     private final BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
     private final RefundRecoveryProperties refundRecoveryProperties;
+    private final ApplicationEventPublisher  applicationEventPublisher;
 
     @Transactional
     public RefundCancellationTarget startRefund(Long paymentId, RefundReason reason) {
@@ -109,7 +111,7 @@ public class RefundService {
             return;
         }
 
-        paymentStatusOutboxRepository.save(
+        PaymentStatusOutbox outbox = paymentStatusOutboxRepository.save(
             PaymentStatusOutbox.pending(
                 paymentId,
                 orderId,
@@ -117,6 +119,8 @@ public class RefundService {
                 status
             )
         );
+
+        applicationEventPublisher.publishEvent(outbox);
     }
 
     private void saveBulkRefundResultIfAbsent(
