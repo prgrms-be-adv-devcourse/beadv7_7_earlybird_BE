@@ -80,7 +80,7 @@ class RewardConcurrencyIntegrationTest extends MySqlIntegrationTestSupport {
 
         int creatorThreads = 5;
         int backerThreads = 5;
-        RewardUpdateRequest increaseByOne = new RewardUpdateRequest(null, null, null, null, 1);
+        RewardUpdateRequest increaseByOne = new RewardUpdateRequest(null, null, null, null, false, 1);
         List<Runnable> tasks = new java.util.ArrayList<>();
         for (int i = 0; i < creatorThreads; i++) {
             tasks.add(() -> rewardService.update(rewardId, 1L, increaseByOne));

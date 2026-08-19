@@ -82,7 +82,7 @@ public class RewardServiceImpl implements RewardService {
         }
         if (project.isPresent() && project.get().published()) {
             if (request.name() != null || request.description() != null
-                    || request.price() != null || request.totalQuantity() != null) {
+                    || request.price() != null || request.totalQuantity() != null || request.clearTotalQuantity()) {
                 throw new IllegalArgumentException("공개된 프로젝트의 리워드는 수량 추가(increaseQuantity)만 가능합니다.");
             }
             if (request.increaseQuantity() == null) {
@@ -93,7 +93,8 @@ public class RewardServiceImpl implements RewardService {
             if (request.increaseQuantity() != null) {
                 throw new IllegalArgumentException("공개 전에는 increaseQuantity 대신 totalQuantity로 수량을 직접 지정해주세요.");
             }
-            reward.updateBeforePublish(request.name(), request.description(), request.price(), request.totalQuantity());
+            reward.updateBeforePublish(request.name(), request.description(), request.price(),
+                request.totalQuantity(), request.clearTotalQuantity());
         }
         return RewardResponse.from(reward);
     }
