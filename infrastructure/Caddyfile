@@ -12,6 +12,13 @@ earlybird-team5.duckdns.org {
 		reverse_proxy 10.0.0.81:8000
 	}
 
+	# Swagger UI/API docs 라우트(gateway-server.yml)는 /api가 아니라 서비스명 프리픽스로 시작한다
+	# (예: /user-service/swagger-ui.html) - #211
+	@swagger path /*/v3/api-docs /*/v3/api-docs/** /*/swagger-ui.html /*/swagger-ui/**
+	handle @swagger {
+		reverse_proxy 10.0.0.81:8000
+	}
+
 	handle {
 		reverse_proxy fe:80
 	}
