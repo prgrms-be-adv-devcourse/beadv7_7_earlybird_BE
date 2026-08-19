@@ -125,10 +125,39 @@ kNN을 통해 여전히 검색 결과에 남아있었고, 이게 원인이었다
 `embedding` 컬럼을 null로 초기화하고 `/api/v1/projects/reindex`로 재생성해서 검증함(서킷브레이커
 시간제한 때문에 3~6개씩 배치로 나눠 처리). 배포 환경에도 같은 마이그레이션(전체 재색인) 필요.
 
-## 개선 방안 (검토 필요)
+## 개선 방안 및 최종 구현 내용 (2026-08-19 완료)
 
-TODO
+### 1. RRF(Reciprocal Rank Fusion) 하이브리드 검색 도입
+- **배경 및 한계:** 기존 `bool.should` 방식은 BM25 키워드 점수($0 \sim 20+$)와 kNN 코사인 유사도($0 \sim 1.0$)에 임의의 `boost(10.0f)`를 곱해 단순 합산하던 방식으로, 점수 스케일이 불일치하는 근본적 문제가 있었다.
+- **해결:** Elasticsearch 9.x 네이티브 `retriever: { rrf: { ... } }` 구문 적용.
+  - BM25 `standard` 리트리버와 kNN 리트리버의 순위를 각각 매긴 후 $\frac{1}{60 + \text{rank}}$ 공식으로 결합.
+  - `title^2.0`, `summary^1.2` 필드 가중치는 BM25 내부에서 유지.
+  - `rank_constant = 60`, `rank_window_size = 200` (`MAX_RESULTS` 매칭) 설정.
+
+### 2. RRF 기반 `minScore(0.005)` 적용
+- **원리:** RRF 점수는 $0 \sim \approx 0.033$ 범위로 정규화되므로, 고정된 `minScore(0.005)`는 "양쪽 모두에서 일정 순위 밖으로 밀려난 노이즈 문서"를 안전하게 걸러내는 Deterministic Rank Cutoff로 작동한다.
+- `minimum_should_match("2<70%")`(형태소 어휘 레벨 필터링)와 상호보완적으로 동작.
+
+### 3. kNN `similarity(0.78f)` 하한 제거 및 후보군 확대 (`k=20`)
+- **원인:** `text-embedding-3-small`은 의미적 연관 문서("향기" ↔ "캔들/비누")의 코사인 유사도가 $0.3 \sim 0.5$대에 분포하므로, 구형 `ada-002` 기준의 `0.78` 문턱에 걸려 kNN 결과가 전부 탈락하던 문제 발생.
+- **해결:** kNN 쿼리에서 인위적인 `similarity` 하한을 제거하고 후보군을 `k(20)`으로 확장하여 RRF 순위 결합에 정상 진입하도록 개선.
+
+### 4. Nori 사용자 사전(`userdict_ko.txt`) 및 동의어 사전(`synonym.txt`) 연동
+- OOV 속어("냥이", "댕댕이", "공청기" 등) 및 외래어("디퓨저", "인센스")를 단일 명사 토큰으로 인식시키는 사용자 사전 등록.
+- 서비스 핵심 카테고리(반려동물, 전자기기, 패션, 도서, 향기/생활공예) 유의어 사전을 ES `korean_synonym` 필터로 색인/검색에 반영.
+
+### 5. 키워드 검색 시 ES 관련도순(Relevance) 정렬 유지
+- `ProjectServiceImpl.findAll()`에서 키워드 검색 시 명시적 `sort`가 주어지지 않으면 기본 최신순 대신 ES가 매긴 관련도 순위를 그대로 유지하도록 보정.
 
 ## 결정 사항
 
-TODO
+| 항목 | 최종 결정 | 구현 파일 |
+|---|---|---|
+| 하이브리드 결합 방식 | **RRF (Reciprocal Rank Fusion)** 전환 (`rank_constant=60`, `rank_window=200`) | `ProjectSearchAdapter.java` |
+| 스코어 하한선 | **`minScore(0.005)`** 적용 (RRF 정규화 점수 기준) | `ProjectSearchAdapter.java` |
+| 형태소 토큰 일치율 | **`minimum_should_match="2<70%"`** 유지 | `ProjectSearchAdapter.java` |
+| kNN 파라미터 | **`similarity` 하한 제거, `k=20`, `numCandidates=100`** | `ProjectSearchAdapter.java` |
+| 사전 관리 | **`userdict_ko.txt` + `synonym.txt`** Dockerfile & 인덱스 설정 연동 | `infrastructure/elasticsearch/analysis/` |
+| 정렬 기준 | **키워드 검색 기본 정렬 = ES 관련도순** | `ProjectServiceImpl.java` |
+| 임베딩 모델 | **`text-embedding-3-small`** 명시 | config repo `project-service.yml` |
+
