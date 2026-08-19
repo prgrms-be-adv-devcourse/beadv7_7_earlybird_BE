@@ -4,27 +4,28 @@ on:
     workflows: [CD Build]
     types: [completed]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: '배포할 이미지 태그 (커밋 SHA, 또는 수동으로 push해둔 태그, 예: v0.0.1)'
-        required: true
-        default: 'latest'
 
 env:
-  # workflow_dispatch로 수동 실행하면 입력한 태그를, CD Build 완료로 자동 실행되면 그
-  # 빌드가 만든 커밋 SHA 태그를 배포한다. 어느 쪽도 아니면(이론상 발생 안 함) latest로 폴백.
-  IMAGE_TAG: ${{ inputs.tag || github.event.workflow_run.head_sha || 'latest' }}
+  # workflow_dispatch를 GitHub UI에서 실행할 때 "Use workflow from"에 브랜치 대신 태그
+  # (예: v0.0.1)를 고르면 그 커밋이 github.sha가 된다 - cd-build.yml이 이미 그 커밋 SHA로
+  # 이미지를 태그해뒀다는 전제로 그대로 재사용한다. CD Build 완료로 자동 실행될 때는 그
+  # 빌드가 만든 커밋 SHA를 쓴다.
+  IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   deploy-k8s:
     name: deploy (k3s core three)
     runs-on: ubuntu-latest
-    # workflow_run은 브랜치/결과와 무관하게 모든 CD Build 실행마다 발생하므로 여기서 게이팅한다:
-    # main 브랜치에서 실제로 성공한 빌드만 배포한다. workflow_dispatch는 연결된
-    # workflow_run 이벤트가 없으므로 이 조건을 완전히 우회한다.
+    # workflow_run은 결과와 무관하게 모든 CD Build 실행마다 발생하므로 여기서 게이팅한다:
+    # 성공한 빌드만 배포한다. main 브랜치 여부는 CD Build 자신의 if(CI의 head_branch 기준,
+    # 신뢰 가능)에서 이미 걸렀으므로 여기서 다시 확인하지 않는다 - main과 develop이 같은
+    # 커밋을 가리키는 시점에는(#387, force-push로 main을 develop에 맞춤) 이 워크플로 자신의
+    # workflow_run.head_branch가 "main" 대신 "develop"으로 보고돼(체이닝된 workflow_run
+    # 특유의 흔한 함정) 여기서 다시 검사하면 배포가 조용히 skip된다. workflow_dispatch는
+    # 연결된 workflow_run 이벤트가 없으므로 이 조건을 완전히 우회한다.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: appleboy/ssh-action@v1
         env:
@@ -110,9 +111,10 @@ jobs:
     name: deploy
     needs: deploy-k8s
     runs-on: ubuntu-latest
+    # deploy-k8s와 동일한 이유로 head_branch는 재확인하지 않는다 (위 주석 참고).
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: appleboy/ssh-action@v1
         env:
