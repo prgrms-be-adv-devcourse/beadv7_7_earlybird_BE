@@ -46,7 +46,7 @@ public class PaymentStatusOutboxDispatchService {
         try {
             dispatch(outbox);
         } catch (RuntimeException exception) {
-            log.warn("상태 통지 즉시 발행에 실패했습니다. outboxId ={}", outbox.getId(), exception);
+            log.warn("상태 통지 즉시 발행에 실패했습니다. outboxId ={}, retryCount={}", outbox.getId(), outbox.getRetryCount(), exception);
         }
     }
 }
