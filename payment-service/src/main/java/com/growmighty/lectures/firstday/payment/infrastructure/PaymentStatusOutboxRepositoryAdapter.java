@@ -8,7 +8,9 @@ import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxStatus
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -35,4 +37,23 @@ public class PaymentStatusOutboxRepositoryAdapter implements PaymentStatusOutbox
         );
     }
 
+    @Transactional
+    @Override
+    public boolean claimPending(Long outboxId) {
+        return jpaRepository.claimPending(
+            outboxId,
+            PaymentStatusOutboxStatus.PENDING,
+            PaymentStatusOutboxStatus.PROCESSING
+        ) == 1;
+    }
+
+    @Transactional
+    @Override
+    public int recoverStaleProcessing(LocalDateTime cutoff) {
+        return jpaRepository.recoverStaleProcessing(
+            cutoff,
+            PaymentStatusOutboxStatus.PROCESSING,
+            PaymentStatusOutboxStatus.PENDING
+        );
+    }
 }

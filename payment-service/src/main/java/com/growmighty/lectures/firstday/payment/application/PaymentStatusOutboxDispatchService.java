@@ -22,6 +22,10 @@ public class PaymentStatusOutboxDispatchService {
 
 
     public void dispatch(PaymentStatusOutbox outbox) {
+        if (!paymentStatusOutboxRepository.claimPending(outbox.getId())) {
+            return;
+        }
+
         try {
             paymentSingleResultEventPublisher.publish(
                 new PaymentSingleResultEvent(

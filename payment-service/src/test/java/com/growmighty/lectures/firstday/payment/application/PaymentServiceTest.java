@@ -252,6 +252,16 @@ class PaymentServiceTest {
                 .limit(limit)
                 .toList();
         }
+
+        @Override
+        public boolean claimPending(Long outboxId) {
+            return false;
+        }
+
+        @Override
+        public int recoverStaleProcessing(LocalDateTime cutoff) {
+            return 0;
+        }
     }
 
     private static final class InMemoryPaymentRepository implements PaymentRepository {

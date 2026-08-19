@@ -6,16 +6,17 @@ import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxStatus;
 import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.PaymentSingleResultEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentStatusOutboxDispatchServiceTest {
@@ -32,6 +33,11 @@ class PaymentStatusOutboxDispatchServiceTest {
 
     @InjectMocks
     private PaymentStatusOutboxDispatchService paymentStatusOutboxDispatchService;
+
+    @BeforeEach
+    void setUp() {
+        when(paymentStatusOutboxRepository.claimPending(1L)).thenReturn(true);
+    }
 
     @Test
     void Kafka_발행에_성공하면_Outbox를_전송_완료로_저장한다() {
@@ -77,7 +83,21 @@ class PaymentStatusOutboxDispatchServiceTest {
         assertThat(outbox.getRetryCount()).isEqualTo(1);
     }
 
+    @Test
+    void 이미_다른_처리자가_선점한_Outbox는_Kafka를_발행하지_않는다() {
+        PaymentStatusOutbox outbox = pendingOutbox();
+        when(paymentStatusOutboxRepository.claimPending(1L)).thenReturn(false);
+
+        paymentStatusOutboxDispatchService.dispatch(outbox);
+
+        verifyNoInteractions(paymentSingleResultEventPublisher);
+        verify(paymentStatusOutboxRepository, never()).save(any());
+        assertThat(outbox.getStatus()).isEqualTo(PaymentStatusOutboxStatus.PENDING);
+    }
+
     private PaymentStatusOutbox pendingOutbox() {
-        return PaymentStatusOutbox.pending(PAYMENT_ID, ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID); // <--
+        PaymentStatusOutbox outbox = PaymentStatusOutbox.pending(PAYMENT_ID, ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID); // <--
+        ReflectionTestUtils.setField(outbox, "id", 1L);
+        return outbox;
     }
 }
