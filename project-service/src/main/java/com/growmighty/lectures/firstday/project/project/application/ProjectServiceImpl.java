@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.project.project.application;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
@@ -66,6 +67,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final OrderPort orderPort;
     private final ProjectSearchPort searchPort;
     private final ApplicationEventPublisher eventPublisher;
+    private final FilePort filePort;
 
     @Override
     @Transactional
@@ -193,6 +195,7 @@ public class ProjectServiceImpl implements ProjectService {
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
         searchPort.remove(projectId);
+        filePort.deleteProjectFiles(projectId);
     }
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))

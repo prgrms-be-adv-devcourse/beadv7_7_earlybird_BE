@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
@@ -37,6 +38,7 @@ class ProjectServiceImplDeleteTest {
     private final OrderPort orderPort = mock(OrderPort.class);
     private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final FilePort filePort = mock(FilePort.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
@@ -50,7 +52,7 @@ class ProjectServiceImplDeleteTest {
     void setUp() {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
-                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher);
+                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, filePort);
         when(selfProvider.getObject()).thenReturn(projectService);
 
         project = Project.register(1L, null, "title", 1L, "summary", "desc",
@@ -68,6 +70,7 @@ class ProjectServiceImplDeleteTest {
 
         verify(rewardService).deleteAllByProject(1L);
         verify(projectRepository).delete(project);
+        verify(filePort).deleteProjectFiles(1L);
     }
 
     @Test
@@ -80,6 +83,7 @@ class ProjectServiceImplDeleteTest {
 
         verify(rewardService, never()).deleteAllByProject(anyLong());
         verify(projectRepository, never()).delete(any(Project.class));
+        verify(filePort, never()).deleteProjectFiles(anyLong());
     }
 
     @Test
@@ -94,5 +98,6 @@ class ProjectServiceImplDeleteTest {
 
         verify(rewardService, never()).deleteAllByProject(anyLong());
         verify(projectRepository, never()).delete(any(Project.class));
+        verify(filePort, never()).deleteProjectFiles(anyLong());
     }
 }
