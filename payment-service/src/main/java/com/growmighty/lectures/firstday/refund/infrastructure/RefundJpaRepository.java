@@ -56,16 +56,9 @@ public interface RefundJpaRepository extends JpaRepository<Refund, Long> {
         Pageable pageable
     );
 
-
-    @Query("""
-      select count(refund) > 0
-      from Refund refund
-      where refund.refundRequestId = :refundRequestId
-        and refund.status in :statuses
-      """)
     boolean existsByRefundRequestIdAndStatusIn(
-        @Param("refundRequestId") Long refundRequestId,
-        @Param("statuses") List<RefundStatus> status
+        Long refundRequestId,
+        List<RefundStatus> statuses
     );
 
     @Query("""
