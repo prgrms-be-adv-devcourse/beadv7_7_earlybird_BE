@@ -236,6 +236,11 @@ jobs:
     # `kubectl rollout undo`만 존재, deploy job 주석 참고), 이 잡 하나를 위해 새로 만들 정도로
     # #157 범위가 넓지 않다. 대신 잡을 실패시켜 Actions 탭에 빨간불로 남긴다 - 사람이 보고
     # 필요하면 수동으로 rollout undo하는 흐름.
+    #
+    # #410이 머지되기 전까지는 이 잡이 placeOrder 스텝에서 계속 빨간불이다 - cart-service가
+    # 게이트웨이 경유로 도달 불가능해(CartController 경로가 gateway cart-route와 어긋남)
+    # addToCart가 항상 실패하고, 그 뒤 주문 생성도 "Order Cart is empty"로 막힌다. #154/#155와
+    # 같은 성격의 활성화 전제 조건 - #410 머지 후 이 잡이 실제로 통과하는지 재확인할 것.
     steps:
       - uses: actions/checkout@v4
         with:
