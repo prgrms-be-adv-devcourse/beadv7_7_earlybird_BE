@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -19,6 +20,10 @@ public class PaymentStatusOutboxBatchService {
     private final PaymentStatusOutboxDispatchService  paymentStatusOutboxDispatchService;
 
     public void dispatchPendingOutboxes() {
+        paymentStatusOutboxRepository.recoverStaleProcessing(
+            LocalDateTime.now().minusMinutes(5)
+        );
+
         List<PaymentStatusOutbox> outboxes = paymentStatusOutboxRepository.findPending(BATCH_SIZE);
 
         for (PaymentStatusOutbox outbox : outboxes) {
