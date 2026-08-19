@@ -16,6 +16,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProjectSearchHttpClient implements ProjectSearchPort {
 
+    private static final int RECOMMENDATION_LIMIT = 3;
+
     private final ProjectSearchFeignClient projectSearchFeignClient;
     private final CircuitBreakerFactory circuitBreakerFactory;
 
@@ -34,7 +36,10 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
 
     private List<ProjectSearchResult> fetch(String keyword, Long categoryId, String status, String sort) {
         List<ProjectSearchApiData> data = projectSearchFeignClient.search(keyword,categoryId,status,sort).data();
-        return data.stream().map(this::toResult).toList();
+        return data.stream()
+            .limit(RECOMMENDATION_LIMIT)
+            .map(this::toResult)
+            .toList();
     }
 
     private ProjectSearchResult toResult(ProjectSearchApiData data) {

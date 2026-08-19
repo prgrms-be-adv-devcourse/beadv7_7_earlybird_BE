@@ -26,6 +26,9 @@ public class ProjectSearchTool {
         @ToolParam(description = "정렬 기준", required = false)
         ProjectSearchSort sort
     ) {
+        if (keyword == null || keyword.isBlank()) {
+            throw new IllegalArgumentException("keyword는 비어 있을 수 없습니다.");
+        }
         return projectSearchPort.search(
             keyword,
             categoryId,
