@@ -6,6 +6,8 @@ import com.growmighty.lectures.firstday.refund.application.exception.RefundGatew
 import com.growmighty.lectures.firstday.refund.application.exception.RefundGatewayFailureType;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.ratelimiter.RateLimiter;
+import io.github.resilience4j.ratelimiter.RateLimiterConfig;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +17,31 @@ import java.time.Duration;
 
 @Configuration
 public class PaymentApprovalResilienceConfig {
+
+    @Bean
+    public RateLimiter paymentApprovalRateLimiter() {
+        return createRateLimiter("paymentApprovalRateLimiter");
+    }
+
+    @Bean
+    public RateLimiter paymentLookupRateLimiter() {
+        return createRateLimiter("paymentLookupRateLimiter");
+    }
+
+    @Bean
+    public RateLimiter paymentRefundRateLimiter() {
+        return createRateLimiter("paymentRefundRateLimiter");
+    }
+
+    private RateLimiter createRateLimiter(String name) {
+        RateLimiterConfig rateLimiterConfig = RateLimiterConfig.custom()
+            .limitForPeriod(1)
+            .limitRefreshPeriod(Duration.ofMillis(750))
+            .timeoutDuration(Duration.ZERO)
+            .build();
+
+        return RateLimiter.of(name, rateLimiterConfig);
+    }
 
     @Bean
     public Retry paymentApprovalRetry() {

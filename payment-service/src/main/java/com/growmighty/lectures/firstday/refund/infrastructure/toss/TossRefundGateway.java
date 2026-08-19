@@ -11,6 +11,8 @@ import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import com.growmighty.lectures.firstday.refund.infrastructure.dto.TossCancelRequest;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.RateLimiter;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import io.github.resilience4j.retry.Retry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -34,6 +36,7 @@ public class TossRefundGateway implements RefundGateway {
     private final ObjectMapper objectMapper;
     private final Retry paymentRefundRetry;
     private final CircuitBreaker paymentRefundCircuitBreaker;
+    private final RateLimiter paymentRefundRateLimiter;
 
     @Override
     public void refund(String paymentKey, RefundReason reason, String idempotencyKey) {
@@ -42,9 +45,14 @@ public class TossRefundGateway implements RefundGateway {
             return null;
         };
 
+        Supplier<Void> rateLimitedSupplier = RateLimiter.decorateSupplier(
+            paymentRefundRateLimiter,
+            refundSupplier
+        );
+
         Supplier<Void> retrySupplier = Retry.decorateSupplier(
             paymentRefundRetry,
-            refundSupplier
+            rateLimitedSupplier
         );
 
         Supplier<Void> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(
@@ -54,6 +62,12 @@ public class TossRefundGateway implements RefundGateway {
 
         try {
             circuitBreakerSupplier.get();
+        } catch (RequestNotPermitted exception) {
+            throw new RefundGatewayException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                RefundGatewayFailureType.UNCERTAIN,
+                "토스 환불 요청 한도를 초과했습니다. 잠시 후 재시도합니다."
+            );
         } catch (CallNotPermittedException exception) {
             throw new RefundGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
