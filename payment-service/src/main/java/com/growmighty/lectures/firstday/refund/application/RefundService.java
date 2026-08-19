@@ -4,9 +4,7 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.domain.*;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
-import com.growmighty.lectures.firstday.refund.domain.Refund;
-import com.growmighty.lectures.firstday.refund.domain.RefundReason;
-import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
+import com.growmighty.lectures.firstday.refund.domain.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +17,7 @@ public class RefundService {
     private final PaymentRepository  paymentRepository;
     private final RefundRepository refundRepository;
     private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
+    private final BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
     private final RefundRecoveryProperties refundRecoveryProperties;
 
     @Transactional
@@ -58,6 +57,7 @@ public class RefundService {
         );
 
         refundRepository.save(refund);
+        recordBulkRefundResultIfCompleted(refund.getSettlementId());
     }
 
     private Payment findPaidPayment(Long paymentId) {
@@ -81,6 +81,27 @@ public class RefundService {
         refundRepository.save(refund);
         paymentRepository.save(payment);
         savePaymentStatusOutboxIfAbsent(payment.getPaymentId(), payment.getOrderId(), payment.getPgOrderId(), payment.getStatus());
+
+        recordBulkRefundResultIfCompleted(refund.getSettlementId());
+    }
+
+    private void recordBulkRefundResultIfCompleted(Long settlementId) {
+        if (settlementId == null
+            || refundRepository.existsInProgressBySettlementId(settlementId)
+        ) {
+            return;
+        }
+
+        saveBulkRefundResultIfAbsent(
+            settlementId,
+            BulkRefundResultStatus.COMPLETED,
+            refundRepository.existsCompletedBySettlementId(settlementId)
+        );
+        saveBulkRefundResultIfAbsent(
+            settlementId,
+            BulkRefundResultStatus.FAILED,
+            refundRepository.existsFailedBySettlementId(settlementId)
+        );
     }
 
     private void savePaymentStatusOutboxIfAbsent(Long paymentId, Long orderId, String pgOrderId, PaymentStatus status) {
@@ -98,6 +119,20 @@ public class RefundService {
         );
     }
 
+    private void saveBulkRefundResultIfAbsent(
+        Long settlementId,
+        BulkRefundResultStatus resultStatus,
+        boolean resultExists
+    ) {
+        if (!resultExists || bulkRefundResultOutboxRepository.existsBySettlementIdAndResultStatus(settlementId, resultStatus)) {
+            return;
+        }
+
+        bulkRefundResultOutboxRepository.save(
+            BulkRefundResultOutbox.pending(settlementId, resultStatus)
+        );
+    }
+
     private Payment findPayment(Long paymentId) {
         return paymentRepository.findById(paymentId).orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId = " + paymentId));
     }
@@ -112,6 +147,7 @@ public class RefundService {
 
         if (refund.reconcileFailed()) {
             refundRepository.save(refund);
+            recordBulkRefundResultIfCompleted(refund.getSettlementId());
         }
     }
 

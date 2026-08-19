@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.refund.infrastructure;
 
+import com.growmighty.lectures.firstday.refund.domain.BulkRefundOrder;
 import com.growmighty.lectures.firstday.refund.domain.Refund;
 import com.growmighty.lectures.firstday.refund.domain.RefundRepository;
 import com.growmighty.lectures.firstday.refund.domain.RefundStatus;
@@ -44,5 +45,31 @@ public class RefundRepositoryAdapter implements RefundRepository {
             now,
             PageRequest.of(0,1)
         ).stream().findFirst();
+    }
+
+    @Override
+    public boolean existsInProgressBySettlementId(Long settlementId) {
+        return jpaRepository.existsBySettlementIdAndStatusIn(
+            settlementId,
+            List.of(RefundStatus.PLANNED, RefundStatus.REQUESTED, RefundStatus.RETRY_PENDING)
+        );
+    }
+
+    @Override
+    public boolean existsFailedBySettlementId(Long settlementId) {
+        return jpaRepository.existsBySettlementIdAndStatusIn(
+            settlementId,
+            List.of(RefundStatus.FAILED)
+        );
+    }
+
+    @Override
+    public boolean existsCompletedBySettlementId(Long settlementId) {
+        return jpaRepository.existsBySettlementIdAndStatusIn(settlementId, List.of(RefundStatus.COMPLETED));
+    }
+
+    @Override
+    public List<BulkRefundOrder> findOrdersBySettlementIds(List<Long> settlementIds) {
+        return jpaRepository.findOrdersBySettlementIds(settlementIds);
     }
 }

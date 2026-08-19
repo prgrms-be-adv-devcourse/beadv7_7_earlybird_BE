@@ -14,4 +14,13 @@ public interface RefundRepository {
     List<Long> findExistingPaymentIds(List<Long> paymentIds);
 
     Optional<Long> findNextCancelableRefundId(LocalDateTime now);
+
+    boolean existsInProgressBySettlementId(Long settlementId);
+
+    boolean existsFailedBySettlementId(Long settlementId);
+
+    boolean existsCompletedBySettlementId(Long settlementId);
+
+    List<BulkRefundOrder> findOrdersBySettlementIds(List<Long> settlementIds);
+
 }
