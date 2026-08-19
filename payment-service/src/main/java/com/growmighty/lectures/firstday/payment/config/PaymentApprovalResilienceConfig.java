@@ -19,14 +19,28 @@ import java.time.Duration;
 public class PaymentApprovalResilienceConfig {
 
     @Bean
-    public RateLimiter tossApiRateLimiter() {
+    public RateLimiter paymentApprovalRateLimiter() {
+        return createRateLimiter("paymentApprovalRateLimiter");
+    }
+
+    @Bean
+    public RateLimiter paymentLookupRateLimiter() {
+        return createRateLimiter("paymentLookupRateLimiter");
+    }
+
+    @Bean
+    public RateLimiter paymentRefundRateLimiter() {
+        return createRateLimiter("paymentRefundRateLimiter");
+    }
+
+    public RateLimiter createRateLimiter(String name) {
         RateLimiterConfig rateLimiterConfig = RateLimiterConfig.custom()
             .limitForPeriod(1)
             .limitRefreshPeriod(Duration.ofMillis(750))
             .timeoutDuration(Duration.ZERO)
             .build();
 
-        return RateLimiter.of("tossApiRateLimiter", rateLimiterConfig);
+        return RateLimiter.of(name, rateLimiterConfig);
     }
 
     @Bean
