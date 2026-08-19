@@ -274,7 +274,10 @@ services:
     # 서비스 값을 전부 손으로 재계산할 필요가 없다. (다른 비즈니스 서비스들도 동일 근거로 서비스별
     # mem_limit/percentage 를 반복한다.)
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # 로컬 docker compose 전용 오버라이드(docker-local) - #256으로 docker 프로파일이 2번째
+      # EC2(10.0.0.243)를 가리키게 되면서 로컬 mysql 컨테이너로는 연결이 안 됐다. docker-local
+      # 은 config 레포의 <service>-docker-local.yml 로 datasource.url 만 mysql:3306 으로 덮어쓴다.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       # DB_USERNAME/DB_PASSWORD - PAYMENT_SECURITY_ENCRYPTION_KEY와 같은 이유로 기본값을 안 준다(#164) -
       # config repo도 더 이상 기본값이 없으므로, 로컬 mysql 서비스(위 블록)의 MYSQL_USER/MYSQL_PASSWORD와
       # 같은 값을 infrastructure/.env 에 직접 채워야 한다 (.env.example 참고).
@@ -299,7 +302,8 @@ services:
     # OPENAI_API_KEY 는 ai-service 와 동일하게 전달 — 없으면 임베딩 생성이 조용히 실패하고
     # 키워드 매치로만 폴백된다(ProjectEmbeddingService).
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
@@ -323,7 +327,8 @@ services:
     # 프로퍼티가 "존재하되 빈 문자열"인 경우엔 적용되지 않아서, .env 에 값이 없을 때 그냥 ${VAR:-} 로
     # 두면 빈 문자열이 주입되어 FakePaymentGateway/TossPaymentGateway 둘 다 안 만들어지고 기동이 깨진다.
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
@@ -349,7 +354,8 @@ services:
     # SPRING_PROFILES_ACTIVE 를 그대로 반복하고 JWT_SECRET 만 추가한다.
     # JWT 발급 키 — gateway-server 와 반드시 같은 값이어야 한다 (#164).
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
@@ -373,7 +379,8 @@ services:
     # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
     # 오늘 docker stats 실측 504.5MiB * 1.3 여유 → 672m 로 반올림.
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
@@ -393,7 +400,8 @@ services:
     # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
     # 오늘 docker stats 실측 407.3MiB * 1.3 여유 → 544m 로 반올림.
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
@@ -413,7 +421,8 @@ services:
     # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
     # 오늘 docker stats 실측 418.2MiB * 1.3 여유 → 544m 로 반올림.
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
@@ -433,7 +442,8 @@ services:
     # SPRING_PROFILES_ACTIVE 를 그대로 반복하고 GMAIL_* 만 추가한다.
     # 값이 없으면(로컬 .env 미설정) 빈 문자열로 들어가고, board-service.yml 의 ":" 기본값이 마저 받아준다.
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       # service-defaults 의 environment 를 통째로 덮어쓰므로 JAVA_TOOL_OPTIONS 도 그대로 반복한다 -
@@ -458,7 +468,8 @@ services:
     # 를 그대로 반복한다 - mem_limit/JAVA_TOOL_OPTIONS 값 근거는 order-service 주석 참고 (#272).
     # 오늘 docker stats 실측 421.8MiB * 1.3 여유 → 576m 로 반올림.
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # docker-local 근거는 order-service 주석 참고.
+      SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
