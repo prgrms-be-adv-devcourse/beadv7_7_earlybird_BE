@@ -115,6 +115,15 @@ services:
       # 토픽은 kafka-topics-init(다음 단계)으로만 만든다 — 앱/CLI가 즉석에서 만들어버리면
       # 파티션 수 등 설정이 서비스마다 제각각으로 드리프트될 수 있어 명시적으로 막는다.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # #414: kafka/kafka-ui만 #272 mem_limit 패턴에서 빠져있어 계속 자라다 앱 박스 전체 여유를
+      # 갉아먹고, 넘는 순간 커널 OOM killer가 이 컨테이너가 아니라 임의의 다른 프로세스(k8s 파드)를
+      # 죽이는 사고(2026-08-19)로 이어졌다. apache/kafka 이미지는 Spring 서비스들과 달리
+      # MaxRAMPercentage 를 안 쓰고(JAVA_TOOL_OPTIONS 무관) kafka-run-class.sh 가 KAFKA_HEAP_OPTS
+      # 미지정 시 컨테이너 크기와 무관하게 -Xmx1G 로 고정하므로, 힙도 같이 명시해야 mem_limit 안에서
+      # 실제로 의미가 있다.
+      KAFKA_HEAP_OPTS: -Xms384m -Xmx768m
+    # 오늘 docker stats 실측 849.7MiB * 1.3 여유 → 32MiB 단위로 반올림해 1120m (#272 패턴).
+    mem_limit: 1120m
     ports:
       - "9092:9092"
       - "9094:9094"
@@ -135,6 +144,12 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       # 컴포즈 네트워크 안에서 접속하니 INTERNAL 리스너(29092)를 쓴다 — 호스트용 EXTERNAL(9092)이 아님.
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      # #414: kafka와 같은 이유로 mem_limit 추가 (다른 12개 서비스와 동일한 #272 패턴). 이 이미지는
+      # 엔트리포인트가 셸 폼(`java ... $JAVA_OPTS -jar api.jar`)이라 표준 JAVA_TOOL_OPTIONS 대신
+      # 이미지가 직접 참조하는 JAVA_OPTS 를 쓴다.
+      JAVA_OPTS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
+    # 오늘 docker stats 실측 340.6MiB * 1.3 여유 → 448m 로 반올림 (#272 패턴).
+    mem_limit: 448m
     ports:
       - "8989:8080"
     depends_on:
