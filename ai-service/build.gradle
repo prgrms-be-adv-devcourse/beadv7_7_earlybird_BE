@@ -32,5 +32,11 @@ dependencies {
     // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
+    // 정책 문서 검색(dense_vector kNN) — project-service와 동일 스타터, 프레임워크 기본 통합만 사용.
+    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+
+    // 실제 ES(로컬 infrastructure/elasticsearch/Dockerfile과 동일 이미지)로 색인/검색 검증.
+    testImplementation 'org.testcontainers:elasticsearch'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 }

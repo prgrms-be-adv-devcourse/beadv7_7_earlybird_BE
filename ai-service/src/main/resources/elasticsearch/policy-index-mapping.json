@@ -1,0 +1,24 @@
+{
+  "properties": {
+    "chunkId": {
+      "type": "keyword"
+    },
+    "category": {
+      "type": "keyword"
+    },
+    "topic": {
+      "type": "text",
+      "analyzer": "korean"
+    },
+    "content": {
+      "type": "text",
+      "analyzer": "korean"
+    },
+    "embedding": {
+      "type": "dense_vector",
+      "dims": 1536,
+      "index": true,
+      "similarity": "cosine"
+    }
+  }
+}
