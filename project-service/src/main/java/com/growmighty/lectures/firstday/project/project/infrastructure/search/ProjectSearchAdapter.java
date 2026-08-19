@@ -47,8 +47,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final String INDEX_NAME = "projects";
     private static final int DEFAULT_EMBEDDING_DIMENSION = 1536;
     private static final int MAX_RESULTS = 200;
-    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.35 미만 무관 벡터 제외) */
-    private static final float KNN_SIMILARITY_THRESHOLD = 0.35f;
+    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.45 미만 무관 벡터 제외) */
+    private static final float KNN_SIMILARITY_THRESHOLD = 0.45f;
     private static final int RRF_RANK_CONSTANT = 60;
     /** RRF 스코어 하한: 1/(60+rank) 결합 점수 기준 하위 노이즈 문서 필터링 */
     private static final double RRF_MIN_SCORE = 0.005;
