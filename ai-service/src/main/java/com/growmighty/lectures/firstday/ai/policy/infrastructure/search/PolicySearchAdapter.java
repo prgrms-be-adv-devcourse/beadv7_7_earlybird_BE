@@ -9,12 +9,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.DeleteQuery;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -97,10 +100,32 @@ public class PolicySearchAdapter implements PolicySearchPort {
     }
 
     private void doReindexAll(List<PolicyDocument> documents) {
-        elasticsearchOperations.delete(
-            DeleteQuery.builder(org.springframework.data.elasticsearch.core.query.Query.findAll()).build(),
-            PolicyDocument.class);
+        Set<String> staleIds = fetchAllIds();
         elasticsearchOperations.save(documents);
+
+        Set<String> newIds = documents.stream()
+            .map(PolicyDocument::chunkId)
+            .collect(Collectors.toSet());
+        staleIds.removeAll(newIds);
+
+        if (!staleIds.isEmpty()) {
+            NativeQuery deleteQuery = NativeQuery.builder()
+                .withQuery(Query.of(q -> q.ids(i -> i.values(new ArrayList<>(staleIds)))))
+                .build();
+            elasticsearchOperations.delete(
+                DeleteQuery.builder(deleteQuery).build(),
+                PolicyDocument.class);
+        }
+    }
+
+    private Set<String> fetchAllIds() {
+        NativeQuery matchAllQuery = NativeQuery.builder()
+            .withQuery(Query.of(q -> q.matchAll(m -> m)))
+            .build();
+        SearchHits<PolicyDocument> hits = elasticsearchOperations.search(matchAllQuery, PolicyDocument.class);
+        return hits.stream()
+            .map(SearchHit::getId)
+            .collect(Collectors.toSet());
     }
 
     private Void reindexFallback(Throwable cause) {
