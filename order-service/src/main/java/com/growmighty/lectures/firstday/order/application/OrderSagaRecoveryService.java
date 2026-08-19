@@ -124,7 +124,8 @@ public class OrderSagaRecoveryService {
             }
             return;
         } catch (RuntimeException failure) {
-            if (remoteCalls.isTechnical(failure)) {
+            if (remoteCalls.classifyPaymentFailure(failure)
+                    == OrderRemoteCallExecutor.PaymentFailureOutcome.AMBIGUOUS) {
                 paymentOrder.markPaymentPending();
             } else {
                 paymentResultHandler.compensatePaymentFailure(paymentOrder);
