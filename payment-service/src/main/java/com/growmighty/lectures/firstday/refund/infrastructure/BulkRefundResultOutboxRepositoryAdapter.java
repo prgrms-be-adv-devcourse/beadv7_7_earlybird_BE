@@ -21,13 +21,18 @@ public class BulkRefundResultOutboxRepositoryAdapter implements BulkRefundResult
         return jpaRepository.save(outbox);
     }
 
-    @Override
-    public boolean existsByRefundRequestIdAndResultStatus(Long refundRequestId, BulkRefundResultStatus resultStatus) {
-        return jpaRepository.existsByRefundRequestIdAndResultStatus(refundRequestId, resultStatus);
-    }
+
 
     @Override
     public List<BulkRefundResultOutbox> findPending(int limit) {
         return jpaRepository.findByOutboxStatusOrderById(BulkRefundResultOutboxStatus.PENDING, PageRequest.of(0, limit));
+    }
+
+    @Override
+    public void insertIfAbsent(Long refundRequestId, BulkRefundResultStatus resultStatus) {
+        jpaRepository.insertIfAbsent(
+            refundRequestId,
+            resultStatus.getCode()
+        );
     }
 }
