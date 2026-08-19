@@ -31,6 +31,9 @@ public class PolicySearchTool {
             "GENERAL: 얼리버드가 어떤 플랫폼인지, All-or-Nothing 펀딩 방식, 수수료 정책 등 특정 도메인 서비스에 속하지 않는 일반 소개", required = false)
         PolicyCategory category
     ) {
+        if (query == null || query.isBlank()) {
+            throw new IllegalArgumentException("query는 비어 있을 수 없습니다.");
+        }
         return policySearchPort.search(query, category);
     }
 }
