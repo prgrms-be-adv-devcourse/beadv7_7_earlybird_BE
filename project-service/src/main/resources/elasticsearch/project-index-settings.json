@@ -1,10 +1,23 @@
 {
   "index": {
     "analysis": {
+      "tokenizer": {
+        "nori_user_dict": {
+          "type": "nori_tokenizer",
+          "user_dictionary": "analysis/userdict_ko.txt"
+        }
+      },
+      "filter": {
+        "korean_synonym": {
+          "type": "synonym",
+          "synonyms_path": "analysis/synonym.txt"
+        }
+      },
       "analyzer": {
         "korean": {
           "type": "custom",
-          "tokenizer": "nori_tokenizer"
+          "tokenizer": "nori_user_dict",
+          "filter": ["korean_synonym"]
         }
       }
     }

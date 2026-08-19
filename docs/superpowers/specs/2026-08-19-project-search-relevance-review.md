@@ -76,6 +76,13 @@ kNN 의미 검색 하나에만 의존한다. 문제는 이게 사전처럼 결�
 
 **결정(2026-08-19): 별도 동의어 사전 안 만듦.** OpenAI 임베딩(kNN 의미 검색)으로 계속 대응.
 
+**추가 실측 (2026-08-19, 아래 6번 모델 교체 이후):** 임베딩 모델을 `text-embedding-3-small`로
+바꾼 뒤 "냥이"↔"고양이 자동 급식기" 실제 코사인 유사도를 직접 재보니 **0.208**로, 0.78 문턱에
+한참 못 미친다. 즉 모델을 제대로 된 것으로 바꿔도 "냥이"는 여전히 "고양이"를 못 찾는다 — 이
+문서에 적어둔 "임베딩이 속어를 확률적으로 잡아줄 것"이라는 기대는 이 케이스에서 틀렸다. 다만
+무관한 문서가 뜨는 것보다는(false positive) 아무것도 안 뜨는 게(false negative) 훨씬 안전하므로,
+3번 결정 자체를 뒤집을지는 별도 판단 필요.
+
 ### 4. 테스트 커버리지 공백
 
 `ProjectSearchAdapterIntegrationTest.index_then_search_findsByKeyword`(같은 이름의 테스트 파일)는
@@ -97,6 +104,26 @@ project-service의 `@Scheduled` 잡은 `FundedAmountReconciliationScheduler`/`Pr
 
 **결정(2026-08-19): 대응 안 함.** 수동 벌크 재색인 경로가 이미 있고 발생 빈도도 낮아 자동 재시도
 스케줄러까지는 우선순위 낮다고 판단.
+
+### 6. 임베딩 모델 미지정 → 구형 text-embedding-ada-002 기본값 사용, 유사도 문턱 무력화
+
+`project-service.yml`이 `spring.ai.openai.embedding.options.model`을 명시하지 않아서 Spring AI
+(`spring-ai-openai:2.0.0`)의 `OpenAiEmbeddingOptions.DEFAULT_EMBEDDING_MODEL`(디컴파일로 확인:
+`EmbeddingModel.TEXT_EMBEDDING_ADA_002`)이 그대로 쓰이고 있었다. `text-embedding-ada-002`는
+짧고 무관한 텍스트끼리도 코사인 유사도가 0.7~0.9대로 뭉치는 걸로 잘 알려진 구형 모델이라,
+`ProjectSearchAdapter`의 kNN 유사도 하한(0.78)이 사실상 필터링 기능을 못 했다.
+
+**실측:** "냥이"와 완전 무관한 텍스트("강대혁 커피 마시는 영상" + 의미없는 자모 나열) 간 코사인
+유사도가 ada-002로는 **0.823**(문턱 통과) — 실제로 1번 문제의 minimum_should_match 수정을
+적용한 뒤에도 무관한 프로젝트(`ㅇㅇ`, `테스트3`, `강대혁 테스트`, `강대혁 커피 마시는 영상`)가
+kNN을 통해 여전히 검색 결과에 남아있었고, 이게 원인이었다. `text-embedding-3-small`(같은
+1536차원)로는 같은 텍스트 쌍 유사도가 **0.208**로 정상적으로 낮게 나온다.
+
+**조치 (2026-08-19, 완료):** `beadv7_7_earlybird_config`의 `project-service.yml`에
+`spring.ai.openai.embedding.options.model: text-embedding-3-small` 명시(커밋 `fd7ffa1`).
+기존에 저장된 임베딩(ada-002 기반)은 새 모델과 비교 불가능해서, 로컬에서 전체 프로젝트의
+`embedding` 컬럼을 null로 초기화하고 `/api/v1/projects/reindex`로 재생성해서 검증함(서킷브레이커
+시간제한 때문에 3~6개씩 배치로 나눠 처리). 배포 환경에도 같은 마이그레이션(전체 재색인) 필요.
 
 ## 개선 방안 (검토 필요)
 
