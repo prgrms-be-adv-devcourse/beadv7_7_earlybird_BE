@@ -1,6 +1,10 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.RRFRetrieverEntry;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
@@ -15,6 +19,8 @@ import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -38,8 +44,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProjectSearchAdapter implements ProjectSearchPort {
 
+    private static final String INDEX_NAME = "projects";
     private static final int DEFAULT_EMBEDDING_DIMENSION = 1536;
     private static final int MAX_RESULTS = 200;
+    private static final float KNN_SIMILARITY_THRESHOLD = 0.78f;
+    private static final int RRF_RANK_CONSTANT = 60;
+    /** RRF 스코어 하한: 1/(60+rank) 결합 점수 기준 하위 노이즈 문서 필터링 */
+    private static final double RRF_MIN_SCORE = 0.005;
     /** ES 후보 과다조회 한도 — 최종 10개 컷은 ProjectServiceImpl이 MySQL 가시성 필터링 후 수행한다. */
     private static final int AUTOCOMPLETE_CANDIDATE_LIMIT = 50;
     /**
@@ -50,6 +61,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final String MATCH_MINIMUM_SHOULD_MATCH = "2<70%";
 
     private final ElasticsearchOperations elasticsearchOperations;
+    private final ElasticsearchClient elasticsearchClient;
     private final CircuitBreakerFactory circuitBreakerFactory;
     private final ApplicationEventPublisher eventPublisher;
     private final ProjectEmbeddingService embeddingService;
@@ -120,37 +132,58 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
     private List<Long> doSearch(String keyword) {
         float[] queryVector = embeddingService.generateEmbedding(keyword);
-        Query query;
+        Query keywordQuery = Query.of(q -> q.bool(b -> b
+                .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
+
         if (queryVector != null && queryVector.length > 0) {
             List<Float> vectorList = new ArrayList<>(queryVector.length);
             for (float f : queryVector) {
                 vectorList.add(f);
             }
-            query = Query.of(q -> q.bool(b -> b
-                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+            SearchResponse<ProjectDocument> response;
+            try {
+                response = elasticsearchClient.search(s -> s
+                                .index(INDEX_NAME)
+                                .size(MAX_RESULTS)
+                                .minScore(RRF_MIN_SCORE)
+                                .retriever(r -> r.rrf(rrf -> rrf
+                                        .retrievers(
+                                                RRFRetrieverEntry.of(e -> e.retriever(r1 -> r1.standard(st -> st.query(keywordQuery)))),
+                                                RRFRetrieverEntry.of(e -> e.retriever(r2 -> r2.knn(knn -> knn
+                                                        .field("embedding")
+                                                        .queryVector(vectorList)
+                                                        .k(10)
+                                                        .numCandidates(100)
+                                                        .similarity(KNN_SIMILARITY_THRESHOLD)
+                                                )))
+                                        )
+                                        .rankConstant(RRF_RANK_CONSTANT)
+                                        .rankWindowSize(MAX_RESULTS)
+                                )),
+                        ProjectDocument.class
+                );
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
 
-                    .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                    .should(s -> s.knn(k -> k
-                            .field("embedding")
-                            .queryVector(vectorList)
-                            .k(10)
-                            .numCandidates(100)
-                            .similarity(0.78f)
-                            .boost(10.0f)))));
+            if (response == null || response.hits() == null || response.hits().hits() == null) {
+                return List.of();
+            }
+            return response.hits().hits().stream()
+                    .map(Hit::source)
+                    .filter(doc -> doc != null && doc.projectId() != null)
+                    .map(ProjectDocument::projectId)
+                    .toList();
         } else {
-            query = Query.of(q -> q.bool(b -> b
-                    .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                    .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                    .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
+            NativeQuery nativeQuery = NativeQuery.builder()
+                    .withQuery(keywordQuery)
+                    .withMaxResults(MAX_RESULTS)
+                    .build();
+            SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
+            return hits.stream().map(hit -> hit.getContent().projectId()).toList();
         }
-
-        NativeQuery nativeQuery = NativeQuery.builder()
-                .withQuery(query)
-                .withMaxResults(MAX_RESULTS)
-                .build();
-        SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
-        return hits.stream().map(hit -> hit.getContent().projectId()).toList();
     }
 
     /**

@@ -171,4 +171,22 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertThat(adapter.search("냥이")).doesNotContain(saved.getProjectId()));
     }
+
+    @Test
+    @DisplayName("RRF 하이브리드 검색: 키워드 매치 프로젝트가 정상적으로 검색된다")
+    void search_rrfHybrid_findsMatchingProjects() {
+        Project matching1 = savedProject("인공지능 로봇 청소기 펀딩");
+        Project matching2 = savedProject("초경량 무선 청소기 개발");
+        Project other = savedProject("유기농 수제 쿠키 세트");
+
+        adapter.index(matching1);
+        adapter.index(matching2);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Long> result = adapter.search("청소기");
+            assertThat(result).contains(matching1.getProjectId(), matching2.getProjectId());
+            assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
 }
