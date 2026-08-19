@@ -1,15 +1,13 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
-import com.growmighty.lectures.firstday.payment.domain.Payment;
-import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
+import com.growmighty.lectures.firstday.payment.domain.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -34,6 +32,9 @@ class PaymentConfirmationServiceReconcileTest {
     @Mock
     private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
 
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
+
     @InjectMocks
     private PaymentConfirmationService paymentConfirmationService;
 
@@ -42,12 +43,14 @@ class PaymentConfirmationServiceReconcileTest {
         Payment payment = confirmingPayment();
         when(paymentRepository.findByPgOrderId(payment.getPgOrderId())).thenReturn(Optional.of(payment));
         when(paymentRepository.save(payment)).thenReturn(payment);
+        when(paymentStatusOutboxRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0)); // <-- JPA 저장 결과 모사
 
         paymentConfirmationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.COMPLETED));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         verify(paymentRepository).save(payment);
         verify(paymentStatusOutboxRepository).save(any());
+        verify(applicationEventPublisher).publishEvent(any(PaymentStatusOutbox.class));
     }
 
     @Test
@@ -77,6 +80,7 @@ class PaymentConfirmationServiceReconcileTest {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         verify(paymentStatusOutboxRepository).existsByPaymentIdAndPaymentStatus(any(), eq(PaymentStatus.PAID));
         verify(paymentStatusOutboxRepository, never()).save(any());
+        verifyNoInteractions(applicationEventPublisher);
     }
 
     @Test

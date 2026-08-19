@@ -9,6 +9,7 @@ import com.growmighty.lectures.firstday.payment.domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -35,10 +36,12 @@ class PaymentServiceTest {
         paymentRepository = new InMemoryPaymentRepository();
         paymentStatusOutboxRepository = new InMemoryPaymentStatusOutboxRepository();
         paymentGateway = new RecordingPaymentGateway();
+        ApplicationEventPublisher applicationEventPublisher = event -> { };
         PaymentConfirmationService paymentConfirmationService = new PaymentConfirmationService( // <-- SAGA 상태 전이 의존성 구성
             paymentRepository,
             paymentStatusOutboxRepository,
-            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10))
+            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10)),
+            applicationEventPublisher // <-- 즉시 발행 리스너는 단위 테스트에서 미구성
         );
         paymentService = new PaymentService(
             paymentRepository,

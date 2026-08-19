@@ -62,6 +62,21 @@ class PaymentStatusOutboxDispatchServiceTest {
         assertThat(outbox.getRetryCount()).isEqualTo(1);
     }
 
+    // 추가 : 즉시 발행 실패가 결제 완료 요청에 영향을 주지 않는지 검증
+    @Test
+    void 커밋_후_즉시_발행에_실패하면_예외를_전파하지_않고_재시도_횟수를_증가시킨다() {
+        PaymentStatusOutbox outbox = pendingOutbox();
+        doThrow(new IllegalStateException("Kafka 발행 실패"))
+            .when(paymentSingleResultEventPublisher)
+            .publish(new PaymentSingleResultEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
+
+        paymentStatusOutboxDispatchService.dispatchAfterCommit(outbox);
+
+        verify(paymentStatusOutboxRepository).save(outbox);
+        assertThat(outbox.getStatus()).isEqualTo(PaymentStatusOutboxStatus.PENDING);
+        assertThat(outbox.getRetryCount()).isEqualTo(1);
+    }
+
     private PaymentStatusOutbox pendingOutbox() {
         return PaymentStatusOutbox.pending(PAYMENT_ID, ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID); // <--
     }

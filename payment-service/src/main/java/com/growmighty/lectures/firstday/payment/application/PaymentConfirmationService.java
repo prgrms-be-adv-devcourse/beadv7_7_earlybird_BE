@@ -11,6 +11,7 @@ import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +31,7 @@ public class PaymentConfirmationService {
     private final PaymentRepository paymentRepository;
     private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
     private final PaymentRecoveryProperties paymentRecoveryProperties;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     /**
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
@@ -173,7 +175,7 @@ public class PaymentConfirmationService {
             return;
         }
 
-        paymentStatusOutboxRepository.save(
+        PaymentStatusOutbox outbox = paymentStatusOutboxRepository.save(
             PaymentStatusOutbox.pending(
                 payment.getPaymentId(),
                 payment.getOrderId(),
@@ -181,6 +183,8 @@ public class PaymentConfirmationService {
                 payment.getStatus()
             )
         );
+
+        applicationEventPublisher.publishEvent(outbox);
     }
 
     private Payment findPayment(Long paymentId) {
