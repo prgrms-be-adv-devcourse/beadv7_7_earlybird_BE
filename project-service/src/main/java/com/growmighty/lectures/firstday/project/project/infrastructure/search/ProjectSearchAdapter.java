@@ -47,17 +47,13 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final String INDEX_NAME = "projects";
     private static final int DEFAULT_EMBEDDING_DIMENSION = 1536;
     private static final int MAX_RESULTS = 200;
+    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.35 미만 무관 벡터 제외) */
+    private static final float KNN_SIMILARITY_THRESHOLD = 0.35f;
     private static final int RRF_RANK_CONSTANT = 60;
     /** RRF 스코어 하한: 1/(60+rank) 결합 점수 기준 하위 노이즈 문서 필터링 */
     private static final double RRF_MIN_SCORE = 0.005;
     /** ES 후보 과다조회 한도 — 최종 10개 컷은 ProjectServiceImpl이 MySQL 가시성 필터링 후 수행한다. */
     private static final int AUTOCOMPLETE_CANDIDATE_LIMIT = 50;
-    /**
-     * 검색어 토큰이 2개 이하면 전부, 3개 이상이면 70%를 일치시켜야 match clause가 통과한다 — nori가
-     * 사전에 없는 속어를 음절 단위로 쪼갤 때(예: "냥이"→"냥"+"이") "이"처럼 흔한 조사 음절 하나만
-     * 겹쳐도 매치되는 것을 막는다. ES 공식 문서가 typo/부분 매치 튜닝용으로 권장하는 결합 스펙.
-     */
-    private static final String MATCH_MINIMUM_SHOULD_MATCH = "2<70%";
 
     private final ElasticsearchOperations elasticsearchOperations;
     private final ElasticsearchClient elasticsearchClient;
@@ -132,9 +128,9 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private List<Long> doSearch(String keyword) {
         float[] queryVector = embeddingService.generateEmbedding(keyword);
         Query keywordQuery = Query.of(q -> q.bool(b -> b
-                .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
+                .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f)))
+                .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f)))
+                .should(s -> s.match(m -> m.field("description").query(keyword)))));
 
         if (queryVector != null && queryVector.length > 0) {
             List<Float> vectorList = new ArrayList<>(queryVector.length);
@@ -155,6 +151,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                                                         .queryVector(vectorList)
                                                         .k(20)
                                                         .numCandidates(100)
+                                                        .similarity(KNN_SIMILARITY_THRESHOLD)
                                                 )))
                                         )
                                         .rankConstant(RRF_RANK_CONSTANT)
