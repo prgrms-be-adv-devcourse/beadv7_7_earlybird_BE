@@ -47,7 +47,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final String INDEX_NAME = "projects";
     private static final int DEFAULT_EMBEDDING_DIMENSION = 1536;
     private static final int MAX_RESULTS = 200;
-    private static final float KNN_SIMILARITY_THRESHOLD = 0.78f;
     private static final int RRF_RANK_CONSTANT = 60;
     /** RRF 스코어 하한: 1/(60+rank) 결합 점수 기준 하위 노이즈 문서 필터링 */
     private static final double RRF_MIN_SCORE = 0.005;
@@ -154,9 +153,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                                                 RRFRetrieverEntry.of(e -> e.retriever(r2 -> r2.knn(knn -> knn
                                                         .field("embedding")
                                                         .queryVector(vectorList)
-                                                        .k(10)
+                                                        .k(20)
                                                         .numCandidates(100)
-                                                        .similarity(KNN_SIMILARITY_THRESHOLD)
                                                 )))
                                         )
                                         .rankConstant(RRF_RANK_CONSTANT)
