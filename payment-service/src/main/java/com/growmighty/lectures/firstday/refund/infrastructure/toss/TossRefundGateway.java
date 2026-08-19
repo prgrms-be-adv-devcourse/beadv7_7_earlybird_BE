@@ -36,7 +36,7 @@ public class TossRefundGateway implements RefundGateway {
     private final ObjectMapper objectMapper;
     private final Retry paymentRefundRetry;
     private final CircuitBreaker paymentRefundCircuitBreaker;
-    private final RateLimiter tossApiRateLimiter;
+    private final RateLimiter paymentRefundRateLimiter;
 
     @Override
     public void refund(String paymentKey, RefundReason reason, String idempotencyKey) {
@@ -46,7 +46,7 @@ public class TossRefundGateway implements RefundGateway {
         };
 
         Supplier<Void> rateLimitedSupplier = RateLimiter.decorateSupplier(
-            tossApiRateLimiter,
+            paymentRefundRateLimiter,
             refundSupplier
         );
 

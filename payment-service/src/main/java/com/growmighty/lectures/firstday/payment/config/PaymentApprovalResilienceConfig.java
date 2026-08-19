@@ -33,7 +33,7 @@ public class PaymentApprovalResilienceConfig {
         return createRateLimiter("paymentRefundRateLimiter");
     }
 
-    public RateLimiter createRateLimiter(String name) {
+    private RateLimiter createRateLimiter(String name) {
         RateLimiterConfig rateLimiterConfig = RateLimiterConfig.custom()
             .limitForPeriod(1)
             .limitRefreshPeriod(Duration.ofMillis(750))

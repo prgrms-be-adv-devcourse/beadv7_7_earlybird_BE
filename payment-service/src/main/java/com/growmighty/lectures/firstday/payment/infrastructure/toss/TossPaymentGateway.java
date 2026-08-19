@@ -40,7 +40,9 @@ public class TossPaymentGateway implements PaymentGateway {
     private final Retry paymentLookupRetry;
     private final CircuitBreaker paymentLookupCircuitBreaker;
 
-    private final RateLimiter tossApiRateLimiter;
+    private final RateLimiter paymentApprovalRateLimiter;
+    private final RateLimiter paymentLookupRateLimiter;
+
 
     public TossPaymentGateway(
         RestClient tossRestClient,
@@ -49,7 +51,8 @@ public class TossPaymentGateway implements PaymentGateway {
         @Qualifier("paymentApprovalCircuitBreaker") CircuitBreaker paymentApprovalCircuitBreaker,
         @Qualifier("paymentLookupRetry") Retry paymentLookupRetry,
         @Qualifier("paymentLookupCircuitBreaker") CircuitBreaker paymentLookupCircuitBreaker,
-        @Qualifier("tossApiRateLimiter") RateLimiter tossApiRateLimiter
+        @Qualifier("paymentApprovalRateLimiter") RateLimiter paymentApprovalRateLimiter,
+        @Qualifier("paymentLookupRateLimiter") RateLimiter paymentLookupRateLimiter
     ) {
         this.tossRestClient = tossRestClient;
         this.objectMapper = objectMapper;
@@ -57,13 +60,14 @@ public class TossPaymentGateway implements PaymentGateway {
         this.paymentApprovalCircuitBreaker = paymentApprovalCircuitBreaker;
         this.paymentLookupRetry = paymentLookupRetry;
         this.paymentLookupCircuitBreaker = paymentLookupCircuitBreaker;
-        this.tossApiRateLimiter = tossApiRateLimiter;
+        this.paymentApprovalRateLimiter = paymentApprovalRateLimiter;
+        this.paymentLookupRateLimiter = paymentLookupRateLimiter;
     }
 
     @Override
     public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
         Supplier<PgApproval> approvalSupplier = () -> requestApproval(paymentKey, pgOrderId, amount, idempotencyKey);
-        Supplier<PgApproval> rateLimitedSupplier = RateLimiter.decorateSupplier(tossApiRateLimiter, approvalSupplier);
+        Supplier<PgApproval> rateLimitedSupplier = RateLimiter.decorateSupplier(paymentApprovalRateLimiter, approvalSupplier);
         Supplier<PgApproval> retrySupplier = Retry.decorateSupplier(paymentApprovalRetry, rateLimitedSupplier);
         Supplier<PgApproval> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentApprovalCircuitBreaker, retrySupplier);
 
@@ -125,7 +129,7 @@ public class TossPaymentGateway implements PaymentGateway {
     @Override
     public PgPayment getPayment(String paymentKey) {
         Supplier<PgPayment> lookupSupplier = () -> requestPayment(paymentKey);
-        Supplier<PgPayment> rateLimitedSupplier = RateLimiter.decorateSupplier(tossApiRateLimiter, lookupSupplier);
+        Supplier<PgPayment> rateLimitedSupplier = RateLimiter.decorateSupplier(paymentLookupRateLimiter, lookupSupplier);
         Supplier<PgPayment> retrySupplier = Retry.decorateSupplier(paymentLookupRetry, rateLimitedSupplier);
         Supplier<PgPayment> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentLookupCircuitBreaker, retrySupplier);
 
