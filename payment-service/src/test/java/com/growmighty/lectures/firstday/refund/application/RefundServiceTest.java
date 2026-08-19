@@ -9,7 +9,6 @@ import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import com.growmighty.lectures.firstday.refund.domain.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -119,9 +118,9 @@ class RefundServiceTest {
         verify(paymentRepository).save(payment);
     }
 
-    // 변경 : 일괄 취소의 성공·실패 결과 Outbox를 상태별로 저장
+    // 변경 : 일괄 취소 결과 Outbox를 상태별 중복 무시 insert로 저장
     @Test
-    void completeRefund_savesBulkRefundResultOutboxesByStatus() {
+    void completeRefund_insertsCompletedBulkRefundResultOutboxIfAbsent() {
         Payment payment = paidPayment();
         Refund refund = plannedRefund();
         refund.startRequest();
@@ -133,10 +132,10 @@ class RefundServiceTest {
 
         refundService.completeRefund(REFUND_ID);
 
-        ArgumentCaptor<BulkRefundResultOutbox> captor = ArgumentCaptor.forClass(BulkRefundResultOutbox.class);
-        verify(bulkRefundResultOutboxRepository).save(captor.capture());
-        assertThat(captor.getValue().getRefundRequestId()).isEqualTo(REFUND_REQUEST_ID);
-        assertThat(captor.getValue().getResultStatus()).isEqualTo(BulkRefundResultStatus.COMPLETED);
+        verify(bulkRefundResultOutboxRepository).insertIfAbsent(
+            REFUND_REQUEST_ID,
+            BulkRefundResultStatus.COMPLETED
+        );
     }
 
     @Test
@@ -153,9 +152,9 @@ class RefundServiceTest {
         verifyNoInteractions(paymentRepository);
     }
 
-    // 추가 : 일괄 취소의 마지막 환불 최종 실패 시 실패 결과 Outbox 저장
+    // 변경 : 일괄 취소의 마지막 환불 최종 실패 시 실패 결과 Outbox 중복 무시 insert
     @Test
-    void failRefund_savesFailedBulkRefundResultOutbox() {
+    void failRefund_insertsFailedBulkRefundResultOutboxIfAbsent() {
         Refund refund = plannedRefund();
         refund.startRequest();
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
@@ -164,14 +163,15 @@ class RefundServiceTest {
 
         refundService.failRefund(REFUND_ID);
 
-        ArgumentCaptor<BulkRefundResultOutbox> captor = ArgumentCaptor.forClass(BulkRefundResultOutbox.class);
-        verify(bulkRefundResultOutboxRepository).save(captor.capture());
-        assertThat(captor.getValue().getResultStatus()).isEqualTo(BulkRefundResultStatus.FAILED);
+        verify(bulkRefundResultOutboxRepository).insertIfAbsent(
+            REFUND_REQUEST_ID,
+            BulkRefundResultStatus.FAILED
+        );
     }
 
-    // 추가 : 최대 재시도 초과로 최종 실패한 일괄 취소 결과 Outbox 저장
+    // 변경 : 최대 재시도 초과로 최종 실패한 일괄 취소 결과 Outbox 중복 무시 insert
     @Test
-    void scheduleRetry_savesFailedBulkRefundResultOutboxWhenRetryLimitExceeded() {
+    void scheduleRetry_insertsFailedBulkRefundResultOutboxIfAbsentWhenRetryLimitExceeded() {
         Refund refund = plannedRefund();
         refund.startRequest();
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
@@ -182,9 +182,10 @@ class RefundServiceTest {
 
         refundService.scheduleRetry(REFUND_ID);
 
-        ArgumentCaptor<BulkRefundResultOutbox> captor = ArgumentCaptor.forClass(BulkRefundResultOutbox.class);
-        verify(bulkRefundResultOutboxRepository).save(captor.capture());
-        assertThat(captor.getValue().getResultStatus()).isEqualTo(BulkRefundResultStatus.FAILED);
+        verify(bulkRefundResultOutboxRepository).insertIfAbsent(
+            REFUND_REQUEST_ID,
+            BulkRefundResultStatus.FAILED
+        );
     }
 
     // 추가 : 정합화가 먼저 완료한 환불의 실패 처리는 무시

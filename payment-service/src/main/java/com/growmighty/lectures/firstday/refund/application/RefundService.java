@@ -124,12 +124,14 @@ public class RefundService {
         BulkRefundResultStatus resultStatus,
         boolean resultExists
     ) {
-        if (!resultExists || bulkRefundResultOutboxRepository.existsByRefundRequestIdAndResultStatus(refundRequestId, resultStatus)) {
+
+        if (!resultExists) {
             return;
         }
 
-        bulkRefundResultOutboxRepository.save(
-            BulkRefundResultOutbox.pending(refundRequestId, resultStatus)
+        bulkRefundResultOutboxRepository.insertIfAbsent(
+            refundRequestId,
+            resultStatus
         );
     }
 
