@@ -101,16 +101,16 @@ jobs:
               --from-literal=AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
               --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
               --dry-run=client -o yaml | kubectl apply -f -
-            kubectl apply -f infrastructure/k8s/
-            # :latest 로 rollout restart 하는 대신 :태그 로 set image - 이래야 kubectl rollout
-            # undo/history가 실제로 의미 있는 리비전을 가리킨다 (docker :rollback 태그의 k8s 버전).
+            # 서비스와 무관한 공통 리소스만 먼저 적용 - 서비스별 매니페스트는 (#385) 아래에서
+            # 실제로 배포하는 서비스에 한해서만, 그 서비스 차례에 적용한다.
+            kubectl apply -f infrastructure/k8s/namespace.yaml
             #
             # #385: 매 배포마다 13개 서비스를 전부 재시작하면 리소스가 넉넉하지 않은 두 EC2에
             # 불필요한 부하가 걸린다 - PREV_SHA..HEAD diff로 실제 경로가 바뀐 서비스만 골라
-            # 그 서비스만 set image/rollout 한다. common/(모든 서비스가 컴파일에 물고 들어가는
-            # 공유 모듈)이나 루트 빌드 설정이 바뀌면 diff 경로만으로는 영향 범위를 알 수 없으므로
-            # 안전하게 전체 재배포로 취급한다. 빌드(cd-build.yml)는 그대로 매번 13개 서비스
-            # 이미지를 전부 새로 태그해 두므로, 배포만 걸러도 태그 불일치 없이 안전하다.
+            # 그 서비스만 배포한다. common/(모든 서비스가 컴파일에 물고 들어가는 공유 모듈)이나
+            # 루트 빌드 설정이 바뀌면 diff 경로만으로는 영향 범위를 알 수 없으므로 안전하게
+            # 전체 재배포로 취급한다. 빌드(cd-build.yml)는 그대로 매번 13개 서비스 이미지를
+            # 전부 새로 태그해 두므로, 배포만 걸러도 태그 불일치 없이 안전하다.
             ALL_SERVICES="config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service ai-service"
             CHANGED_PATHS=$(git diff --name-only "$PREV_SHA" HEAD)
             if [ -z "$CHANGED_PATHS" ]; then
@@ -120,26 +120,34 @@ jobs:
             else
               CHANGED_SERVICES=""
               for svc in $ALL_SERVICES; do
-                echo "$CHANGED_PATHS" | grep -q "^$svc/" && CHANGED_SERVICES="$CHANGED_SERVICES $svc"
+                # 서비스 소스 디렉터리뿐 아니라 그 서비스의 k8s 매니페스트 변경도 배포 대상으로
+                # 잡는다 - 코드는 그대로인데 리소스/프로브 설정만 바뀐 경우도 있다.
+                echo "$CHANGED_PATHS" | grep -qE "^($svc/|infrastructure/k8s/$svc\.yaml$)" && CHANGED_SERVICES="$CHANGED_SERVICES $svc"
               done
             fi
             if [ -z "$CHANGED_SERVICES" ]; then
               echo "변경된 서비스 모듈 없음 ($PREV_SHA..$(git rev-parse HEAD)) - k8s 배포 스킵"
             else
               echo "변경된 서비스만 배포:$CHANGED_SERVICES"
-              # (#370) set image 루프와 rollout status 루프를 분리해두면 전부 Recreate 전략이라
-              # set image가 몇 초 안에 다 끝나는 순간 대상 서비스 전부가 거의 동시에 콜드
-              # 스타트한다 - 노드가 상시 리소스 빠듯해(memory request 69%+) 그 순간 CPU가
-              # 포화되고, probe 반복 실패로 rollout이 서버 사이드 progressDeadlineSeconds(10m)
-              # 까지 넘겨버린다 (재현: CD #478/#479/#482, #385 첫 실행에서 file-service도 동일
-              # 패턴). 클라이언트 --timeout을 올리는 것만으로는 해결 안 됨 - 서비스당 set
-              # image 직후 바로 그 서비스의 rollout이 끝나길 기다려, 한 번에 최대 1개
-              # 서비스만 재시작 중이도록 강제한다. 전체 소요 시간은 늘지만, 지금도 동시
-              # 재시작 실패 시 재시도로 10분+ 걸리면서 결과만 잘못 failure로 보고되던 것에
-              # 비하면 실질적인 증가는 크지 않다.
+              # infrastructure/k8s/*.yaml은 image를 고정 :latest로 선언해 둔다 - 예전처럼
+              # `kubectl apply -f infrastructure/k8s/`를 배포 대상과 무관하게 통째로 먼저
+              # 돌리면, 3-way merge가 지난 배포의 set image(:태그)로 벌어진 live 상태와의
+              # 드리프트를 "리버트"로 해석해 13개 전부를 :latest로 되돌리면서 한꺼번에
+              # 재시작시켜버린다 - CHANGED_SERVICES로 걸러도 그 뒤에 오는 이 apply 한 줄이
+              # 매번 전체를 다시 건드리는 바람에 무의미해졌었다 (#385 배포 중 실제로 재현:
+              # 13개 서비스가 apply 직후 동시에 재시작). 그래서 set image를 따로 두지 않고,
+              # 서비스 차례가 왔을 때 그 서비스 매니페스트만 :latest -> :태그로 치환해서
+              # 적용한다 - apply와 최종 이미지가 항상 일치하니 드리프트 자체가 생기지 않는다.
+              #
+              # (#370) 서비스별 적용 직후 바로 그 서비스의 rollout이 끝나길 기다려, 한 번에
+              # 최대 1개 서비스만 재시작 중이도록 강제한다 - 그렇지 않으면 Recreate 전략상
+              # 대상 서비스 전부가 거의 동시에 콜드 스타트해, 리소스가 빠듯한 노드에서 CPU가
+              # 포화되고 probe 반복 실패로 rollout이 progressDeadlineSeconds(10m)를 넘겨버린다
+              # (재현: CD #478/#479/#482). 전체 소요 시간은 늘지만, 지금도 동시 재시작 실패 시
+              # 재시도로 10분+ 걸리며 결과만 잘못 failure로 보고되던 것에 비하면 실질적인
+              # 증가는 크지 않다.
               for svc in $CHANGED_SERVICES; do
-                kubectl -n webapp set image "deployment/$svc" \
-                  "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$IMAGE_TAG"
+                sed "s#${svc}:latest#${svc}:${IMAGE_TAG}#" "infrastructure/k8s/${svc}.yaml" | kubectl apply -f -
                 kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
               done
             fi
