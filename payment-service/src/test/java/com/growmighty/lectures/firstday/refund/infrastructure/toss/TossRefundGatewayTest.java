@@ -21,7 +21,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class TossRefundGatewayTest {
 
     private final RestClient tossRestClient = mock(RestClient.class);
-    private final RateLimiter rateLimiter = RateLimiter.of(
+    private final RateLimiter paymentRefundRateLimiter = RateLimiter.of(
         "paymentRefundRateLimiter",
         RateLimiterConfig.custom()
             .limitForPeriod(1)
@@ -34,13 +34,13 @@ class TossRefundGatewayTest {
         new ObjectMapper(),
         Retry.of("paymentRefundRetry", RetryConfig.custom().maxAttempts(1).build()),
         CircuitBreaker.ofDefaults("paymentRefundCircuitBreaker"),
-        rateLimiter
+        paymentRefundRateLimiter
     );
 
     // 추가 : RateLimiter permit 소진 시 Toss HTTP 호출 없이 재시도 대상으로 전환한다.
     @Test
     void refund_throwsUncertainExceptionWithoutTossCallWhenRateLimitExceeded() {
-        rateLimiter.acquirePermission();
+        paymentRefundRateLimiter.acquirePermission(); // <-- 환불 취소 API 전용 RateLimiter 소진
 
         assertThatThrownBy(() -> tossRefundGateway.refund("payment-key", RefundReason.USER_CANCEL, "idempotency-key"))
             .isInstanceOf(RefundGatewayException.class)

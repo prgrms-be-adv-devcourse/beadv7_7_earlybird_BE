@@ -21,8 +21,16 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class TossPaymentGatewayTest {
 
     private final RestClient tossRestClient = mock(RestClient.class);
-    private final RateLimiter rateLimiter = RateLimiter.of(
-        "tossApiRateLimiter",
+    private final RateLimiter paymentApprovalRateLimiter = RateLimiter.of(
+        "paymentApprovalRateLimiter",
+        RateLimiterConfig.custom()
+            .limitForPeriod(1)
+            .limitRefreshPeriod(Duration.ofMinutes(1))
+            .timeoutDuration(Duration.ZERO)
+            .build()
+    );
+    private final RateLimiter paymentLookupRateLimiter = RateLimiter.of(
+        "paymentLookupRateLimiter",
         RateLimiterConfig.custom()
             .limitForPeriod(1)
             .limitRefreshPeriod(Duration.ofMinutes(1))
@@ -36,13 +44,14 @@ class TossPaymentGatewayTest {
         CircuitBreaker.ofDefaults("paymentApprovalCircuitBreaker"),
         Retry.of("paymentLookupRetry", RetryConfig.custom().maxAttempts(1).build()),
         CircuitBreaker.ofDefaults("paymentLookupCircuitBreaker"),
-        rateLimiter
+        paymentApprovalRateLimiter,
+        paymentLookupRateLimiter
     );
 
-    // 추가 : 공용 RateLimiter permit 소진 시 승인 HTTP 호출 없이 재시도 대상으로 전환한다.
+    // 변경 : 승인 RateLimiter permit 소진 시 승인 HTTP 호출 없이 재시도 대상으로 전환한다.
     @Test
     void approve_throwsUncertainExceptionWithoutTossCallWhenRateLimitExceeded() {
-        rateLimiter.acquirePermission();
+        paymentApprovalRateLimiter.acquirePermission(); // <-- 승인 API 전용 RateLimiter 소진
 
         assertThatThrownBy(() -> tossPaymentGateway.approve(
             "payment-key", "order-id", BigDecimal.valueOf(10_000), "idempotency-key"
@@ -54,10 +63,10 @@ class TossPaymentGatewayTest {
         verifyNoInteractions(tossRestClient);
     }
 
-    // 추가 : 공용 RateLimiter permit 소진 시 조회 HTTP 호출 없이 재시도 대상으로 전환한다.
+    // 변경 : 조회 RateLimiter permit 소진 시 조회 HTTP 호출 없이 재시도 대상으로 전환한다.
     @Test
     void getPayment_throwsUncertainExceptionWithoutTossCallWhenRateLimitExceeded() {
-        rateLimiter.acquirePermission();
+        paymentLookupRateLimiter.acquirePermission(); // <-- 조회 API 전용 RateLimiter 소진
 
         assertThatThrownBy(() -> tossPaymentGateway.getPayment("payment-key"))
             .isInstanceOf(PaymentGatewayException.class)
