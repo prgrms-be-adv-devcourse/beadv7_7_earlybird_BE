@@ -127,11 +127,19 @@ jobs:
               echo "변경된 서비스 모듈 없음 ($PREV_SHA..$(git rev-parse HEAD)) - k8s 배포 스킵"
             else
               echo "변경된 서비스만 배포:$CHANGED_SERVICES"
+              # (#370) set image 루프와 rollout status 루프를 분리해두면 전부 Recreate 전략이라
+              # set image가 몇 초 안에 다 끝나는 순간 대상 서비스 전부가 거의 동시에 콜드
+              # 스타트한다 - 노드가 상시 리소스 빠듯해(memory request 69%+) 그 순간 CPU가
+              # 포화되고, probe 반복 실패로 rollout이 서버 사이드 progressDeadlineSeconds(10m)
+              # 까지 넘겨버린다 (재현: CD #478/#479/#482, #385 첫 실행에서 file-service도 동일
+              # 패턴). 클라이언트 --timeout을 올리는 것만으로는 해결 안 됨 - 서비스당 set
+              # image 직후 바로 그 서비스의 rollout이 끝나길 기다려, 한 번에 최대 1개
+              # 서비스만 재시작 중이도록 강제한다. 전체 소요 시간은 늘지만, 지금도 동시
+              # 재시작 실패 시 재시도로 10분+ 걸리면서 결과만 잘못 failure로 보고되던 것에
+              # 비하면 실질적인 증가는 크지 않다.
               for svc in $CHANGED_SERVICES; do
                 kubectl -n webapp set image "deployment/$svc" \
                   "$svc=ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be-$svc:$IMAGE_TAG"
-              done
-              for svc in $CHANGED_SERVICES; do
                 kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
               done
             fi
