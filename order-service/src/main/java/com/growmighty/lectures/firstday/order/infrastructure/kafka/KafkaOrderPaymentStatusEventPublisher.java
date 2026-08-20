@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.order.infrastructure.kafka;
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
 import com.growmighty.lectures.firstday.order.application.dto.OrderPaymentStatusMessage;
 import com.growmighty.lectures.firstday.order.application.port.OrderPaymentStatusEventPublisher;
+import com.growmighty.lectures.firstday.order.infrastructure.kafka.dto.OrderPaymentStatusChangedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -14,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 public class KafkaOrderPaymentStatusEventPublisher implements OrderPaymentStatusEventPublisher {
     private static final long KAFKA_ACK_TIMEOUT_SECONDS = 10;
 
-    private final KafkaTemplate<Object, Object> kafkaTemplate;
+    private final KafkaTemplate<String, OrderPaymentStatusChangedEvent> kafkaTemplate;
     private final OrderPaymentStatusChangedEventMapper eventMapper;
 
     @Override
