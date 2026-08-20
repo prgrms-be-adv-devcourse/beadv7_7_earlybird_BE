@@ -102,6 +102,19 @@ public class PaymentConfirmationService {
         }
     }
 
+    @Transactional
+    public void expireReadyPayment(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if (payment.failIfReadyExpired(
+            LocalDateTime.now(),
+            paymentRecoveryProperties.readyTimeOut()
+        )) {
+            Payment savedPayment = paymentRepository.save(payment);
+            savePaymentStatusOutboxIfAbsent(savedPayment);
+        }
+    }
+
     @Transactional(readOnly = true)
     public PaymentRecoveryTarget getRecoveryTarget(Long paymentId) {
         Payment payment = findPayment(paymentId);

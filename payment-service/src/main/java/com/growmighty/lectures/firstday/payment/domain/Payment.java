@@ -171,6 +171,20 @@ public class Payment extends BaseEntity {
         return true;
     }
 
+    public boolean failIfReadyExpired(LocalDateTime now, Duration maximumReadyDuration) {
+        if (!isReady() || getCreatedAt() == null) {
+            return false;
+        }
+
+        LocalDateTime expiredAt = getCreatedAt().plus(maximumReadyDuration);
+        if (now.isBefore(expiredAt)) {
+            return false;
+        }
+
+        this.status = PaymentStatus.FAILED;
+        return true;
+    }
+
     public boolean reconcileConfirmed(String paymentKey) {
         if (isPaid()) {
             return false;
@@ -204,11 +218,7 @@ public class Payment extends BaseEntity {
         return true;
     }
 
-    public void validateApproval(
-        String approvedPaymentKey,
-        String approvedPgOrderId,
-        BigDecimal approvedAmount
-    ) {
+    public void validateApproval(String approvedPaymentKey, String approvedPgOrderId, BigDecimal approvedAmount) {
         if (!this.paymentKey.value().equals(approvedPaymentKey)) {
             throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
         }

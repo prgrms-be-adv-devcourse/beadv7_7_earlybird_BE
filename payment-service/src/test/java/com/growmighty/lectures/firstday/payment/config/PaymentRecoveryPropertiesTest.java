@@ -14,7 +14,8 @@ class PaymentRecoveryPropertiesTest {
         assertThatThrownBy(() -> new PaymentRecoveryProperties(
             Duration.ofMinutes(3),
             100,
-            Duration.ofMinutes(2)
+            Duration.ofMinutes(2),
+            Duration.ofMinutes(30)
         ))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("maximumConfirmingDuration은 confirmationTimeOut보다 크거나 같아야 합니다.");
@@ -25,7 +26,8 @@ class PaymentRecoveryPropertiesTest {
         assertThatCode(() -> new PaymentRecoveryProperties(
             Duration.ofMinutes(3),
             100,
-            Duration.ofMinutes(3)
+            Duration.ofMinutes(3),
+            Duration.ofMinutes(30)
         )).doesNotThrowAnyException();
     }
 }
