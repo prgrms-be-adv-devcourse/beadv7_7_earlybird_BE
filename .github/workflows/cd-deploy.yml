@@ -217,6 +217,15 @@ jobs:
             # touched by `image prune` - this only clears dangling/superseded layers from
             # kafka/caddy/fe pulls (business-service images no longer land on this box at all).
             docker image prune -f
+            # k3s/containerd에 쌓이는 건 별개 문제다 (#427) - 13개 서비스 파드가 전부 이
+            # 박스(nodeSelector 고정, ip-10-0-0-81)에서 뜨고, CD가 배포마다 새 커밋 SHA
+            # 태그로 pull하는데 containerd는 오래된 태그 이미지를 자동 정리하지 않는다.
+            # 2026-08-20 기준 144개/26G까지 쌓여 디스크 사용률이 80%(11G 여유)까지 올라갔던
+            # 걸 수동 `crictl rmi --prune`으로 34%(34G 여유)까지 되돌렸다 - 매 배포마다 정리해
+            # 다시 쌓이지 않게 한다. --prune은 실행 중인 컨테이너가 참조하는 이미지는 건드리지
+            # 않으므로(--all과 다름) 매번 안전하게 돌릴 수 있고, ec2-user는 NOPASSWD sudo라
+            # 이 비대화형 셸에서도 문제없이 동작한다(확인 완료).
+            sudo k3s crictl rmi --prune
 
   smoke-test:
     name: smoke test (live flow)
