@@ -1,12 +1,11 @@
 // TODO(settlement-plan): Route manual requests to the same idempotent monthly-run interface used by the scheduler.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.settlement.application.run.PgReconciliationRunService;
 import com.growmighty.lectures.firstday.settlement.application.run.ProjectPayoutRunService;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.request.RunPgReconciliationRequest;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.request.RunProjectPayoutRequest;
-import com.growmighty.lectures.firstday.settlement.presentation.dto.response.PgReconciliationRunResponse;
-import com.growmighty.lectures.firstday.settlement.presentation.dto.response.ProjectPayoutRunResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,16 +22,16 @@ public class ProjectSettlementController {
     private final ProjectPayoutRunService projectPayoutRunService;
 
     @PostMapping("/pg-reconciliations/runs")
-    public PgReconciliationRunResponse runPgReconciliation(
+    public ApiResponse<Void> runPgReconciliation(
             @Valid @RequestBody RunPgReconciliationRequest request
     ) {
-        return PgReconciliationRunResponse.from(
-                pgReconciliationRunService.run(request.settlementMonth())
-        );
+        pgReconciliationRunService.run(request.settlementMonth());
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/project-payouts/runs")
-    public ProjectPayoutRunResponse runProjectPayout(@Valid @RequestBody RunProjectPayoutRequest request) {
-        return ProjectPayoutRunResponse.from(projectPayoutRunService.run(request.payoutMonth()));
+    public ApiResponse<Void> runProjectPayout(@Valid @RequestBody RunProjectPayoutRequest request) {
+        projectPayoutRunService.run(request.payoutMonth());
+        return ApiResponse.ok(null);
     }
 }
