@@ -116,12 +116,10 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    // TODO(팀): 소유자/관리자는 자기 PENDING_REVIEW·REJECTED 프로젝트를 이 엔드포인트로
-    //           조회할 방법이 없다 (인증 도입 전이라 창작자는 /me 목록으로만 확인 가능).
-    //           인증 도입 후 creatorId/관리자 여부를 받아 그 경우엔 이 제한을 우회하도록 보강 필요.
-    public ProjectResponse findById(Long projectId) {
+    public ProjectResponse findById(Long projectId, Long requesterId, UserRole requesterRole) {
         Project project = getProject(projectId);
-        if (!project.isPublished()) {
+        boolean canBypass = requesterRole == UserRole.ADMIN || project.getCreatorId().equals(requesterId);
+        if (!project.isPublished() && !canBypass) {
             throw new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId);
         }
         return ProjectResponse.from(project);
