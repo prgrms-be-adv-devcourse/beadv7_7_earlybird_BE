@@ -4,6 +4,8 @@
     "title": { "type": "text", "analyzer": "korean" },
     "summary": { "type": "text", "analyzer": "korean" },
     "description": { "type": "text", "analyzer": "korean" },
+    "categoryName": { "type": "text", "analyzer": "korean" },
+    "rewardNames": { "type": "text", "analyzer": "korean" },
     "embedding": {
       "type": "dense_vector",
       "dims": 1536,

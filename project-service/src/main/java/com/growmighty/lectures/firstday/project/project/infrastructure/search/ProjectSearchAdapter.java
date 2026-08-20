@@ -6,10 +6,14 @@ import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
+import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
+import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.domain.Reward;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
@@ -26,6 +30,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * index()/remove()는 ES를 직접 부르지 않고 이벤트만 발행한다.
@@ -69,6 +75,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final ProjectEmbeddingService embeddingService;
     private final ProjectRepository projectRepository;
     private final ProjectEmbeddingPersister embeddingPersister;
+    private final ProjectCategoryRepository categoryRepository;
+    private final RewardRepository rewardRepository;
 
     @Override
     public void index(Project project) {
@@ -87,7 +95,11 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     void applyIndex(Project project) {
         circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_SEARCH_ID).run(
                 () -> {
-                    elasticsearchOperations.save(toDocument(project));
+                    String categoryName = categoryName(project.getCategoryId());
+                    List<String> rewardNames = rewardRepository.findByProjectId(project.getProjectId()).stream()
+                            .map(Reward::getName)
+                            .toList();
+                    elasticsearchOperations.save(toDocument(project, categoryName, rewardNames));
                     return null;
                 },
                 cause -> {
@@ -96,13 +108,20 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 });
     }
 
-    private ProjectDocument toDocument(Project project) {
+    private String categoryName(Long categoryId) {
+        if (categoryId == null) {
+            return null;
+        }
+        return categoryRepository.findById(categoryId).map(ProjectCategory::getName).orElse(null);
+    }
+
+    private ProjectDocument toDocument(Project project, String categoryName, List<String> rewardNames) {
         float[] embedding = project.getEmbedding();
         if (embedding != null && embedding.length == 0) {
             embedding = null;
         }
         return new ProjectDocument(project.getProjectId(), project.getTitle(), project.getSummary(),
-                project.getDescription(), embedding);
+                project.getDescription(), categoryName, rewardNames, embedding);
     }
 
     /** 실제 삭제 실행 — ProjectSearchIndexEventListener가 트랜잭션 커밋 후에만 호출한다. */
@@ -137,7 +156,9 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         Query keywordQuery = Query.of(q -> q.bool(b -> b
                 .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
                 .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
+                .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                .should(s -> s.match(m -> m.field("categoryName").query(keyword).boost(1.3f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                .should(s -> s.match(m -> m.field("rewardNames").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
 
         if (queryVector != null && queryVector.length > 0) {
             List<Float> vectorList = new ArrayList<>(queryVector.length);
@@ -234,7 +255,19 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         if (!newEmbeddings.isEmpty()) {
             embeddingPersister.bulkUpdateEmbeddings(newEmbeddings);
         }
-        elasticsearchOperations.save(projects.stream().map(this::toDocument).toList());
+
+        List<Long> categoryIds = projects.stream().map(Project::getCategoryId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> categoryNames = categoryRepository.findAllById(categoryIds).stream()
+                .collect(Collectors.toMap(ProjectCategory::getId, ProjectCategory::getName));
+
+        List<Long> projectIds = projects.stream().map(Project::getProjectId).toList();
+        Map<Long, List<String>> rewardNamesByProject = rewardRepository.findByProjectIdIn(projectIds).stream()
+                .collect(Collectors.groupingBy(Reward::getProjectId, Collectors.mapping(Reward::getName, Collectors.toList())));
+
+        elasticsearchOperations.save(projects.stream()
+                .map(project -> toDocument(project, categoryNames.get(project.getCategoryId()),
+                        rewardNamesByProject.getOrDefault(project.getProjectId(), List.of())))
+                .toList());
     }
 
     /**

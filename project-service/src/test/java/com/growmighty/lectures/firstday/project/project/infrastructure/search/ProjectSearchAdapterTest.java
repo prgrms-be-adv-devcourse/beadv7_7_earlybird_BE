@@ -5,9 +5,11 @@ import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
+import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -58,6 +60,8 @@ class ProjectSearchAdapterTest {
     private final ProjectEmbeddingService embeddingService = mock(ProjectEmbeddingService.class);
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private final ProjectEmbeddingPersister persister = mock(ProjectEmbeddingPersister.class);
+    private final ProjectCategoryRepository categoryRepository = mock(ProjectCategoryRepository.class);
+    private final RewardRepository rewardRepository = mock(RewardRepository.class);
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -74,7 +78,7 @@ class ProjectSearchAdapterTest {
                 return fallback.apply(t);
             }
         });
-        adapter = new ProjectSearchAdapter(elasticsearchOperations, elasticsearchClient, circuitBreakerFactory, eventPublisher, embeddingService, projectRepository, persister);
+        adapter = new ProjectSearchAdapter(elasticsearchOperations, elasticsearchClient, circuitBreakerFactory, eventPublisher, embeddingService, projectRepository, persister, categoryRepository, rewardRepository);
     }
 
     private Project project() {
@@ -142,7 +146,7 @@ class ProjectSearchAdapterTest {
         SearchResponse<ProjectDocument> response = mock(SearchResponse.class);
         HitsMetadata<ProjectDocument> hitsMetadata = mock(HitsMetadata.class);
         Hit<ProjectDocument> hit = mock(Hit.class);
-        when(hit.source()).thenReturn(new ProjectDocument(42L, "title", null, null, new float[1536]));
+        when(hit.source()).thenReturn(new ProjectDocument(42L, "title", null, null, null, null, new float[1536]));
         when(hitsMetadata.hits()).thenReturn(List.of(hit));
         when(response.hits()).thenReturn(hitsMetadata);
         when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
@@ -160,7 +164,7 @@ class ProjectSearchAdapterTest {
         when(embeddingService.generateEmbedding("keyword")).thenReturn(null);
         SearchHits<ProjectDocument> hits = mock(SearchHits.class);
         SearchHit<ProjectDocument> hit = mock(SearchHit.class);
-        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "title", null, null, null));
+        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "title", null, null, null, null, null));
         when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(hits);
@@ -224,7 +228,7 @@ class ProjectSearchAdapterTest {
     void autocomplete_success_returnsSuggestions() {
         SearchHits<ProjectDocument> hits = mock(SearchHits.class);
         SearchHit<ProjectDocument> hit = mock(SearchHit.class);
-        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "카카오 프로젝트", null, null, new float[1536]));
+        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "카카오 프로젝트", null, null, null, null, new float[1536]));
         when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(hits);

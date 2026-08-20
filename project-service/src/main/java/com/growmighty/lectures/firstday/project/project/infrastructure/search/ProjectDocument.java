@@ -5,11 +5,14 @@ import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Mapping;
 import org.springframework.data.elasticsearch.annotations.Setting;
 
+import java.util.List;
+
 /**
  * ES 검색 인덱스 전용 문서. categoryId/status는 일부러 넣지 않는다 — 그 필터링은 MySQL
- * Specification이 candidateProjectIds에 대해 그대로 수행한다(design doc 참고). 필드 매핑은
- * 어노테이션이 아니라 project-index-mapping.json으로 직접 관리한다(dense_vector 설정을
- * 어노테이션 속성 이름에 기대지 않기 위해).
+ * Specification이 candidateProjectIds에 대해 그대로 수행한다(design doc 참고). categoryName/
+ * rewardNames는 필터가 아니라 검색어 매칭 대상이라(카테고리/리워드 이름으로도 프로젝트가 찾아져야 함)
+ * ID 대신 이름 자체를 색인한다. 필드 매핑은 어노테이션이 아니라 project-index-mapping.json으로
+ * 직접 관리한다(dense_vector 설정을 어노테이션 속성 이름에 기대지 않기 위해).
  */
 @Document(indexName = "projects")
 @Setting(settingPath = "elasticsearch/project-index-settings.json")
@@ -19,6 +22,8 @@ public record ProjectDocument(
         String title,
         String summary,
         String description,
+        String categoryName,
+        List<String> rewardNames,
         float[] embedding
 ) {
 }

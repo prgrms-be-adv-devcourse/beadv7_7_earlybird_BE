@@ -1,8 +1,12 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
+import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.domain.Reward;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import com.growmighty.lectures.firstday.project.support.ElasticsearchIntegrationTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,6 +52,10 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     private ProjectSearchAdapter adapter;
     @Autowired
     private ProjectRepository projectRepository;
+    @Autowired
+    private ProjectCategoryRepository categoryRepository;
+    @Autowired
+    private RewardRepository rewardRepository;
 
     private final List<Long> savedProjectIds = new ArrayList<>();
 
@@ -186,6 +194,49 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             List<Long> result = adapter.search("청소기");
             assertThat(result).contains(matching1.getProjectId(), matching2.getProjectId());
+            assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("제목/요약/본문에 없어도 카테고리명으로 검색하면 찾아진다")
+    void search_matchesByCategoryName() {
+        ProjectCategory category = categoryRepository.save(ProjectCategory.create(null, "수제 액세서리"));
+        Project matching = Project.register(1L, null, "은은한 데일리룩", category.getId(), "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        Project saved = projectRepository.save(matching);
+        savedProjectIds.add(saved.getProjectId());
+        // savedProject()의 categoryId(=1L, 실존하지 않는 더미 참조)와 우연히 겹치지 않도록, 방금 만든
+        // category.getId() 바로 다음 값(역시 실존하지 않음)을 써서 other의 categoryName이 안 채워지게 한다.
+        Project other = projectRepository.save(Project.register(1L, null, "완전히 다른 내용의 프로젝트",
+                category.getId() + 1, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30)));
+        savedProjectIds.add(other.getProjectId());
+
+        adapter.index(saved);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Long> result = adapter.search("액세서리");
+            assertThat(result).contains(saved.getProjectId());
+            assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("제목/요약/본문에 없어도 리워드명으로 검색하면 찾아진다")
+    void search_matchesByRewardName() {
+        Project matching = savedProject("은은한 데일리룩");
+        rewardRepository.save(Reward.register(matching.getProjectId(), "얼리버드 벌레 키링", "설명",
+                BigDecimal.valueOf(3_000), 100));
+        Project other = savedProject("완전히 다른 내용의 프로젝트");
+
+        adapter.index(matching);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Long> result = adapter.search("키링");
+            assertThat(result).contains(matching.getProjectId());
             assertThat(result).doesNotContain(other.getProjectId());
         });
     }
