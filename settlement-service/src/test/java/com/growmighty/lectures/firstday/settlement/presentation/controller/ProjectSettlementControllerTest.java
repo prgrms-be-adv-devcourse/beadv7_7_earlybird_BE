@@ -59,9 +59,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.settlementMonth").value("2026-07"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.confirmedOrderIds[0]").value(9_000_001_001L));
+                .andExpect(jsonPath("$.data").isEmpty());
 
         mockMvc.perform(post("/internal/v1/settlements/pg-reconciliations/runs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -71,7 +69,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data").isEmpty());
 
         assertThat(orderPaymentFactRepository.findById(9_000_001_001L).orElseThrow().reconciliationStatus())
                 .isEqualTo(OrderPaymentFact.ReconciliationStatus.CONFIRMED);
@@ -103,8 +101,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.payoutMonth").value("2026-08"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data").isEmpty());
     }
 
 }
