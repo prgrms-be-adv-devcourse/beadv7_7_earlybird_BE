@@ -18,6 +18,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class RefundCancellationSagaOrchestratorTest {
 
+    private static final Long REQUESTER_ID = 10L;
+
     private static final Long ORDER_ID = 1L;
     private static final Long REFUND_ID = 1L;
     private static final String PAYMENT_KEY = "payment-key";
@@ -35,12 +37,12 @@ class RefundCancellationSagaOrchestratorTest {
     @Test
     void cancel_completesRefundAfterTossRefundSucceeds() {
         RefundCancellationTarget target = target();
-        when(refundService.startRefund(ORDER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
+        when(refundService.startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
 
-        orchestrator.cancel(ORDER_ID, RefundReason.USER_CANCEL);
+        orchestrator.cancel(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL);
 
         var inOrder = inOrder(refundService, refundGateway);
-        inOrder.verify(refundService).startRefund(ORDER_ID, RefundReason.USER_CANCEL);
+        inOrder.verify(refundService).startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL);
         inOrder.verify(refundGateway).refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
         inOrder.verify(refundService).completeRefund(REFUND_ID);
     }
@@ -49,11 +51,11 @@ class RefundCancellationSagaOrchestratorTest {
     void cancel_marksRefundFailedWhenTossRefundFailsDefinitely() {
         RefundCancellationTarget target = target();
         RefundGatewayException exception = gatewayException(RefundGatewayFailureType.DEFINITIVE);
-        when(refundService.startRefund(ORDER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
+        when(refundService.startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
         doThrow(exception).when(refundGateway)
             .refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
 
-        assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, RefundReason.USER_CANCEL))
+        assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL))
             .isSameAs(exception);
 
         verify(refundService).failRefund(REFUND_ID);
@@ -64,11 +66,11 @@ class RefundCancellationSagaOrchestratorTest {
     void cancel_schedulesRefundRetryWhenTossRefundResultIsUncertain() {
         RefundCancellationTarget target = target();
         RefundGatewayException exception = gatewayException(RefundGatewayFailureType.UNCERTAIN);
-        when(refundService.startRefund(ORDER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
+        when(refundService.startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
         doThrow(exception).when(refundGateway)
             .refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
 
-        assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, RefundReason.USER_CANCEL))
+        assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL))
             .isSameAs(exception);
 
         verify(refundService).scheduleRetry(REFUND_ID);

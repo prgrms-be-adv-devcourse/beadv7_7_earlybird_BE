@@ -69,6 +69,7 @@ class PaymentConfirmationServiceConcurrencyTest {
     @DisplayName("동시에 승인 선점을 요청해도 하나의 요청만 CONFIRMING 상태로 전이시킨다")
     void startConfirmation_allowsOnlyOneRequest() throws Exception {
         Payment payment = paymentRepository.save(Payment.ready(
+            10L,
             1L,
             BigDecimal.valueOf(10_000)
         ));

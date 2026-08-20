@@ -71,7 +71,7 @@ class BulkRefundServiceTest {
     }
 
     private Payment paidPayment() {
-        Payment payment = Payment.ready(ORDER_ID, BigDecimal.valueOf(10_000));
+        Payment payment = Payment.ready(1L, ORDER_ID, BigDecimal.valueOf(10_000));
         org.springframework.test.util.ReflectionTestUtils.setField(payment, "paymentId", PAYMENT_ID);
         payment.startConfirming("payment-key");
         payment.confirm("payment-key");
