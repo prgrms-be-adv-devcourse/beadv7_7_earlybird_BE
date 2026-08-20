@@ -1,9 +1,15 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
+import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +22,7 @@ import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.Query;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -46,12 +53,15 @@ import static org.mockito.Mockito.when;
 class ProjectSearchAdapterTest {
 
     private final ElasticsearchOperations elasticsearchOperations = mock(ElasticsearchOperations.class);
+    private final ElasticsearchClient elasticsearchClient = mock(ElasticsearchClient.class);
     private final CircuitBreakerFactory circuitBreakerFactory = mock(CircuitBreakerFactory.class);
     private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final ProjectEmbeddingService embeddingService = mock(ProjectEmbeddingService.class);
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private final ProjectEmbeddingPersister persister = mock(ProjectEmbeddingPersister.class);
+    private final ProjectCategoryRepository categoryRepository = mock(ProjectCategoryRepository.class);
+    private final RewardRepository rewardRepository = mock(RewardRepository.class);
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -68,7 +78,7 @@ class ProjectSearchAdapterTest {
                 return fallback.apply(t);
             }
         });
-        adapter = new ProjectSearchAdapter(elasticsearchOperations, circuitBreakerFactory, eventPublisher, embeddingService, projectRepository, persister);
+        adapter = new ProjectSearchAdapter(elasticsearchOperations, elasticsearchClient, circuitBreakerFactory, eventPublisher, embeddingService, projectRepository, persister, categoryRepository, rewardRepository);
     }
 
     private Project project() {
@@ -129,12 +139,32 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("검색이 성공하면 매치된 문서들의 projectId를 반환한다")
+    @DisplayName("임베딩이 사용 가능할 때 RRF 하이브리드 검색이 성공하면 매치된 문서들의 projectId를 반환한다")
     @SuppressWarnings("unchecked")
-    void search_success_returnsProjectIds() {
+    void search_withEmbedding_rrfSuccess_returnsProjectIds() throws Exception {
+        when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
+        SearchResponse<ProjectDocument> response = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> hitsMetadata = mock(HitsMetadata.class);
+        Hit<ProjectDocument> hit = mock(Hit.class);
+        when(hit.source()).thenReturn(new ProjectDocument(42L, "title", null, null, null, null, new float[1536]));
+        when(hitsMetadata.hits()).thenReturn(List.of(hit));
+        when(response.hits()).thenReturn(hitsMetadata);
+        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
+                .thenReturn(response);
+
+        List<Long> result = adapter.search("keyword");
+
+        assertThat(result).containsExactly(42L);
+    }
+
+    @Test
+    @DisplayName("임베딩이 없을 때 BM25 검색이 성공하면 매치된 문서들의 projectId를 반환한다")
+    @SuppressWarnings("unchecked")
+    void search_withoutEmbedding_bm25Success_returnsProjectIds() {
+        when(embeddingService.generateEmbedding("keyword")).thenReturn(null);
         SearchHits<ProjectDocument> hits = mock(SearchHits.class);
         SearchHit<ProjectDocument> hit = mock(SearchHit.class);
-        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "title", null, null, new float[1536]));
+        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "title", null, null, null, null, null));
         when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(hits);
@@ -147,9 +177,10 @@ class ProjectSearchAdapterTest {
     @Test
     @DisplayName("ES 검색 호출이 실패하면 DB LIKE 검색으로 폴백한다")
     void search_elasticsearchCallFailure_fallsBackToDbLikeSearch() {
+        when(embeddingService.generateEmbedding("keyword")).thenReturn(null);
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenThrow(new RuntimeException("es down"));
-        when(projectRepository.findByTitleContainingIgnoreCase("keyword"))
+        when(projectRepository.findByTitleContainingIgnoreCaseOrderByCreatedAtDesc("keyword"))
                 .thenReturn(List.of(project()));
 
         List<Long> result = adapter.search("keyword");
@@ -197,7 +228,7 @@ class ProjectSearchAdapterTest {
     void autocomplete_success_returnsSuggestions() {
         SearchHits<ProjectDocument> hits = mock(SearchHits.class);
         SearchHit<ProjectDocument> hit = mock(SearchHit.class);
-        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "카카오 프로젝트", null, null, new float[1536]));
+        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "카카오 프로젝트", null, null, null, null, new float[1536]));
         when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(hits);

@@ -41,8 +41,8 @@ class ProjectSearchIndexBootstrapTest extends ElasticsearchIntegrationTestSuppor
         // nori_tokenizer는 형태소 분석으로 이걸 "한국어"/"를" 토큰으로 쪼개므로 "한국어"만으로도
         // 매치된다 — 공백 기준으로만 쪼개는(nori 미적용) 분석기라면 "한국어를"이 통짜 토큰이라
         // 매치되지 않는다. 즉 이 테스트는 형태소 분리 자체를 검증한다(단순 공백 분리와 구분됨).
-        elasticsearchOperations.save(new ProjectDocument(1L, "한국어를 사랑하는 사람들의 모임", null, null, dummyVector()));
-        elasticsearchOperations.save(new ProjectDocument(2L, "전혀 관련 없는 다른 프로젝트 제목", null, null, dummyVector()));
+        elasticsearchOperations.save(new ProjectDocument(1L, "한국어를 사랑하는 사람들의 모임", null, null, null, null, dummyVector()));
+        elasticsearchOperations.save(new ProjectDocument(2L, "전혀 관련 없는 다른 프로젝트 제목", null, null, null, null, dummyVector()));
         // ES는 근실시간 검색이라 refresh 정책을 명시하지 않으면 save() 직후 검색에 안 잡힐 수 있다 —
         // 테스트에서는 명시적으로 refresh해 색인을 즉시 검색 가능하게 만든다.
         elasticsearchOperations.indexOps(ProjectDocument.class).refresh();
