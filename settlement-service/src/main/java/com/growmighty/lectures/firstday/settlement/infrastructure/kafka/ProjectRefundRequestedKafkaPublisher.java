@@ -42,7 +42,6 @@ public class ProjectRefundRequestedKafkaPublisher {
     }
 
     private ProjectRefundRequestedEvent eventOf(ProjectRefundRequested request) {
-        // 명세 변경 비용 때문에 외부 settlementId에 내부 refundRequestId를 매핑한다. 계약 변경 시 제거할 수 있다.
         return new ProjectRefundRequestedEvent(
                 request.refundRequestId(),
                 ProjectRefundRequested.EVENT_TYPE,

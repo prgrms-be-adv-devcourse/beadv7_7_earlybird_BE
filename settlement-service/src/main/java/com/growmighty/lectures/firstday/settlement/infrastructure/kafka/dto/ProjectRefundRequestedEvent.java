@@ -4,12 +4,12 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 public record ProjectRefundRequestedEvent(
-        String settlementId,
+        String refundRequestId,
         String eventType,
         int schemaVersion,
         OffsetDateTime occurredAt,
         Payload payload
 ) {
-    public record Payload(String settlementId, List<Long> orderIds) {
+    public record Payload(String refundRequestId, List<Long> orderIds) {
     }
 }

@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.user.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.user.application.dto.ChangeRoleCommand;
 import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
@@ -211,6 +212,27 @@ class UserServiceTest {
         verify(creatorProfileRepository).save(captor.capture());
         assertThat(captor.getValue().getUserId()).isEqualTo(1L);
         assertThat(captor.getValue().getBankName()).isEqualTo("신한은행");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 유저의 role을 바꾸면 예외가 발생한다")
+    void changeRole_withUnknownId_throws() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.changeRole(new ChangeRoleCommand(999L, UserRole.ADMIN)))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("role을 바꾸면 정산 계좌 등록 없이 role만 갱신된다")
+    void changeRole_updatesRoleOnly() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        UserInfo result = userService.changeRole(new ChangeRoleCommand(1L, UserRole.ADMIN));
+
+        assertThat(result.role()).isEqualTo(UserRole.ADMIN);
+        verify(creatorProfileRepository, never()).save(any());
     }
 
 }

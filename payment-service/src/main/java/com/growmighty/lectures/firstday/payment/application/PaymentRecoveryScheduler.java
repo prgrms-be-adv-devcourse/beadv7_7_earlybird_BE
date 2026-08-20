@@ -20,6 +20,7 @@ public class PaymentRecoveryScheduler {
      */
     @Scheduled(fixedDelayString = "${payment.recovery.schedule-fixed-delay:180000}")
     public void recoveryTimedOutPayments() {
+        paymentRecoveryBatchService.expireTimedOutPayments();
         paymentRecoveryBatchService.recoverTimedOutPayments();
     }
 }

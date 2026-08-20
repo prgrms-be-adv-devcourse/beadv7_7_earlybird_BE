@@ -440,6 +440,12 @@ services:
       SPRING_PROFILES_ACTIVE: docker,docker-local
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
+      # presigned upload 발급용 자격증명/버킷 — .env 에는 있었지만 컨테이너로 전달되지 않아
+      # S3Presigner 가 AwsCredentialsProviderChain 에서 아무 자격증명도 못 찾고 500을 내던 문제 수정.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      AWS_REGION: ${AWS_REGION}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
     mem_limit: 544m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.

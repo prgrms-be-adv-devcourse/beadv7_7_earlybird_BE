@@ -22,7 +22,12 @@ public record PaymentRecoveryProperties(
 
     @DefaultValue("PT10M")
     @DurationMin(seconds = 1)
-    Duration maximumConfirmingDuration
+    Duration maximumConfirmingDuration,
+
+    @DefaultValue("PT30M")
+    @DurationMin(seconds = 1)
+    Duration readyTimeOut
+
 ) {
     public PaymentRecoveryProperties {
         if (maximumConfirmingDuration.compareTo(confirmationTimeOut) < 0) {

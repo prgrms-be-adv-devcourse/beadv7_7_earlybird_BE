@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.payment.domain;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -125,6 +126,32 @@ class PaymentTest {
         assertThat(payment.failIfConfirmingExpired(expiration, maximumDuration)).isTrue();
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
         assertThat(payment.getConfirmingAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("READY 결제는 만료 시간 전에는 실패 처리되지 않는다")
+    void failIfReadyExpired_beforeMaximumDuration_returnsFalse() {
+        Payment payment = readyPayment();
+        LocalDateTime createdAt = LocalDateTime.now().minusMinutes(30);
+        ReflectionTestUtils.setField(payment, "createdAt", createdAt);
+        Duration maximumDuration = Duration.ofMinutes(30);
+
+        assertThat(payment.failIfReadyExpired(createdAt.plus(maximumDuration).minusNanos(1), maximumDuration))
+            .isFalse();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
+    }
+
+    @Test
+    @DisplayName("READY 결제는 만료 시간에 도달하면 FAILED로 전이된다")
+    void failIfReadyExpired_atMaximumDuration_transitionsToFailed() {
+        Payment payment = readyPayment();
+        LocalDateTime createdAt = LocalDateTime.now().minusMinutes(30);
+        ReflectionTestUtils.setField(payment, "createdAt", createdAt);
+        Duration maximumDuration = Duration.ofMinutes(30);
+
+        assertThat(payment.failIfReadyExpired(createdAt.plus(maximumDuration), maximumDuration))
+            .isTrue();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
     }
 
     private Payment readyPayment() {

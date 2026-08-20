@@ -98,8 +98,15 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
-    public List<Order> findByProjectIdsAndStatusIn(List<Long> projectIds, List<OrderStatus> statuses) {
-        return jpaRepository.findByProjectIdsAndStatusIn(projectIds, statuses);
+    public List<Order> findByProjectYearAndMonthAndStatusIn(
+        int projectYear,
+        int projectMonth,
+        List<OrderStatus> statuses) {
+
+        return jpaRepository.findByProjectYearAndMonthAndStatusIn(
+            projectYear,
+            projectMonth,
+            statuses);
     }
 
     @Override
