@@ -5,12 +5,12 @@ import java.time.Instant;
 import java.util.List;
 
 public record AdminProjectRefundDetail(
+        String refundRequestId,
         Long projectId,
+        String projectName,
         ProjectCancellationReason reason,
-        AdminSettlementEntry.RefundPublishStatus publishStatus,
+        AdminSettlementEntry.RefundStatus refundStatus,
         Instant requestedAt,
-        Instant publishedAt,
-        AdminSettlementEntry.RefundProcessingStatus processingStatus,
         Instant paymentResultAt,
         List<Payment> payments
 ) {

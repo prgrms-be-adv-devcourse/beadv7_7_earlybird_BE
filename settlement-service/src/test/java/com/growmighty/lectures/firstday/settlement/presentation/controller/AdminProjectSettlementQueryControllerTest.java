@@ -187,7 +187,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     }
 
     @Test
-    @DisplayName("관리자는 프로젝트 식별자로 환불 batch 상세를 조회한다")
+    @DisplayName("관리자는 refundRequestId로 조치 필요 환불 batch 상세를 조회한다")
     void returnsRefundDetail() throws Exception {
         long projectId = 86_000_001L;
         ProjectRefundRequested request = refundRequest(
@@ -197,17 +197,56 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         request.recordPaymentResult("FAILED", Instant.parse("2026-08-03T00:02:00Z"), List.of(96_000_001L));
         refundRequestedRepository.save(request);
 
-        mockMvc.perform(get("/api/v1/settlements/all/refunds/{projectId}", projectId))
+        mockMvc.perform(get("/api/v1/settlements/all/refunds/{refundRequestId}", request.refundRequestId()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.refundRequestId").value(request.refundRequestId()))
                 .andExpect(jsonPath("$.data.projectId").value(projectId))
+                .andExpect(jsonPath("$.data.projectName").value("프로젝트 " + projectId))
                 .andExpect(jsonPath("$.data.reason").value("PROJECT_FAILED"))
-                .andExpect(jsonPath("$.data.publishStatus").value("PUBLISHED"))
-                .andExpect(jsonPath("$.data.processingStatus").value("ACTION_REQUIRED"))
+                .andExpect(jsonPath("$.data.refundStatus").value("ACTION_REQUIRED"))
                 .andExpect(jsonPath("$.data.paymentResultAt").value("2026-08-03T09:02:00+09:00"))
                 .andExpect(jsonPath("$.data.payments.length()").value(1))
                 .andExpect(jsonPath("$.data.payments[0].orderId").value(96_000_001L))
                 .andExpect(jsonPath("$.data.payments[0].pgOrderId").value("PG-96000001"))
                 .andExpect(jsonPath("$.data.payments[0].actionRequired").value(true));
+    }
+
+    @Test
+    @DisplayName("관리자는 발행 전 환불 batch를 요청 상태로 조회한다")
+    void returnsRequestedRefundDetail() throws Exception {
+        ProjectRefundRequested request = refundRequest(86_000_002L, 96_000_002L, Instant.parse("2026-08-03T00:00:00Z"));
+        refundRequestedRepository.save(request);
+
+        mockMvc.perform(get("/api/v1/settlements/all/refunds/{refundRequestId}", request.refundRequestId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.refundStatus").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.paymentResultAt").isEmpty());
+    }
+
+    @Test
+    @DisplayName("관리자는 결과 대기 및 완료 환불 batch의 통합 상태를 조회한다")
+    void returnsProcessingAndCompletedRefundDetails() throws Exception {
+        ProjectRefundRequested processing = refundRequest(86_000_003L, 96_000_003L, Instant.parse("2026-08-03T00:00:00Z"));
+        processing.markPublished(Instant.parse("2026-08-03T00:01:00Z"));
+        ProjectRefundRequested completed = refundRequest(86_000_004L, 96_000_004L, Instant.parse("2026-08-03T00:00:00Z"));
+        completed.markPublished(Instant.parse("2026-08-03T00:01:00Z"));
+        completed.recordPaymentResult("COMPLETED", Instant.parse("2026-08-03T00:02:00Z"), List.of(96_000_004L));
+        refundRequestedRepository.save(processing);
+        refundRequestedRepository.save(completed);
+
+        mockMvc.perform(get("/api/v1/settlements/all/refunds/{refundRequestId}", processing.refundRequestId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.refundStatus").value("PROCESSING"));
+        mockMvc.perform(get("/api/v1/settlements/all/refunds/{refundRequestId}", completed.refundRequestId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.refundStatus").value("COMPLETED"));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 refundRequestId의 환불 batch 상세는 찾을 수 없다")
+    void doesNotReturnRefundDetailForUnknownRefundRequestId() throws Exception {
+        mockMvc.perform(get("/api/v1/settlements/all/refunds/{refundRequestId}", "unknown-refund-request"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

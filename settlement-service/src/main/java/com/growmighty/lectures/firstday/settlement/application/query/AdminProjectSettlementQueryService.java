@@ -93,16 +93,16 @@ public class AdminProjectSettlementQueryService {
     }
 
     @Transactional(readOnly = true)
-    public AdminProjectRefundDetail findRefundDetail(Long projectId) {
-        ProjectRefundRequested request = refundRequestedRepository.findByProjectId(projectId)
+    public AdminProjectRefundDetail findRefundDetail(String refundRequestId) {
+        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(refundRequestId)
                 .orElseThrow(() -> new SettlementException(PROJECT_REFUND_REQUEST_NOT_FOUND));
         return new AdminProjectRefundDetail(
+                request.refundRequestId(),
                 request.projectId(),
+                projectName(request.projectId()),
                 request.reason(),
-                publishStatus(request),
+                refundStatus(request),
                 request.occurredAt(),
-                request.publishedAt(),
-                processingStatus(request),
                 request.paymentResultAt(),
                 request.payments().stream()
                         .map(payment -> new AdminProjectRefundDetail.Payment(
@@ -191,6 +191,13 @@ public class AdminProjectSettlementQueryService {
             throw new IllegalStateException("프로젝트 결과 사실을 찾을 수 없습니다.");
         }
         return projectName;
+    }
+
+    private String projectName(Long projectId) {
+        return outcomeRepository.findAllByProjectIdIn(List.of(projectId)).stream()
+                .findFirst()
+                .map(ProjectOutcomeFact::projectName)
+                .orElseThrow(() -> new IllegalStateException("프로젝트 결과 사실을 찾을 수 없습니다."));
     }
 
     private static Comparator<AdminSettlementEntry> comparator(AdminSettlementSort sort) {
