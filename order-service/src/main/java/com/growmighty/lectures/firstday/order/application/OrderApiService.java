@@ -203,11 +203,17 @@ public class OrderApiService {
         validateRequesterId(requesterId);
         Order order = getOrderWithItems(orderId);
         verifyOwner(order, requesterId);
+        if (order.isCancellationCompensationPending()) {
+            return OrderResult.from(order);
+        }
         if (!order.isCancelled()) {
             order.validateCancellationAllowed();
             verifyCancellationAllowedByProject(order);
         }
         Order cancelledOrder = cancellationOrchestrationService.cancel(orderId);
+        if (cancelledOrder.isCancellationCompensationPending()) {
+            return OrderResult.from(cancelledOrder);
+        }
         log.info("order cancelled. orderId={}", orderId);
         if (cancellationCompletionService != null) {
             cancellationCompletionService.complete(cancelledOrder);

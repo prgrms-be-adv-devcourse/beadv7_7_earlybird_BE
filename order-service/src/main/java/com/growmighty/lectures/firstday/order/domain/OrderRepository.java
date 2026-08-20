@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.order.domain;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +30,8 @@ public interface OrderRepository {
     List<Order> findByUserId(Long userId);
 
     List<Order> findByStatusIn(List<OrderStatus> statuses);
+
+    List<Order> findRecoveryCandidates(List<OrderStatus> statuses, LocalDateTime updatedBefore, int batchSize);
 
     List<Order> findByProjectIdsAndStatusIn(List<Long> projectIds, List<OrderStatus> statuses);
 
