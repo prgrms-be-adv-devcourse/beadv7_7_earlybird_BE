@@ -227,6 +227,46 @@ class UserControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/v1/users/me/role 은 role 이 없으면 400 을 반환한다")
+    void changeRole_withMissingRole_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/users/me/role")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/me/role 은 role 값이 UserRole 외의 값이면 400 을 반환한다")
+    void changeRole_withInvalidRole_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/users/me/role")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"SUPERADMIN\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/me/role 은 바뀐 role이 반영된 새 access/refresh token 을 반환한다")
+    void changeRole_withValidRole_returnsNewTokens() throws Exception {
+        UserInfo admin = new UserInfo(1L, "hanahan@example.com", "김하나한", "010-0000-0000", UserRole.ADMIN);
+        when(userService.changeRole(any())).thenReturn(admin);
+        when(tokenProvider.issueAccessToken(1L, UserRole.ADMIN)).thenReturn("admin-access-token");
+        when(tokenProvider.issueRefreshToken(1L)).thenReturn("admin-refresh-token");
+
+        mockMvc.perform(post("/api/v1/users/me/role")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").value("admin-access-token"))
+                .andExpect(jsonPath("$.data.refreshToken").value("admin-refresh-token"))
+                .andExpect(jsonPath("$.data.user.role").value("ADMIN"));
+    }
+
+    @Test
     @DisplayName("PATCH /api/v1/users/me 는 필수 필드가 빈 값이면 400 을 반환한다")
     void updateMe_withBlankFields_returns400() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me")

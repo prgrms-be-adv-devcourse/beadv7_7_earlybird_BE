@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.user.application;
 
+import com.growmighty.lectures.firstday.user.application.dto.ChangeRoleCommand;
 import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
@@ -74,6 +75,15 @@ public class UserService {
         user.becomeCreator();
         creatorProfileRepository.save(CreatorProfile.register(
                 command.userId(), command.bankName(), command.accountNumber(), command.accountHolder()));
+        return UserInfo.from(user);
+    }
+
+    /** 발표/시연 편의용 role 전환(#430). 정식 창작자 등록(정산 계좌 등)과 무관하게 role만 바꾼다. */
+    @Transactional
+    public UserInfo changeRole(ChangeRoleCommand command) {
+        User user = userRepository.findById(command.userId())
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + command.userId()));
+        user.switchRoleForDemo(command.role());
         return UserInfo.from(user);
     }
 }

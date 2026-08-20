@@ -61,6 +61,14 @@ public class User extends BaseEntity {
         this.role = UserRole.ADMIN;
     }
 
+    /**
+     * 발표/시연 편의용 role 전환(#430) — {@link #becomeCreator()}와 달리 creator_profiles 생성 등
+     * 정식 등록 절차 없이 role 컬럼만 바꾼다. 이미 같은 role이어도 예외 없이 허용한다.
+     */
+    public void switchRoleForDemo(UserRole role) {
+        this.role = role;
+    }
+
     public void changePassword(String newEncodedPassword) {
         if (newEncodedPassword == null || newEncodedPassword.isBlank()) {
             throw new IllegalArgumentException("새 비밀번호는 비어 있을 수 없습니다.");
