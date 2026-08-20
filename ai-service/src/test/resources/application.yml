@@ -1,7 +1,7 @@
 # 테스트 전용 설정 - @SpringBootTest 통합 테스ㅌ는 config-server/discovery-server 없이 독립 실행되어야 한다.
 spring:
   application:
-    name: ai-service
+    name: chat-service
   cloud:
     config:
       enabled: false
@@ -10,6 +10,10 @@ spring:
   ai:
     openai:
       api-key: test-key-not-a-real-key
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 200ms
 
 eureka:
   client:

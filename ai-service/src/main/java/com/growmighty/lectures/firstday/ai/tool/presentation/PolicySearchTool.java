@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.ai.tool.presentation;
 import com.growmighty.lectures.firstday.ai.policy.domain.PolicyCategory;
 import com.growmighty.lectures.firstday.ai.policy.infrastructure.search.PolicyChunkResult;
 import com.growmighty.lectures.firstday.ai.policy.infrastructure.search.PolicySearchPort;
+import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -15,6 +16,7 @@ import java.util.List;
 public class PolicySearchTool {
 
     private final PolicySearchPort policySearchPort;
+    private final ToolInvocationRecorder recorder;
 
     @Tool(name = "search_policy", description = "얼리버드 서비스 정책에 대한 질문에 답하기 위해 정책 문서를 검색한다.")
     public List<PolicyChunkResult> searchPolicy(
@@ -34,6 +36,9 @@ public class PolicySearchTool {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("query는 비어 있을 수 없습니다.");
         }
-        return policySearchPort.search(query, category);
+        List<PolicyChunkResult> results = policySearchPort.search(query, category);
+        recorder.recordToolUsed("search_policy");
+        recorder.recordPolicyReferences(results);
+        return results;
     }
 }
