@@ -27,7 +27,13 @@ public record AdminSettlementEntry(
         REQUESTED,
         PROCESSING,
         COMPLETED,
-        ACTION_REQUIRED
+        ACTION_REQUIRED;
+
+        public static RefundStatus of(boolean published, String paymentResultStatus) {
+            if (!published) return REQUESTED;
+            if (paymentResultStatus == null) return PROCESSING;
+            return "COMPLETED".equals(paymentResultStatus) ? COMPLETED : ACTION_REQUIRED;
+        }
     }
 
     public record Payout(
