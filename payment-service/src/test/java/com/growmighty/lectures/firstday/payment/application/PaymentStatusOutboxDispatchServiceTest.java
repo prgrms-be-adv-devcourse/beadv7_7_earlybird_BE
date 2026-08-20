@@ -1,7 +1,7 @@
 package com.growmighty.lectures.firstday.payment.application;
 
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentStatusChangedEvent;
-import com.growmighty.lectures.firstday.payment.application.port.PaymentSingleResultEventPublisher;
+import com.growmighty.lectures.firstday.payment.application.port.PaymentStatusChangedEventPublisher;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
@@ -29,7 +29,7 @@ class PaymentStatusOutboxDispatchServiceTest {
     private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
 
     @Mock
-    private PaymentSingleResultEventPublisher paymentSingleResultEventPublisher;
+    private PaymentStatusChangedEventPublisher paymentStatusChangedEventPublisher;
 
     @InjectMocks
     private PaymentStatusOutboxDispatchService paymentStatusOutboxDispatchService;
@@ -44,7 +44,7 @@ class PaymentStatusOutboxDispatchServiceTest {
         PaymentStatusOutbox outbox = pendingOutbox();
         paymentStatusOutboxDispatchService.dispatch(outbox);
 
-        verify(paymentSingleResultEventPublisher).publish(
+        verify(paymentStatusChangedEventPublisher).publish(
             new PaymentStatusChangedEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name()) // <--
         );
         verify(paymentStatusOutboxRepository).save(outbox);
@@ -56,7 +56,7 @@ class PaymentStatusOutboxDispatchServiceTest {
     void Kafka_발행에_실패하면_재시도_횟수를_증가시키고_예외를_전파한다() {
         PaymentStatusOutbox outbox = pendingOutbox();
         doThrow(new IllegalStateException("Kafka 발행 실패"))
-            .when(paymentSingleResultEventPublisher)
+            .when(paymentStatusChangedEventPublisher)
             .publish(new PaymentStatusChangedEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
 
         assertThatThrownBy(() -> paymentStatusOutboxDispatchService.dispatch(outbox))
@@ -73,7 +73,7 @@ class PaymentStatusOutboxDispatchServiceTest {
     void 커밋_후_즉시_발행에_실패하면_예외를_전파하지_않고_재시도_횟수를_증가시킨다() {
         PaymentStatusOutbox outbox = pendingOutbox();
         doThrow(new IllegalStateException("Kafka 발행 실패"))
-            .when(paymentSingleResultEventPublisher)
+            .when(paymentStatusChangedEventPublisher)
             .publish(new PaymentStatusChangedEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
 
         paymentStatusOutboxDispatchService.dispatchAfterCommit(outbox);
@@ -90,7 +90,7 @@ class PaymentStatusOutboxDispatchServiceTest {
 
         paymentStatusOutboxDispatchService.dispatch(outbox);
 
-        verifyNoInteractions(paymentSingleResultEventPublisher);
+        verifyNoInteractions(paymentStatusChangedEventPublisher);
         verify(paymentStatusOutboxRepository, never()).save(any());
         assertThat(outbox.getStatus()).isEqualTo(PaymentStatusOutboxStatus.PENDING);
     }
