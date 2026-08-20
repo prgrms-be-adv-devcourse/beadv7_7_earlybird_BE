@@ -21,11 +21,16 @@ public class PaymentService {
 
     @Transactional
     public PaymentPreparationInfo prepare(
+        @NonNull Long userId,
         @NonNull Long orderId,
         @NonNull BigDecimal amount
     ) {
         return paymentRepository.findByOrderId(orderId)
             .map(existingPayment -> {
+                if (!userId.equals(existingPayment.getUserId())) {
+                    throw new IllegalStateException("주문 소유자가 일치하지 않습니다. userId=" + userId);
+                }
+
                 boolean sameRequest = existingPayment.getAmount().compareTo(amount) == 0;
 
                 if (!sameRequest) {
@@ -55,7 +60,7 @@ public class PaymentService {
                 throw new IllegalStateException("지원하지 않는 결제 상태입니다. status=" + existingPayment.getStatus());
             })
             .orElseGet(() -> {
-                Payment payment = Payment.ready(orderId, amount);
+                Payment payment = Payment.ready(userId, orderId, amount);
                 return PaymentPreparationInfo.from(paymentRepository.save(payment));
             });
     }
