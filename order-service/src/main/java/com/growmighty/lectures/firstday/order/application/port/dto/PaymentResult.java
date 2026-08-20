@@ -10,6 +10,7 @@ public record PaymentResult(
 ) {
     public enum Status {
         SUCCESS,
+        CANCELLED,
         FAILURE,
         PENDING,
         UNKNOWN
@@ -25,6 +26,10 @@ public record PaymentResult(
 
     public static PaymentResult failure(BigDecimal amount) {
         return failure(null, amount);
+    }
+
+    public static PaymentResult cancelled(Long paymentId, String pgOrderId, BigDecimal amount) {
+        return new PaymentResult(paymentId, pgOrderId, amount, Status.CANCELLED);
     }
 
     public static PaymentResult failure(String pgOrderId, BigDecimal amount) {

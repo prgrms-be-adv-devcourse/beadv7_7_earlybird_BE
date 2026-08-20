@@ -33,7 +33,7 @@ class OrderPaymentResultHandler {
         Order.PaymentOutcome outcome = switch (payment.status()) {
             case SUCCESS -> Order.PaymentOutcome.SUCCESS;
             case FAILURE -> Order.PaymentOutcome.FAILURE;
-            case PENDING, UNKNOWN -> Order.PaymentOutcome.PENDING;
+            case CANCELLED, PENDING, UNKNOWN -> Order.PaymentOutcome.PENDING;
         };
         Order.PaymentHandling handling = order.handlePaymentOutcome(outcome);
         if (handling == Order.PaymentHandling.IGNORED) {

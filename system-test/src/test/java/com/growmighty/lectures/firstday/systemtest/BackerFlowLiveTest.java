@@ -14,13 +14,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 이슈 #149 — 게이트웨이를 통해 실제 후원자 플로우(회원가입 → 로그인 → 프로젝트/리워드 조회 →
- * 후원 생성 → 내 후원 조회 → 취소)를 실행해 검증하는 라이브 테스트. user/project/order-service
- * 어느 한 곳 소유가 아니라 여러 서비스를 가로지르므로 system-test 모듈에 둔다.
+ * 장바구니 담기 → 후원 생성 → 내 후원 조회 → 취소)를 실행해 검증하는 라이브 테스트.
+ * user/project/order/cart-service 어느 한 곳 소유가 아니라 여러 서비스를 가로지르므로
+ * system-test 모듈에 둔다.
  *
  * 기본 `test` 태스크에서는 제외된다(@Tag("live") + build.gradle의 excludeTags) — 로컬/운영
  * 스택이 이미 떠 있어야 하기 때문이다. 실행: ./gradlew :system-test:liveTest
@@ -84,6 +86,17 @@ class BackerFlowLiveTest {
 
     @Test
     @Order(4)
+    void addToCart() throws Exception {
+        // 주문 생성이 요구하는 항목은 장바구니 내용과 정확히 일치해야 한다 (OrderApiService#commandFromCart).
+        String body = """
+                {"projectId": %d, "items": [{"rewardId": %d, "quantity": 1}]}
+                """.formatted(projectId, rewardId);
+        JsonNode data = post("/api/v1/users/" + userId + "/cart/items", body, accessToken, 200);
+        assertThat(data.get("itemCount").asInt()).isGreaterThan(0);
+    }
+
+    @Test
+    @Order(5)
     void placeOrder() throws Exception {
         BigDecimal itemsAmount = rewardPrice;
         BigDecimal shippingFee = itemsAmount.compareTo(BigDecimal.valueOf(50_000)) >= 0
@@ -99,10 +112,11 @@ class BackerFlowLiveTest {
                   "shippingAddress": "서울시 강남구",
                   "zipCode": "06236",
                   "expectedItemsAmount": %s,
-                  "expectedTotalAmount": %s
+                  "expectedTotalAmount": %s,
+                  "orderIdempotencyKey": "%s"
                 }
                 """.formatted(userId, rewardId, rewardPrice.toPlainString(),
-                itemsAmount.toPlainString(), totalAmount.toPlainString());
+                itemsAmount.toPlainString(), totalAmount.toPlainString(), UUID.randomUUID());
 
         JsonNode data = post("/api/v1/orders", body, accessToken, 200);
         orderId = data.get("orderId") != null ? data.get("orderId").asLong() : data.get("id").asLong();
@@ -110,7 +124,7 @@ class BackerFlowLiveTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     void getMyOrders() throws Exception {
         JsonNode orders = get("/api/v1/orders/me?userId=" + userId, accessToken, 200);
         assertThat(orders.isArray()).isTrue();
@@ -118,7 +132,7 @@ class BackerFlowLiveTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     void cancelOrder() throws Exception {
         JsonNode data = post("/api/v1/orders/" + orderId + "/cancel", "", accessToken, 200);
         assertThat(data.get("status").asText()).isEqualTo("CANCELLED");
