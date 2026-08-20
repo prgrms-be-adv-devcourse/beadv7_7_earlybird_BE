@@ -110,6 +110,7 @@ class ProjectRefundRequestedKafkaPublisherTest {
     private static ProjectRefundRequested request() {
         ProjectOutcomeFact outcome = ProjectOutcomeFact.of(
                 101L,
+                "프로젝트 101",
                 9L,
                 ProjectOutcomeFact.Outcome.FAILED,
                 OCCURRED_AT

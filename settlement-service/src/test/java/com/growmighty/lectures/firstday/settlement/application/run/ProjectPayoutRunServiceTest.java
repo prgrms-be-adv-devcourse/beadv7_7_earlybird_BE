@@ -77,6 +77,7 @@ class ProjectPayoutRunServiceTest extends MySqlIntegrationTestSupport {
     private static ProjectOutcomeFact outcome(Long projectId, Long creatorId) {
         return ProjectOutcomeFact.of(
                 projectId,
+                "프로젝트 " + projectId,
                 creatorId,
                 ProjectOutcomeFact.Outcome.SUCCEEDED,
                 Instant.parse("2026-07-31T10:00:00Z")

@@ -16,12 +16,14 @@ class SettlementInputFactTest {
 
         ProjectOutcomeFact succeeded = ProjectOutcomeFact.of(
                 101L,
+                "프로젝트 101",
                 9L,
                 ProjectOutcomeFact.Outcome.SUCCEEDED,
                 occurredAt
         );
         ProjectOutcomeFact failed = ProjectOutcomeFact.of(
                 102L,
+                "프로젝트 102",
                 10L,
                 ProjectOutcomeFact.Outcome.FAILED,
                 occurredAt

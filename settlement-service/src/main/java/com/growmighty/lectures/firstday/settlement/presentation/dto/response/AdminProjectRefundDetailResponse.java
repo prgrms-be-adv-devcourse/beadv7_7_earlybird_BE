@@ -8,12 +8,12 @@ import java.time.ZoneId;
 import java.util.List;
 
 public record AdminProjectRefundDetailResponse(
+        String refundRequestId,
         Long projectId,
+        String projectName,
         ProjectCancellationReason reason,
-        AdminSettlementEntry.RefundPublishStatus publishStatus,
+        AdminSettlementEntry.RefundStatus refundStatus,
         OffsetDateTime requestedAt,
-        OffsetDateTime publishedAt,
-        AdminSettlementEntry.RefundProcessingStatus processingStatus,
         OffsetDateTime paymentResultAt,
         List<PaymentResponse> payments
 ) {
@@ -22,12 +22,12 @@ public record AdminProjectRefundDetailResponse(
 
     public static AdminProjectRefundDetailResponse from(AdminProjectRefundDetail detail) {
         return new AdminProjectRefundDetailResponse(
+                detail.refundRequestId(),
                 detail.projectId(),
+                detail.projectName(),
                 detail.reason(),
-                detail.publishStatus(),
+                detail.refundStatus(),
                 detail.requestedAt().atZone(SEOUL).toOffsetDateTime(),
-                toSeoul(detail.publishedAt()),
-                detail.processingStatus(),
                 toSeoul(detail.paymentResultAt()),
                 detail.payments().stream().map(PaymentResponse::from).toList()
         );

@@ -39,9 +39,7 @@ public record AdminProjectSettlementDetailResponse(
                         detail.scheduledDate(),
                         toOffsetDateTime(detail.completedAt()),
                         new DestinationResponse(
-                                detail.tossSellerId(),
-                                detail.bankCode(),
-                                detail.maskedAccountNumber()
+                                detail.tossSellerId()
                         ),
                         attempts
                 )
@@ -102,11 +100,7 @@ public record AdminProjectSettlementDetailResponse(
     ) {
     }
 
-    public record DestinationResponse(
-            String tossSellerId,
-            String bankCode,
-            String maskedAccountNumber
-    ) {
+    public record DestinationResponse(String tossSellerId) {
     }
 
     public record PayoutAttemptResponse(

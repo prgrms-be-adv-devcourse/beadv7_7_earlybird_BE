@@ -49,7 +49,7 @@ sequenceDiagram
 아래 순서는 Kafka 입력 수집, PG 정산 대사, 창작자 지급과 프로젝트별 batch 환불 요청으로 전환하기 위한 구현 계획이다.
 
 1. **Project·Order 이벤트 입력을 저장한다.**
-   - `project.status-changed.v1`의 `ProjectStatusChanged`에서 `projectId`, `creatorId`, `status(SUCCEEDED/FAILED/CANCELLED)`를 받는다. Key는 `projectId`다.
+   - `project.status-changed.v1`의 `ProjectStatusChanged`에서 `projectId`, 결과 시점의 `projectName`, `creatorId`, `status(SUCCEEDED/FAILED/CANCELLED)`를 받는다. Key는 `projectId`다.
    - `order.payment-status-changed.v1`의 `OrderPaymentStatusChanged`에서 `orderId`, `pgOrderId`, `projectId`, `paymentAmount`, `status(COMPLETED/CANCELLED)`를 받는다. Key는 `orderId`다.
    - `orderId`는 Order 내부 식별자이고 `pgOrderId`는 상점이 결제 요청 때 생성한 Toss `orderId`다.
    - `payment.bulk-cancel-result.v1`의 `ProjectRefundProcessed`는 `refundRequestId`, `orderIds`, `status`를 받고 환불 batch 처리 결과를 보존한다. Key는 `refundRequestId`다.

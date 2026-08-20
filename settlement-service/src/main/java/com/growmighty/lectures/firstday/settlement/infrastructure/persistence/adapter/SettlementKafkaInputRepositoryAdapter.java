@@ -3,11 +3,14 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.a
 import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.repository.SettlementKafkaInputRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.inbox.KafkaInboxEvent;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataKafkaInboxEventRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +18,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 @RequiredArgsConstructor
-public class SettlementKafkaInputRepositoryAdapter implements SettlementKafkaInputRepository {
+public class SettlementKafkaInputRepositoryAdapter implements SettlementKafkaInputRepository, ProjectOutcomeFactRepository {
 
     private final SpringDataKafkaInboxEventRepository inboxRepository;
     private final SpringDataProjectOutcomeFactRepository outcomeRepository;
@@ -33,6 +36,11 @@ public class SettlementKafkaInputRepositoryAdapter implements SettlementKafkaInp
     @Override
     public Optional<ProjectOutcomeFact> findProjectOutcome(Long projectId) {
         return outcomeRepository.findById(projectId);
+    }
+
+    @Override
+    public List<ProjectOutcomeFact> findAllByProjectIdIn(Collection<Long> projectIds) {
+        return outcomeRepository.findAllById(projectIds);
     }
 
     @Override
