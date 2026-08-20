@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.refund.infrastructure.kafka;
 
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
-import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
 import com.growmighty.lectures.firstday.refund.domain.*;
+import com.growmighty.lectures.firstday.refund.infrastructure.dto.ProjectRefundProcessedEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

@@ -5,7 +5,6 @@ import com.growmighty.lectures.firstday.payment.application.PaymentService;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PayRequest;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentResponse;
 import com.growmighty.lectures.firstday.refund.application.RefundCancellationSagaOrchestrator;
-import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -46,10 +45,9 @@ public class PaymentController {
         @PathVariable Long paymentId,
         @RequestHeader(JwtHeaders.USER_ID) Long requesterId
     ) {
-        refundCancellationSagaOrchestrator.cancel(
+        refundCancellationSagaOrchestrator.cancelByUser(
             paymentId,
-            requesterId,
-            RefundReason.USER_CANCEL
+            requesterId
         );
         return PaymentResponse.from(paymentService.getPayment(paymentId, requesterId));
     }
