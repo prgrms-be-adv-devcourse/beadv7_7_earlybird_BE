@@ -17,7 +17,10 @@ public record RewardUpdateRequest(
         String description,
         BigDecimal price,
         @PositiveOrZero Integer totalQuantity,
-        boolean clearTotalQuantity,
+        Boolean clearTotalQuantity,
         @Positive Integer increaseQuantity
 ) {
+    public Boolean clearTotalQuantity() {
+        return Boolean.TRUE.equals(clearTotalQuantity);
+    }
 }
