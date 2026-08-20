@@ -30,7 +30,7 @@ public class ProjectRefundProcessedKafkaListener {
         inputService.saveProjectRefundProcessed(new SettlementKafkaInput.ProjectRefundProcessed(
                 record.key(),
                 event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(),
-                event.payload().settlementId(), event.payload().orderIds(), event.payload().status()
+                event.payload().refundRequestId(), event.payload().orderIds(), event.payload().status()
         ));
         acknowledgment.acknowledge();
     }

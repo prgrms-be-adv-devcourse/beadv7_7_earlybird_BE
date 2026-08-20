@@ -63,8 +63,8 @@ class ProjectRefundRequestedKafkaPublisherTest {
         );
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
-        assertThat(eventCaptor.getValue().settlementId()).isEqualTo(request.refundRequestId());
-        assertThat(eventCaptor.getValue().payload().settlementId()).isEqualTo(request.refundRequestId());
+        assertThat(eventCaptor.getValue().refundRequestId()).isEqualTo(request.refundRequestId());
+        assertThat(eventCaptor.getValue().payload().refundRequestId()).isEqualTo(request.refundRequestId());
     }
 
     @Test
@@ -86,7 +86,7 @@ class ProjectRefundRequestedKafkaPublisherTest {
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
         assertThat(eventCaptor.getAllValues())
-                .extracting(ProjectRefundRequestedEvent::settlementId)
+                .extracting(ProjectRefundRequestedEvent::refundRequestId)
                 .containsOnly(request.refundRequestId());
     }
 

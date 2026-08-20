@@ -75,7 +75,7 @@ public class SettlementKafkaInputService {
         if (!inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant())) {
             return;
         }
-        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(event.settlementId())
+        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(event.refundRequestId())
                 .orElseThrow(() -> new IllegalArgumentException("환불 요청을 찾을 수 없습니다."));
         request.recordPaymentResult(event.status(), event.occurredAt().toInstant(), event.orderIds());
         refundRequestedRepository.save(request);
@@ -135,7 +135,7 @@ public class SettlementKafkaInputService {
 
     private static void validateRefundResultEvent(SettlementKafkaInput.ProjectRefundProcessed event) {
         validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), PROJECT_REFUND_PROCESSED);
-        validateKey(event.key(), event.settlementId(), "settlementId");
+        validateKey(event.key(), event.refundRequestId(), "refundRequestId");
         validateOrderIds(event.orderIds());
         requiredEnum(RefundProcessingStatus.class, event.status(), "환불 처리 상태");
     }
