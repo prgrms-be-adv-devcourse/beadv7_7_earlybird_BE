@@ -87,7 +87,7 @@ flowchart TD
 
 #### `Cart`
 
-파일: `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/Cart.java`
+파일: `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/Cart.java`
 
 사용자 한 명의 장바구니 집합체 루트다. `userId`는 DB 유니크 제약으로 한 사용자당 하나의 Cart만 허용한다. `items`는 `cascade = ALL`, `orphanRemoval = true`이므로 Cart에서 항목을 제거하면 JPA가 자식 행도 제거한다. `version`은 동시에 수정할 때 충돌을 감지하는 낙관적 잠금 값이다.
 
@@ -101,7 +101,7 @@ flowchart TD
 
 #### `CartItem`
 
-파일: `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/CartItem.java`
+파일: `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/CartItem.java`
 
 Cart 안의 리워드 한 종류를 나타낸다. `rewardId`와 희망 `quantity`만 소유하며, 이름·가격·프로젝트는 Cart의 영구 스냅샷이 아니다. `(cart_id, reward_id)`가 DB에서 유일하다. 수량은 `1..99`이며 `create`, `addQuantity`, `changeQuantity`가 이 범위를 지킨다.
 
@@ -221,7 +221,7 @@ DELETE /internal/v1/carts/users/{userId}/items
 
 ### 3.4 `CartService` 주요 함수 책임
 
-파일: `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/application/CartService.java`
+파일: `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/application/CartService.java`
 
 #### `addItems(AddCartItemsCommand)`
 
@@ -263,7 +263,7 @@ CartRepository (Domain interface)
 
 ### 4.1 `Order`
 
-파일: `order-service/src/main/java/com/growmighty/lectures/firstday/order/domain/Order.java`
+파일: `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/domain/Order.java`
 
 주문 집합체 루트다. 주요 데이터의 비즈니스 의미는 다음과 같다.
 
@@ -282,7 +282,7 @@ CartRepository (Domain interface)
 
 ### 4.2 `OrderItem`과 `Money`
 
-`OrderItem` 파일: `order-service/src/main/java/com/growmighty/lectures/firstday/order/domain/OrderItem.java`
+`OrderItem` 파일: `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/domain/OrderItem.java`
 
 OrderItem은 Reward의 현재 행을 계속 참조하는 대신 다음 값을 주문 안에 보존한다.
 
@@ -464,9 +464,9 @@ PaymentSingleResultKafkaListener.consume(event)
 
 PR #390의 `classifyPaymentFailure(...)`는 이를 `DEFINITIVE_FAILURE`와 `AMBIGUOUS`로 나눈다. 모호하면 이미 확보한 재고를 즉시 복원하지 않고 `PAYMENT_PENDING`으로 두어 callback을 기다린다. 그래야 실제로는 결제된 주문의 재고를 다른 주문에 다시 내주는 충돌을 막을 수 있다. 확정 실패면 결제 실패 보상을 진행한다. `isRetryable(...)`는 열린 Circuit Breaker 같은 즉시 재시도할 필요 없는 경우도 구분한다. 세부 분류는 다음 파일에서 확인할 수 있다.
 
-- `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderRemoteCallExecutor.java`
-- `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderApiService.java`
-- `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderSagaRecoveryService.java`
+- `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderRemoteCallExecutor.java`
+- `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderApiService.java`
+- `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderSagaRecoveryService.java`
 
 ## 7. 재고 처리 구조
 
@@ -1011,22 +1011,22 @@ sequenceDiagram
 
 | 클래스 | 저장소 상대 경로 |
 |---|---|
-| `CartController` | `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/presentation/CartController.java` |
-| `InternalCartController` | `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/presentation/InternalCartController.java` |
-| `CartService` | `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/application/CartService.java` |
-| `Cart`, `CartItem` | `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/Cart.java`, `cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/CartItem.java` |
-| `OrderController` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/presentation/OrderController.java` |
-| `InternalOrderController` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/presentation/InternalOrderController.java` |
-| `OrderApiService` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderApiService.java` |
-| `InternalOrderApiService` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/InternalOrderApiService.java` |
-| `Order`, `OrderItem`, `OrderStatus` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/domain/` |
-| `OrderStockHandler`, `OrderPaymentResultHandler` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/` |
-| `OrderPaidPersistenceService`, `OrderPaidCompletionService` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/` |
-| `OrderCancellationOrchestrationService`, `OrderCancellationPersistenceService`, `OrderCancellationCompletionService` | `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/` |
-| Port | `order-service/src/main/java/com/growmighty/lectures/firstday/order/application/port/` |
-| Feign/HTTP Adapter | `order-service/src/main/java/com/growmighty/lectures/firstday/order/infrastructure/client/` |
-| Kafka Adapter | `order-service/src/main/java/com/growmighty/lectures/firstday/order/infrastructure/kafka/` |
-| Order JPA Adapter | `order-service/src/main/java/com/growmighty/lectures/firstday/order/infrastructure/OrderRepositoryAdapter.java` |
+| `CartController` | `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/presentation/CartController.java` |
+| `InternalCartController` | `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/presentation/InternalCartController.java` |
+| `CartService` | `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/application/CartService.java` |
+| `Cart`, `CartItem` | `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/Cart.java`, `../../cart-service/src/main/java/com/growmighty/lectures/firstday/cart/domain/CartItem.java` |
+| `OrderController` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/presentation/OrderController.java` |
+| `InternalOrderController` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/presentation/InternalOrderController.java` |
+| `OrderApiService` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application/OrderApiService.java` |
+| `InternalOrderApiService` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application/InternalOrderApiService.java` |
+| `Order`, `OrderItem`, `OrderStatus` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/domain` |
+| `OrderStockHandler`, `OrderPaymentResultHandler` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application` |
+| `OrderPaidPersistenceService`, `OrderPaidCompletionService` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application` |
+| `OrderCancellationOrchestrationService`, `OrderCancellationPersistenceService`, `OrderCancellationCompletionService` | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application` |
+| Port | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/application/port` |
+| Feign/HTTP Adapter | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/infrastructure/client` |
+| Kafka Adapter | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/infrastructure/kafka` |
+| Order JPA Adapter | `../../order-service/src/main/java/com/growmighty/lectures/firstday/order/infrastructure/OrderRepositoryAdapter.java` |
 
 ### 16.2 기능별 읽기 순서
 
