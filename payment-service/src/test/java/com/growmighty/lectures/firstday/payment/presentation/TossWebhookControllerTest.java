@@ -2,7 +2,7 @@ package com.growmighty.lectures.firstday.payment.presentation;
 
 import com.growmighty.lectures.firstday.payment.application.PaymentGateway;
 import com.growmighty.lectures.firstday.payment.application.PaymentReconciliationService;
-import com.growmighty.lectures.firstday.payment.infrastructure.toss.dto.TossWebhookPayment;
+import com.growmighty.lectures.firstday.payment.presentation.dto.TossWebhookPayment;
 import com.growmighty.lectures.firstday.payment.presentation.dto.TossWebhookRequest;
 import org.junit.jupiter.api.Test;
 
