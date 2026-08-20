@@ -12,6 +12,7 @@ import io.github.resilience4j.core.IntervalFunction;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
 import org.springframework.stereotype.Component;
+import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.net.ConnectException;
