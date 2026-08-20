@@ -43,7 +43,7 @@ class CreatorProfileTest {
 
         assertThat(profile.getUserId()).isEqualTo(1L);
         assertThat(profile.getBankName()).isEqualTo("신한은행");
-        assertThat(profile.getAccountNumber()).isEqualTo("110-123-456789");
+        assertThat(profile.getAccountNumber().value()).isEqualTo("110-123-456789");
         assertThat(profile.getAccountHolder()).isEqualTo("창작자");
     }
 
@@ -55,7 +55,7 @@ class CreatorProfileTest {
         profile.updateAccount("국민은행", "220-987-654321", "새창작자");
 
         assertThat(profile.getBankName()).isEqualTo("국민은행");
-        assertThat(profile.getAccountNumber()).isEqualTo("220-987-654321");
+        assertThat(profile.getAccountNumber().value()).isEqualTo("220-987-654321");
         assertThat(profile.getAccountHolder()).isEqualTo("새창작자");
     }
 }

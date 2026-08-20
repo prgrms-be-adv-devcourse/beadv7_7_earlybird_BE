@@ -1,26 +1,27 @@
 package com.growmighty.lectures.firstday.user.infrastructure.security;
 
+import com.growmighty.lectures.firstday.user.domain.vo.AccountNumber;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-// autoApply=false: bankName/accountHolder 등 다른 String 필드까지 암호화되지 않도록,
-// CreatorProfile.accountNumber 에만 @Convert 로 명시 적용한다.
+// autoApply=true: AccountNumber 타입 필드에만 적용되므로 bankName/accountHolder 등
+// String 필드는 영향받지 않는다. CreatorProfile은 이 컨버터를 import하지 않는다.
 @Component
-@Converter(autoApply = false)
+@Converter(autoApply = true)
 @RequiredArgsConstructor
-public class AccountNumberConverter implements AttributeConverter<String, String> {
+public class AccountNumberConverter implements AttributeConverter<AccountNumber, String> {
 
     private final UserSensitiveDataCrypto userSensitiveDataCrypto;
 
     @Override
-    public String convertToDatabaseColumn(String attribute) {
-        return userSensitiveDataCrypto.encrypt(attribute);
+    public String convertToDatabaseColumn(AccountNumber attribute) {
+        return userSensitiveDataCrypto.encrypt(attribute.value());
     }
 
     @Override
-    public String convertToEntityAttribute(String dbData) {
-        return userSensitiveDataCrypto.decrypt(dbData);
+    public AccountNumber convertToEntityAttribute(String dbData) {
+        return new AccountNumber(userSensitiveDataCrypto.decrypt(dbData));
     }
 }

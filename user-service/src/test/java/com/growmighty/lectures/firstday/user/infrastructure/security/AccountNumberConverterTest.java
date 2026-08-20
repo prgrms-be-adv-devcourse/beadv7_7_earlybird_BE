@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.user.infrastructure.security;
 
 import com.growmighty.lectures.firstday.user.config.UserSecurityProperties;
+import com.growmighty.lectures.firstday.user.domain.vo.AccountNumber;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,9 +16,9 @@ class AccountNumberConverterTest {
     void convertDatabaseAndEntityAttribute_roundTripsAccountNumber() {
         String accountNumber = "110-123-456789";
 
-        String encrypted = converter.convertToDatabaseColumn(accountNumber);
+        String encrypted = converter.convertToDatabaseColumn(new AccountNumber(accountNumber));
 
         assertThat(encrypted).isNotEqualTo(accountNumber);
-        assertThat(converter.convertToEntityAttribute(encrypted)).isEqualTo(accountNumber);
+        assertThat(converter.convertToEntityAttribute(encrypted)).isEqualTo(new AccountNumber(accountNumber));
     }
 }
