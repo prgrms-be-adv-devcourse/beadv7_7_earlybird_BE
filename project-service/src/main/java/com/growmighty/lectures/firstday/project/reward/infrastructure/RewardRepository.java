@@ -11,6 +11,9 @@ import java.util.List;
 public interface RewardRepository extends JpaRepository<Reward, Long> {
     List<Reward> findByProjectId(Long projectId);
 
+    /** 검색 색인 벌크 재구축 시 프로젝트별 N+1 조회를 피하려고 한 번에 묶어 가져온다. */
+    List<Reward> findByProjectIdIn(List<Long> projectIds);
+
     void deleteByProjectId(Long projectId);
 
     /**

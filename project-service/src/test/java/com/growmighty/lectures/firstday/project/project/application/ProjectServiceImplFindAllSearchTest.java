@@ -7,6 +7,7 @@ import com.growmighty.lectures.firstday.project.project.application.port.FilePor
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
+import com.growmighty.lectures.firstday.project.project.domain.ProjectSort;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
@@ -17,7 +18,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,5 +97,41 @@ class ProjectServiceImplFindAllSearchTest {
         assertThatThrownBy(() -> projectService.findAll("키워드", null, null, null, UserRole.BACKER))
                 .isInstanceOf(ServiceUnavailableException.class);
         verify(projectRepository, never()).findAll(any(Specification.class), any(Sort.class));
+    }
+
+    @Test
+    @DisplayName("keyword가 있고 sort를 명시하지 않으면 ES가 넘겨준 관련도 순서 그대로 반환한다")
+    void findAll_withKeywordNoExplicitSort_preservesEsRelevanceOrder() {
+        Project mostRelevant = projectWithId(3L);
+        Project leastRelevant = projectWithId(1L);
+        Project middle = projectWithId(2L);
+        when(searchPort.search("고양이")).thenReturn(List.of(3L, 2L, 1L));
+        // DB는 관련도와 무관한 순서로 돌려준다 — 그래도 결과는 ES 순서(3,2,1)를 따라야 한다.
+        when(projectRepository.findAll(any(Specification.class)))
+                .thenReturn(List.of(leastRelevant, mostRelevant, middle));
+
+        List<ProjectResponse> result = projectService.findAll("고양이", null, null, null, UserRole.BACKER);
+
+        assertThat(result).extracting(ProjectResponse::projectId).containsExactly(3L, 2L, 1L);
+        verify(projectRepository, never()).findAll(any(Specification.class), any(Sort.class));
+    }
+
+    @Test
+    @DisplayName("keyword가 있어도 sort를 명시하면 관련도 대신 그 정렬 기준을 그대로 쓴다")
+    void findAll_withKeywordAndExplicitSort_usesRequestedSortNotRelevance() {
+        when(searchPort.search("고양이")).thenReturn(List.of(3L, 2L, 1L));
+        when(projectRepository.findAll(any(Specification.class), any(Sort.class))).thenReturn(List.of());
+
+        projectService.findAll("고양이", null, null, ProjectSort.FUNDED_AMOUNT, UserRole.BACKER);
+
+        verify(projectRepository).findAll(any(Specification.class), any(Sort.class));
+        verify(projectRepository, never()).findAll(any(Specification.class));
+    }
+
+    private Project projectWithId(Long projectId) {
+        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        ReflectionTestUtils.setField(project, "projectId", projectId);
+        return project;
     }
 }

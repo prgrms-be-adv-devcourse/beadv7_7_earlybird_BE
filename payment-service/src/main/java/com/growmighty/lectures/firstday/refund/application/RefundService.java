@@ -23,8 +23,12 @@ public class RefundService {
     private final ApplicationEventPublisher  applicationEventPublisher;
 
     @Transactional
-    public RefundCancellationTarget startRefund(Long paymentId, RefundReason reason) {
+    public RefundCancellationTarget startRefund(Long paymentId, Long requesterId, RefundReason reason) {
         Payment payment = findPaidPayment(paymentId);
+
+        if (!payment.isOwnedBy(requesterId)) {
+            throw new IllegalStateException("결제 소유자가 일치하지 않습니다.");
+        }
 
         Refund refund = refundRepository.findByPaymentId(payment.getPaymentId())
             .map(existingRefund -> {

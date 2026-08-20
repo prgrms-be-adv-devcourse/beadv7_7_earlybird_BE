@@ -32,7 +32,8 @@ public abstract class ElasticsearchIntegrationTestSupport extends MySqlIntegrati
     @ServiceConnection
     static final ElasticsearchContainer ELASTICSEARCH = new ElasticsearchContainer(NORI_ELASTICSEARCH_IMAGE)
             .withEnv("discovery.type", "single-node")
-            .withEnv("xpack.security.enabled", "false");
+            .withEnv("xpack.security.enabled", "false")
+            .withEnv("xpack.license.self_generated.type", "trial");
 
     static {
         ELASTICSEARCH.start();

@@ -28,7 +28,7 @@ flowchart TD
       FILE["file-service :8087"]
       BOARD["board-service :8088"]
       NOTI["notification-service :8089"]
-      AI["ai-service :8090"]
+      AI["chat-service :8090"]
     end
 
     CFG["config-server :8888<br/>(native profile)"]

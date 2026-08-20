@@ -3,6 +3,8 @@
 spring:
   application:
     name: project-service
+  profiles:
+    active: test
   cloud:
     config:
       # 테스트에선 config-server 에 접속하지 않는다.

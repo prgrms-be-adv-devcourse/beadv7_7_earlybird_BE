@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto;
+package com.growmighty.lectures.firstday.refund.infrastructure.dto;
 
 import java.time.OffsetDateTime;
 import java.util.List;

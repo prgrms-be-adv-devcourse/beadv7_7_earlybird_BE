@@ -65,7 +65,7 @@ metadata:
   name: discovery-server
   namespace: webapp
 spec:
-  # ClusterIP만으로 충분 - 앱 박스 compose 컨테이너는 hostPort(위)로, 클러스터 내부(ai-service 등)는
+  # ClusterIP만으로 충분 - 앱 박스 compose 컨테이너는 hostPort(위)로, 클러스터 내부(chat-service 등)는
   # 이 Service의 in-cluster DNS(discovery-server)로 접근한다. 별도 LoadBalancer/NodePort 불필요.
   type: ClusterIP
   selector:

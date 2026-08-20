@@ -109,19 +109,20 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                 "ProjectStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-08-01T09:00:00+09:00"),
-                new ProjectStatusChangedEvent.Payload(projectId, 701L, "SUCCEEDED")
+                new ProjectStatusChangedEvent.Payload(projectId, "프로젝트 " + projectId, 701L, "SUCCEEDED")
         ));
         send(KafkaTopics.PROJECT_STATUS_CHANGED, projectId, new ProjectStatusChangedEvent(
                 projectEventId,
                 "ProjectStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-08-01T09:00:00+09:00"),
-                new ProjectStatusChangedEvent.Payload(projectId, 701L, "SUCCEEDED")
+                new ProjectStatusChangedEvent.Payload(projectId, "프로젝트 " + projectId, 701L, "SUCCEEDED")
         ));
 
         assertThat(await(() -> inboxRepository.existsById(projectEventId.toString()))).isTrue();
-        assertThat(outcomeRepository.findById(projectId).orElseThrow().outcome())
-                .isEqualTo(ProjectOutcomeFact.Outcome.SUCCEEDED);
+        ProjectOutcomeFact outcome = outcomeRepository.findById(projectId).orElseThrow();
+        assertThat(outcome.projectName()).isEqualTo("프로젝트 " + projectId);
+        assertThat(outcome.outcome()).isEqualTo(ProjectOutcomeFact.Outcome.SUCCEEDED);
     }
 
     @Test
@@ -220,7 +221,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                     "UnknownEvent",
                     1,
                     OffsetDateTime.parse("2026-08-01T09:00:00+09:00"),
-                    new ProjectStatusChangedEvent.Payload(invalidProjectId, 702L, "SUCCEEDED")
+                    new ProjectStatusChangedEvent.Payload(invalidProjectId, "프로젝트 " + invalidProjectId, 702L, "SUCCEEDED")
             ));
 
             ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(
@@ -352,7 +353,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
         Instant occurredAt = Instant.parse("2026-08-01T00:00:00Z");
         return ProjectRefundRequested.request(
                 UUID.randomUUID().toString(),
-                ProjectOutcomeFact.of(projectId, 703L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
+                ProjectOutcomeFact.of(projectId, "프로젝트 " + projectId, 703L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
                 List.of(OrderPaymentFact.completed(
                         orderId,
                         pgOrderId,

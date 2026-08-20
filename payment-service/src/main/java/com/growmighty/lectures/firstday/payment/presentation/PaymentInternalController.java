@@ -22,6 +22,7 @@ public class PaymentInternalController {
     @PostMapping("/prepare")
     public PaymentPrepareResponse prepare(@Valid @RequestBody PaymentPrepareRequest request) {
         PaymentPreparationInfo payment = paymentService.prepare(
+            request.userId(),
             request.orderId(),
             request.amount()
         );

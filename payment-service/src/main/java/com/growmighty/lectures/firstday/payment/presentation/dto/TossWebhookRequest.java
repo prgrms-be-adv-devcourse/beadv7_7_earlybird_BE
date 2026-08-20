@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.payment.infrastructure.toss.dto;
+package com.growmighty.lectures.firstday.payment.presentation.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;

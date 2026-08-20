@@ -41,7 +41,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -88,9 +90,28 @@ public class ProjectServiceImpl implements ProjectService {
             }
         }
         Specification<Project> specification = buildSpecification(candidateProjectIds, categoryId, status, requesterRole);
+        // 정렬을 명시적으로 고르지 않은 키워드 검색은 ES 관련도 순서(candidateProjectIds에 이미 담긴
+        // 점수 내림차순)를 그대로 보여준다 — 검색창엔 최신순보다 관련도순이 기본값인 게 일반적인 UX다.
+        // 정렬을 명시하면(예: 마감임박순) 그 선택을 그대로 존중해 기존 DB 정렬 경로를 탄다.
+        if (candidateProjectIds != null && sort == null) {
+            List<Project> projects = projectRepository.findAll(specification);
+            return sortByRelevance(projects, candidateProjectIds).stream()
+                    .map(ProjectResponse::from)
+                    .toList();
+        }
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
         return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
                 .map(ProjectResponse::from)
+                .toList();
+    }
+
+    private List<Project> sortByRelevance(List<Project> projects, List<Long> relevanceOrder) {
+        Map<Long, Integer> rank = new HashMap<>();
+        for (int i = 0; i < relevanceOrder.size(); i++) {
+            rank.put(relevanceOrder.get(i), i);
+        }
+        return projects.stream()
+                .sorted(Comparator.comparing(project -> rank.get(project.getProjectId())))
                 .toList();
     }
 
@@ -116,12 +137,10 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    // TODO(팀): 소유자/관리자는 자기 PENDING_REVIEW·REJECTED 프로젝트를 이 엔드포인트로
-    //           조회할 방법이 없다 (인증 도입 전이라 창작자는 /me 목록으로만 확인 가능).
-    //           인증 도입 후 creatorId/관리자 여부를 받아 그 경우엔 이 제한을 우회하도록 보강 필요.
-    public ProjectResponse findById(Long projectId) {
+    public ProjectResponse findById(Long projectId, Long requesterId, UserRole requesterRole) {
         Project project = getProject(projectId);
-        if (!project.isPublished()) {
+        boolean canBypass = requesterRole == UserRole.ADMIN || project.getCreatorId().equals(requesterId);
+        if (!project.isPublished() && !canBypass) {
             throw new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId);
         }
         return ProjectResponse.from(project);

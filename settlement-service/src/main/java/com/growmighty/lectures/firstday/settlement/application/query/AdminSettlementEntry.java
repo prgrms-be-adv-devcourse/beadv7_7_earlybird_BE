@@ -10,8 +10,10 @@ import java.time.LocalDateTime;
 public record AdminSettlementEntry(
         Type type,
         Long projectId,
-        Instant sortAt,
-        Long sortId,
+        String projectName,
+        String refundRequestId,
+        Instant publishedAt,
+        Instant processedAt,
         Payout payout,
         Refund refund
 ) {
@@ -21,15 +23,17 @@ public record AdminSettlementEntry(
         REFUND
     }
 
-    public enum RefundPublishStatus {
+    public enum RefundStatus {
         REQUESTED,
-        PUBLISHED
-    }
-
-    public enum RefundProcessingStatus {
-        AWAITING_RESULT,
+        PROCESSING,
         COMPLETED,
-        ACTION_REQUIRED
+        ACTION_REQUIRED;
+
+        public static RefundStatus of(boolean published, String paymentResultStatus) {
+            if (!published) return REQUESTED;
+            if (paymentResultStatus == null) return PROCESSING;
+            return "COMPLETED".equals(paymentResultStatus) ? COMPLETED : ACTION_REQUIRED;
+        }
     }
 
     public record Payout(
@@ -45,10 +49,8 @@ public record AdminSettlementEntry(
 
     public record Refund(
             ProjectCancellationReason reason,
-            RefundPublishStatus publishStatus,
             Instant requestedAt,
-            Instant publishedAt,
-            RefundProcessingStatus processingStatus,
+            RefundStatus refundStatus,
             Instant paymentResultAt,
             int paymentCount
     ) {

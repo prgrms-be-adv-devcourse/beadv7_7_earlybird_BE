@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
 class RefundServiceTest {
 
     private static final Long PAYMENT_ID = 1L;
+    private static final Long USER_ID = 10L;
     private static final Long ORDER_ID = 1L;
     private static final Long REFUND_ID = 1L;
     private static final Long REFUND_REQUEST_ID = 2L;
@@ -64,7 +65,7 @@ class RefundServiceTest {
                 return refund;
             });
 
-        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL);
+        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, USER_ID, RefundReason.USER_CANCEL);
 
         assertThat(target.refundId()).isEqualTo(REFUND_ID);
         assertThat(target.paymentKey()).isEqualTo(PAYMENT_KEY);
@@ -82,7 +83,7 @@ class RefundServiceTest {
         when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
         when(refundRepository.findByPaymentId(PAYMENT_ID)).thenReturn(Optional.of(refund));
 
-        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL);
+        RefundCancellationTarget target = refundService.startRefund(PAYMENT_ID, USER_ID, RefundReason.USER_CANCEL);
 
         assertThat(target.refundId()).isEqualTo(REFUND_ID);
         verify(refundRepository, never()).save(any());
@@ -206,12 +207,24 @@ class RefundServiceTest {
 
     @Test
     void startRefund_rejectsNotPaidPayment() {
-        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
+        Payment payment = Payment.ready(USER_ID, ORDER_ID, AMOUNT);
         when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
 
-        assertThatThrownBy(() -> refundService.startRefund(PAYMENT_ID, RefundReason.USER_CANCEL))
+        assertThatThrownBy(() -> refundService.startRefund(PAYMENT_ID, USER_ID, RefundReason.USER_CANCEL))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("PAID 상태의 결제만 환불할 수 있습니다.");
+
+        verifyNoInteractions(refundRepository);
+    }
+
+    @Test
+    void startRefund_rejectsDifferentPaymentOwner() {
+        Payment payment = paidPayment();
+        when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> refundService.startRefund(PAYMENT_ID, 999L, RefundReason.USER_CANCEL))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("결제 소유자가 일치하지 않습니다.");
 
         verifyNoInteractions(refundRepository);
     }
@@ -231,7 +244,7 @@ class RefundServiceTest {
     }
 
     private Payment paidPayment() {
-        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
+        Payment payment = Payment.ready(USER_ID, ORDER_ID, AMOUNT);
         ReflectionTestUtils.setField(payment, "paymentId", PAYMENT_ID);
         payment.startConfirming(PAYMENT_KEY);
         payment.confirm(PAYMENT_KEY);
