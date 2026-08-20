@@ -204,6 +204,8 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 .andExpect(jsonPath("$.data.projectName").value("프로젝트 " + projectId))
                 .andExpect(jsonPath("$.data.reason").value("PROJECT_FAILED"))
                 .andExpect(jsonPath("$.data.refundStatus").value("ACTION_REQUIRED"))
+                .andExpect(jsonPath("$.data.publishStatus").doesNotExist())
+                .andExpect(jsonPath("$.data.processingStatus").doesNotExist())
                 .andExpect(jsonPath("$.data.paymentResultAt").value("2026-08-03T09:02:00+09:00"))
                 .andExpect(jsonPath("$.data.payments.length()").value(1))
                 .andExpect(jsonPath("$.data.payments[0].orderId").value(96_000_001L))
@@ -250,7 +252,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     }
 
     @Test
-    @DisplayName("관리자 상세는 지급 시도와 원본 오류를 순서대로 제공하고 보관하지 않는 정보를 노출하지 않는다")
+    @DisplayName("관리자 상세는 지급 시도와 원본 오류를 순서대로 제공하고 계좌 정보를 노출하지 않는다")
     void returnsAdminDetailWithOrderedPayoutAttemptsWithinExposureBoundary() throws Exception {
         long creatorId = 83_000_001L;
         savePayoutReadyProfile(creatorId);
@@ -287,8 +289,8 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 .andExpect(jsonPath("$.data.payout.scheduledDate").value("2026-07-07"))
                 .andExpect(jsonPath("$.data.payout.completedAt").value("2026-07-08T09:00:03+09:00"))
                 .andExpect(jsonPath("$.data.payout.destination.tossSellerId").value("seller-83000001"))
-                .andExpect(jsonPath("$.data.payout.destination.bankCode").value("088"))
-                .andExpect(jsonPath("$.data.payout.destination.maskedAccountNumber").value("********0001"))
+                .andExpect(jsonPath("$.data.payout.destination.bankCode").doesNotExist())
+                .andExpect(jsonPath("$.data.payout.destination.maskedAccountNumber").doesNotExist())
                 .andExpect(jsonPath("$.data.payout.attempts.length()").value(2))
                 .andExpect(jsonPath("$.data.payout.attempts[0].attemptId").value(failedAttempt.id()))
                 .andExpect(jsonPath("$.data.payout.attempts[0].sequence").value(1))

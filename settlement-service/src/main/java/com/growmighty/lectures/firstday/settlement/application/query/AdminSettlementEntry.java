@@ -23,17 +23,6 @@ public record AdminSettlementEntry(
         REFUND
     }
 
-    public enum RefundPublishStatus {
-        REQUESTED,
-        PUBLISHED
-    }
-
-    public enum RefundProcessingStatus {
-        AWAITING_RESULT,
-        COMPLETED,
-        ACTION_REQUIRED
-    }
-
     public enum RefundStatus {
         REQUESTED,
         PROCESSING,

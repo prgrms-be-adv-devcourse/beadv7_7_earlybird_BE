@@ -86,8 +86,6 @@ public class AdminProjectSettlementQueryService {
                 payoutObligation.scheduledDate(),
                 completedAt(payoutObligation),
                 payoutObligation.tossSellerId(),
-                payoutObligation.bankCode(),
-                payoutObligation.maskedAccountNumber(),
                 attempts
         );
     }
@@ -218,21 +216,6 @@ public class AdminProjectSettlementQueryService {
                     Comparator.nullsLast(Comparator.reverseOrder())
             ).thenComparing(identity);
         };
-    }
-
-    private static AdminSettlementEntry.RefundPublishStatus publishStatus(ProjectRefundRequested request) {
-        return request.published()
-                ? AdminSettlementEntry.RefundPublishStatus.PUBLISHED
-                : AdminSettlementEntry.RefundPublishStatus.REQUESTED;
-    }
-
-    private static AdminSettlementEntry.RefundProcessingStatus processingStatus(ProjectRefundRequested request) {
-        if (request.paymentResultStatus() == null) {
-            return AdminSettlementEntry.RefundProcessingStatus.AWAITING_RESULT;
-        }
-        return "COMPLETED".equals(request.paymentResultStatus())
-                ? AdminSettlementEntry.RefundProcessingStatus.COMPLETED
-                : AdminSettlementEntry.RefundProcessingStatus.ACTION_REQUIRED;
     }
 
     private static AdminSettlementEntry.RefundStatus refundStatus(ProjectRefundRequested request) {
