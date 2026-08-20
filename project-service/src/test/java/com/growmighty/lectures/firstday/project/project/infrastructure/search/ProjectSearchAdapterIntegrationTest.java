@@ -166,9 +166,9 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     @Test
     @DisplayName("nori 사전에 없는 속어가 흔한 조사 음절로 쪼개져도, 그 음절 하나만 겹치는 무관한 문서는 안 나온다")
     void search_oovSlangSplitIntoCommonParticle_doesNotMatchUnrelatedDocuments() {
-        // "냥이"는 nori 사전에 없어 ["냥", "이"]로 쪼개진다. "이"는 "장인이"/"입니다"처럼 거의 모든
-        // 자연스러운 한국어 문장에 등장하는 조사라, minimum_should_match 없이는 이 음절 하나만
-        // 겹쳐도 매치된다(2026-08-19 실측 확인된 버그, 동일한 문장으로 재현).
+        // userdict_ko.txt에 없는 미등록 단어 "냥냥이"는 nori 사전에 없어 ["냥", "냥", "이"] 등으로 쪼개진다.
+        // "이"는 "장인이"/"입니다"처럼 거의 모든 자연스러운 한국어 문장에 등장하는 조사라,
+        // minimum_should_match 없이는 이 음절 하나만 겹쳐도 매치된다(동일 문장으로 재현 검증).
         Project unrelated = Project.register(1L, null, "수제 가죽 노트커버", 1L,
                 "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.", "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
@@ -177,7 +177,7 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
         adapter.index(saved);
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                assertThat(adapter.search("냥이")).doesNotContain(saved.getProjectId()));
+                assertThat(adapter.search("냥냥이")).doesNotContain(saved.getProjectId()));
     }
 
     @Test
@@ -238,6 +238,30 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
             List<Long> result = adapter.search("키링");
             assertThat(result).contains(matching.getProjectId());
             assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("상위어(애완동물) 검색 시 하위 품목(고양이/강아지)이 모두 검색되고, 하위어(고양이) 검색 시 다른 하위어(강아지)는 오탐되지 않는다")
+    void search_directionalSynonym_matchesSubCategoriesWithoutFalsePositives() {
+        Project catProject = savedProject("고양이 원목 캣타워");
+        Project dogProject = savedProject("강아지 수제 간식 세트");
+        Project otherProject = savedProject("기계식 키보드 제작");
+
+        adapter.index(catProject);
+        adapter.index(dogProject);
+        adapter.index(otherProject);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            // 상위어 검색: 고양이, 강아지 프로젝트 모두 매치
+            List<Long> petResult = adapter.search("애완동물");
+            assertThat(petResult).contains(catProject.getProjectId(), dogProject.getProjectId());
+            assertThat(petResult).doesNotContain(otherProject.getProjectId());
+
+            // 하위어 검색: 해당 하위어만 매치되고 다른 하위어는 제외
+            List<Long> catResult = adapter.search("고양이");
+            assertThat(catResult).contains(catProject.getProjectId());
+            assertThat(catResult).doesNotContain(dogProject.getProjectId(), otherProject.getProjectId());
         });
     }
 }

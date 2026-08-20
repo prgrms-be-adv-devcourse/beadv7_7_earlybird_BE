@@ -217,7 +217,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
      */
     private List<Long> searchFallback(String keyword, Throwable cause) {
         log.warn("프로젝트 검색 호출 실패, DB LIKE 검색으로 대체합니다. 원인: {}", cause.toString());
-        return projectRepository.findByTitleContainingIgnoreCase(keyword).stream()
+        return projectRepository.findByTitleContainingIgnoreCaseOrderByCreatedAtDesc(keyword).stream()
                 .map(Project::getProjectId)
                 .toList();
     }

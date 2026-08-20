@@ -180,7 +180,7 @@ class ProjectSearchAdapterTest {
         when(embeddingService.generateEmbedding("keyword")).thenReturn(null);
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenThrow(new RuntimeException("es down"));
-        when(projectRepository.findByTitleContainingIgnoreCase("keyword"))
+        when(projectRepository.findByTitleContainingIgnoreCaseOrderByCreatedAtDesc("keyword"))
                 .thenReturn(List.of(project()));
 
         List<Long> result = adapter.search("keyword");
