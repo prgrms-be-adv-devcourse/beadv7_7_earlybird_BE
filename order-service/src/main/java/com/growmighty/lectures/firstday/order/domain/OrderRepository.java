@@ -28,7 +28,10 @@ public interface OrderRepository {
 
     List<Order> findByStatusIn(List<OrderStatus> statuses);
 
-    List<Order> findByProjectMonthAndStatusIn(int projectMonth, List<OrderStatus> statuses);
+    List<Order> findByProjectYearAndMonthAndStatusIn(
+        int projectYear,
+        int projectMonth,
+        List<OrderStatus> statuses);
 
     /** 페이지 단위 조회 (정산 데모에서 "조금씩 읽기"에 사용) */
     List<Order> findPage(int page, int size);

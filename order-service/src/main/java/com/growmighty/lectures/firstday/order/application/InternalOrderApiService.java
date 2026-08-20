@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -137,22 +138,32 @@ public class InternalOrderApiService {
 
     @Transactional(readOnly = true)
     public ProjectPaymentsView getProjectPayments(int projectMonth) {
+        int projectYear = LocalDate.now().getYear();
+
         Map<Long, List<ProjectPaymentsView.OrderPayment>> ordersByProjectId = new TreeMap<>();
 
-        List<Order> orders = orderRepository.findByProjectMonthAndStatusIn(
-                projectMonth, List.of(OrderStatus.PAID, OrderStatus.CANCELLED));
+        List<Order> orders = orderRepository.findByProjectYearAndMonthAndStatusIn(
+            projectYear,
+            projectMonth,
+            List.of(OrderStatus.PAID, OrderStatus.CANCELLED));
+
         List<Long> missingOrderIds = orders.stream()
-                .filter(order -> order.getPgOrderId() == null || order.getPgOrderId().isBlank())
-                .map(Order::getId)
-                .toList();
+            .filter(order -> order.getPgOrderId() == null || order.getPgOrderId().isBlank())
+            .map(Order::getId)
+            .toList();
+
         if (!missingOrderIds.isEmpty()) {
-            throw new IllegalStateException("Missing PG order IDs for settlement orders. orderIds=" + missingOrderIds);
+            throw new IllegalStateException(
+                "Missing PG order IDs for settlement orders. orderIds=" + missingOrderIds);
         }
 
-        orders.forEach(order -> ordersByProjectId.computeIfAbsent(order.getProjectId(), key -> new ArrayList<>())
-                .add(new ProjectPaymentsView.OrderPayment(
-                        order.getId(), order.getPgOrderId(), order.getTotalAmount().getValue(),
-                        order.getStatus().name())));
+        orders.forEach(order -> ordersByProjectId
+            .computeIfAbsent(order.getProjectId(), key -> new ArrayList<>())
+            .add(new ProjectPaymentsView.OrderPayment(
+                order.getId(),
+                order.getPgOrderId(),
+                order.getTotalAmount().getValue(),
+                order.getStatus().name())));
 
         return toProjectPaymentsView(ordersByProjectId);
     }
