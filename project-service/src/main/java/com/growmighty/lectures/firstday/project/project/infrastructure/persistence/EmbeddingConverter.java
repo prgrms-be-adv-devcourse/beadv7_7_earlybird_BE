@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
  * JPA AttributeConverter for pre-computed vector embedding (float[] <-> JSON String in DB).
  */
 @Slf4j
-@Converter
+@Converter(autoApply = true)
 public class EmbeddingConverter implements AttributeConverter<float[], String> {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();

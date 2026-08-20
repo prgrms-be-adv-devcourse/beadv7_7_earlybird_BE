@@ -47,13 +47,20 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final String INDEX_NAME = "projects";
     private static final int DEFAULT_EMBEDDING_DIMENSION = 1536;
     private static final int MAX_RESULTS = 200;
-    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.45 미만 무관 벡터 제외) */
-    private static final float KNN_SIMILARITY_THRESHOLD = 0.45f;
+    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.35 미만 무관 벡터 제외) */
+    private static final float KNN_SIMILARITY_THRESHOLD = 0.35f;
     private static final int RRF_RANK_CONSTANT = 60;
     /** RRF 스코어 하한: 1/(60+rank) 결합 점수 기준 하위 노이즈 문서 필터링 */
     private static final double RRF_MIN_SCORE = 0.005;
     /** ES 후보 과다조회 한도 — 최종 10개 컷은 ProjectServiceImpl이 MySQL 가시성 필터링 후 수행한다. */
     private static final int AUTOCOMPLETE_CANDIDATE_LIMIT = 50;
+    /**
+     * 검색어 토큰이 2개 이하면 전부, 3개 이상이면 70%를 일치시켜야 match clause가 통과한다 — nori가
+     * 사전에 없는 속어를 음절/형태소 단위로 쪼갤 때(예: "자동차"→"자동"+"차") 그중 흔한 한 조각만
+     * 겹쳐도 매치되는 것을 막는다. synonym filter가 같은 position에 만드는 동의어들은 ES가 하나의
+     * clause로 묶어 처리하므로 이 값과 충돌하지 않는다(동일 position 확장은 clause 수를 안 늘림).
+     */
+    private static final String MATCH_MINIMUM_SHOULD_MATCH = "2<70%";
 
     private final ElasticsearchOperations elasticsearchOperations;
     private final ElasticsearchClient elasticsearchClient;
@@ -128,9 +135,9 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private List<Long> doSearch(String keyword) {
         float[] queryVector = embeddingService.generateEmbedding(keyword);
         Query keywordQuery = Query.of(q -> q.bool(b -> b
-                .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f)))
-                .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f)))
-                .should(s -> s.match(m -> m.field("description").query(keyword)))));
+                .should(s -> s.match(m -> m.field("title").query(keyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                .should(s -> s.match(m -> m.field("summary").query(keyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                .should(s -> s.match(m -> m.field("description").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
 
         if (queryVector != null && queryVector.length > 0) {
             List<Float> vectorList = new ArrayList<>(queryVector.length);

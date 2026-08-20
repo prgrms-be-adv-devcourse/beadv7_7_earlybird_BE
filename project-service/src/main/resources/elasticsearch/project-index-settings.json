@@ -17,7 +17,7 @@
         "korean": {
           "type": "custom",
           "tokenizer": "nori_user_dict",
-          "filter": ["korean_synonym"]
+          "filter": ["lowercase", "korean_synonym"]
         }
       }
     }
