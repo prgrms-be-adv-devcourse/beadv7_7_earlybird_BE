@@ -279,6 +279,7 @@ class SecurityConfigTest {
      */
     private static Stream<Arguments> roleGatedRoutes() {
         return Stream.of(
+                Arguments.of(HttpMethod.GET, "/api/v1/users/creators/1", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.GET, "/api/v1/projects/me", List.of(UserRole.CREATOR)),
                 Arguments.of(HttpMethod.GET, "/api/v1/projects/1/orders", List.of(UserRole.CREATOR)),
                 Arguments.of(HttpMethod.POST, "/api/v1/projects", List.of(UserRole.CREATOR, UserRole.ADMIN)),

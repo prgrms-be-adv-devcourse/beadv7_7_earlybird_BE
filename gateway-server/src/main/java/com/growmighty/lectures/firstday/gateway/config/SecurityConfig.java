@@ -57,7 +57,11 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET,
                                 "/*/v3/api-docs", "/*/v3/api-docs/**",
                                 "/*/swagger-ui.html", "/*/swagger-ui/**").permitAll()
-                        
+
+                        // users
+                        //// 관리자 전용 — 정산 내역 조회 화면의 창작자 정보 표기용 단건 조회
+                        .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/users/creators/*").hasRole(ADMIN.getCode())
+
                         // payments
                         //// PG사가 직접 호출
                         .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/payments/webhook").permitAll()

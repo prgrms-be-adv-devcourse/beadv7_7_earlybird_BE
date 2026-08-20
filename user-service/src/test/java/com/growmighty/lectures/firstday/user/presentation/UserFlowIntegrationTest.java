@@ -197,7 +197,7 @@ class UserFlowIntegrationTest {
                         .header(JwtHeaders.USER_ID, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bankName":"신한은행","accountNumber":"110-123-456789","accountHolder":"창작자"}
+                                {"bankCode":"88","accountNumber":"110-123-456789","accountHolder":"창작자"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.role").value("CREATOR"));
@@ -209,9 +209,57 @@ class UserFlowIntegrationTest {
                         .header(JwtHeaders.USER_ID, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bankName":"신한은행","accountNumber":"110-123-456789","accountHolder":"창작자"}
+                                {"bankCode":"88","accountNumber":"110-123-456789","accountHolder":"창작자"}
                                 """))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 은행 코드로 판매자 등록을 요청하면 400 을 반환한다")
+    void registerAsCreator_withUnknownBankCode_returns400() throws Exception {
+        signup("badbankcode@example.com", "rawPassword1!", "창작자", "010-6666-7777");
+        Long userId = userRepository.findByEmail("badbankcode@example.com").orElseThrow().getId();
+
+        mockMvc.perform(post("/api/v1/users/me/creator")
+                        .header(JwtHeaders.USER_ID, userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"bankCode":"99","accountNumber":"110-123-456789","accountHolder":"창작자"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.errors[0].message").exists());
+    }
+
+    @Test
+    @DisplayName("창작자 등록 후 관리자용 단건 조회는 이름과 정산 계좌 정보를 반환한다")
+    void getCreatorProfile_afterRegistration_returnsNameAndBankInfo() throws Exception {
+        signup("creatorlookup@example.com", "rawPassword1!", "창작자조회", "010-8888-8888");
+        Long userId = userRepository.findByEmail("creatorlookup@example.com").orElseThrow().getId();
+
+        mockMvc.perform(post("/api/v1/users/me/creator")
+                        .header(JwtHeaders.USER_ID, userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"bankCode":"88","accountNumber":"110-123-456789","accountHolder":"창작자조회"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/users/creators/{userId}", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("창작자조회"))
+                .andExpect(jsonPath("$.data.bankCode").value("88"))
+                .andExpect(jsonPath("$.data.accountHolder").value("창작자조회"));
+    }
+
+    @Test
+    @DisplayName("판매자로 등록되지 않은 유저를 관리자용으로 조회하면 404 를 반환한다")
+    void getCreatorProfile_withoutRegistration_returns404() throws Exception {
+        signup("notcreator@example.com", "rawPassword1!", "미등록", "010-9999-0000");
+        Long userId = userRepository.findByEmail("notcreator@example.com").orElseThrow().getId();
+
+        mockMvc.perform(get("/api/v1/users/creators/{userId}", userId))
+                .andExpect(status().isNotFound());
     }
 
     @Test

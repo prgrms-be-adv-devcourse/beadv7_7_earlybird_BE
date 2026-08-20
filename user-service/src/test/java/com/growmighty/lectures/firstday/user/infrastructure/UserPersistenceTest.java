@@ -58,10 +58,10 @@ class UserPersistenceTest {
                 User.register("creator@example.com", "encoded", "창작자", "010-2222-2222"));
         entityManager.clear();
         creatorProfileJpaRepository.saveAndFlush(
-                CreatorProfile.register(user.getId(), "신한은행", "110-123-456789", "창작자"));
+                CreatorProfile.register(user.getId(), "88", "110-123-456789", "창작자"));
         entityManager.clear();
 
-        CreatorProfile duplicate = CreatorProfile.register(user.getId(), "국민은행", "220-987-654321", "창작자");
+        CreatorProfile duplicate = CreatorProfile.register(user.getId(), "06", "220-987-654321", "창작자");
 
         assertThatThrownBy(() -> creatorProfileJpaRepository.saveAndFlush(duplicate))
                 .isInstanceOf(DataIntegrityViolationException.class);

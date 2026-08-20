@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.user.application.TokenProvider;
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
+import com.growmighty.lectures.firstday.user.presentation.dto.AdminCreatorResponse;
 import com.growmighty.lectures.firstday.user.presentation.dto.LoginRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.LoginResponse;
 import com.growmighty.lectures.firstday.user.presentation.dto.RefreshRequest;
@@ -78,5 +79,14 @@ public class UserController {
     public UserResponse registerAsCreator(@RequestHeader(JwtHeaders.USER_ID) Long userId,
                                            @Valid @RequestBody RegisterCreatorRequest request) {
         return UserResponse.from(userService.registerAsCreator(request.toCommand(userId)));
+    }
+
+    /**
+     * 관리자용 창작자 단건 조회 — 정산 내역 조회 화면에서 지급 대상 창작자의 신원/정산 계좌 정보를
+     * 표기하기 위한 조회. 접근 제어는 gateway-server 의 ADMIN 라우트 제한에 위임한다.
+     */
+    @GetMapping("/creators/{userId}")
+    public AdminCreatorResponse getCreatorProfile(@PathVariable Long userId) {
+        return AdminCreatorResponse.from(userService.getCreatorProfile(userId));
     }
 }
