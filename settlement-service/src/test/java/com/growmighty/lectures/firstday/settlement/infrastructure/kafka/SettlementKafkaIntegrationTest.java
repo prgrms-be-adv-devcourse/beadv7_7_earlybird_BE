@@ -299,8 +299,8 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
             );
 
             assertThat(record.key()).isEqualTo(request.refundRequestId());
-            assertThat(event.settlementId()).isEqualTo(request.refundRequestId());
-            assertThat(event.payload().settlementId()).isEqualTo(request.refundRequestId());
+            assertThat(event.refundRequestId()).isEqualTo(request.refundRequestId());
+            assertThat(event.payload().refundRequestId()).isEqualTo(request.refundRequestId());
             assertThat(event.payload().orderIds())
                     .containsExactly(91_003L);
             assertThat(outboxRepository.findByProjectId(projectId).orElseThrow().published()).isTrue();

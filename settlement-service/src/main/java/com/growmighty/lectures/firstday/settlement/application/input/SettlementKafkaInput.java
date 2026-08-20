@@ -38,7 +38,7 @@ public interface SettlementKafkaInput {
             String eventType,
             int schemaVersion,
             OffsetDateTime occurredAt,
-            String settlementId,
+            String refundRequestId,
             List<Long> orderIds,
             String status
     ) implements SettlementKafkaInput {
