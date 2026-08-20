@@ -42,7 +42,7 @@ jobs:
           - file-service
           - board-service
           - notification-service
-          - ai-service
+          - chat-service
     steps:
       - uses: actions/checkout@v4
         with:

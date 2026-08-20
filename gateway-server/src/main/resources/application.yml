@@ -20,7 +20,7 @@ spring:
 # 컨테이너 안에서 항상 실패해 fail-fast 로 기동이 죽는다 (실제로 겪음). on-profile 로 문서를 완전히
 # 분리하면 비활성 프로필의 문서는 애초에 import 대상으로 등록조차 되지 않아 이 문제가 없다.
 # '!docker' 단독으로는 k8s 프로필도 매칭되어 이 블록과 k8s 블록이 동시에 활성화되고 localhost:8888
-# 쪽이 실패해 fail-fast로 죽는다 - ai-service에서 실제로 겪은 함정(#296)이라 여기서도 명시적으로 제외.
+# 쪽이 실패해 fail-fast로 죽는다 - chat-service에서 실제로 겪은 함정(#296)이라 여기서도 명시적으로 제외.
 spring:
   config:
     activate:

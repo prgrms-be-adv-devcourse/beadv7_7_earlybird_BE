@@ -65,7 +65,7 @@ public class SecurityConfig {
                         // chat
                         //// 챗봇 - 로그인/비로그인 사용자 모두 호출 가능 (optional-auth). 로그인 시에는
                         //// UserHeaderForwardingFilter 가 X-User-Id/X-User-Role 을 실어 보내고, 비로그인
-                        //// 시에는 헤더 없이 통과 - 구분은 ai-service 쪽에서 anonId 로 처리한다.
+                        //// 시에는 헤더 없이 통과 - 구분은 chat-service 쪽에서 anonId 로 처리한다.
                         .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/chat/**").permitAll()
 
                         // projects
