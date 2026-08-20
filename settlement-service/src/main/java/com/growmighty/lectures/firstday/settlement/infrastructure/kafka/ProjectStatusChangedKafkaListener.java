@@ -30,7 +30,7 @@ public class ProjectStatusChangedKafkaListener {
         inputService.saveProjectStatus(new SettlementKafkaInput.ProjectStatusChanged(
                 record.key(),
                 event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(),
-                event.payload().projectId(), event.payload().creatorId(), event.payload().status()
+                event.payload().projectId(), event.payload().projectName(), event.payload().creatorId(), event.payload().status()
         ));
         acknowledgment.acknowledge();
     }

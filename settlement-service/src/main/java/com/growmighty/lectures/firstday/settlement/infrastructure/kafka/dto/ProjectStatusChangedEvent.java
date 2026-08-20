@@ -10,6 +10,6 @@ public record ProjectStatusChangedEvent(
         OffsetDateTime occurredAt,
         Payload payload
 ) {
-    public record Payload(Long projectId, Long creatorId, String status) {
+    public record Payload(Long projectId, String projectName, Long creatorId, String status) {
     }
 }

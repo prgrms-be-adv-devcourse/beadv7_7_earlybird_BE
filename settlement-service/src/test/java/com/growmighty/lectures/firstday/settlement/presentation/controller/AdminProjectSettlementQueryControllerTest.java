@@ -22,6 +22,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFa
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -56,6 +57,9 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     @Autowired
     private ProjectRefundRequestedRepository refundRequestedRepository;
 
+    @Autowired
+    private SpringDataProjectOutcomeFactRepository outcomeRepository;
+
     @Test
     @DisplayName("프로젝트 정산 내역이 없으면 관리자는 빈 목록을 조회한다")
     void returnsEmptyListWhenNoProjectSettlementsExist() throws Exception {
@@ -67,7 +71,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     }
 
     @Test
-    @DisplayName("관리자는 지급 행을 확정 시각과 식별자의 역순으로 조회한다")
+    @DisplayName("관리자는 기본 발행 시각 정렬로 지급 행을 조회한다")
     void returnsPayoutEntriesInDeterministicOrder() throws Exception {
         long firstCreatorId = 81_000_001L;
         long secondCreatorId = 81_000_002L;
@@ -95,18 +99,20 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].type").value("PAYOUT"))
-                .andExpect(jsonPath("$.data[0].projectId").value(82_000_003L))
-                .andExpect(jsonPath("$.data[0].payout.settlementId").value(sameTimeHigherId.settlementId()))
-                .andExpect(jsonPath("$.data[0].payout.creatorId").value(firstCreatorId))
+                .andExpect(jsonPath("$.data[0].projectId").value(82_000_002L))
+                .andExpect(jsonPath("$.data[0].projectName").value("프로젝트 82000002"))
+                .andExpect(jsonPath("$.data[0].refundRequestId").isEmpty())
+                .andExpect(jsonPath("$.data[0].payout.settlementId").value(sameTimeLowerId.settlementId()))
+                .andExpect(jsonPath("$.data[0].payout.creatorId").value(secondCreatorId))
                 .andExpect(jsonPath("$.data[0].payout.settlementBaseAmount").value(1_000_000))
                 .andExpect(jsonPath("$.data[0].payout.creatorPayoutAmount").value(912_000))
-                .andExpect(jsonPath("$.data[0].payout.status").value("ACTION_REQUIRED"))
+                .andExpect(jsonPath("$.data[0].payout.status").value("SCHEDULED"))
                 .andExpect(jsonPath("$.data[0].payout.confirmedAt").value("2026-07-01T10:00:00+09:00"))
                 .andExpect(jsonPath("$.data[0].payout.scheduledDate").value("2026-07-07"))
                 .andExpect(jsonPath("$.data[0].payout.completedAt").doesNotExist())
                 .andExpect(jsonPath("$.data[0].refund").isEmpty())
-                .andExpect(jsonPath("$.data[1].payout.settlementId").value(sameTimeLowerId.settlementId()))
-                .andExpect(jsonPath("$.data[1].payout.creatorId").value(secondCreatorId))
+                .andExpect(jsonPath("$.data[1].payout.settlementId").value(sameTimeHigherId.settlementId()))
+                .andExpect(jsonPath("$.data[1].payout.creatorId").value(firstCreatorId))
                 .andExpect(jsonPath("$.data[2].payout.settlementId").value(oldest.settlementId()))
                 .andExpect(content().string(not(containsString("admin-list-ref-payout"))))
                 .andExpect(content().string(not(containsString("admin-list-idempotency"))))
@@ -115,7 +121,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     }
 
     @Test
-    @DisplayName("관리자는 환불 요청의 발행 상태와 batch 처리 상태를 구분해 조회한다")
+    @DisplayName("관리자는 환불 행을 refundRequestId와 통합 환불 상태로 조회한다")
     void returnsRefundEntriesWithProcessingStatus() throws Exception {
         ProjectRefundRequested awaiting = refundRequest(
                 85_000_001L, 95_000_001L, Instant.parse("2026-08-01T00:00:00Z")
@@ -133,15 +139,51 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].type").value("REFUND"))
                 .andExpect(jsonPath("$.data[0].projectId").value(85_000_002L))
+                .andExpect(jsonPath("$.data[0].projectName").value("프로젝트 85000002"))
+                .andExpect(jsonPath("$.data[0].refundRequestId").value(actionRequired.refundRequestId()))
                 .andExpect(jsonPath("$.data[0].payout").isEmpty())
                 .andExpect(jsonPath("$.data[0].refund.reason").value("PROJECT_FAILED"))
-                .andExpect(jsonPath("$.data[0].refund.publishStatus").value("PUBLISHED"))
-                .andExpect(jsonPath("$.data[0].refund.processingStatus").value("ACTION_REQUIRED"))
+                .andExpect(jsonPath("$.data[0].refund.refundStatus").value("ACTION_REQUIRED"))
                 .andExpect(jsonPath("$.data[0].refund.paymentResultAt").value("2026-08-02T09:02:00+09:00"))
                 .andExpect(jsonPath("$.data[0].refund.paymentCount").value(1))
-                .andExpect(jsonPath("$.data[1].refund.publishStatus").value("REQUESTED"))
-                .andExpect(jsonPath("$.data[1].refund.processingStatus").value("AWAITING_RESULT"))
+                .andExpect(jsonPath("$.data[1].refund.refundStatus").value("REQUESTED"))
                 .andExpect(jsonPath("$.data[1].refund.paymentResultAt").isEmpty());
+    }
+
+    @Test
+    @DisplayName("관리자는 프로젝트명 오름차순으로 지급과 환불 행을 정렬한다")
+    void sortsEntriesByProjectName() throws Exception {
+        long creatorId = 82_100_001L;
+        savePayoutReadyProfile(creatorId);
+        confirm(82_100_001L, "나무", creatorId, LocalDateTime.of(2026, 7, 1, 10, 0));
+        ProjectRefundRequested refund = refundRequest(82_100_002L, "가방", 95_100_001L, Instant.parse("2026-08-01T00:00:00Z"));
+        refundRequestedRepository.save(refund);
+
+        mockMvc.perform(get("/api/v1/settlements/all").param("sort", "NAME"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].projectName").value("가방"))
+                .andExpect(jsonPath("$.data[0].type").value("REFUND"))
+                .andExpect(jsonPath("$.data[1].projectName").value("나무"))
+                .andExpect(jsonPath("$.data[1].type").value("PAYOUT"));
+    }
+
+    @Test
+    @DisplayName("관리자는 처리 시각 최신순으로 완료된 지급과 환불 행을 정렬한다")
+    void sortsEntriesByProcessedAt() throws Exception {
+        long creatorId = 82_200_001L;
+        savePayoutReadyProfile(creatorId);
+        ConfirmedProjectSettlement payout = confirm(82_200_001L, creatorId, LocalDateTime.of(2026, 7, 1, 10, 0));
+        failThenCompletePayout(payout);
+        ProjectRefundRequested refund = refundRequest(82_200_002L, 95_200_001L, Instant.parse("2026-08-01T00:00:00Z"));
+        refund.markPublished(Instant.parse("2026-08-01T00:01:00Z"));
+        refund.recordPaymentResult("COMPLETED", Instant.parse("2026-08-01T00:02:00Z"), List.of(95_200_001L));
+        refundRequestedRepository.save(refund);
+
+        mockMvc.perform(get("/api/v1/settlements/all").param("sort", "PROCESSED_AT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].type").value("REFUND"))
+                .andExpect(jsonPath("$.data[0].refund.refundStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.data[1].type").value("PAYOUT"));
     }
 
     @Test
@@ -265,6 +307,22 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
             long creatorId,
             LocalDateTime confirmedAt
     ) {
+        return confirm(projectId, "프로젝트 " + projectId, creatorId, confirmedAt);
+    }
+
+    private ConfirmedProjectSettlement confirm(
+            long projectId,
+            String projectName,
+            long creatorId,
+            LocalDateTime confirmedAt
+    ) {
+        outcomeRepository.save(ProjectOutcomeFact.of(
+                projectId,
+                projectName,
+                creatorId,
+                ProjectOutcomeFact.Outcome.SUCCEEDED,
+                confirmedAt.atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant()
+        ));
         return projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
                 projectId,
                 creatorId,
@@ -337,10 +395,18 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         return payoutObligationRepository.save(payoutObligation);
     }
 
-    private static ProjectRefundRequested refundRequest(long projectId, long orderId, Instant occurredAt) {
+    private ProjectRefundRequested refundRequest(long projectId, long orderId, Instant occurredAt) {
+        return refundRequest(projectId, "프로젝트 " + projectId, orderId, occurredAt);
+    }
+
+    private ProjectRefundRequested refundRequest(long projectId, String projectName, long orderId, Instant occurredAt) {
+        ProjectOutcomeFact outcome = ProjectOutcomeFact.of(
+                projectId, projectName, 99L, ProjectOutcomeFact.Outcome.FAILED, occurredAt
+        );
+        outcomeRepository.save(outcome);
         return ProjectRefundRequested.request(
                 UUID.randomUUID().toString(),
-                ProjectOutcomeFact.of(projectId, 99L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
+                outcome,
                 List.of(OrderPaymentFact.completed(
                         orderId,
                         "PG-" + orderId,

@@ -49,6 +49,7 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
         outcomeRepository.saveAndFlush(ProjectOutcomeFact.of(
                 projectId,
+                "프로젝트 " + projectId,
                 701L,
                 ProjectOutcomeFact.Outcome.FAILED,
                 outcomeAt
@@ -99,6 +100,7 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         long projectId = 6_102L;
         outcomeRepository.saveAndFlush(ProjectOutcomeFact.of(
                 projectId,
+                "프로젝트 " + projectId,
                 702L,
                 ProjectOutcomeFact.Outcome.CANCELLED,
                 Instant.parse("2026-08-08T09:00:00Z")
@@ -116,6 +118,7 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
         outcomeRepository.saveAndFlush(ProjectOutcomeFact.of(
                 projectId,
+                "프로젝트 " + projectId,
                 703L,
                 ProjectOutcomeFact.Outcome.FAILED,
                 outcomeAt
@@ -140,6 +143,7 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
         outcomeRepository.saveAndFlush(ProjectOutcomeFact.of(
                 projectId,
+                "프로젝트 " + projectId,
                 705L,
                 ProjectOutcomeFact.Outcome.FAILED,
                 outcomeAt
@@ -173,6 +177,7 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
         outcomeRepository.saveAndFlush(ProjectOutcomeFact.of(
                 projectId,
+                "프로젝트 " + projectId,
                 704L,
                 ProjectOutcomeFact.Outcome.FAILED,
                 outcomeAt
@@ -200,6 +205,7 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
             long projectId = 6_200L + index;
             outcomeRepository.save(ProjectOutcomeFact.of(
                     projectId,
+                    "프로젝트 " + projectId,
                     800L + index,
                     ProjectOutcomeFact.Outcome.FAILED,
                     outcomeAt

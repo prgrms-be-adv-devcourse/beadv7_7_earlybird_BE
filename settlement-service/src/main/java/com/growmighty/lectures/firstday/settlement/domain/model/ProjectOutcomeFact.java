@@ -25,6 +25,9 @@ public class ProjectOutcomeFact {
     @Column(name = "project_id", nullable = false, updatable = false)
     private Long projectId;
 
+    @Column(name = "project_name", nullable = false, updatable = false)
+    private String projectName;
+
     @Column(name = "creator_id", nullable = false, updatable = false)
     private Long creatorId;
 
@@ -41,8 +44,9 @@ public class ProjectOutcomeFact {
     protected ProjectOutcomeFact() {
     }
 
-    private ProjectOutcomeFact(Long projectId, Long creatorId, Outcome outcome, Instant occurredAt) {
+    private ProjectOutcomeFact(Long projectId, String projectName, Long creatorId, Outcome outcome, Instant occurredAt) {
         this.projectId = projectId;
+        this.projectName = projectName;
         this.creatorId = creatorId;
         this.outcome = outcome;
         this.occurredAt = occurredAt;
@@ -51,15 +55,20 @@ public class ProjectOutcomeFact {
 
     public static ProjectOutcomeFact of(
             Long projectId,
+            String projectName,
             Long creatorId,
             Outcome outcome,
             Instant occurredAt
     ) {
-        return new ProjectOutcomeFact(projectId, creatorId, outcome, occurredAt);
+        return new ProjectOutcomeFact(projectId, projectName, creatorId, outcome, occurredAt);
     }
 
     public Long projectId() {
         return projectId;
+    }
+
+    public String projectName() {
+        return projectName;
     }
 
     public Long creatorId() {
@@ -85,6 +94,9 @@ public class ProjectOutcomeFact {
     @PostLoad
     private void validateState() {
         validatePositive(projectId, "프로젝트 식별자는 양수여야 합니다.");
+        if (projectName == null || projectName.isBlank()) {
+            throw new IllegalArgumentException("프로젝트명은 필수입니다.");
+        }
         validatePositive(creatorId, "창작자 식별자는 양수여야 합니다.");
         Objects.requireNonNull(outcome, "프로젝트 결과는 필수입니다.");
         Objects.requireNonNull(occurredAt, "프로젝트 결과 시각은 필수입니다.");

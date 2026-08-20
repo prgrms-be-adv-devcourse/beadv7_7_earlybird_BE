@@ -11,6 +11,8 @@ import java.time.ZoneId;
 public record AdminProjectSettlementListItemResponse(
         AdminSettlementEntry.Type type,
         Long projectId,
+        String projectName,
+        String refundRequestId,
         PayoutResponse payout,
         RefundResponse refund
 ) {
@@ -22,12 +24,16 @@ public record AdminProjectSettlementListItemResponse(
             case PAYOUT -> new AdminProjectSettlementListItemResponse(
                     entry.type(),
                     entry.projectId(),
+                    entry.projectName(),
+                    null,
                     PayoutResponse.from(entry.payout()),
                     null
             );
             case REFUND -> new AdminProjectSettlementListItemResponse(
                     entry.type(),
                     entry.projectId(),
+                    entry.projectName(),
+                    entry.refundRequestId(),
                     null,
                     RefundResponse.from(entry.refund())
             );
@@ -59,10 +65,8 @@ public record AdminProjectSettlementListItemResponse(
 
     public record RefundResponse(
             ProjectCancellationReason reason,
-            AdminSettlementEntry.RefundPublishStatus publishStatus,
             OffsetDateTime requestedAt,
-            OffsetDateTime publishedAt,
-            AdminSettlementEntry.RefundProcessingStatus processingStatus,
+            AdminSettlementEntry.RefundStatus refundStatus,
             OffsetDateTime paymentResultAt,
             int paymentCount
     ) {
@@ -70,10 +74,8 @@ public record AdminProjectSettlementListItemResponse(
         private static RefundResponse from(AdminSettlementEntry.Refund refund) {
             return new RefundResponse(
                     refund.reason(),
-                    refund.publishStatus(),
                     refund.requestedAt().atZone(SEOUL).toOffsetDateTime(),
-                    toSeoul(refund.publishedAt()),
-                    refund.processingStatus(),
+                    refund.refundStatus(),
                     toSeoul(refund.paymentResultAt()),
                     refund.paymentCount()
             );
