@@ -15,8 +15,8 @@ public class RefundCancellationSagaOrchestrator {
     private final RefundGateway refundGateway;
 
     // 환불 시작, Toss 취소, 내부 완료 상태 전이를 순서대로 처리
-    public void cancel(Long paymentId, RefundReason reason) {
-        RefundCancellationTarget target = refundService.startRefund(paymentId, reason);
+    public void cancel(Long paymentId, Long requesterId, RefundReason reason) {
+        RefundCancellationTarget target = refundService.startRefund(paymentId, requesterId, reason);
         processCancellation(target);
     }
 

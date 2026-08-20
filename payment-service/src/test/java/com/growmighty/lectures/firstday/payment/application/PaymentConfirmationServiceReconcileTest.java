@@ -146,7 +146,7 @@ class PaymentConfirmationServiceReconcileTest {
 
     @Test
     void 장기체류한_READY_결제는_FAILED로_변경하고_Outbox를_저장한다() {
-        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
+        Payment payment = Payment.ready(1L, ORDER_ID, AMOUNT);
         ReflectionTestUtils.setField(payment, "paymentId", 1L);
         ReflectionTestUtils.setField(payment, "createdAt", LocalDateTime.now().minusMinutes(31));
         when(paymentRepository.findById(payment.getPaymentId())).thenReturn(Optional.of(payment));
@@ -165,7 +165,7 @@ class PaymentConfirmationServiceReconcileTest {
     }
 
     private Payment confirmingPayment() {
-        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
+        Payment payment = Payment.ready(1L, ORDER_ID, AMOUNT);
         payment.startConfirming(PAYMENT_KEY);
         return payment;
     }

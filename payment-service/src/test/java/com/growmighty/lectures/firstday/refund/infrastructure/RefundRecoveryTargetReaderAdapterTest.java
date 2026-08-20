@@ -72,7 +72,7 @@ class RefundRecoveryTargetReaderAdapterTest {
     @Test
     void 시간_초과된_REQUESTED_환불_100건을_단일_조회로_가져온다() {
         for (long orderId = 1; orderId <= BATCH_SIZE; orderId++) {
-            Payment payment = Payment.ready(orderId, BigDecimal.TEN);
+            Payment payment = Payment.ready(1L, orderId, BigDecimal.TEN);
             payment.startConfirming("payment-key-" + orderId);
             payment.confirm("payment-key-" + orderId);
             paymentJpaRepository.save(payment);

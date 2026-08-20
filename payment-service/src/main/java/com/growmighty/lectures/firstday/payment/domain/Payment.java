@@ -144,6 +144,10 @@ public class Payment extends BaseEntity {
         return this.status == PaymentStatus.READY;
     }
 
+    public boolean isOwnedBy(Long userId) {
+        return this.userId != null && this.userId.equals(userId);
+    }
+
     public boolean isFailed() {
         return this.status == PaymentStatus.FAILED;
     }

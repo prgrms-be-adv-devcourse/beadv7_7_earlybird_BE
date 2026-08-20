@@ -81,13 +81,18 @@ public class PaymentService {
      * @return
      *
      */
-    public PaymentInfo confirm(String paymentKey, String pgOrderId, BigDecimal amount) {
+    public PaymentInfo confirm(Long requesterId, String paymentKey, String pgOrderId, BigDecimal amount) {
+
+        Payment payment = paymentRepository.findByPgOrderId(pgOrderId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. pgOrderId=" + pgOrderId));
+        validateRequesterByPayment(requesterId, payment);
         return paymentApprovalSagaService.approve(paymentKey, pgOrderId, amount);
     }
 
     @Transactional(readOnly = true)
-    public PaymentInfo getPayment(Long paymentId) {
+    public PaymentInfo getPayment(Long paymentId, Long requesterId) {
         Payment payment = findPayment(paymentId);
+        validateRequesterByPayment(requesterId, payment);
         return PaymentInfo.from(payment);
     }
 
@@ -96,10 +101,18 @@ public class PaymentService {
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId=" + paymentId));
     }
 
+    private static void validateRequesterByPayment(Long requesterId, Payment payment) {
+        if (!payment.isOwnedBy(requesterId)) {
+            throw new IllegalStateException("결제 소유자가 일치하지 않습니다.");
+        }
+    }
+
     @Transactional(readOnly = true)
-    public PaymentInfo getPaymentByOrderId(Long orderId) {
-        return paymentRepository.findByOrderId(orderId)
-            .map(PaymentInfo::from)
+    public PaymentInfo getPaymentByOrderId(Long orderId, Long requesterId) {
+        Payment payment = paymentRepository.findByOrderId(orderId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 주문의 결제입니다. " + orderId));
+
+        validateRequesterByPayment(requesterId, payment);
+        return  PaymentInfo.from(payment);
     }
 }

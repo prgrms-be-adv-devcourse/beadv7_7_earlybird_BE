@@ -14,27 +14,28 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PaymentTest {
 
     private static final Long ORDER_ID = 1L;
+    private static final Long USER_ID = 10L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key-1";
 
     @Test
     @DisplayName("0 이하 금액으로는 결제를 생성할 수 없다")
     void ready_invalidAmount_throws() {
-        assertThatThrownBy(() -> Payment.ready(ORDER_ID, BigDecimal.ZERO))
+        assertThatThrownBy(() -> Payment.ready(USER_ID, ORDER_ID, BigDecimal.ZERO))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("주문 식별자 없이는 결제를 생성할 수 없다")
     void ready_withoutOrderId_throws() {
-        assertThatThrownBy(() -> Payment.ready(null, AMOUNT))
+        assertThatThrownBy(() -> Payment.ready(USER_ID, null, AMOUNT))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("READY 결제를 만들면 PG 주문번호와 승인 재시도용 멱등키가 생성된다")
     void ready_generatesPgOrderIdAndApproveIdempotencyKey() {
-        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
+        Payment payment = Payment.ready(USER_ID, ORDER_ID, AMOUNT);
 
         assertThat(payment.getPgOrderId()).startsWith("order-" + ORDER_ID + "-");
         assertThat(payment.getPgOrderId()).hasSizeLessThanOrEqualTo(64);
@@ -155,6 +156,6 @@ class PaymentTest {
     }
 
     private Payment readyPayment() {
-        return Payment.ready(ORDER_ID, AMOUNT);
+        return Payment.ready(USER_ID, ORDER_ID, AMOUNT);
     }
 }

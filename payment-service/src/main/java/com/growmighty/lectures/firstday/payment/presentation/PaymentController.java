@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.payment.presentation;
 
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.payment.application.PaymentService;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PayRequest;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentResponse;
@@ -18,25 +19,38 @@ public class PaymentController {
 
     /** 결제 승인.*/
     @PostMapping("/confirm")
-    public PaymentResponse confirm(@Valid @RequestBody PayRequest request) {
-        return PaymentResponse.from(paymentService.confirm(request.paymentKey(), request.pgOrderId(), request.amount()));
+    public PaymentResponse confirm(
+        @RequestHeader(JwtHeaders.USER_ID) Long requesterId,
+        @Valid @RequestBody PayRequest request
+    ) {
+        return PaymentResponse.from(paymentService.confirm(requesterId, request.paymentKey(), request.pgOrderId(), request.amount()));
     }
     @GetMapping("/{paymentId}")
-    public PaymentResponse getPayment(@PathVariable Long paymentId) {
-        return PaymentResponse.from(paymentService.getPayment(paymentId));
+    public PaymentResponse getPayment(
+        @PathVariable Long paymentId,
+        @RequestHeader(JwtHeaders.USER_ID) Long requesterId
+    ) {
+        return PaymentResponse.from(paymentService.getPayment(paymentId, requesterId));
     }
 
     @GetMapping("/orders/{orderId}")
-    public PaymentResponse getPaymentByOrderId(@PathVariable Long orderId) {
-        return PaymentResponse.from(paymentService.getPaymentByOrderId(orderId));
+    public PaymentResponse getPaymentByOrderId(
+        @PathVariable Long orderId,
+        @RequestHeader(JwtHeaders.USER_ID) Long requesterId
+    ) {
+        return PaymentResponse.from(paymentService.getPaymentByOrderId(orderId,  requesterId));
     }
 
     @PostMapping("/{paymentId}/cancel")
-    public PaymentResponse cancel(@PathVariable Long paymentId) {
+    public PaymentResponse cancel(
+        @PathVariable Long paymentId,
+        @RequestHeader(JwtHeaders.USER_ID) Long requesterId
+    ) {
         refundCancellationSagaOrchestrator.cancel(
             paymentId,
+            requesterId,
             RefundReason.USER_CANCEL
         );
-        return PaymentResponse.from(paymentService.getPayment(paymentId));
+        return PaymentResponse.from(paymentService.getPayment(paymentId, requesterId));
     }
 }
