@@ -35,11 +35,11 @@ class RefundCancellationSagaOrchestratorTest {
     private RefundCancellationSagaOrchestrator orchestrator;
 
     @Test
-    void cancel_completesRefundAfterTossRefundSucceeds() {
+    void cancel_ByUser_completesRefundAfterTossRefundSucceeds() {
         RefundCancellationTarget target = target();
         when(refundService.startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
 
-        orchestrator.cancel(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL);
+        orchestrator.cancelByUser(ORDER_ID, REQUESTER_ID);
 
         var inOrder = inOrder(refundService, refundGateway);
         inOrder.verify(refundService).startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL);
@@ -48,14 +48,14 @@ class RefundCancellationSagaOrchestratorTest {
     }
 
     @Test
-    void cancel_marksRefundFailedWhenTossRefundFailsDefinitely() {
+    void cancel_ByUser_marksRefundFailedWhenTossRefundFailsDefinitely() {
         RefundCancellationTarget target = target();
         RefundGatewayException exception = gatewayException(RefundGatewayFailureType.DEFINITIVE);
         when(refundService.startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
         doThrow(exception).when(refundGateway)
             .refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
 
-        assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL))
+        assertThatThrownBy(() -> orchestrator.cancelByUser(ORDER_ID, REQUESTER_ID))
             .isSameAs(exception);
 
         verify(refundService).failRefund(REFUND_ID);
@@ -63,14 +63,14 @@ class RefundCancellationSagaOrchestratorTest {
     }
 
     @Test
-    void cancel_schedulesRefundRetryWhenTossRefundResultIsUncertain() {
+    void cancel_ByUser_schedulesRefundRetryWhenTossRefundResultIsUncertain() {
         RefundCancellationTarget target = target();
         RefundGatewayException exception = gatewayException(RefundGatewayFailureType.UNCERTAIN);
         when(refundService.startRefund(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL)).thenReturn(target);
         doThrow(exception).when(refundGateway)
             .refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
 
-        assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, REQUESTER_ID, RefundReason.USER_CANCEL))
+        assertThatThrownBy(() -> orchestrator.cancelByUser(ORDER_ID, REQUESTER_ID))
             .isSameAs(exception);
 
         verify(refundService).scheduleRetry(REFUND_ID);
@@ -79,7 +79,7 @@ class RefundCancellationSagaOrchestratorTest {
     }
 
     @Test
-    void cancelPlannedRefund_completesRefundAfterTossRefundSucceeds() {
+    void cancelByUserPlannedRefund_completesRefundAfterTossRefundSucceeds() {
         RefundCancellationTarget target = target();
         when(refundService.startPlannedRefund(REFUND_ID)).thenReturn(target);
 

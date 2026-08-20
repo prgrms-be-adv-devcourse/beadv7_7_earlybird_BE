@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.refund.infrastructure.kafka;
 
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
-import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.ProjectRefundProcessedEvent;
 import com.growmighty.lectures.firstday.refund.domain.*;
+import com.growmighty.lectures.firstday.refund.infrastructure.dto.ProjectRefundProcessedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;

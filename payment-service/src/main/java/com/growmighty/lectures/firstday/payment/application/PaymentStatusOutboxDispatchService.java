@@ -1,9 +1,9 @@
 package com.growmighty.lectures.firstday.payment.application;
 
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentStatusChangedEvent;
 import com.growmighty.lectures.firstday.payment.application.port.PaymentSingleResultEventPublisher;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
-import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.PaymentSingleResultEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,7 +28,7 @@ public class PaymentStatusOutboxDispatchService {
 
         try {
             paymentSingleResultEventPublisher.publish(
-                new PaymentSingleResultEvent(
+                new PaymentStatusChangedEvent(
                     outbox.getOrderId(),
                     outbox.getPgOrderId(),
                     outbox.getPaymentStatus().getCode()

@@ -1,11 +1,11 @@
 package com.growmighty.lectures.firstday.payment.application;
 
+import com.growmighty.lectures.firstday.payment.application.dto.PaymentStatusChangedEvent;
 import com.growmighty.lectures.firstday.payment.application.port.PaymentSingleResultEventPublisher;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxStatus;
-import com.growmighty.lectures.firstday.payment.infrastructure.kafka.dto.PaymentSingleResultEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +45,7 @@ class PaymentStatusOutboxDispatchServiceTest {
         paymentStatusOutboxDispatchService.dispatch(outbox);
 
         verify(paymentSingleResultEventPublisher).publish(
-            new PaymentSingleResultEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name()) // <--
+            new PaymentStatusChangedEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name()) // <--
         );
         verify(paymentStatusOutboxRepository).save(outbox);
         assertThat(outbox.getStatus()).isEqualTo(PaymentStatusOutboxStatus.SENT);
@@ -57,7 +57,7 @@ class PaymentStatusOutboxDispatchServiceTest {
         PaymentStatusOutbox outbox = pendingOutbox();
         doThrow(new IllegalStateException("Kafka 발행 실패"))
             .when(paymentSingleResultEventPublisher)
-            .publish(new PaymentSingleResultEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
+            .publish(new PaymentStatusChangedEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
 
         assertThatThrownBy(() -> paymentStatusOutboxDispatchService.dispatch(outbox))
             .isInstanceOf(IllegalStateException.class)
@@ -74,7 +74,7 @@ class PaymentStatusOutboxDispatchServiceTest {
         PaymentStatusOutbox outbox = pendingOutbox();
         doThrow(new IllegalStateException("Kafka 발행 실패"))
             .when(paymentSingleResultEventPublisher)
-            .publish(new PaymentSingleResultEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
+            .publish(new PaymentStatusChangedEvent(ORDER_ID, PG_ORDER_ID, PaymentStatus.PAID.name())); // <--
 
         paymentStatusOutboxDispatchService.dispatchAfterCommit(outbox);
 
