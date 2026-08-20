@@ -14,6 +14,8 @@ public interface OrderRepository {
 
     Optional<Order> findByIdWithItems(Long id);
 
+    Optional<Order> findByIdWithItemsForUpdate(Long id);
+
     Optional<Order> findByUserIdAndOrderIdempotencyKey(Long userId, UUID orderIdempotencyKey);
 
     boolean existsByProjectId(Long projectId);
