@@ -83,9 +83,15 @@ public class ProjectController {
         return projectService.findByCreator(userId);
     }
 
+    /**
+     * 비로그인 사용자도 볼 수 있는 공개 API라 헤더가 없을 수 있다 — 그 경우 비공개
+     * 프로젝트는 findAll과 동일하게 404 처리된다.
+     */
     @GetMapping("/{projectId}")
-    public ProjectResponse findById(@PathVariable Long projectId) {
-        return projectService.findById(projectId);
+    public ProjectResponse findById(@PathVariable Long projectId,
+                                     @RequestHeader(value = JwtHeaders.USER_ID, required = false) Long requesterId,
+                                     @RequestHeader(value = JwtHeaders.USER_ROLE, required = false) UserRole requesterRole) {
+        return projectService.findById(projectId, requesterId, requesterRole != null ? requesterRole : UserRole.BACKER);
     }
 
     @PatchMapping("/{projectId}")
