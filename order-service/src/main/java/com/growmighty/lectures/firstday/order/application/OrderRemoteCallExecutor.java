@@ -133,7 +133,7 @@ public class OrderRemoteCallExecutor {
     }
 
     private boolean isServiceDiscoveryFailure(FeignException failure) {
-        return failure.status() == 503
+        return failure.status() == HttpStatus.SERVICE_UNAVAILABLE.value()
                 && failure.contentUTF8().startsWith("Load balancer does not contain an instance for the service ");
     }
 
