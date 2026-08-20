@@ -16,7 +16,7 @@ dependencies {
     // 쓴다 - 이 둘만 필요하므로 Hibernate/HikariCP/자동설정 트리거까지 함께 묶인 Boot "starter"
     // 대신 순수 라이브러리만 의존한다. DB를 실제로 쓰는 서비스는 이미 각자 build.gradle에
     // spring-boot-starter-data-jpa를 직접 선언해두고 있어(redundant) 영향 없음 - DB가 없는
-    // 서비스(ai-service, gateway-server)만 이걸로 자동설정 오작동을 피한다.
+    // 서비스(chat-service, gateway-server)만 이걸로 자동설정 오작동을 피한다.
     implementation 'org.springframework.data:spring-data-jpa'
     // spring-data-jpa는 jakarta.persistence-api를 compileOnly로만 갖고 있어(실제 구현체는
     // 각 앱의 starter가 채워줄 걸 전제) common 자신의 @MappedSuperclass/@EntityListeners 컴파일에

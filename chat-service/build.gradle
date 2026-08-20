@@ -25,7 +25,7 @@ dependencies {
     implementation 'org.springframework.retry:spring-retry'
 
     // TODO(조우진): 벡터DB/추천 로직에 맞는 모델 제공자로 교체 검토 — 우선 OpenAI starter로 스캐폴딩만 해둠.
-    // spring.ai.openai.api-key 는 config repo(ai-service.yml)에서 OPENAI_API_KEY 환경변수로 주입.
+    // spring.ai.openai.api-key 는 config repo(chat-service.yml)에서 OPENAI_API_KEY 환경변수로 주입.
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
     // 대화 로그 매핑을 담을 캐시 라이브러리.
@@ -38,7 +38,7 @@ dependencies {
 
     // Feign의 기본 Encoder가 Pageable(common 경유로 클래스패스에 존재) 때문에 스킵되는데,
     // 그 대체용 Pageable 전용 Encoder가 필요로 하는 DataWebProperties는 spring-boot-starter-data-jpa가
-    // 있어야 딸려옴 — ai-service는 DB가 없어 그 스타터가 없으므로 이 조각만 직접 추가한다.
+    // 있어야 딸려옴 — chat-service는 DB가 없어 그 스타터가 없으므로 이 조각만 직접 추가한다.
     // (근본 원인 상세: branch-work-history/조우진_ai-service_fix-project-search-feign-encoder.md)
     implementation 'org.springframework.boot:spring-boot-data-commons'
 
