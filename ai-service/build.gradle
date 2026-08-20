@@ -28,6 +28,9 @@ dependencies {
     // spring.ai.openai.api-key 는 config repo(ai-service.yml)에서 OPENAI_API_KEY 환경변수로 주입.
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
+    // 대화 로그 매핑을 담을 캐시 라이브러리.
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+
     // Swagger UI(/swagger-ui.html) + OpenAPI 3 문서(/v3/api-docs) 자동 생성.
     // Spring Boot BOM 이 버전을 관리하지 않아 직접 명시한다.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
