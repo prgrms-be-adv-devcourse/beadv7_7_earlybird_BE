@@ -17,4 +17,6 @@ public interface PaymentRepository {
 
     List<Long> findConfirmingPaymentIdsBefore(LocalDateTime cutoff, int limit);
 
+    List<Long> findReadyPaymentIdsBefore(LocalDateTime cutoff, int limit);
+
 }

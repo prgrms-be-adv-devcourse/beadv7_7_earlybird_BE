@@ -40,7 +40,7 @@ class PaymentServiceTest {
         PaymentConfirmationService paymentConfirmationService = new PaymentConfirmationService( // <-- SAGA 상태 전이 의존성 구성
             paymentRepository,
             paymentStatusOutboxRepository,
-            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10)),
+            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10), Duration.ofMinutes(30)),
             applicationEventPublisher // <-- 즉시 발행 리스너는 단위 테스트에서 미구성
         );
         paymentService = new PaymentService(
@@ -313,6 +313,18 @@ class PaymentServiceTest {
                 .filter(Payment::isConfirming)
                 .filter(payment -> payment.getConfirmingAt().isBefore(cutoff))
                 .sorted(Comparator.comparing(Payment::getConfirmingAt))
+                .limit(limit)
+                .map(Payment::getPaymentId)
+                .toList();
+        }
+
+        @Override
+        public List<Long> findReadyPaymentIdsBefore(LocalDateTime cutoff, int limit) {
+            return paymentsById.values().stream()
+                .filter(Payment::isReady)
+                .filter(payment -> payment.getCreatedAt() != null)
+                .filter(payment -> payment.getCreatedAt().isBefore(cutoff))
+                .sorted(Comparator.comparing(Payment::getCreatedAt))
                 .limit(limit)
                 .map(Payment::getPaymentId)
                 .toList();

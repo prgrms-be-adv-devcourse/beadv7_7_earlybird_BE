@@ -17,4 +17,8 @@ public class PaymentRecoveryService {
 
         paymentReconciliationService.reconcile(pgPayment);
     }
+
+    public void expireReadyPayment(Long paymentId) {
+        paymentConfirmationService.expireReadyPayment(paymentId);
+    }
 }
