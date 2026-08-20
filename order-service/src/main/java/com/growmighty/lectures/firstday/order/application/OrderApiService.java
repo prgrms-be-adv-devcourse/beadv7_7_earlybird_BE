@@ -185,7 +185,8 @@ public class OrderApiService {
                     () -> paymentPort.pay(paymentOrder.getId(), paymentOrder.getUserId(),
                             paymentOrder.getTotalAmount().getValue()));
         } catch (RuntimeException e) {
-            if (remoteCalls.isTechnical(e)) {
+            if (remoteCalls.classifyPaymentFailure(e)
+                    == OrderRemoteCallExecutor.PaymentFailureOutcome.AMBIGUOUS) {
                 order.markPaymentPending();
                 return OrderResult.from(orderRepository.save(order));
             }
