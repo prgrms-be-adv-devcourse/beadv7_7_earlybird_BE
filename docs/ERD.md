@@ -75,6 +75,7 @@ erDiagram
         bigint id PK "(신규) 판매자 등록 시 생성"
         bigint user_id UK "userdb.users.id (논리, 1:1)"
         varchar bank_name
+        varchar bank_code "토스페이먼츠 지급대행 기관 코드"
         varchar account_number "정산 계좌 - 암호화 저장 (필수 구현: 민감정보 암호화)"
         varchar account_holder "예금주"
     }

@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.user.application;
 
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.user.application.dto.CreatorProfileInfo;
 import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
@@ -178,7 +179,7 @@ class UserServiceTest {
         when(userRepository.findById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.registerAsCreator(
-                new RegisterCreatorCommand(999L, "신한은행", "110-123-456789", "창작자")))
+                new RegisterCreatorCommand(999L, "88", "110-123-456789", "창작자")))
                 .isInstanceOf(EntityNotFoundException.class);
     }
 
@@ -190,8 +191,22 @@ class UserServiceTest {
         when(creatorProfileRepository.existsByUserId(1L)).thenReturn(true);
 
         assertThatThrownBy(() -> userService.registerAsCreator(
-                new RegisterCreatorCommand(1L, "신한은행", "110-123-456789", "창작자")))
+                new RegisterCreatorCommand(1L, "88", "110-123-456789", "창작자")))
                 .isInstanceOf(IllegalStateException.class);
+
+        verify(creatorProfileRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 은행 코드로 판매자 등록을 요청하면 예외가 발생한다")
+    void registerAsCreator_withUnknownBankCode_throws() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(creatorProfileRepository.existsByUserId(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.registerAsCreator(
+                new RegisterCreatorCommand(1L, "99", "110-123-456789", "창작자")))
+                .isInstanceOf(IllegalArgumentException.class);
 
         verify(creatorProfileRepository, never()).save(any());
     }
@@ -205,12 +220,48 @@ class UserServiceTest {
         ArgumentCaptor<CreatorProfile> captor = ArgumentCaptor.forClass(CreatorProfile.class);
 
         UserInfo result = userService.registerAsCreator(
-                new RegisterCreatorCommand(1L, "신한은행", "110-123-456789", "창작자"));
+                new RegisterCreatorCommand(1L, "88", "110-123-456789", "창작자"));
 
         assertThat(result.role()).isEqualTo(UserRole.CREATOR);
         verify(creatorProfileRepository).save(captor.capture());
         assertThat(captor.getValue().getUserId()).isEqualTo(1L);
         assertThat(captor.getValue().getBankName()).isEqualTo("신한은행");
+        assertThat(captor.getValue().getBankCode()).isEqualTo("88");
     }
 
+    @Test
+    @DisplayName("존재하지 않는 유저의 창작자 정보를 조회하면 예외가 발생한다")
+    void getCreatorProfile_withUnknownUserId_throws() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getCreatorProfile(999L))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("판매자로 등록되지 않은 유저의 창작자 정보를 조회하면 예외가 발생한다")
+    void getCreatorProfile_withoutCreatorProfile_throws() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(creatorProfileRepository.findByUserId(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getCreatorProfile(1L))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("창작자 정보를 조회하면 이름과 정산 계좌 정보를 반환한다")
+    void getCreatorProfile_returnsNameAndBankInfo() {
+        User user = backer();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(creatorProfileRepository.findByUserId(1L)).thenReturn(
+                Optional.of(CreatorProfile.register(1L, "88", "110-123-456789", "창작자")));
+
+        CreatorProfileInfo result = userService.getCreatorProfile(1L);
+
+        assertThat(result.name()).isEqualTo("김하나한");
+        assertThat(result.bankName()).isEqualTo("신한은행");
+        assertThat(result.bankCode()).isEqualTo("88");
+        assertThat(result.accountHolder()).isEqualTo("창작자");
+    }
 }
