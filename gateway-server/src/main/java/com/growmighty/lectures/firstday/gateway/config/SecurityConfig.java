@@ -61,6 +61,12 @@ public class SecurityConfig {
                         // users
                         //// 관리자 전용 — 정산 내역 조회 화면의 창작자 정보 표기용 단건 조회
                         .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/users/creators/*").hasRole(ADMIN.getCode())
+                        //// 창작자 전환 신청 관리자 심사(#448) — 신청(POST /users/me/creator-application)은
+                        //// 로그인한 사용자면 누구나 가능해 별도 규칙 없이 anyExchange().authenticated()로 처리한다.
+                        .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/users/creator-applications").hasRole(ADMIN.getCode())
+                        .pathMatchers(HttpMethod.POST,
+                                URI_PREFIX_API + "/users/creator-applications/*/approve",
+                                URI_PREFIX_API + "/users/creator-applications/*/reject").hasRole(ADMIN.getCode())
 
                         // payments
                         //// PG사가 직접 호출
