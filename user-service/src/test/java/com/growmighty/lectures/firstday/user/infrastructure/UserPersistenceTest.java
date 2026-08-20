@@ -1,8 +1,10 @@
 package com.growmighty.lectures.firstday.user.infrastructure;
 
 import com.growmighty.lectures.firstday.user.config.JpaAuditingConfig;
+import com.growmighty.lectures.firstday.user.config.UserSecurityConfig;
 import com.growmighty.lectures.firstday.user.domain.CreatorProfile;
 import com.growmighty.lectures.firstday.user.domain.User;
+import com.growmighty.lectures.firstday.user.infrastructure.security.UserSensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @Testcontainers
 @DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create")
-@Import(JpaAuditingConfig.class)
+@Import({JpaAuditingConfig.class, UserSecurityConfig.class, UserSensitiveDataCrypto.class})
 class UserPersistenceTest {
 
     @Container
