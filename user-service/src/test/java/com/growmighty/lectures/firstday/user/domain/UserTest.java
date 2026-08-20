@@ -80,6 +80,26 @@ class UserTest {
     }
 
     @Test
+    @DisplayName("발표/시연용 role 전환은 정식 등록 절차 없이 role만 바꾼다")
+    void switchRoleForDemo_changesRoleDirectly() {
+        User user = User.register("hana@example.com", "encoded", "김하나한", "010-0000-0000");
+
+        user.switchRoleForDemo(UserRole.ADMIN);
+
+        assertThat(user.getRole()).isEqualTo(UserRole.ADMIN);
+    }
+
+    @Test
+    @DisplayName("발표/시연용 role 전환은 이미 같은 role이어도 예외 없이 허용한다")
+    void switchRoleForDemo_toSameRole_doesNotThrow() {
+        User user = User.register("hana@example.com", "encoded", "김하나한", "010-0000-0000");
+
+        user.switchRoleForDemo(UserRole.BACKER);
+
+        assertThat(user.getRole()).isEqualTo(UserRole.BACKER);
+    }
+
+    @Test
     @DisplayName("프로필을 수정하면 이름과 전화번호가 갱신된다")
     void updateProfile_updatesNameAndPhoneNumber() {
         User user = User.register("hana@example.com", "encoded", "옛이름", "010-0000-0000");
