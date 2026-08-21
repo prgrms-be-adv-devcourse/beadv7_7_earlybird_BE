@@ -24,10 +24,7 @@ class CreatorPayoutProfileTest {
 
         profile.completeRegistration(
                 "seller-10",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********1234",
-                LocalDateTime.of(2026, 7, 22, 10, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         );
 
         assertThat(profile.canReceivePayout()).isTrue();
@@ -39,10 +36,7 @@ class CreatorPayoutProfileTest {
         CreatorPayoutProfile profile = CreatorPayoutProfile.registered(
                 10L,
                 "seller-10",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********1234",
-                LocalDateTime.of(2026, 7, 22, 10, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         );
 
         assertThat(profile.canReceivePayout()).isTrue();

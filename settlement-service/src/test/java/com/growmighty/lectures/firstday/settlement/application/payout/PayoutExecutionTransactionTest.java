@@ -59,10 +59,7 @@ class PayoutExecutionTransactionTest extends MySqlIntegrationTestSupport {
                 CreatorPayoutProfile.registered(
                         601L,
                         "seller-601",
-                        CreatorPayoutStatus.PAYOUT_READY,
-                        "088",
-                        "********0601",
-                        LocalDateTime.of(2026, 7, 26, 9, 0)
+                        CreatorPayoutStatus.PAYOUT_READY
                 ),
                 LocalDate.of(2026, 8, 3)
         ));

@@ -54,9 +54,7 @@ public class CreatorProjectSettlementQueryService {
                 settlement.creatorPayoutAmount(),
                 payoutObligation.status(),
                 payoutObligation.scheduledDate(),
-                completedAt(payoutObligation),
-                payoutObligation.bankCode(),
-                payoutObligation.maskedAccountNumber()
+                completedAt(payoutObligation)
         );
     }
 

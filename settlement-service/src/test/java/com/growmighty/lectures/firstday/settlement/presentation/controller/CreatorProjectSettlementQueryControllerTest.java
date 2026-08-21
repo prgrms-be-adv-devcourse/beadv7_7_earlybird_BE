@@ -154,8 +154,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
                 .andExpect(jsonPath("$.data.payout.status").value("ACTION_REQUIRED"))
                 .andExpect(jsonPath("$.data.payout.scheduledDate").value("2026-07-07"))
                 .andExpect(jsonPath("$.data.payout.completedAt").isEmpty())
-                .andExpect(jsonPath("$.data.payout.destination.bankCode").value("088"))
-                .andExpect(jsonPath("$.data.payout.destination.maskedAccountNumber").value("********0001"))
+                .andExpect(jsonPath("$.data.payout.destination").doesNotExist())
                 .andExpect(jsonPath("$.data.creatorId").doesNotExist())
                 .andExpect(jsonPath("$.data.payout.payoutObligationId").doesNotExist())
                 .andExpect(jsonPath("$.data.payout.destination.tossSellerId").doesNotExist())
@@ -251,10 +250,7 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
         return CreatorPayoutProfile.registered(
                 creatorId,
                 "seller-" + creatorId,
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********%04d".formatted(creatorId % 10_000),
-                LocalDateTime.of(2026, 6, 1, 8, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         );
     }
 

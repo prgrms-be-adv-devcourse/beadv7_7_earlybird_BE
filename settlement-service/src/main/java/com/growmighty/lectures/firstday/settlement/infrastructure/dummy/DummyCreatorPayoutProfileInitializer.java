@@ -32,10 +32,7 @@ public class DummyCreatorPayoutProfileInitializer implements ApplicationRunner {
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
                 DummyProjectSettlementTargetReader.DUMMY_CREATOR_ID,
                 "dummy-seller-9000001",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********0001",
-                LocalDateTime.of(2026, 7, 23, 0, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         ));
     }
 }

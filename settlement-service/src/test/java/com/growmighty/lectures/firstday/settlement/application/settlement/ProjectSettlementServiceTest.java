@@ -45,10 +45,7 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
                 10L,
                 "seller-10",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********1234",
-                LocalDateTime.of(2026, 7, 23, 9, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 1L,
@@ -65,14 +62,13 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         assertThat(result)
                 .extracting(
                         ConfirmedProjectSettlement::settlementId,
-                        ConfirmedProjectSettlement::creatorPayoutAmount,
-                        ConfirmedProjectSettlement::payoutStatus
+                        ConfirmedProjectSettlement::creatorPayoutAmount
                 )
                 .satisfies(values -> {
                     assertThat(values.get(0)).isNotNull();
                     assertThat(values.get(1)).isEqualTo(Money.wons(27_595));
-                    assertThat(values.get(2)).isEqualTo(PayoutStatus.SCHEDULED);
                 });
+        assertThat(result.payoutStatus()).contains(PayoutStatus.SCHEDULED);
         assertThat(settlement.paymentAndSettlementAgencyFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
         assertThat(settlement.platformFeeRate()).isEqualByComparingTo(new BigDecimal("0.04"));
         assertThat(settlement.vatRate()).isEqualByComparingTo(new BigDecimal("0.10"));
@@ -86,10 +82,7 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
                 20L,
                 "seller-20",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********5678",
-                LocalDateTime.of(2026, 7, 23, 9, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 2L,
@@ -103,5 +96,26 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         ConfirmedProjectSettlement retried = projectSettlementService.confirm(command);
 
         assertThat(retried).isEqualTo(first);
+    }
+
+    @Test
+    @DisplayName("지급 프로필이 없으면 등록 대기 프로필과 프로젝트 정산만 확정한다")
+    void confirmsSettlementAndDefersPayoutWhenProfileIsMissing() {
+        ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
+                3L,
+                30L,
+                List.of(Money.wons(100_000)),
+                LocalDate.of(2026, 8, 5),
+                LocalDateTime.of(2026, 7, 23, 10, 0)
+        );
+
+        ConfirmedProjectSettlement result = projectSettlementService.confirm(command);
+
+        assertThat(creatorPayoutProfileRepository.findByCreatorId(30L).orElseThrow().status())
+                .isEqualTo(CreatorPayoutStatus.REGISTRATION_PENDING);
+        assertThat(projectSettlementRepository.findByProjectId(3L)).isPresent();
+        assertThat(payoutObligationRepository.findBySettlementId(result.settlementId())).isEmpty();
+        assertThat(result.hasPayoutObligation()).isFalse();
+        assertThat(result.payoutStatus()).isEmpty();
     }
 }

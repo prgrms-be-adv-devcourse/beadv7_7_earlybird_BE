@@ -1,13 +1,17 @@
 // TODO(settlement-plan): Verify admin responses expose review and payout state without leaking PG or event internals.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmProjectSettlementCommand;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmedProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ProjectSettlementService;
@@ -61,6 +65,47 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     private SpringDataProjectOutcomeFactRepository outcomeRepository;
 
     @Test
+    @DisplayName("관리자는 등록 대기 창작자의 셀러 등록을 결정적 더미 결과로 완료한다")
+    void registersPendingCreatorPayoutProfile() throws Exception {
+        long creatorId = 80_000_001L;
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.awaitingRegistration(creatorId));
+
+        mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
+                        .header(JwtHeaders.USER_ROLE, UserRole.ADMIN.name()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        assertThat(creatorPayoutProfileRepository.findByCreatorId(creatorId).orElseThrow())
+                .extracting(CreatorPayoutProfile::status, CreatorPayoutProfile::tossSellerId)
+                .containsExactly(CreatorPayoutStatus.PAYOUT_READY, "dummy-seller-" + creatorId);
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 셀러 등록 대행을 실행할 수 없다")
+    void rejectsNonAdminSellerRegistration() throws Exception {
+        long creatorId = 80_000_002L;
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.awaitingRegistration(creatorId));
+
+        mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
+                        .header(JwtHeaders.USER_ROLE, UserRole.CREATOR.name()))
+                .andExpect(status().isForbidden());
+
+        assertThat(creatorPayoutProfileRepository.findByCreatorId(creatorId).orElseThrow().status())
+                .isEqualTo(CreatorPayoutStatus.REGISTRATION_PENDING);
+    }
+
+    @Test
+    @DisplayName("등록 완료된 창작자의 셀러 등록 대행은 거부한다")
+    void rejectsAlreadyRegisteredCreatorPayoutProfile() throws Exception {
+        long creatorId = 80_000_003L;
+        savePayoutReadyProfile(creatorId);
+
+        mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
+                        .header(JwtHeaders.USER_ROLE, UserRole.ADMIN.name()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     @DisplayName("프로젝트 정산 내역이 없으면 관리자는 빈 목록을 조회한다")
     void returnsEmptyListWhenNoProjectSettlementsExist() throws Exception {
         mockMvc.perform(get("/api/v1/settlements/all"))
@@ -68,6 +113,49 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    @DisplayName("관리자는 성공 프로젝트의 등록 대기 정산을 지급과 구분해 조회한다")
+    void returnsRegistrationPendingEntryForSucceededProject() throws Exception {
+        long creatorId = 80_100_001L;
+        ConfirmedProjectSettlement confirmed = confirm(
+                80_200_001L,
+                creatorId,
+                LocalDateTime.of(2026, 7, 1, 10, 0)
+        );
+        outcomeRepository.save(ProjectOutcomeFact.of(
+                80_200_002L,
+                "실패 프로젝트",
+                80_100_002L,
+                ProjectOutcomeFact.Outcome.FAILED,
+                Instant.parse("2026-07-01T01:00:00Z")
+        ));
+        projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
+                80_200_002L,
+                80_100_002L,
+                List.of(Money.wons(1_000_000)),
+                LocalDate.of(2026, 7, 7),
+                LocalDateTime.of(2026, 7, 1, 10, 0)
+        ));
+
+        mockMvc.perform(get("/api/v1/settlements/all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].type").value("REGISTRATION_PENDING"))
+                .andExpect(jsonPath("$.data[0].projectId").value(80_200_001L))
+                .andExpect(jsonPath("$.data[0].projectName").value("프로젝트 80200001"))
+                .andExpect(jsonPath("$.data[0].refundRequestId").isEmpty())
+                .andExpect(jsonPath("$.data[0].payout").isEmpty())
+                .andExpect(jsonPath("$.data[0].refund").isEmpty())
+                .andExpect(jsonPath("$.data[0].registrationPending.settlementId").value(confirmed.settlementId()))
+                .andExpect(jsonPath("$.data[0].registrationPending.creatorId").value(creatorId))
+                .andExpect(jsonPath("$.data[0].registrationPending.settlementBaseAmount").value(1_000_000))
+                .andExpect(jsonPath("$.data[0].registrationPending.creatorPayoutAmount").value(912_000))
+                .andExpect(jsonPath("$.data[0].registrationPending.confirmedAt")
+                        .value("2026-07-01T10:00:00+09:00"))
+                .andExpect(jsonPath("$.data[0].registrationPending.status").doesNotExist())
+                .andExpect(jsonPath("$.data[0].registrationPending.payoutObligationId").doesNotExist());
     }
 
     @Test
@@ -381,10 +469,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         return CreatorPayoutProfile.registered(
                 creatorId,
                 "seller-" + creatorId,
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********%04d".formatted(creatorId % 10_000),
-                LocalDateTime.of(2026, 6, 1, 8, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         );
     }
 

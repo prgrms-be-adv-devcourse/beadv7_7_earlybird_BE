@@ -27,8 +27,7 @@ public record CreatorProjectSettlementDetailResponse(
                 new PayoutResponse(
                         detail.status(),
                         detail.scheduledDate(),
-                        toOffsetDateTime(detail.completedAt()),
-                        new DestinationResponse(detail.bankCode(), detail.maskedAccountNumber())
+                        toOffsetDateTime(detail.completedAt())
                 )
         );
     }
@@ -80,11 +79,7 @@ public record CreatorProjectSettlementDetailResponse(
     public record PayoutResponse(
             PayoutStatus status,
             LocalDate scheduledDate,
-            OffsetDateTime completedAt,
-            DestinationResponse destination
+            OffsetDateTime completedAt
     ) {
-    }
-
-    public record DestinationResponse(String bankCode, String maskedAccountNumber) {
     }
 }

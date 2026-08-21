@@ -42,7 +42,6 @@ class PayoutObligationTest {
     }
 
     private static CreatorPayoutProfile profile(Long creatorId) {
-        return CreatorPayoutProfile.registered(creatorId, "seller-" + creatorId, CreatorPayoutStatus.PAYOUT_READY,
-                "088", "********1234", LocalDateTime.of(2026, 7, 22, 9, 0));
+        return CreatorPayoutProfile.registered(creatorId, "seller-" + creatorId, CreatorPayoutStatus.PAYOUT_READY);
     }
 }

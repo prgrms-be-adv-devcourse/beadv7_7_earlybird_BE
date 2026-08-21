@@ -23,8 +23,6 @@ public record CreatorProjectSettlementDetail(
         Money creatorPayoutAmount,
         PayoutStatus status,
         LocalDate scheduledDate,
-        LocalDateTime completedAt,
-        String bankCode,
-        String maskedAccountNumber
+        LocalDateTime completedAt
 ) {
 }
