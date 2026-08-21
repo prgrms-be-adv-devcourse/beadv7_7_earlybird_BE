@@ -43,7 +43,7 @@ public class OrderCancellationOrchestrationService {
 
         Long paymentId = payment.paymentId();
         CancellationResult cancellation = remoteCalls.execute("payment-cancel",
-                () -> paymentPort.cancel(paymentId, order.getTotalAmount().getValue()));
+                () -> paymentPort.cancel(order.getId(), paymentId, order.getTotalAmount().getValue()));
         if (cancellation == null || cancellation.status() == PaymentResult.Status.UNKNOWN) {
             throw new ServiceUnavailableException("Payment cancellation result is unavailable. orderId=" + orderId);
         }

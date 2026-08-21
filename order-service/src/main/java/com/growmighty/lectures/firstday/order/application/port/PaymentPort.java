@@ -8,7 +8,7 @@ public interface PaymentPort {
 
     PaymentResult pay(Long orderId, Long userId, BigDecimal amount);
 
-    CancellationResult cancel(Long paymentId, BigDecimal amount);
+    CancellationResult cancel(Long orderId, Long paymentId, BigDecimal amount);
 
     PaymentResult getPaymentResult(Long orderId);
 
