@@ -14,7 +14,7 @@ public record ChatMessageResponse(
         return new ChatMessageResponse(
             reply,
             toolsUsed,
-            policyReferences.stream().map(PolicyReference::from).toList()
+            policyReferences.stream().map(PolicyReference::from).distinct().toList()
         );
     }
 
