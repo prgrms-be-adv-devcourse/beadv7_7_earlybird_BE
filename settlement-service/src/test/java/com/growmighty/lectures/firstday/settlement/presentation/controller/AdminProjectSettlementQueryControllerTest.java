@@ -88,7 +88,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
 
         mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
                         .header(JwtHeaders.USER_ROLE, UserRole.CREATOR.name()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isForbidden());
 
         assertThat(creatorPayoutProfileRepository.findByCreatorId(creatorId).orElseThrow().status())
                 .isEqualTo(CreatorPayoutStatus.REGISTRATION_PENDING);
