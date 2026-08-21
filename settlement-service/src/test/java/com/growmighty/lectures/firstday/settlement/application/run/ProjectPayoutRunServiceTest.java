@@ -44,20 +44,26 @@ class ProjectPayoutRunServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(profile(20L));
         outcomeRepository.save(outcome(1L, 10L));
         outcomeRepository.save(outcome(2L, 20L));
+        outcomeRepository.save(outcome(3L, 30L));
         paymentRepository.save(reconciledPayment(101L, 1L, "2026-06-30T10:00:00Z"));
         paymentRepository.save(reconciledPayment(102L, 1L, "2026-07-31T10:00:00Z"));
         paymentRepository.save(reconciledPayment(201L, 2L, "2026-06-30T10:00:00Z"));
         paymentRepository.save(completedPayment(202L, 2L, "2026-07-31T10:00:00Z"));
+        paymentRepository.save(reconciledPayment(301L, 3L, "2026-07-31T10:00:00Z"));
         YearMonth payoutMonth = YearMonth.of(2026, 8);
 
         service.run(payoutMonth);
         service.run(payoutMonth);
 
         Long settlementId = projectSettlementRepository.findByProjectId(1L).orElseThrow().id();
+        Long deferredSettlementId = projectSettlementRepository.findByProjectId(3L).orElseThrow().id();
         assertThat(projectSettlementRepository.findByProjectId(2L)).isEmpty();
         assertThat(payoutObligationRepository.findBySettlementId(settlementId).orElseThrow())
                 .extracting(obligation -> obligation.status(), obligation -> obligation.attemptCount())
                 .containsExactly(PayoutStatus.COMPLETED, 1);
+        assertThat(creatorPayoutProfileRepository.findByCreatorId(30L).orElseThrow().status())
+                .isEqualTo(CreatorPayoutStatus.REGISTRATION_PENDING);
+        assertThat(payoutObligationRepository.findBySettlementId(deferredSettlementId)).isEmpty();
         assertThat(runRepository.findAll()).extracting(ProjectPayoutRun::status)
                 .containsOnly(ProjectPayoutRun.Status.COMPLETED);
         assertThat(runRepository.findAll()).hasSize(2);
