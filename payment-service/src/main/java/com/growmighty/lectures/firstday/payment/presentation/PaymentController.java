@@ -4,7 +4,6 @@ import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.payment.application.PaymentService;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PayRequest;
 import com.growmighty.lectures.firstday.payment.presentation.dto.PaymentResponse;
-import com.growmighty.lectures.firstday.refund.application.RefundCancellationSagaOrchestrator;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -14,7 +13,6 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("api/v1/payments")
 public class PaymentController {
     private final PaymentService paymentService;
-    private final RefundCancellationSagaOrchestrator refundCancellationSagaOrchestrator;
 
     /** 결제 승인.*/
     @PostMapping("/confirm")
@@ -29,26 +27,6 @@ public class PaymentController {
         @PathVariable Long paymentId,
         @RequestHeader(JwtHeaders.USER_ID) Long requesterId
     ) {
-        return PaymentResponse.from(paymentService.getPayment(paymentId, requesterId));
-    }
-
-    @GetMapping("/orders/{orderId}")
-    public PaymentResponse getPaymentByOrderId(
-        @PathVariable Long orderId,
-        @RequestHeader(JwtHeaders.USER_ID) Long requesterId
-    ) {
-        return PaymentResponse.from(paymentService.getPaymentByOrderId(orderId,  requesterId));
-    }
-
-    @PostMapping("/{paymentId}/cancel")
-    public PaymentResponse cancel(
-        @PathVariable Long paymentId,
-        @RequestHeader(JwtHeaders.USER_ID) Long requesterId
-    ) {
-        refundCancellationSagaOrchestrator.cancelByUser(
-            paymentId,
-            requesterId
-        );
         return PaymentResponse.from(paymentService.getPayment(paymentId, requesterId));
     }
 }

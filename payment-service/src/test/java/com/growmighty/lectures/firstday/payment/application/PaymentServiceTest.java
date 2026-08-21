@@ -227,16 +227,6 @@ class PaymentServiceTest {
             .hasMessage("결제 소유자가 일치하지 않습니다.");
     }
 
-    @Test
-    @DisplayName("다른 사용자는 주문 기준 결제 조회를 할 수 없다")
-    void getPaymentByOrderId_withDifferentUser_throws() {
-        paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
-
-        assertThatThrownBy(() -> paymentService.getPaymentByOrderId(ORDER_ID, 999L))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("결제 소유자가 일치하지 않습니다.");
-    }
-
     private static final class RecordingPaymentGateway implements PaymentGateway {
         private int approvalCalls;
         private String requestedPaymentKey;
