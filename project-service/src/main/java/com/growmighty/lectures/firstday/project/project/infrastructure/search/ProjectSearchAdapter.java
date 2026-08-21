@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -191,6 +192,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         try {
             response = elasticsearchClient.search(s -> s
                             .index(INDEX_NAME)
+                            .size(MAX_RESULTS)
                             .knn(k -> k
                                     .field("embedding")
                                     .queryVector(vectorList)
@@ -220,9 +222,12 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         addRankScores(scores, keywordIds);
         addRankScores(scores, knnIds);
 
+        Comparator<Map.Entry<Long, Double>> comparator = Map.Entry.<Long, Double>comparingByValue().reversed()
+                .thenComparing(Map.Entry.<Long, Double>comparingByKey().reversed());
+
         return scores.entrySet().stream()
                 .filter(entry -> entry.getValue() >= RRF_MIN_SCORE)
-                .sorted(Map.Entry.<Long, Double>comparingByValue().reversed())
+                .sorted(comparator)
                 .limit(MAX_RESULTS)
                 .map(Map.Entry::getKey)
                 .toList();
