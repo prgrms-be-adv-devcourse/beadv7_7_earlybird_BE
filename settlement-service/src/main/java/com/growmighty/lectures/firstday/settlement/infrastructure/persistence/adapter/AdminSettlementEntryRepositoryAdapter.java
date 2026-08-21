@@ -53,6 +53,36 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                 union all
 
                 select
+                    'REGISTRATION_PENDING' as entry_type,
+                    settlement.project_id,
+                    outcome.project_name,
+                    null as refund_request_id,
+                    settlement.confirmed_at as published_at,
+                    null as processed_at,
+                    settlement.id as settlement_id,
+                    settlement.creator_id,
+                    settlement.base_amount,
+                    settlement.creator_payout_amount,
+                    null as payout_status,
+                    settlement.confirmed_at,
+                    null as scheduled_date,
+                    null as refund_reason,
+                    null as refund_published_at,
+                    null as payment_result_status,
+                    null as payment_count
+                from project_settlements settlement
+                join creator_payout_profiles profile
+                    on profile.creator_id = settlement.creator_id
+                    and profile.status = 'REGISTRATION_PENDING'
+                join project_outcome_facts outcome
+                    on outcome.project_id = settlement.project_id
+                    and outcome.outcome = 'SUCCEEDED'
+                left join payout_obligations obligation on obligation.settlement_id = settlement.id
+                where obligation.settlement_id is null
+
+                union all
+
+                select
                     'REFUND' as entry_type,
                     refund_request.project_id,
                     outcome.project_name,
@@ -97,7 +127,12 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
     }
 
     private AdminSettlementEntry toEntry(Object[] row) {
-        return "PAYOUT".equals(row[0]) ? payout(row) : refund(row);
+        return switch ((String) row[0]) {
+            case "PAYOUT" -> payout(row);
+            case "REGISTRATION_PENDING" -> registrationPending(row);
+            case "REFUND" -> refund(row);
+            default -> throw new IllegalStateException("알 수 없는 관리자 정산 항목 유형입니다.");
+        };
     }
 
     private static AdminSettlementEntry payout(Object[] row) {
@@ -119,7 +154,29 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                         confirmedAt,
                         localDate(row[12])
                 ),
+                null,
                 null
+        );
+    }
+
+    private static AdminSettlementEntry registrationPending(Object[] row) {
+        LocalDateTime confirmedAt = localDateTime(row[11]);
+        return new AdminSettlementEntry(
+                AdminSettlementEntry.Type.REGISTRATION_PENDING,
+                longValue(row[1]),
+                (String) row[2],
+                null,
+                atSeoul(confirmedAt),
+                null,
+                null,
+                null,
+                new AdminSettlementEntry.RegistrationPending(
+                        longValue(row[6]),
+                        longValue(row[7]),
+                        Money.wons(decimal(row[8])),
+                        Money.wons(decimal(row[9])),
+                        confirmedAt
+                )
         );
     }
 
@@ -140,7 +197,8 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                         AdminSettlementEntry.RefundStatus.of(row[14] != null, (String) row[15]),
                         paymentResultAt,
                         ((Number) row[16]).intValue()
-                )
+                ),
+                null
         );
     }
 

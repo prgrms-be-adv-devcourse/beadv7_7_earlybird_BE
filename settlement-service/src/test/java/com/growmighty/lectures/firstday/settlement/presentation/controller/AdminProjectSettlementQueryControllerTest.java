@@ -116,6 +116,49 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     }
 
     @Test
+    @DisplayName("관리자는 성공 프로젝트의 등록 대기 정산을 지급과 구분해 조회한다")
+    void returnsRegistrationPendingEntryForSucceededProject() throws Exception {
+        long creatorId = 80_100_001L;
+        ConfirmedProjectSettlement confirmed = confirm(
+                80_200_001L,
+                creatorId,
+                LocalDateTime.of(2026, 7, 1, 10, 0)
+        );
+        outcomeRepository.save(ProjectOutcomeFact.of(
+                80_200_002L,
+                "실패 프로젝트",
+                80_100_002L,
+                ProjectOutcomeFact.Outcome.FAILED,
+                Instant.parse("2026-07-01T01:00:00Z")
+        ));
+        projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
+                80_200_002L,
+                80_100_002L,
+                List.of(Money.wons(1_000_000)),
+                LocalDate.of(2026, 7, 7),
+                LocalDateTime.of(2026, 7, 1, 10, 0)
+        ));
+
+        mockMvc.perform(get("/api/v1/settlements/all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].type").value("REGISTRATION_PENDING"))
+                .andExpect(jsonPath("$.data[0].projectId").value(80_200_001L))
+                .andExpect(jsonPath("$.data[0].projectName").value("프로젝트 80200001"))
+                .andExpect(jsonPath("$.data[0].refundRequestId").isEmpty())
+                .andExpect(jsonPath("$.data[0].payout").isEmpty())
+                .andExpect(jsonPath("$.data[0].refund").isEmpty())
+                .andExpect(jsonPath("$.data[0].registrationPending.settlementId").value(confirmed.settlementId()))
+                .andExpect(jsonPath("$.data[0].registrationPending.creatorId").value(creatorId))
+                .andExpect(jsonPath("$.data[0].registrationPending.settlementBaseAmount").value(1_000_000))
+                .andExpect(jsonPath("$.data[0].registrationPending.creatorPayoutAmount").value(912_000))
+                .andExpect(jsonPath("$.data[0].registrationPending.confirmedAt")
+                        .value("2026-07-01T10:00:00+09:00"))
+                .andExpect(jsonPath("$.data[0].registrationPending.status").doesNotExist())
+                .andExpect(jsonPath("$.data[0].registrationPending.payoutObligationId").doesNotExist());
+    }
+
+    @Test
     @DisplayName("관리자는 기본 발행 시각 정렬로 지급 행을 조회한다")
     void returnsPayoutEntriesInDeterministicOrder() throws Exception {
         long firstCreatorId = 81_000_001L;

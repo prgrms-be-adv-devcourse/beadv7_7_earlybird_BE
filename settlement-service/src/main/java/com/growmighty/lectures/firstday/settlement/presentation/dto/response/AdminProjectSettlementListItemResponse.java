@@ -14,7 +14,8 @@ public record AdminProjectSettlementListItemResponse(
         String projectName,
         String refundRequestId,
         PayoutResponse payout,
-        RefundResponse refund
+        RefundResponse refund,
+        RegistrationPendingResponse registrationPending
 ) {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -27,6 +28,7 @@ public record AdminProjectSettlementListItemResponse(
                     entry.projectName(),
                     null,
                     PayoutResponse.from(entry.payout()),
+                    null,
                     null
             );
             case REFUND -> new AdminProjectSettlementListItemResponse(
@@ -35,7 +37,17 @@ public record AdminProjectSettlementListItemResponse(
                     entry.projectName(),
                     entry.refundRequestId(),
                     null,
-                    RefundResponse.from(entry.refund())
+                    RefundResponse.from(entry.refund()),
+                    null
+            );
+            case REGISTRATION_PENDING -> new AdminProjectSettlementListItemResponse(
+                    entry.type(),
+                    entry.projectId(),
+                    entry.projectName(),
+                    null,
+                    null,
+                    null,
+                    RegistrationPendingResponse.from(entry.registrationPending())
             );
         };
     }
@@ -78,6 +90,25 @@ public record AdminProjectSettlementListItemResponse(
                     refund.refundStatus(),
                     toSeoul(refund.paymentResultAt()),
                     refund.paymentCount()
+            );
+        }
+    }
+
+    public record RegistrationPendingResponse(
+            Long settlementId,
+            Long creatorId,
+            BigDecimal settlementBaseAmount,
+            BigDecimal creatorPayoutAmount,
+            OffsetDateTime confirmedAt
+    ) {
+
+        private static RegistrationPendingResponse from(AdminSettlementEntry.RegistrationPending registrationPending) {
+            return new RegistrationPendingResponse(
+                    registrationPending.settlementId(),
+                    registrationPending.creatorId(),
+                    registrationPending.settlementBaseAmount().amount(),
+                    registrationPending.creatorPayoutAmount().amount(),
+                    registrationPending.confirmedAt().atZone(SEOUL).toOffsetDateTime()
             );
         }
     }
