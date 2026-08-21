@@ -218,6 +218,24 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("정산 수동 실행은 인증 없이는 401이고 ADMIN만 호출할 수 있다")
+    void manualSettlementRuns_requireAdmin() {
+        for (String uri : new String[] {
+                "/api/v1/settlements/pg-reconciliations/runs",
+                "/api/v1/settlements/project-payouts/runs"
+        }) {
+            webTestClient.post().uri(uri)
+                    .exchange()
+                    .expectStatus().isUnauthorized();
+
+            webTestClient.post().uri(uri)
+                    .header("Authorization", "Bearer " + issueToken(UserRole.CREATOR))
+                    .exchange()
+                    .expectStatus().isForbidden();
+        }
+    }
+
+    @Test
     @DisplayName("관리자(ADMIN) 전용 라우트는 CREATOR 토큰으로 호출하면 403")
     void adminOnlyPath_withCreatorToken_isForbidden() {
         String token = issueToken(UserRole.CREATOR);
@@ -306,6 +324,8 @@ class SecurityConfigTest {
                 Arguments.of(HttpMethod.GET, "/api/v1/settlements/all", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.GET, "/api/v1/settlements/all/1", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.GET, "/api/v1/settlements/all/refunds/1", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/settlements/pg-reconciliations/runs", List.of(UserRole.ADMIN)),
+                Arguments.of(HttpMethod.POST, "/api/v1/settlements/project-payouts/runs", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.POST, "/api/v1/settlements/close", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.GET, "/api/v1/reports", List.of(UserRole.ADMIN)),
                 Arguments.of(HttpMethod.POST, "/api/v1/reports/1/process", List.of(UserRole.ADMIN))

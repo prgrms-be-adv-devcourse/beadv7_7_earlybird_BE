@@ -1,4 +1,3 @@
-// TODO(settlement-plan): Route manual requests to the same idempotent monthly-run interface used by the scheduler.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import com.growmighty.lectures.firstday.common.response.ApiResponse;
@@ -14,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/internal/v1/settlements")
+@RequestMapping("/api/v1/settlements")
 @RequiredArgsConstructor
 public class ProjectSettlementController {
 
