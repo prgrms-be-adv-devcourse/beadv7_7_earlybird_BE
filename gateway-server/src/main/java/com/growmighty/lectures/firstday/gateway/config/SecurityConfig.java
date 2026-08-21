@@ -121,6 +121,9 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET,
                                 URI_PREFIX_API + "/settlements",
                                 URI_PREFIX_API + "/settlements/*").hasRole(CREATOR.getCode())
+                        .pathMatchers(HttpMethod.POST,
+                                URI_PREFIX_API + "/settlements/pg-reconciliations/runs",
+                                URI_PREFIX_API + "/settlements/project-payouts/runs").hasRole(ADMIN.getCode())
                         .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/settlements/close").hasRole(ADMIN.getCode())
 
                         // reports
