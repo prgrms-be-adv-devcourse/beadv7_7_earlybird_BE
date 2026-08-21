@@ -3,11 +3,11 @@ package com.growmighty.lectures.firstday.payment.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
-import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,51 +18,18 @@ import java.math.BigDecimal;
 public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentApprovalSagaOrchestrator paymentApprovalSagaService;
+    private final PaymentPreparationService paymentPreparationService;
 
-    @Transactional
     public PaymentPreparationInfo prepare(
         @NonNull Long userId,
         @NonNull Long orderId,
         @NonNull BigDecimal amount
     ) {
-        return paymentRepository.findByOrderId(orderId)
-            .map(existingPayment -> {
-                if (!userId.equals(existingPayment.getUserId())) {
-                    throw new IllegalStateException("주문 소유자가 일치하지 않습니다. userId=" + userId);
-                }
-
-                boolean sameRequest = existingPayment.getAmount().compareTo(amount) == 0;
-
-                if (!sameRequest) {
-                    throw new IllegalStateException("이미 준비된 결제의 정보와 요청 정보가 다릅니다. orderId=" + orderId);
-                }
-
-                if (existingPayment.isReady()) {
-                    return PaymentPreparationInfo.from(existingPayment);
-                }
-
-                if (existingPayment.isConfirming()) {
-                    throw new PaymentConfirmationInProgressException(existingPayment.getPgOrderId());
-                }
-
-                if (existingPayment.isPaid()) {
-                    throw new IllegalStateException("이미 결제가 완료된 주문입니다. orderId=" + orderId);
-                }
-
-                if (existingPayment.isFailed()) {
-                    throw new IllegalStateException("실패한 결제입니다. 재결제 처리가 필요합니다. orderId=" + orderId);
-                }
-
-                if (existingPayment.isCancelled()) {
-                    throw new IllegalStateException("취소된 결제입니다. orderId=" + orderId);
-                }
-
-                throw new IllegalStateException("지원하지 않는 결제 상태입니다. status=" + existingPayment.getStatus());
-            })
-            .orElseGet(() -> {
-                Payment payment = Payment.ready(userId, orderId, amount);
-                return PaymentPreparationInfo.from(paymentRepository.save(payment));
-            });
+        try {
+            return paymentPreparationService.prepare(userId, orderId, amount);
+        } catch (DataIntegrityViolationException exception) {
+            return paymentPreparationService.getExistingPayment(userId, orderId, amount);
+        }
     }
 
     /**

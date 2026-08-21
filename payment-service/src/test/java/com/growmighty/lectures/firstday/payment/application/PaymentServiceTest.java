@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
 
 class PaymentServiceTest {
 
@@ -30,6 +32,7 @@ class PaymentServiceTest {
     private InMemoryPaymentRepository paymentRepository;
     private InMemoryPaymentStatusOutboxRepository paymentStatusOutboxRepository;
     private RecordingPaymentGateway paymentGateway;
+    private PaymentPreparationService paymentPreparationService;
     private PaymentService paymentService;
 
     @BeforeEach
@@ -44,9 +47,11 @@ class PaymentServiceTest {
             new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10), Duration.ofMinutes(30)),
             applicationEventPublisher // <-- 즉시 발행 리스너는 단위 테스트에서 미구성
         );
+        paymentPreparationService = new PaymentPreparationService(paymentRepository);
         paymentService = new PaymentService(
             paymentRepository,
-            new PaymentApprovalSagaOrchestrator(paymentConfirmationService, paymentGateway) // <-- 승인 SAGA 주입
+            new PaymentApprovalSagaOrchestrator(paymentConfirmationService, paymentGateway), // <-- 승인 SAGA 주입
+            paymentPreparationService
         );
     }
 
@@ -75,6 +80,34 @@ class PaymentServiceTest {
         assertThat(result.paymentId()).isEqualTo(first.paymentId());
         assertThat(result.pgOrderId()).isEqualTo(first.pgOrderId());
         assertThat(paymentRepository.size()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("동일 주문 생성의 유니크 충돌 시 기존 READY 결제를 반환한다")
+    void prepare_whenDuplicateKeyViolation_returnsExistingPayment() {
+        PaymentPreparationService preparationService = mock(PaymentPreparationService.class);
+        PaymentService service = new PaymentService(
+            paymentRepository,
+            mock(PaymentApprovalSagaOrchestrator.class),
+            preparationService
+        );
+        PaymentPreparationInfo existingPayment = new PaymentPreparationInfo(
+            1L,
+            "order-1-existing",
+            AMOUNT,
+            PaymentStatus.READY
+        );
+        doThrow(new DataIntegrityViolationException("Duplicate entry"))
+            .when(preparationService)
+            .prepare(USER_ID, ORDER_ID, AMOUNT);
+        when(preparationService.getExistingPayment(USER_ID, ORDER_ID, AMOUNT))
+            .thenReturn(existingPayment);
+
+        PaymentPreparationInfo result = service.prepare(USER_ID, ORDER_ID, AMOUNT);
+
+        assertThat(result).isEqualTo(existingPayment);
+        verify(preparationService).prepare(USER_ID, ORDER_ID, AMOUNT);
+        verify(preparationService).getExistingPayment(USER_ID, ORDER_ID, AMOUNT);
     }
 
     @Test
