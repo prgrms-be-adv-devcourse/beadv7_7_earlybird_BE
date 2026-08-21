@@ -23,7 +23,7 @@ public class OrderCancellationOrchestrationService {
     public Order cancel(Long orderId) {
         Order order = orderRepository.findByIdWithItemsForUpdate(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
-        if (order.isCancelled()) {
+        if (order.isCancelled() || order.isCancellationCompensationPending()) {
             return cancellationPersistenceService.finalizeCancellation(orderId, order.getPgOrderId());
         }
 

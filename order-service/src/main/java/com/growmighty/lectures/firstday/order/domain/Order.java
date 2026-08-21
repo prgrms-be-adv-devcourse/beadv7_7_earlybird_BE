@@ -237,6 +237,7 @@ public class Order extends BaseEntity {
 
     public PaymentHandling handlePaymentOutcome(PaymentOutcome outcome) {
         if (this.status == OrderStatus.PAID || this.status == OrderStatus.PAYMENT_FAILED
+                || this.status == OrderStatus.CANCEL_COMPENSATION_PENDING
                 || this.status == OrderStatus.CANCELLED || this.status == OrderStatus.STOCK_FAILED) {
             return PaymentHandling.IGNORED;
         }
@@ -274,6 +275,14 @@ public class Order extends BaseEntity {
         this.status = OrderStatus.CANCELLED;
     }
 
+    public void markCancellationCompensationPending() {
+        changeStatus(OrderStatus.PAID, OrderStatus.CANCEL_COMPENSATION_PENDING);
+    }
+
+    public void completeCancellationCompensation() {
+        changeStatus(OrderStatus.CANCEL_COMPENSATION_PENDING, OrderStatus.CANCELLED);
+    }
+
     public void validateCancellationAllowed() {
         if (this.status != OrderStatus.PAID) {
             throw new InvalidOrderStatusException(this.status, OrderStatus.CANCELLED);
@@ -282,6 +291,10 @@ public class Order extends BaseEntity {
 
     public boolean isCancelled() {
         return this.status == OrderStatus.CANCELLED;
+    }
+
+    public boolean isCancellationCompensationPending() {
+        return this.status == OrderStatus.CANCEL_COMPENSATION_PENDING;
     }
 
     private void changeStatus(OrderStatus expectedStatus, OrderStatus nextStatus) {
