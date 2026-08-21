@@ -23,7 +23,7 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
 
     @Override
     public List<ProjectSearchResult> search(String keyword, Long categoryId, String status, String sort) {
-        return circuitBreakerFactory.create("project").run(
+        return circuitBreakerFactory.create("projects").run(
             () -> fetch(keyword, categoryId, status, sort),
             cause -> failHard(keyword, cause)
         );

@@ -10,6 +10,10 @@ spring:
   ai:
     openai:
       api-key: test-key-not-a-real-key
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 200ms
 
 eureka:
   client:

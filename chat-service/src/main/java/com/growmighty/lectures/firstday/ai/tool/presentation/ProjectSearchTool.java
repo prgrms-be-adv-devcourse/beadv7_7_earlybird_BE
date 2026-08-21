@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.ai.tool.presentation;
 
 import com.growmighty.lectures.firstday.ai.tool.feign.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.dto.ProjectSearchResult;
+import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -14,6 +15,7 @@ import java.util.List;
 public class ProjectSearchTool {
 
     private final ProjectSearchPort projectSearchPort;
+    private final ToolInvocationRecorder recorder;
 
     @Tool(name = "search_projects", description = "프로젝트를 키워드/카테고리/상태로 검색한다. 사용자가 특정 프로젝트를 찾거나 추천을 요청할 때 사용.")
     public List<ProjectSearchResult> searchProjects(
@@ -29,6 +31,7 @@ public class ProjectSearchTool {
         if (keyword == null || keyword.isBlank()) {
             throw new IllegalArgumentException("keyword는 비어 있을 수 없습니다.");
         }
+        recorder.recordToolUsed("search_projects");
         return projectSearchPort.search(
             keyword,
             categoryId,
