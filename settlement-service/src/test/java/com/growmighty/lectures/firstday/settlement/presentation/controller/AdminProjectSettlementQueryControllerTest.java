@@ -381,10 +381,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         return CreatorPayoutProfile.registered(
                 creatorId,
                 "seller-" + creatorId,
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********%04d".formatted(creatorId % 10_000),
-                LocalDateTime.of(2026, 6, 1, 8, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         );
     }
 

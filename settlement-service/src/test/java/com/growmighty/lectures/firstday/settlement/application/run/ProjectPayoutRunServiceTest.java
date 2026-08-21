@@ -73,10 +73,7 @@ class ProjectPayoutRunServiceTest extends MySqlIntegrationTestSupport {
         return CreatorPayoutProfile.registered(
                 creatorId,
                 "seller-" + creatorId,
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********1234",
-                LocalDateTime.of(2026, 8, 1, 9, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         );
     }
 

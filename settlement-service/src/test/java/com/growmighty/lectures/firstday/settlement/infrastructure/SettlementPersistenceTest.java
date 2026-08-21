@@ -166,7 +166,6 @@ class SettlementPersistenceTest extends MySqlIntegrationTestSupport {
 
     private static PayoutObligation obligation(ProjectSettlement settlement, Long creatorId) {
         return PayoutObligation.schedule(settlement, CreatorPayoutProfile.registered(
-                creatorId, "seller-" + creatorId, CreatorPayoutStatus.PAYOUT_READY, "088", "********1234",
-                LocalDateTime.of(2026, 7, 22, 9, 0)), LocalDate.of(2026, 8, 3));
+                creatorId, "seller-" + creatorId, CreatorPayoutStatus.PAYOUT_READY), LocalDate.of(2026, 8, 3));
     }
 }

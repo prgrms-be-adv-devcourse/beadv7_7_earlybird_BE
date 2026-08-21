@@ -45,10 +45,7 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
                 10L,
                 "seller-10",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********1234",
-                LocalDateTime.of(2026, 7, 23, 9, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 1L,
@@ -85,10 +82,7 @@ class ProjectSettlementServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
                 20L,
                 "seller-20",
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********5678",
-                LocalDateTime.of(2026, 7, 23, 9, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         ));
         ConfirmProjectSettlementCommand command = new ConfirmProjectSettlementCommand(
                 2L,

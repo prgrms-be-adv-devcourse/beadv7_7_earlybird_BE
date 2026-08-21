@@ -50,12 +50,6 @@ public class PayoutObligation extends BaseEntity {
     @Column(name = "destination_toss_seller_id", nullable = false, updatable = false, length = 100)
     private String tossSellerId;
 
-    @Column(name = "destination_bank_code", nullable = false, updatable = false, length = 20)
-    private String bankCode;
-
-    @Column(name = "destination_masked_account_number", nullable = false, updatable = false, length = 100)
-    private String maskedAccountNumber;
-
     @Column(name = "scheduled_date", nullable = false, updatable = false)
     private LocalDate scheduledDate;
 
@@ -84,8 +78,6 @@ public class PayoutObligation extends BaseEntity {
         this.creatorId = profile.creatorId();
         this.payoutAmount = settlement.creatorPayoutAmount();
         this.tossSellerId = profile.tossSellerId();
-        this.bankCode = profile.bankCode();
-        this.maskedAccountNumber = profile.maskedAccountNumber();
         this.scheduledDate = scheduledDate;
         this.status = PayoutStatus.SCHEDULED;
         validateState();
@@ -107,8 +99,6 @@ public class PayoutObligation extends BaseEntity {
     public Long creatorId() { return creatorId; }
     public Money payoutAmount() { return payoutAmount; }
     public String tossSellerId() { return tossSellerId; }
-    public String bankCode() { return bankCode; }
-    public String maskedAccountNumber() { return maskedAccountNumber; }
     public LocalDate scheduledDate() { return scheduledDate; }
     public PayoutStatus status() { return status; }
     public List<PayoutAttempt> attempts() { return List.copyOf(attempts); }
@@ -163,8 +153,6 @@ public class PayoutObligation extends BaseEntity {
             throw new IllegalArgumentException("지급 의무는 프로젝트 정산의 창작자와 지급 금액을 사용해야 합니다.");
         }
         requireText(tossSellerId, "토스 셀러 식별자");
-        requireText(bankCode, "은행 식별 정보");
-        requireText(maskedAccountNumber, "마스킹된 계좌번호");
         Objects.requireNonNull(scheduledDate, "지급 예정일은 필수입니다.");
         Objects.requireNonNull(status, "지급 상태는 필수입니다.");
         Set<Integer> sequences = new HashSet<>();
