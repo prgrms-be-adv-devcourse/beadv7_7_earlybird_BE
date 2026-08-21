@@ -23,7 +23,7 @@ public class ReviewSearchHttpClient implements ReviewSearchPort {
 
     @Override
     public List<ReviewSearchResult> search(Long projectId) {
-        return circuitBreakerFactory.create("review").run(
+        return circuitBreakerFactory.create("reviews").run(
             () -> fetch(projectId),
             cause -> failHard(projectId, cause)
         );
