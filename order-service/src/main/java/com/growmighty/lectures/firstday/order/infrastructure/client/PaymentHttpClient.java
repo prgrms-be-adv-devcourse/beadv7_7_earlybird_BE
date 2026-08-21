@@ -4,6 +4,7 @@ import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.order.application.port.PaymentPort;
 import com.growmighty.lectures.firstday.order.application.port.dto.PaymentResult;
+import com.growmighty.lectures.firstday.order.infrastructure.client.dto.CancelBody;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.PayBody;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.PaymentApiData;
 import com.growmighty.lectures.firstday.order.infrastructure.client.dto.PaymentDetailsApiData;
@@ -34,8 +35,8 @@ public class PaymentHttpClient implements PaymentPort {
     }
 
     @Override
-    public CancellationResult cancel(Long paymentId, BigDecimal amount) {
-        ApiResponse<PaymentDetailsApiData> response = paymentFeignClient.cancel(paymentId);
+    public CancellationResult cancel(Long orderId, Long paymentId, BigDecimal amount) {
+        ApiResponse<PaymentDetailsApiData> response = paymentFeignClient.cancel(new CancelBody(orderId, paymentId));
         if (response == null || !response.success() || response.data() == null
                 || response.data().status() == null) {
             return new CancellationResult(PaymentResult.Status.UNKNOWN, amount, paymentId, null);
