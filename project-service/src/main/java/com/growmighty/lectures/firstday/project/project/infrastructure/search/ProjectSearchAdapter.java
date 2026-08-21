@@ -1,7 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.RRFRetrieverEntry;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -55,6 +54,11 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final int MAX_RESULTS = 200;
     /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.35 미만 무관 벡터 제외) */
     private static final float KNN_SIMILARITY_THRESHOLD = 0.35f;
+    /**
+     * ES의 rrf retriever는 Basic 라이선스에선 호출 자체가 거부된다(Enterprise 전용 기능 게이트,
+     * self-generated trial 라이선스는 30일 후 만료) — 그래서 키워드/kNN을 각각 별도로 호출하고
+     * RRF 공식(Σ 1/(rankConstant+rank))을 애플리케이션 코드에서 직접 계산해 합친다(fuseByRank).
+     */
     private static final int RRF_RANK_CONSTANT = 60;
     /** RRF 스코어 하한: 1/(60+rank) 결합 점수 기준 하위 노이즈 문서 필터링 */
     private static final double RRF_MIN_SCORE = 0.005;
@@ -160,52 +164,74 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 .should(s -> s.match(m -> m.field("categoryName").query(keyword).boost(1.3f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
                 .should(s -> s.match(m -> m.field("rewardNames").query(keyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))));
 
-        if (queryVector != null && queryVector.length > 0) {
-            List<Float> vectorList = new ArrayList<>(queryVector.length);
-            for (float f : queryVector) {
-                vectorList.add(f);
-            }
-            SearchResponse<ProjectDocument> response;
-            try {
-                response = elasticsearchClient.search(s -> s
-                                .index(INDEX_NAME)
-                                .size(MAX_RESULTS)
-                                .minScore(RRF_MIN_SCORE)
-                                .retriever(r -> r.rrf(rrf -> rrf
-                                        .retrievers(
-                                                RRFRetrieverEntry.of(e -> e.retriever(r1 -> r1.standard(st -> st.query(keywordQuery)))),
-                                                RRFRetrieverEntry.of(e -> e.retriever(r2 -> r2.knn(knn -> knn
-                                                        .field("embedding")
-                                                        .queryVector(vectorList)
-                                                        .k(20)
-                                                        .numCandidates(100)
-                                                        .similarity(KNN_SIMILARITY_THRESHOLD)
-                                                )))
-                                        )
-                                        .rankConstant(RRF_RANK_CONSTANT)
-                                        .rankWindowSize(MAX_RESULTS)
-                                )),
-                        ProjectDocument.class
-                );
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
+        List<Long> keywordIds = searchKeywordIds(keywordQuery);
+        if (queryVector == null || queryVector.length == 0) {
+            return keywordIds;
+        }
+        List<Long> knnIds = searchKnnIds(queryVector);
+        return fuseByRank(keywordIds, knnIds);
+    }
 
-            if (response == null || response.hits() == null || response.hits().hits() == null) {
-                return List.of();
-            }
-            return response.hits().hits().stream()
-                    .map(Hit::source)
-                    .filter(doc -> doc != null && doc.projectId() != null)
-                    .map(ProjectDocument::projectId)
-                    .toList();
-        } else {
-            NativeQuery nativeQuery = NativeQuery.builder()
-                    .withQuery(keywordQuery)
-                    .withMaxResults(MAX_RESULTS)
-                    .build();
-            SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
-            return hits.stream().map(hit -> hit.getContent().projectId()).toList();
+    private List<Long> searchKeywordIds(Query keywordQuery) {
+        NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(keywordQuery)
+                .withMaxResults(MAX_RESULTS)
+                .build();
+        SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
+        return hits.stream().map(hit -> hit.getContent().projectId()).toList();
+    }
+
+    /** top-level knn 검색 — retriever 프레임워크가 아닌 8.0부터 GA된 기본 kNN 기능이라 라이선스 제약이 없다. */
+    private List<Long> searchKnnIds(float[] queryVector) {
+        List<Float> vectorList = new ArrayList<>(queryVector.length);
+        for (float f : queryVector) {
+            vectorList.add(f);
+        }
+        SearchResponse<ProjectDocument> response;
+        try {
+            response = elasticsearchClient.search(s -> s
+                            .index(INDEX_NAME)
+                            .knn(k -> k
+                                    .field("embedding")
+                                    .queryVector(vectorList)
+                                    .k(20)
+                                    .numCandidates(100)
+                                    .similarity(KNN_SIMILARITY_THRESHOLD)
+                            ),
+                    ProjectDocument.class
+            );
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        if (response == null || response.hits() == null || response.hits().hits() == null) {
+            return List.of();
+        }
+        return response.hits().hits().stream()
+                .map(Hit::source)
+                .filter(doc -> doc != null && doc.projectId() != null)
+                .map(ProjectDocument::projectId)
+                .toList();
+    }
+
+    /** RRF 공식을 직접 계산해 두 순위 리스트를 합친다 — RRF_RANK_CONSTANT 위 주석 참고. */
+    private List<Long> fuseByRank(List<Long> keywordIds, List<Long> knnIds) {
+        Map<Long, Double> scores = new HashMap<>();
+        addRankScores(scores, keywordIds);
+        addRankScores(scores, knnIds);
+
+        return scores.entrySet().stream()
+                .filter(entry -> entry.getValue() >= RRF_MIN_SCORE)
+                .sorted(Map.Entry.<Long, Double>comparingByValue().reversed())
+                .limit(MAX_RESULTS)
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    private void addRankScores(Map<Long, Double> scores, List<Long> rankedIds) {
+        for (int i = 0; i < rankedIds.size(); i++) {
+            double score = 1.0 / (RRF_RANK_CONSTANT + i + 1);
+            scores.merge(rankedIds.get(i), score, Double::sum);
         }
     }
 
