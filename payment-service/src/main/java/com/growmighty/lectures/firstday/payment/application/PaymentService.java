@@ -113,7 +113,15 @@ public class PaymentService {
     }
 
     @Transactional(readOnly = true)
-    public PaymentInfo getPaymentByOrderId(Long orderId) {
+    public PaymentInfo getPaymentByOrderId(Long orderId, Long requesterId) {
+        Payment payment = paymentRepository.findByOrderId(orderId)
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 주문의 결제입니다. " + orderId));
+        validateRequesterByPayment(requesterId, payment);
+        return  PaymentInfo.from(payment);
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentInfo getPaymentByOrderIdInternal(Long orderId) {
         Payment payment = paymentRepository.findByOrderId(orderId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 주문의 결제입니다. " + orderId));
         return  PaymentInfo.from(payment);

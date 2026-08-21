@@ -29,4 +29,9 @@ public class PaymentController {
     ) {
         return PaymentResponse.from(paymentService.getPayment(paymentId, requesterId));
     }
+
+    @GetMapping
+    public PaymentResponse getPaymentByOrderId(@RequestParam Long orderId, @RequestHeader(JwtHeaders.USER_ID) Long requesterId) {
+        return PaymentResponse.from(paymentService.getPaymentByOrderId(orderId, requesterId));
+    }
 }

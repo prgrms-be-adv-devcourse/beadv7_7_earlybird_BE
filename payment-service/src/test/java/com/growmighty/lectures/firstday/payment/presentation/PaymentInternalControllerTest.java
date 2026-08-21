@@ -28,14 +28,14 @@ class PaymentInternalControllerTest {
             refundCancellationSagaOrchestrator
         );
         PaymentInfo payment = paymentInfo();
-        when(paymentService.getPaymentByOrderId(ORDER_ID)).thenReturn(payment);
+        when(paymentService.getPaymentByOrderIdInternal(ORDER_ID)).thenReturn(payment);
 
         PaymentResponse response = controller.getPaymentByOrderId(ORDER_ID);
 
         assertThat(response.paymentId()).isEqualTo(PAYMENT_ID);
         assertThat(response.orderId()).isEqualTo(ORDER_ID);
         assertThat(response.status()).isEqualTo(PaymentStatus.PAID.getCode());
-        verify(paymentService).getPaymentByOrderId(ORDER_ID);
+        verify(paymentService).getPaymentByOrderIdInternal(ORDER_ID);
     }
 
     @Test

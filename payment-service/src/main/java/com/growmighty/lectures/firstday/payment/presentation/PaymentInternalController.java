@@ -38,6 +38,6 @@ import org.springframework.web.bind.annotation.*;
 
     @GetMapping
     public PaymentResponse getPaymentByOrderId(@RequestParam Long orderId) {
-        return PaymentResponse.from(paymentService.getPaymentByOrderId(orderId));
+        return PaymentResponse.from(paymentService.getPaymentByOrderIdInternal(orderId));
     }
 }
