@@ -14,11 +14,11 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-    @RequestMapping("internal/v1/payments")
-    public class PaymentInternalController {
+@RequestMapping("internal/v1/payments")
+public class PaymentInternalController {
 
-        private final PaymentService paymentService;
-        private final RefundCancellationSagaOrchestrator refundCancellationSagaOrchestrator;
+    private final PaymentService paymentService;
+    private final RefundCancellationSagaOrchestrator refundCancellationSagaOrchestrator;
 
     @PostMapping("/prepare")
     public PaymentPrepareResponse prepare(@Valid @RequestBody PaymentPrepareRequest request) {
