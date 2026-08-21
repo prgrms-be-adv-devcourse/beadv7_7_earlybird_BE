@@ -34,6 +34,7 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           PAYMENT_SECURITY_ENCRYPTION_KEY: ${{ secrets.PAYMENT_SECURITY_ENCRYPTION_KEY }}
           PAYMENT_TOSS_SECRET_KEY: ${{ secrets.PAYMENT_TOSS_SECRET_KEY }}
+          USER_SECURITY_ENCRYPTION_KEY: ${{ secrets.USER_SECURITY_ENCRYPTION_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -52,7 +53,7 @@ jobs:
           # probe 실패로 재시작 몇 번 거치고 나면 결국 뜬다는 게 관찰된 패턴이라 실패 처리 대신
           # 기다려주는 쪽으로 조정.
           command_timeout: '20m'
-          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DB_USERNAME,DB_PASSWORD,IMAGE_TAG
+          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,USER_SECURITY_ENCRYPTION_KEY,OPENAI_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DB_USERNAME,DB_PASSWORD,IMAGE_TAG
           script: |
             set -e
             # ec2-user는 /etc/rancher/k3s/k3s.yaml을 직접 읽을 수 있어(644, k3s 기본 권한)
@@ -83,6 +84,12 @@ jobs:
             kubectl -n webapp create secret generic payment-secrets \
               --from-literal=PAYMENT_SECURITY_ENCRYPTION_KEY="$PAYMENT_SECURITY_ENCRYPTION_KEY" \
               --from-literal=PAYMENT_TOSS_SECRET_KEY="$PAYMENT_TOSS_SECRET_KEY" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            # user-service의 CreatorProfile.accountNumber AES-256 암호화 키 - 비어있으면 기동
+            # 자체가 실패한다. 앱 박스 .env에 있던 기존 값과 반드시 같아야 한다 (값이 바뀌면
+            # 기존 정산 계좌 데이터 복호화 불가) - payment-secrets와 같은 패턴 (#123).
+            kubectl -n webapp create secret generic user-secrets \
+              --from-literal=USER_SECURITY_ENCRYPTION_KEY="$USER_SECURITY_ENCRYPTION_KEY" \
               --dry-run=client -o yaml | kubectl apply -f -
             kubectl -n webapp create secret generic ai-openai \
               --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -

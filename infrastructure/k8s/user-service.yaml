@@ -46,6 +46,14 @@ spec:
                 secretKeyRef:
                   name: gateway-jwt
                   key: JWT_SECRET
+            # @NotBlank 필수값 - 비어있으면 기동 자체가 실패한다. 앱 박스 .env에 있던 기존 값과
+            # 반드시 같아야 한다 - 값이 바뀌면 이미 암호화되어 저장된 기존 정산 계좌 데이터를
+            # 복호화할 수 없게 된다 (payment-service의 PAYMENT_SECURITY_ENCRYPTION_KEY와 같은 패턴, #123).
+            - name: USER_SECURITY_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: user-secrets
+                  key: USER_SECURITY_ENCRYPTION_KEY
             - name: JAVA_TOOL_OPTIONS
               value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
             - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED

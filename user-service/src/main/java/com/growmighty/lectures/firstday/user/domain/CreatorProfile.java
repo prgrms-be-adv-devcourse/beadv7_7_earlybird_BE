@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.user.domain;
 
 import com.growmighty.lectures.firstday.common.entity.BaseEntity;
+import com.growmighty.lectures.firstday.user.domain.vo.AccountNumber;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -22,9 +23,9 @@ public class CreatorProfile extends BaseEntity {
     @Column(nullable = false)
     private String bankName;
 
-    /** 정산 계좌 — 민감정보. TODO(팀): AES 암호화 방식·키 관리 확정 후 저장 전 암호화 적용 */
+    /** 정산 계좌 — 민감정보. DB 컬럼에는 AES-GCM 암호문으로 저장된다 (#123). */
     @Column(nullable = false)
-    private String accountNumber;
+    private AccountNumber accountNumber;
 
     @Column(nullable = false)
     private String accountHolder;
@@ -39,7 +40,7 @@ public class CreatorProfile extends BaseEntity {
         }
         this.userId = userId;
         this.bankName = bankName;
-        this.accountNumber = accountNumber;
+        this.accountNumber = new AccountNumber(accountNumber);
         this.accountHolder = accountHolder;
     }
 
@@ -49,7 +50,7 @@ public class CreatorProfile extends BaseEntity {
 
     public void updateAccount(String bankName, String accountNumber, String accountHolder) {
         this.bankName = bankName;
-        this.accountNumber = accountNumber;
+        this.accountNumber = new AccountNumber(accountNumber);
         this.accountHolder = accountHolder;
     }
 }
