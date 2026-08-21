@@ -64,9 +64,19 @@ class ProjectPayoutRunServiceTest extends MySqlIntegrationTestSupport {
         assertThat(creatorPayoutProfileRepository.findByCreatorId(30L).orElseThrow().status())
                 .isEqualTo(CreatorPayoutStatus.REGISTRATION_PENDING);
         assertThat(payoutObligationRepository.findBySettlementId(deferredSettlementId)).isEmpty();
+
+        CreatorPayoutProfile pendingProfile = creatorPayoutProfileRepository.findByCreatorId(30L).orElseThrow();
+        pendingProfile.completeRegistration("seller-30", CreatorPayoutStatus.PAYOUT_READY);
+        creatorPayoutProfileRepository.save(pendingProfile);
+
+        service.run(YearMonth.of(2026, 9));
+
+        assertThat(payoutObligationRepository.findBySettlementId(deferredSettlementId).orElseThrow())
+                .extracting(obligation -> obligation.status(), obligation -> obligation.attemptCount())
+                .containsExactly(PayoutStatus.COMPLETED, 1);
         assertThat(runRepository.findAll()).extracting(ProjectPayoutRun::status)
                 .containsOnly(ProjectPayoutRun.Status.COMPLETED);
-        assertThat(runRepository.findAll()).hasSize(2);
+        assertThat(runRepository.findAll()).hasSize(3);
     }
 
     private static CreatorPayoutProfile profile(Long creatorId) {

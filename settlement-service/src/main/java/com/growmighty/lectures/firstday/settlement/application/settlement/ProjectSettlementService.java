@@ -31,7 +31,16 @@ public class ProjectSettlementService {
                 () -> projectSettlementRepository.findByProjectId(command.projectId()).orElse(null)
         );
         if (existingSettlement != null) {
-            return confirmedSettlement(existingSettlement, findPayoutObligation(existingSettlement.id()));
+            Optional<PayoutObligation> payoutObligation = findPayoutObligation(existingSettlement.id());
+            if (payoutObligation.isEmpty()) {
+                payoutObligation = executePersistenceOperation(
+                        () -> creatorPayoutProfileRepository.findByCreatorId(command.creatorId())
+                ).filter(CreatorPayoutProfile::canReceivePayout)
+                        .map(profile -> executePersistenceOperation(() -> payoutObligationRepository.save(
+                                PayoutObligation.schedule(existingSettlement, profile, command.scheduledDate())
+                        )));
+            }
+            return confirmedSettlement(existingSettlement, payoutObligation);
         }
 
         CreatorPayoutProfile payoutProfile = executePersistenceOperation(
