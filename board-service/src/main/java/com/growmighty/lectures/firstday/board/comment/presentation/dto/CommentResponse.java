@@ -7,10 +7,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public record CommentResponse(
-        Long id, CommentTargetType targetType, Long targetId, String authorName, Long parentId, String content,
+        Long id, CommentTargetType targetType, Long targetId, Long authorId,String authorName, Long parentId, String content,
         LocalDateTime createdAt, List<CommentResponse> replies) {
     public static CommentResponse from(CommentResult result) {
-        return new CommentResponse(result.id(), result.targetType(), result.targetId(), result.authorName(),
+        return new CommentResponse(result.id(), result.targetType(), result.targetId(), result.authorId(),result.authorName(),
             result.parentId(), result.content(), result.createdAt(),
             result.replies().stream().map(CommentResponse::from).toList());
     }

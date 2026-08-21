@@ -7,10 +7,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public record ReviewResponse(
-        Long id, Long projectId, Long rewardId, String rewardName, String authorName,
+        Long id, Long projectId, Long rewardId, String rewardName, Long authorId, String authorName,
         BigDecimal rating, String content, LocalDateTime createdAt) {
     public static ReviewResponse from(ReviewResult result) {
-        return new ReviewResponse(result.id(), result.projectId(), result.rewardId(), result.rewardName(),
+        return new ReviewResponse(result.id(), result.projectId(), result.rewardId(), result.rewardName(), result.authorId(),
             result.authorName(), result.rating(), result.content(), result.createdAt());
     }
 
