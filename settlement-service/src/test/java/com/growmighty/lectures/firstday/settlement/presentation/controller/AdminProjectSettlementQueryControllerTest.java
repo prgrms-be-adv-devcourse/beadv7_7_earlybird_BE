@@ -1,13 +1,17 @@
 // TODO(settlement-plan): Verify admin responses expose review and payout state without leaking PG or event internals.
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmProjectSettlementCommand;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmedProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ProjectSettlementService;
@@ -59,6 +63,47 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
 
     @Autowired
     private SpringDataProjectOutcomeFactRepository outcomeRepository;
+
+    @Test
+    @DisplayName("관리자는 등록 대기 창작자의 셀러 등록을 결정적 더미 결과로 완료한다")
+    void registersPendingCreatorPayoutProfile() throws Exception {
+        long creatorId = 80_000_001L;
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.awaitingRegistration(creatorId));
+
+        mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
+                        .header(JwtHeaders.USER_ROLE, UserRole.ADMIN.name()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        assertThat(creatorPayoutProfileRepository.findByCreatorId(creatorId).orElseThrow())
+                .extracting(CreatorPayoutProfile::status, CreatorPayoutProfile::tossSellerId)
+                .containsExactly(CreatorPayoutStatus.PAYOUT_READY, "dummy-seller-" + creatorId);
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 셀러 등록 대행을 실행할 수 없다")
+    void rejectsNonAdminSellerRegistration() throws Exception {
+        long creatorId = 80_000_002L;
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.awaitingRegistration(creatorId));
+
+        mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
+                        .header(JwtHeaders.USER_ROLE, UserRole.CREATOR.name()))
+                .andExpect(status().isBadRequest());
+
+        assertThat(creatorPayoutProfileRepository.findByCreatorId(creatorId).orElseThrow().status())
+                .isEqualTo(CreatorPayoutStatus.REGISTRATION_PENDING);
+    }
+
+    @Test
+    @DisplayName("등록 완료된 창작자의 셀러 등록 대행은 거부한다")
+    void rejectsAlreadyRegisteredCreatorPayoutProfile() throws Exception {
+        long creatorId = 80_000_003L;
+        savePayoutReadyProfile(creatorId);
+
+        mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
+                        .header(JwtHeaders.USER_ROLE, UserRole.ADMIN.name()))
+                .andExpect(status().isConflict());
+    }
 
     @Test
     @DisplayName("프로젝트 정산 내역이 없으면 관리자는 빈 목록을 조회한다")
