@@ -9,5 +9,7 @@ import java.util.List;
 public interface FileJpaRepository extends JpaRepository<File, Long> {
     List<File> findByOwnerTypeAndOwnerId(FileOwnerType ownerType, Long ownerId);
 
+    List<File> findByOwnerTypeAndOwnerIdIn(FileOwnerType ownerType, List<Long> ownerIds);
+
     void deleteByOwnerTypeAndOwnerId(FileOwnerType ownerType, Long ownerId);
 }
