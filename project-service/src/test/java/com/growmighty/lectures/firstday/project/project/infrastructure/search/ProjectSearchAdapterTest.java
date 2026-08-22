@@ -139,22 +139,58 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("임베딩이 사용 가능할 때 RRF 하이브리드 검색이 성공하면 매치된 문서들의 projectId를 반환한다")
+    @DisplayName("임베딩이 사용 가능할 때 키워드 검색과 kNN 검색을 각각 호출해 자체 RRF 로직으로 합친 결과를 반환한다")
     @SuppressWarnings("unchecked")
-    void search_withEmbedding_rrfSuccess_returnsProjectIds() throws Exception {
+    void search_withEmbedding_rankFusionSuccess_returnsUnionOfBothResults() throws Exception {
         when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
-        SearchResponse<ProjectDocument> response = mock(SearchResponse.class);
-        HitsMetadata<ProjectDocument> hitsMetadata = mock(HitsMetadata.class);
-        Hit<ProjectDocument> hit = mock(Hit.class);
-        when(hit.source()).thenReturn(new ProjectDocument(42L, "title", null, null, null, null, new float[1536]));
-        when(hitsMetadata.hits()).thenReturn(List.of(hit));
-        when(response.hits()).thenReturn(hitsMetadata);
+
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> keywordHit = mock(SearchHit.class);
+        when(keywordHit.getContent()).thenReturn(new ProjectDocument(42L, "keyword only", null, null, null, null, null));
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(keywordHit));
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits);
+
+        SearchResponse<ProjectDocument> knnResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> knnHitsMetadata = mock(HitsMetadata.class);
+        Hit<ProjectDocument> knnHit = mock(Hit.class);
+        when(knnHit.source()).thenReturn(new ProjectDocument(7L, "knn only", null, null, null, null, new float[1536]));
+        when(knnHitsMetadata.hits()).thenReturn(List.of(knnHit));
+        when(knnResponse.hits()).thenReturn(knnHitsMetadata);
         when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
-                .thenReturn(response);
+                .thenReturn(knnResponse);
 
         List<Long> result = adapter.search("keyword");
 
-        assertThat(result).containsExactly(42L);
+        assertThat(result).containsExactlyInAnyOrder(42L, 7L);
+    }
+
+    @Test
+    @DisplayName("RRF 점수가 동일한 동점 문서들은 projectId 내림차순(최신순)으로 결정적 정렬된다")
+    @SuppressWarnings("unchecked")
+    void search_rrfTieBreaking_ordersByProjectIdDesc() throws Exception {
+        when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
+
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> keywordHit = mock(SearchHit.class);
+        when(keywordHit.getContent()).thenReturn(new ProjectDocument(10L, "first", null, null, null, null, null));
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(keywordHit));
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits);
+
+        SearchResponse<ProjectDocument> knnResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> knnHitsMetadata = mock(HitsMetadata.class);
+        Hit<ProjectDocument> knnHit = mock(Hit.class);
+        when(knnHit.source()).thenReturn(new ProjectDocument(20L, "second", null, null, null, null, new float[1536]));
+        when(knnHitsMetadata.hits()).thenReturn(List.of(knnHit));
+        when(knnResponse.hits()).thenReturn(knnHitsMetadata);
+        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
+                .thenReturn(knnResponse);
+
+        List<Long> result = adapter.search("keyword");
+
+        // 10L과 20L 모두 1순위(동점: 1/61)이므로 ID가 더 큰 20L이 먼저 반환된다.
+        assertThat(result).containsExactly(20L, 10L);
     }
 
     @Test
