@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.common.kafka;
 
+import org.apache.kafka.common.TopicPartition;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,11 +20,14 @@ public class KafkaErrorHandlingConfig {
 
     /**
      * 리스너에서 예외가 나면 1초 간격으로 3번 재시도하고, 그래도 실패하면
-     * "<원본 토픽>-dlt"(같은 파티션)로 보낸다 — KafkaTopics의 *_DLT 상수와 이름이 일치한다.
+     * "<원본 토픽>.DLT"(같은 파티션)로 보낸다. - init-topic.sh가 만드는 실제 DLT 토픽.
+     * kafkaTopics의 *.DLT 상수와 이름이 일치해야 한다. destination resolver를 안넘기면
+     * Spring 기본값이 "-dlt" 접미사를 쓰기 때문에 명시적으로 지정한다.
      */
     @Bean
     public DefaultErrorHandler errorHandler(KafkaTemplate<Object, Object> template) {
-        var recoverer = new DeadLetterPublishingRecoverer(template);
+        var recoverer = new DeadLetterPublishingRecoverer(template,
+            (record, ex) -> new TopicPartition(record.topic() + ".DLT", record.partition()));
         return new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3));
     }
 }
