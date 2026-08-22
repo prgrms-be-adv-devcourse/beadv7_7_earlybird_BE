@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.board.review.application;
 import com.growmighty.lectures.firstday.board.event.ReviewCreatedEvent;
 import com.growmighty.lectures.firstday.board.event.port.DomainEventPublisher;
 import com.growmighty.lectures.firstday.board.feign.port.OrderPort;
+import com.growmighty.lectures.firstday.board.feign.port.FilePort;
 import com.growmighty.lectures.firstday.board.feign.port.UserPort;
 import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
 import com.growmighty.lectures.firstday.board.feign.port.dto.UserSnapshot;
@@ -41,13 +42,15 @@ class ReviewServiceTest {
     @Mock
     private OrderPort orderPort;
     @Mock
+    private FilePort filePort;
+    @Mock
     private DomainEventPublisher domainEventPublisher;
 
     private ReviewService reviewService;
 
     @BeforeEach
     void setUp() {
-        reviewService = new ReviewService(reviewRepository, userPort, orderPort, domainEventPublisher);
+        reviewService = new ReviewService(reviewRepository, userPort, orderPort, domainEventPublisher, filePort);
     }
 
     @Test

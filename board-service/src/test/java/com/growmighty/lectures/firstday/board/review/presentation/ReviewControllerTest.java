@@ -39,7 +39,7 @@ class ReviewControllerTest {
 
     private static final ReviewResult REVIEW = new ReviewResult(
             1L, 10L, 200L, "리워드A", 100L, "backer", BigDecimal.valueOf(5), "좋아요",
-            ReviewStatus.ACTIVE, LocalDateTime.now(), LocalDateTime.now());
+            ReviewStatus.ACTIVE, LocalDateTime.now(), LocalDateTime.now(), List.of());
 
     @Test
     @DisplayName("POST /api/v1/reviews?projectId= 는 projectId 쿼리 파라미터로 리뷰를 등록한다")

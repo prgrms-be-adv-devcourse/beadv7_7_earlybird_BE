@@ -8,10 +8,10 @@ import java.util.List;
 
 public record ReviewResponse(
         Long id, Long projectId, Long rewardId, String rewardName, Long authorId, String authorName,
-        BigDecimal rating, String content, LocalDateTime createdAt) {
+        BigDecimal rating, String content, List<String> photoUrls, LocalDateTime createdAt) {
     public static ReviewResponse from(ReviewResult result) {
         return new ReviewResponse(result.id(), result.projectId(), result.rewardId(), result.rewardName(), result.authorId(),
-            result.authorName(), result.rating(), result.content(), result.createdAt());
+            result.authorName(), result.rating(), result.content(), result.photoUrls(), result.createdAt());
     }
 
     public static List<ReviewResponse> from(List<ReviewResult> results) {

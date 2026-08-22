@@ -30,6 +30,11 @@ public class FileRepositoryAdapter implements FileRepository {
     }
 
     @Override
+    public List<File> findByOwnerTypeAndOwnerIdIn(FileOwnerType ownerType, List<Long> ownerIds) {
+        return jpaRepository.findByOwnerTypeAndOwnerIdIn(ownerType, ownerIds);
+    }
+
+    @Override
     public void deleteById(Long id) {
         jpaRepository.deleteById(id);
     }

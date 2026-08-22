@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.board.review.application;
 
 import com.growmighty.lectures.firstday.board.event.ReviewCreatedEvent;
 import com.growmighty.lectures.firstday.board.event.port.DomainEventPublisher;
+import com.growmighty.lectures.firstday.board.feign.port.FilePort;
 import com.growmighty.lectures.firstday.board.feign.port.OrderPort;
 import com.growmighty.lectures.firstday.board.feign.port.UserPort;
 import com.growmighty.lectures.firstday.board.feign.port.dto.PurchaseVerification;
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +34,7 @@ public class ReviewService {
     private final UserPort userPort;
     private final OrderPort orderPort;
     private final DomainEventPublisher domainEventPublisher;
+    private final FilePort filePort;
 
     @Transactional
     public ReviewResult register(RegisterReviewCommand command) {
@@ -60,7 +63,12 @@ public class ReviewService {
     @Transactional(readOnly = true)
     public List<ReviewResult> getByProject(Long projectId) {
         // TODO(팀): 평점 통계(평균/분포) 응답 추가
-        return reviewRepository.findVisibleByProjectId(projectId).stream().map(ReviewResult::from).toList();
+        List<Review> reviews = reviewRepository.findVisibleByProjectId(projectId);
+        Map<Long, List<String>> photoUrlsByReviewId =
+            filePort.getReviewPhotoUrls(reviews.stream().map(Review::getId).toList());
+        return reviews.stream()
+            .map(review -> ReviewResult.from(review, photoUrlsByReviewId.getOrDefault(review.getId(),  List.of())))
+            .toList();
     }
 
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))

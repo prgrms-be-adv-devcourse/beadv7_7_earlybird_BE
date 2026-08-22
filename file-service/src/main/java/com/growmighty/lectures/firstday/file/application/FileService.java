@@ -77,6 +77,13 @@ public class FileService {
             .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<FileInfo> getFilesByOwners(FileOwnerType ownerType, List<Long> ownerIds) {
+        return fileRepository.findByOwnerTypeAndOwnerIdIn(ownerType, ownerIds).stream()
+            .map(this::toFileInfo)
+            .toList();
+    }
+
     // 버킷이 private이라 원본 storedUrl은 클라이언트가 직접 열 수 없다 — 응답 시점마다
     // 짧게 만료되는(5분) presigned GET URL로 바꿔서 내려준다. 전부 공개 콘텐츠라 발급 자체엔
     // 별도 인가가 없다(비로그인 요청도 GET /api/v1/files는 permitAll).
