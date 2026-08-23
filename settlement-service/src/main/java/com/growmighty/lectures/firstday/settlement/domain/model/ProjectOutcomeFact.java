@@ -9,6 +9,7 @@ import jakarta.persistence.PostLoad;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 
 @Entity
@@ -89,6 +90,26 @@ public class ProjectOutcomeFact {
 
     public boolean requiresRefund() {
         return outcome == Outcome.FAILED || outcome == Outcome.CANCELLED;
+    }
+
+    public List<OrderPaymentFact> refundablePaymentsDueBefore(
+            Instant dueBefore,
+            List<OrderPaymentFact> payments
+    ) {
+        Objects.requireNonNull(dueBefore, "환불 기준 시각은 필수입니다.");
+        List<OrderPaymentFact> input = List.copyOf(payments);
+        if (!requiresRefund() || !occurredAt.isBefore(dueBefore) || input.isEmpty()) {
+            return List.of();
+        }
+        if (input.stream().anyMatch(payment -> payment == null
+                || !projectId.equals(payment.projectId())
+                || payment.completedAt().isAfter(occurredAt)
+                || (payment.cancelledAt() != null && payment.cancelledAt().isAfter(occurredAt)))) {
+            return List.of();
+        }
+        return input.stream()
+                .filter(payment -> payment.status() == OrderPaymentFact.Status.COMPLETED)
+                .toList();
     }
 
     @PostLoad

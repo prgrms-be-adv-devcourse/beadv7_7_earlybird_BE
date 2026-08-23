@@ -33,6 +33,8 @@ import java.util.Set;
 )
 public class PayoutObligation extends BaseEntity {
 
+    private static final int MAX_ATTEMPTS = 4;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -116,10 +118,18 @@ public class PayoutObligation extends BaseEntity {
         return attempt;
     }
 
-    public void failAttempt(PayoutAttempt attempt, String tossPayoutId, String errorCode, LocalDateTime completedAt, boolean retryable) {
+    public void failAttempt(
+            PayoutAttempt attempt,
+            String tossPayoutId,
+            String errorCode,
+            LocalDateTime completedAt,
+            boolean retryableFailure
+    ) {
         requireProcessingAttempt(attempt);
         attempt.fail(tossPayoutId, errorCode, completedAt);
-        status = retryable ? PayoutStatus.RETRY_WAITING : PayoutStatus.ACTION_REQUIRED;
+        status = retryableFailure && attempts.size() < MAX_ATTEMPTS
+                ? PayoutStatus.RETRY_WAITING
+                : PayoutStatus.ACTION_REQUIRED;
     }
 
     public void acknowledgeAttempt(PayoutAttempt attempt, String tossPayoutId, PayoutAttemptStatus acknowledgedStatus) {
