@@ -2,9 +2,8 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.dummy;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
-import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
-import java.time.LocalDateTime;
+import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -20,17 +19,19 @@ import org.springframework.stereotype.Component;
 )
 public class DummyCreatorPayoutProfileInitializer implements ApplicationRunner {
 
+    private static final long DUMMY_CREATOR_ID = 9_000_001L;
+
     private final CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Override
     public void run(ApplicationArguments args) {
         if (creatorPayoutProfileRepository
-                .findByCreatorId(DummyProjectSettlementTargetReader.DUMMY_CREATOR_ID)
+                .findByCreatorId(DUMMY_CREATOR_ID)
                 .isPresent()) {
             return;
         }
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
-                DummyProjectSettlementTargetReader.DUMMY_CREATOR_ID,
+                DUMMY_CREATOR_ID,
                 "dummy-seller-9000001",
                 CreatorPayoutStatus.PAYOUT_READY
         ));

@@ -31,8 +31,6 @@ eureka:
     enabled: false
 
 settlement:
-  project-target:
-    mode: dummy
   project-order:
     mode: dummy
   batch:
