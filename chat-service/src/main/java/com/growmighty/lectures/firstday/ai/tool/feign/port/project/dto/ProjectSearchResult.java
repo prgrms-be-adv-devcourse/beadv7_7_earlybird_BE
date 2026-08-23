@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.ai.tool.feign.port.dto;
+package com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;

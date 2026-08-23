@@ -1,6 +1,6 @@
-package com.growmighty.lectures.firstday.ai.tool.feign.port;
+package com.growmighty.lectures.firstday.ai.tool.feign.port.project;
 
-import com.growmighty.lectures.firstday.ai.tool.feign.port.dto.ProjectSearchResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 
 import java.util.List;
 
