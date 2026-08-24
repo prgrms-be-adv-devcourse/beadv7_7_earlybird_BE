@@ -7,9 +7,6 @@
 ###
 ### 환경 전환: backer-flow.http 와 동일하게 같은 폴더의 http-client.env.json 의 local/production 을 쓴다.
 ### 매 요청은 위에서부터 순서대로 실행해야 한다(응답 값을 다음 요청이 전역 변수로 이어받는다).
-###
-### 주의: system-test/.../CreatorFlowLiveTest.java 가 같은 시나리오를 JUnit으로 중복 구현한다
-### (의도적 — 이 파일은 수동 확인/시연용, 그쪽은 자동화용). 이 파일을 고치면 그 테스트도 같이 고칠 것.
 
 ### 1. 회원가입
 < {%
