@@ -19,6 +19,8 @@ body:
         - notification-service
         - chat-service
         - gateway-server
+        - discovery-server
+        - config-server
     validations:
       required: true
   - type: textarea
