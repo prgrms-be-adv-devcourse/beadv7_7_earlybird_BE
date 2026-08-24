@@ -1,0 +1,60 @@
+### 516-unknown-reward-not-added.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/516
+### CASE-13. 누락되거나 조회할 수 없는 Reward 데이터는 Cart에 추가하지 않는다
+### 존재하지 않는 rewardId로 요청 — 정확한 상태 코드는 RewardHttpClient의 fallback 구현에 따라
+### 달라질 수 있다(이슈 본문 참고: 현재는 409, 향후 구현에 따라 404/다른 4xx일 수 있음).
+### 이 파일은 "저장되지 않는다"는 핵심 불변조건만 강하게 검증하고, 상태 코드는 4xx대인지만 확인한다.
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "cart516-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트516", "phoneNumber": "010-1111-0014"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. IN_PROGRESS 프로젝트 조회 (projectId만 필요, rewardId는 존재하지 않는 값 사용)
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 1건 이상", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 존재하지 않는 rewardId(999999999)로 POST 시도
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": 999999999, "quantity": 1}]}
+
+> {%
+    client.test("존재하지 않는 Reward는 4xx로 거부", function() {
+        client.assert(response.status >= 400 && response.status < 500, "expected 4xx, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 5. Cart에 저장되지 않았어야 한다
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Cart는 비어있음", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.itemCount === 0, "expected empty cart, got itemCount=" + response.body.data.itemCount);
+    });
+%}

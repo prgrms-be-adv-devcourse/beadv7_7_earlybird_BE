@@ -1,0 +1,174 @@
+### 555-idempotency-key-scoped-per-user.http — [usecase-test] CASE-16. (Order) 같은 멱등성 키라도 사용자별로 독립적이다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/555
+
+< {% client.global.set("creatorEmail", "ord555-creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "555창작자", "phoneNumber": "010-1000-0025"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); client.global.set("creatorRefreshToken", response.body.data.refreshToken); %}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-555-000001", "accountHolder": "555창작자"}
+
+> {% client.assert(response.status === 200, "register as creator failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+###
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+###
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "555 사용자별 멱등키 독립성 검증", "categoryId": {{categoryId}}, "summary": "CASE-16", "description": "555.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectId", response.body.data.projectId); %}
+
+### 재고 넉넉히 (두 사용자가 각각 구매)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 101", "description": "-", "price": 12000, "totalQuantity": 10}
+
+> {% client.global.set("rewardId", response.body.data.rewardId); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
+
+### 공용 멱등키 (두 사용자가 동일하게 사용)
+< {% client.global.set("sharedKey", crypto.randomUUID()); %}
+GET {{baseUrl}}/api/v1/project-categories
+
+> {%%}
+
+### 사용자 1
+< {% client.global.set("backer1Email", "ord555-backer1-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backer1Email}}", "password": "rawPassword1!", "name": "555후원자1", "phoneNumber": "010-1000-0026"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backer1Email}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backer1Token", response.body.data.accessToken); client.global.set("userId1", response.body.data.user.id); %}
+
+###
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backer1Token}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### 사용자 1 — 공용 키로 주문
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backer1Token}}
+Content-Type: application/json
+
+{
+  "userId": {{userId1}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardId}}, "quantity": 1, "expectedUnitPrice": 12000}],
+  "receiverName": "Kim1", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 12000, "expectedTotalAmount": 15000,
+  "orderIdempotencyKey": "{{sharedKey}}"
+}
+
+> {%
+    client.assert(response.status === 200, "user1 place order failed: " + response.body);
+    client.global.set("order1Id", response.body.data.id);
+%}
+
+### 사용자 2
+< {% client.global.set("backer2Email", "ord555-backer2-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backer2Email}}", "password": "rawPassword1!", "name": "555후원자2", "phoneNumber": "010-1000-0027"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backer2Email}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backer2Token", response.body.data.accessToken); client.global.set("userId2", response.body.data.user.id); %}
+
+###
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backer2Token}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### 사용자 2 — 사용자 1과 완전히 같은 키로 주문 -> user_id가 다르므로 별도 Order 생성
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backer2Token}}
+Content-Type: application/json
+
+{
+  "userId": {{userId2}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardId}}, "quantity": 1, "expectedUnitPrice": 12000}],
+  "receiverName": "Kim2", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 12000, "expectedTotalAmount": 15000,
+  "orderIdempotencyKey": "{{sharedKey}}"
+}
+
+> {%
+    client.test("동일 키라도 사용자가 다르면 별도 Order 생성", function() {
+        client.assert(response.status === 200, "user2 place order failed: " + response.body);
+        client.assert(String(response.body.data.id) !== String(client.global.get("order1Id")), "user2 order id should differ from user1's, got same: " + response.body.data.id);
+    });
+%}

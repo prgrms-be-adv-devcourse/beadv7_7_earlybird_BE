@@ -1,0 +1,37 @@
+### 635-swagger-docs-routing.http — 서비스별 Swagger 문서 라우팅
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/635
+###
+### {service-name}/v3/api-docs 형태의 prefix 경로가 permitAll로 인증 없이 접근 가능하면서,
+### 각 prefix가 정확히 해당 서비스로 라우팅되는지 확인한다.
+
+### 1. order-service의 OpenAPI 문서 — 인증 없이 200, order-service의 paths여야 함
+GET {{baseUrl}}/order-service/v3/api-docs
+
+> {%
+    client.test("order-service 문서는 인증 없이 200", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status);
+    });
+    client.test("order-service 문서 paths에 /api/v1/orders 계열이 포함됨", function() {
+        const paths = Object.keys(response.body.paths || {});
+        const hasOrderPath = paths.some(p => p.includes("/orders"));
+        client.assert(hasOrderPath, "no /orders path found in doc — did this actually reach order-service? paths=" + JSON.stringify(paths));
+        const hasPaymentPath = paths.some(p => p.includes("/payments"));
+        client.assert(!hasPaymentPath, "unexpected /payments path in order-service doc — may have reached payment-service instead");
+    });
+%}
+
+### 2. payment-service의 OpenAPI 문서 — 인증 없이 200, payment-service의 paths여야 함
+GET {{baseUrl}}/payment-service/v3/api-docs
+
+> {%
+    client.test("payment-service 문서는 인증 없이 200", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status);
+    });
+    client.test("payment-service 문서 paths에 /api/v1/payments 계열이 포함됨", function() {
+        const paths = Object.keys(response.body.paths || {});
+        const hasPaymentPath = paths.some(p => p.includes("/payments"));
+        client.assert(hasPaymentPath, "no /payments path found in doc — did this actually reach payment-service? paths=" + JSON.stringify(paths));
+        const hasOrderPath = paths.some(p => p.includes("/orders"));
+        client.assert(!hasOrderPath, "unexpected /orders path in payment-service doc — may have reached order-service instead");
+    });
+%}

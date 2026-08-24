@@ -1,0 +1,143 @@
+### 556-multi-item-order-stock-reserved.http — [usecase-test] CASE-17. (Order) 모든 재고 확보가 성공한 후 Payment를 요청한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/556
+###
+### FakePaymentGateway가 항상 즉시 성공하므로 "재고 확보 완료 후에만 Payment 호출"이라는 내부 호출 순서
+### 자체는 HTTP 응답만으로 검증할 수 없다 — 여기서는 다중 품목 주문이 전체 성공하고 응답에 두 품목이
+### 모두 정상 반영되는지까지만 확인한다. 호출 순서/stock_reserved 플래그는 DB 직접 확인이 필요하다.
+
+< {% client.global.set("creatorEmail", "ord556-creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "556창작자", "phoneNumber": "010-1000-0028"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); client.global.set("creatorRefreshToken", response.body.data.refreshToken); %}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-556-000001", "accountHolder": "556창작자"}
+
+> {% client.assert(response.status === 200, "register as creator failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+###
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+###
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "556 다중품목 재고확보 검증", "categoryId": {{categoryId}}, "summary": "CASE-17", "description": "556.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectId", response.body.data.projectId); %}
+
+### 리워드 101 역할 (수량 2로 담을 예정)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 101", "description": "-", "price": 12000, "totalQuantity": 10}
+
+> {% client.global.set("reward101", response.body.data.rewardId); %}
+
+### 리워드 102 역할 (수량 3으로 담을 예정)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 102", "description": "-", "price": 8000, "totalQuantity": 10}
+
+> {% client.global.set("reward102", response.body.data.rewardId); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
+
+###
+< {% client.global.set("backerEmail", "ord556-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "556후원자", "phoneNumber": "010-1000-0029"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+### Cart에 두 품목 담기: 101 x2, 102 x3
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{reward101}}, "quantity": 2}, {"rewardId": {{reward102}}, "quantity": 3}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### 주문 — 상품합계 = 12000*2 + 8000*3 = 48000, 배송비 3000, 총액 51000
+< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [
+    {"rewardId": {{reward101}}, "quantity": 2, "expectedUnitPrice": 12000},
+    {"rewardId": {{reward102}}, "quantity": 3, "expectedUnitPrice": 8000}
+  ],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 48000, "expectedTotalAmount": 51000,
+  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+}
+
+> {%
+    client.test("다중 품목 재고 확보 + 결제 성공", function() {
+        client.assert(response.status === 200, "place order failed: " + response.body);
+        client.assert(response.body.data.status === "PAID", "unexpected status: " + response.body.data.status);
+        client.assert(response.body.data.orderItems.length === 2, "expected 2 order items, got " + response.body.data.orderItems.length);
+        client.assert(response.body.data.itemsAmount === 48000, "itemsAmount mismatch: " + response.body.data.itemsAmount);
+    });
+%}

@@ -1,0 +1,55 @@
+### 646-creator-payout-profile-pending.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/646
+###
+### 지급 프로필이 준비되지 않은(REGISTRATION_PENDING) 창작자의 프로젝트 정산은 확정하되
+### 지급 의무·지급 시도는 생성하지 않는지 확인한다.
+###
+### 사전 준비(이 .http로는 만들 수 없음): 지급 조건을 충족한 성공 프로젝트 + 전체 CONFIRMED 결제,
+### 창작자 지급 프로필이 REGISTRATION_PENDING 상태여야 한다.
+###
+### 환경: 같은 폴더의 http-client.env.json (local/production)
+
+### 0. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 1. 프로젝트 지급 실행
+< {%
+    request.variables.set("payoutMonth", new Date().toISOString().slice(0, 7));
+%}
+POST {{baseUrl}}/api/v1/settlements/project-payouts/runs
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "payoutMonth": "{{payoutMonth}}"
+}
+
+> {%
+    client.test("프로젝트 지급 실행 성공(200)", function() {
+        client.assert(response.status === 200, "project payout run failed: " + response.body);
+    });
+%}
+
+### 2. 관리자 통합 목록 조회 — 대상 프로젝트가 REGISTRATION_PENDING 타입으로 나타나야 한다
+GET {{baseUrl}}/api/v1/settlements/all
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("관리자 통합 목록 조회 성공, REGISTRATION_PENDING 항목 존재", function() {
+        client.assert(response.status === 200, "admin settlement list failed: " + response.body);
+        const found = response.body.data.some(e => e.type === "REGISTRATION_PENDING");
+        client.assert(found, "expected a REGISTRATION_PENDING entry (adjust filter to target projectId if there are multiple)");
+    });
+%}

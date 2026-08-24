@@ -1,0 +1,122 @@
+### 615-reward-internal-decrease-stock-idempotent.http — issue #615
+### CASE-10. (Reward) 동일 orderId로 재고 차감을 중복 호출해도 멱등하게 처리된다
+###
+### /internal/v1/** 는 게이트웨이 라우팅이 없다 — 이 파일의 내부 API 단계는 local 환경 전용
+### (로컬: http://localhost:8081). production에서는 건너뛴다.
+
+### 1~4. 창작자 계정 준비
+< {% client.global.set("creatorEmail", "usecase615-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "리워드615테스트", "phoneNumber": "010-1111-3333" }
+
+> {% client.test("회원가입 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!" }
+
+> {%
+    client.test("로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "bankCode": "88", "accountNumber": "110-123-456789", "accountHolder": "리워드615테스트" }
+
+> {% client.test("창작자 전환 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
+> {%
+    client.test("토큰 재발급 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 5~6. 카테고리 확보, 프로젝트+리워드(totalQuantity=15) 등록
+GET {{baseUrl}}/api/v1/project-categories
+
+> {%
+    client.assert(response.body.data.length > 0, "no categories found");
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+###
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "usecase615 프로젝트",
+  "categoryId": {{categoryId}},
+  "summary": "issue #615 검증용",
+  "description": "issue #615",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("projectId", response.body.data.projectId);
+%}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "name": "usecase615 리워드", "description": "issue #615", "price": 10000, "totalQuantity": 15 }
+
+> {%
+    client.test("리워드 등록 성공, 수량 15", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardId", response.body.data.rewardId);
+%}
+
+### 7. [로컬 전용] 1차 재고 차감 (orderId=1001, quantity=2) -> remainingQuantity 15 -> 13
+POST http://localhost:8081/internal/v1/rewards/{{rewardId}}/decrease-stock
+Content-Type: application/json
+
+{ "quantity": 2, "orderId": 1001 }
+
+> {%
+    client.test("1차 차감 성공", function () { client.assert(response.status === 200, response.body); });
+%}
+
+### 8. [로컬 전용] 동일 orderId(1001)로 재차 차감 시도 -> 응답은 200이지만 추가 차감 없음(멱등)
+POST http://localhost:8081/internal/v1/rewards/{{rewardId}}/decrease-stock
+Content-Type: application/json
+
+{ "quantity": 2, "orderId": 1001 }
+
+> {%
+    client.test("2차(동일 orderId) 호출도 200", function () { client.assert(response.status === 200, response.body); });
+%}
+
+### 9. 재조회 -> 여전히 remainingQuantity=13 (중복 차감 없음)
+GET {{baseUrl}}/api/v1/rewards/{{rewardId}}
+
+> {%
+    client.test("중복 차감 없음 확인", function () {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.remainingQuantity === 13, "unexpected remainingQuantity: " + response.body.data.remainingQuantity);
+    });
+%}

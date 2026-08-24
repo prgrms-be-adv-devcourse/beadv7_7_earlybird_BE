@@ -1,0 +1,122 @@
+### 625-register-external-storedurl-rejected.http — [usecase-test] CASE-05. presign 미발급 storedUrl 등록 거부 (#625)
+###
+### presign 없이 임의의 외부 URL을 storedUrl로 지정해 등록하려 하면 400으로 거부되는지 확인한다
+### (FileService#validateStoredUrlOrigin — storedUrl이 `{cdnBaseUrl}/files/{uploaderId}/` prefix로
+### 시작하지 않으면 거부).
+
+### 1. CREATOR1 회원가입
+< {%
+    client.global.set("file625Email", "file625-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file625Email}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR1",
+  "phoneNumber": "010-2000-0006"
+}
+
+> {%
+    client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file625Email}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file625AccessToken", response.body.data.accessToken);
+    client.global.set("file625RefreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{file625AccessToken}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-000-000006",
+  "accountHolder": "파일테스트CREATOR1"
+}
+
+> {%
+    client.test("창작자 전환 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{file625RefreshToken}}"
+}
+
+> {%
+    client.test("토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file625AccessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{file625AccessToken}}
+
+> {%
+    client.test("카테고리 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("file625CategoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{file625AccessToken}}
+Content-Type: application/json
+
+{
+  "title": "파일테스트 프로젝트 625",
+  "categoryId": {{file625CategoryId}},
+  "summary": "file-service CASE-05 검증용",
+  "description": "625-register-external-storedurl-rejected.http 로 생성",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file625ProjectId", response.body.data.projectId);
+%}
+
+### 7. presign 없이 임의의 외부 URL로 파일 등록 시도 — 400 기대
+POST {{baseUrl}}/api/v1/files
+Authorization: Bearer {{file625AccessToken}}
+Content-Type: application/json
+
+{
+  "ownerType": "PROJECT",
+  "ownerId": {{file625ProjectId}},
+  "storedUrl": "https://evil.example.com/x.png",
+  "originalName": "x.png",
+  "contentType": "image/png",
+  "fileSize": 1024,
+  "sortOrder": 0
+}
+
+> {%
+    client.test("400 Bad Request (presign 미발급 storedUrl)", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}

@@ -1,0 +1,86 @@
+### 664-creator-application-pending-duplicate-409.http — 심사 대기(PENDING) 중 재신청 시 409
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/664
+###
+### CreatorApplicationService.apply 는 신청자에게 이미 PENDING 상태인 신청이 있으면
+### IllegalStateException 을 던지며, GlobalExceptionHandler 가 이를 409로 매핑한다.
+
+### 1. 회원가입
+< {%
+    client.global.set("userEmail", "uc664-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "유스케이스664",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. 첫 번째 창작자 전환 신청 (PENDING 생성)
+POST {{baseUrl}}/api/v1/users/me/creator-application
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "creatorName": "유스케이스664 창작자",
+  "category": "테크",
+  "introduction": "첫 번째 신청",
+  "businessNumber": "123-45-67890",
+  "portfolioUrl": "https://example.com/portfolio",
+  "bankCode": "88",
+  "accountNumber": "110-123-456789",
+  "accountHolder": "유스케이스664"
+}
+
+> {%
+    client.test("첫 신청 성공, 상태 PENDING", function() {
+        client.assert(response.status === 200, "apply failed: " + response.body);
+        client.assert(response.body.data.status === "PENDING", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 4. 같은 계정으로 재신청 — PENDING 중이라 409여야 함
+POST {{baseUrl}}/api/v1/users/me/creator-application
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "creatorName": "유스케이스664 창작자 재신청",
+  "category": "테크",
+  "introduction": "두 번째 신청 시도",
+  "businessNumber": "123-45-67890",
+  "portfolioUrl": "https://example.com/portfolio",
+  "bankCode": "88",
+  "accountNumber": "110-123-456789",
+  "accountHolder": "유스케이스664"
+}
+
+> {%
+    client.test("PENDING 중 재신청은 409 Conflict", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}

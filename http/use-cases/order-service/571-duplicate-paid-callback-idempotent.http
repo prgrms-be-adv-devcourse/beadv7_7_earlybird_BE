@@ -1,0 +1,157 @@
+### 571-duplicate-paid-callback-idempotent.http — [usecase-test] CASE-31. (Order) 이미 PAID인 Order의 중복 성공 callback은 중복 비즈니스 작업 없이 누락된 cleanup을 완료한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/571
+###
+### FakePaymentGateway가 항상 즉시 승인하므로 실제 서비스에서는 주문이 처음부터 PAID로 끝난다 — 여기서는
+### "이미 PAID인 주문에 같은 PAID callback이 중복 도달"하는 상황을 정상 주문 생성 직후 같은 콜백을 한 번 더
+### 쏴서 재현한다. /internal/v1/** 는 게이트웨이에 라우트가 없으므로(CLAUDE.md) order-service를 직접
+### (로컬 :8080) 호출한다 — 이 부분은 local 환경 전용이며 운영(prod)에서는 재현 불가.
+
+@orderServiceUrl = http://localhost:8080
+
+### 1. 창작자 준비 (게이트웨이 경유)
+< {% client.global.set("creatorEmail", "ord571-creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "571창작자", "phoneNumber": "010-1000-0030"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); client.global.set("creatorRefreshToken", response.body.data.refreshToken); %}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-571-000001", "accountHolder": "571창작자"}
+
+> {% client.assert(response.status === 200, "register as creator failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+###
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+###
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "571 중복 PAID 콜백 검증", "categoryId": {{categoryId}}, "summary": "CASE-31", "description": "571.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectId", response.body.data.projectId); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 101", "description": "-", "price": 12000, "totalQuantity": 10}
+
+> {% client.global.set("rewardId", response.body.data.rewardId); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
+
+###
+< {% client.global.set("backerEmail", "ord571-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "571후원자", "phoneNumber": "010-1000-0031"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+###
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### 정상 주문 -> 이미 PAID로 끝난다
+< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardId}}, "quantity": 1, "expectedUnitPrice": 12000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 12000, "expectedTotalAmount": 15000,
+  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+}
+
+> {%
+    client.assert(response.status === 200, "place order failed: " + response.body);
+    client.assert(response.body.data.status === "PAID", "expected PAID immediately, got " + response.body.data.status);
+    client.global.set("orderId", response.body.data.id);
+%}
+
+### 이미 PAID인 주문에 같은 PAID callback을 중복으로 한 번 더 전달 — order-service 직접 호출(local 전용)
+PUT {{orderServiceUrl}}/internal/v1/orders/{{orderId}}/payment-status
+Content-Type: application/json
+
+{"status": "PAID"}
+
+> {%
+    client.test("중복 PAID callback도 200으로 받아들여짐", function() {
+        client.assert(response.status === 200, "duplicate PAID callback failed: " + response.body);
+    });
+%}
+
+### 주문이 여전히 PAID이고 이상 없이 유지되는지 확인 (게이트웨이 경유)
+GET {{baseUrl}}/api/v1/orders/{{orderId}}?userId={{userId}}
+Authorization: Bearer {{backerAccessToken}}
+
+> {%
+    client.test("중복 callback 이후에도 주문은 PAID로 그대로", function() {
+        client.assert(response.status === 200, "get order detail failed: " + response.body);
+        client.assert(response.body.data.status === "PAID", "unexpected status after duplicate callback: " + response.body.data.status);
+    });
+%}
+
+### 참고: Reward 재고가 다시 차감되지 않았는지, Payment/Outbox가 중복 생성되지 않았는지는 DB 직접 확인 필요.

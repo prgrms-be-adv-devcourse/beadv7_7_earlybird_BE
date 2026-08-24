@@ -1,0 +1,47 @@
+### 655-dead-instance-eviction.http — 비정상 종료된 서비스의 Eureka eviction
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/655
+###
+### ⚠️ 사전 준비(수동): order-service를 정상 기동해 UP 등록된 상태를 만든 뒤 1번을 실행해 확인.
+### 이어서 order-service 프로세스를 kill -9(또는 k8s에서 kubectl delete pod --grace-period=0
+### --force)로 강제 종료한 뒤 2번을 실행(바로 사라지지 않을 수 있음), 90초~수 분 뒤 3번을 다시
+### 실행해 최종적으로 제거되었는지 확인한다. discovery-server는 게이트웨이를 거치지 않고 직접
+### 포트(로컬 :8761)로 호출한다.
+
+### 1. (정상 기동 상태) Eureka 등록 확인 — UP이어야 함
+GET http://localhost:8761/eureka/apps/ORDER-SERVICE
+Accept: application/json
+
+> {%
+    client.test("정상 기동 상태에서는 UP으로 등록되어 있음", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + " — order-service가 정상 기동되어 있는지 먼저 확인");
+        const app = response.body.application;
+        client.assert(app && app.instance && app.instance.some(i => i.status === "UP"), "no UP instance found");
+    });
+%}
+
+### 2. (강제 종료 직후) Eureka 등록 현황 — 바로 사라지지 않을 수 있음(참고용, 실패해도 정상)
+GET http://localhost:8761/eureka/apps/ORDER-SERVICE
+Accept: application/json
+
+> {%
+    client.test("[참고용] 강제 종료 직후에는 아직 등록되어 있을 수 있다 — 이 단계는 정보 확인용", function() {
+        // eviction은 lease 만료(기본 90초) 이후에나 반영되므로 여기서는 단정하지 않는다.
+    });
+%}
+
+### 3. (90초~수 분 대기 후) 최종 eviction 확인 — 제거되어 있어야 함
+GET http://localhost:8761/eureka/apps/ORDER-SERVICE
+Accept: application/json
+
+> {%
+    client.test("일정 시간 후에는 죽은 인스턴스가 레지스트리에서 제거됨", function() {
+        if (response.status === 404) {
+            client.assert(true, "완전히 제거됨 — OK");
+        } else {
+            client.assert(response.status === 200, "unexpected status: " + response.status);
+            const app = response.body.application;
+            const hasUp = app && app.instance && app.instance.some(i => i.status === "UP");
+            client.assert(!hasUp, "죽은 인스턴스가 여전히 UP으로 남아있음 — eviction이 아직 안됐거나 self-preservation mode가 걸려있을 수 있음");
+        }
+    });
+%}

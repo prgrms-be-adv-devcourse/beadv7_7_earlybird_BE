@@ -19,7 +19,7 @@ Spring Boot 4.1 / Spring Cloud 2025.1.2 / Java 21, Gradle multi-module microserv
 
 ### Modules and ports
 
-Service modules (each with its own port and DB): `order-service` :8080, `project-service` :8081, `payment-service` :8082, `user-service` :8083, `cart-service` :8085, `settlement-service` :8086 (Spring Batch), `file-service` :8087 (unimplemented skeleton), `board-service` :8088 (창작자 공지/의견·문의/리뷰), `notification-service` :8089, `chat-service` :8090 (no DB yet; Spring AI OpenAI starter wired, provider/model TODO). Infrastructure modules: `discovery-server` (Eureka, :8761), `gateway-server` (:8000, single entry point for all external requests), `config-server` (:8888).
+Service modules (each with its own port and DB): `order-service` :8080, `project-service` :8081, `payment-service` :8082, `user-service` :8083, `cart-service` :8085, `settlement-service` :8086 (Spring Batch), `file-service` :8087 (presigned upload/download, project-owned file registration/deletion), `board-service` :8088 (창작자 공지/의견·문의/리뷰), `notification-service` :8089, `chat-service` :8090 (no DB yet; Spring AI OpenAI starter wired, provider/model TODO). Infrastructure modules: `discovery-server` (Eureka, :8761), `gateway-server` (:8000, single entry point for all external requests), `config-server` (:8888).
 
 `/internal/**` endpoints have no gateway route by design — they're reachable only via direct Eureka-to-Eureka service calls, never from outside.
 

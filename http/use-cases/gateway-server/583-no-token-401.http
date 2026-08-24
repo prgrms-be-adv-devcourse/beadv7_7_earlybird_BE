@@ -1,0 +1,14 @@
+### 583-no-token-401.http — 인증 필요 경로 토큰 없이 접근 시 401
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/583
+###
+### anyExchange().authenticated() 규칙이 적용되는 경로를 Authorization 헤더 없이 호출하면
+### 게이트웨이가 다운스트림까지 전달하기 전에 자체적으로 401로 차단하는지 확인.
+
+### 1. Authorization 헤더 없이 보호된 경로 호출 — 401이어야 함
+GET {{baseUrl}}/api/v1/users/me
+
+> {%
+    client.test("토큰 없이 보호된 경로 호출은 401", function() {
+        client.assert(response.status === 401, "expected 401, got " + response.status + ": " + response.body);
+    });
+%}

@@ -1,0 +1,188 @@
+### 548-project-mismatch-and-multi-project-cart.http — [usecase-test] CASE-09. (Order) 요청 Project는 모든 Reward와 일치해야 하며 Order는 단일 Project만 허용한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/548
+
+### 창작자1: Project A
+< {% client.global.set("creatorEmail", "ord548a-creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "548창작자A", "phoneNumber": "010-1000-0012"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); client.global.set("creatorRefreshToken", response.body.data.refreshToken); %}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-548-000001", "accountHolder": "548창작자A"}
+
+> {% client.assert(response.status === 200, "register as creator failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+###
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+### Project A (10 역할)
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "548 Project A", "categoryId": {{categoryId}}, "summary": "CASE-09 A", "description": "548.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectIdA", response.body.data.projectId); %}
+
+### Reward 101 (Project A 소속)
+POST {{baseUrl}}/api/v1/projects/{{projectIdA}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 101 (Project A)", "description": "-", "price": 10000, "totalQuantity": 10}
+
+> {% client.global.set("reward101", response.body.data.rewardId); %}
+
+### Project B (20 역할) — 같은 창작자로 두 번째 프로젝트
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "548 Project B", "categoryId": {{categoryId}}, "summary": "CASE-09 B", "description": "548.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectIdB", response.body.data.projectId); %}
+
+### Reward 201 (Project B 소속)
+POST {{baseUrl}}/api/v1/projects/{{projectIdB}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 201 (Project B)", "description": "-", "price": 10000, "totalQuantity": 10}
+
+> {% client.global.set("reward201", response.body.data.rewardId); %}
+
+### 관리자 승인 — 두 프로젝트 모두
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectIdA}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve A failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectIdB}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve B failed"); %}
+
+### 후원자 준비
+< {% client.global.set("backerEmail", "ord548-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "548후원자", "phoneNumber": "010-1000-0013"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+### 1단계 시나리오: Cart에 Project A의 Reward 101만 담는다
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectIdA}}, "items": [{"rewardId": {{reward101}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### 1단계: projectId를 B로 잘못 지정해 주문 -> 400 (Cart 내용은 A인데 요청 projectId는 B)
+< {% request.variables.set("k1", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectIdB}},
+  "requests": [{"rewardId": {{reward101}}, "quantity": 1, "expectedUnitPrice": 10000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 10000, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": "{{k1}}"
+}
+
+> {%
+    client.test("잘못된 projectId 지정 -> 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(JSON.stringify(response.body).includes("Order project does not match Cart rewards"), "unexpected message: " + response.body);
+    });
+%}
+
+### 2단계 시나리오: 같은 Cart에 Project B의 Reward 201도 추가 담아 두 프로젝트가 섞인 Cart를 만든다
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectIdB}}, "items": [{"rewardId": {{reward201}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed: " + response.body); %}
+
+### 2단계: Cart의 두 Reward와 정확히 일치하는 요청을 보내되 projectId는 생략(null) -> 409 (Cart가 여러 프로젝트에 걸쳐있음)
+< {% request.variables.set("k2", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}},
+  "requests": [
+    {"rewardId": {{reward101}}, "quantity": 1, "expectedUnitPrice": 10000},
+    {"rewardId": {{reward201}}, "quantity": 1, "expectedUnitPrice": 10000}
+  ],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 20000, "expectedTotalAmount": 23000,
+  "orderIdempotencyKey": "{{k2}}"
+}
+
+> {%
+    client.test("다중 Project Cart -> 409", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+        client.assert(JSON.stringify(response.body).includes("Cart contains rewards from multiple projects"), "unexpected message: " + response.body);
+    });
+%}

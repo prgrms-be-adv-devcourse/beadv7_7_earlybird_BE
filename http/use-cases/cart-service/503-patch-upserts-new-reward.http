@@ -1,0 +1,71 @@
+### 503-patch-upserts-new-reward.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/503
+### CASE-06. PATCH는 Cart에 없는 Reward도 추가한다 (upsert, 기존 항목은 그대로 유지)
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "cart503-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트503", "phoneNumber": "010-1111-0007"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. 리워드 2개 이상인 IN_PROGRESS 프로젝트 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 리워드 조회 — Reward1만 먼저 담고 Reward2는 아직 담지 않는다
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("리워드 2개 이상", function() { client.assert(response.status === 200 && response.body.data.length >= 2, response.body); });
+    client.global.set("rewardId1", response.body.data[0].rewardId);
+    client.global.set("rewardId2", response.body.data[1].rewardId);
+%}
+
+### 5. Reward1만 Cart에 추가
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId1}}, "quantity": 1}]}
+
+> {% client.test("Reward1 추가 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 6. PATCH로 Reward2(Cart에 없던 항목)를 요청 — upsert로 새로 추가되어야 한다
+PATCH {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId2}}, "quantity": 2}]}
+
+> {%
+    client.test("Reward2가 새로 추가되고 Reward1은 그대로", function() {
+        client.assert(response.status === 200, response.body);
+        const rewards = response.body.data.projects[0].rewards;
+        const r1 = rewards.find(r => String(r.rewardId) === String(client.global.get("rewardId1")));
+        const r2 = rewards.find(r => String(r.rewardId) === String(client.global.get("rewardId2")));
+        client.assert(r1 && r1.quantity === 1, "reward1 should be unchanged at quantity 1");
+        client.assert(r2 && r2.quantity === 2, "reward2 should be newly added at quantity 2");
+        client.assert(response.body.data.itemCount === 2, "expected 2 distinct items, got " + response.body.data.itemCount);
+    });
+%}

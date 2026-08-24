@@ -1,0 +1,118 @@
+### 613-reward-hard-delete-after-publish-rejected.http — issue #613
+### CASE-08. (Reward) 공개된 프로젝트의 리워드는 하드 삭제가 거부된다 (관리자의 deactivate만 가능)
+
+### 1~4. 창작자 계정 준비
+< {% client.global.set("creatorEmail", "usecase613-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "리워드613테스트", "phoneNumber": "010-1111-3333" }
+
+> {% client.test("회원가입 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!" }
+
+> {%
+    client.test("로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "bankCode": "88", "accountNumber": "110-123-456789", "accountHolder": "리워드613테스트" }
+
+> {% client.test("창작자 전환 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
+> {%
+    client.test("토큰 재발급 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 5~7. 카테고리 확보, 프로젝트+리워드 등록
+GET {{baseUrl}}/api/v1/project-categories
+
+> {%
+    client.assert(response.body.data.length > 0, "no categories found");
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+###
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "usecase613 프로젝트",
+  "categoryId": {{categoryId}},
+  "summary": "issue #613 검증용",
+  "description": "issue #613",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("projectId", response.body.data.projectId);
+%}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "name": "usecase613 리워드", "description": "issue #613", "price": 10000, "totalQuantity": 10 }
+
+> {%
+    client.test("리워드 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardId", response.body.data.rewardId);
+%}
+
+### 8~9. 관리자 승인 -> IN_PROGRESS
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{ "email": "admin@earlybird.co.kr", "password": "rawPassword3!" }
+
+> {%
+    client.test("관리자 로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("프로젝트 공개 성공(IN_PROGRESS)", function () { client.assert(response.status === 200, response.body); });
+%}
+
+### 10. 공개 후 창작자가 리워드 하드 삭제 시도 -> 409
+DELETE {{baseUrl}}/api/v1/rewards/{{rewardId}}
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("공개 후 하드 삭제 -> 409", function () {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}

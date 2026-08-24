@@ -1,0 +1,58 @@
+### 521-payment-prepare-idempotent.http — [usecase-test] 2. 동일 주문 결제 준비 요청 멱등 처리 (#521)
+###
+### 동일한 userId/orderId/amount로 준비 요청이 반복돼도 새 결제를 만들지 않고 기존 READY 결제를
+### 그대로 반환하는지 확인한다 (PaymentPreparationService#prepare — findByOrderId 로 기존 건 우선).
+###
+### /internal/v1/** 는 gateway에 라우트가 없다 — payment-service 포트(:8082)에 직접 요청한다.
+### 로컬 실행 환경 전용.
+
+### 1. 첫 번째 준비 요청
+< {%
+    client.global.set("payment521UserId", 9002);
+    client.global.set("payment521OrderId", Date.now());
+    client.global.set("payment521Amount", 20000);
+%}
+POST http://localhost:8082/internal/v1/payments/prepare
+Content-Type: application/json
+
+{
+  "userId": {{payment521UserId}},
+  "orderId": {{payment521OrderId}},
+  "amount": {{payment521Amount}}
+}
+
+> {%
+    client.test("1차 준비 성공(200)", function() {
+        client.assert(response.status === 200, "1st prepare failed: " + response.body);
+    });
+    client.global.set("payment521PaymentId1", response.body.data.paymentId);
+    client.global.set("payment521PgOrderId1", response.body.data.pgOrderId);
+%}
+
+### 2. 동일한 userId/orderId/amount로 재요청 — 새 결제가 아니라 기존 READY 결제를 그대로 반환해야 한다
+POST http://localhost:8082/internal/v1/payments/prepare
+Content-Type: application/json
+
+{
+  "userId": {{payment521UserId}},
+  "orderId": {{payment521OrderId}},
+  "amount": {{payment521Amount}}
+}
+
+> {%
+    client.test("2차 준비도 성공(200), 동일 결제 반환", function() {
+        client.assert(response.status === 200, "2nd prepare failed: " + response.body);
+        client.assert(String(response.body.data.paymentId) === String(client.global.get("payment521PaymentId1")), "paymentId differs between 1st/2nd prepare");
+        client.assert(response.body.data.pgOrderId === client.global.get("payment521PgOrderId1"), "pgOrderId differs between 1st/2nd prepare");
+    });
+%}
+
+### 3. 재조회 — 주문당 결제가 하나만 존재하는지(재조회 결과가 위 paymentId와 동일한지)로 간접 확인
+GET http://localhost:8082/internal/v1/payments?orderId={{payment521OrderId}}
+
+> {%
+    client.test("재조회 결과도 동일 결제", function() {
+        client.assert(response.status === 200, "get by orderId failed: " + response.body);
+        client.assert(String(response.body.data.paymentId) === String(client.global.get("payment521PaymentId1")), "requery paymentId mismatch");
+    });
+%}

@@ -1,0 +1,182 @@
+### 540-free-shipping-threshold.http — [usecase-test] CASE-02. (Order) 상품 합계가 50000이면 배송비가 무료가 된다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/540
+###
+### 상품 합계 50000(경계값, 무료배송) vs 49999(배송비 3000) 두 케이스를 리워드 두 개로 나눠 검증한다.
+
+### 1~9. 창작자 준비 (회원가입/로그인/전환/토큰갱신/카테고리/프로젝트/승인) — 다른 use-case 파일과 동일 패턴
+< {%
+    client.global.set("creatorEmail", "ord540-creator-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "540창작자", "phoneNumber": "010-1000-0003"}
+
+> {% client.assert(response.status === 200, "signup failed: " + response.body); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.global.set("creatorAccessToken", response.body.data.accessToken);
+    client.global.set("creatorRefreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-540-000001", "accountHolder": "540창작자"}
+
+> {% client.assert(response.status === 200, "register as creator failed: " + response.body); %}
+
+### 4. 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+### 6. 프로젝트 등록
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "540 배송비 경계값 테스트", "categoryId": {{categoryId}}, "summary": "CASE-02", "description": "540-free-shipping-threshold.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectId", response.body.data.projectId); %}
+
+### 7. 리워드 A 등록 — 가격 50000 (무료배송 경계값)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "무료배송 경계 리워드", "description": "50000원", "price": 50000, "totalQuantity": 5}
+
+> {% client.global.set("rewardIdFree", response.body.data.rewardId); %}
+
+### 8. 리워드 B 등록 — 가격 49999 (배송비 3000 부과)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "배송비 부과 리워드", "description": "49999원", "price": 49999, "totalQuantity": 5}
+
+> {% client.global.set("rewardIdPaid", response.body.data.rewardId); %}
+
+### 9. 관리자 로그인 + 승인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+### 10. 프로젝트 승인
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
+
+### 11. 후원자 준비
+< {%
+    client.global.set("backerEmail", "ord540-backer-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "540후원자", "phoneNumber": "010-1000-0004"}
+
+> {% client.assert(response.status === 200, "signup failed: " + response.body); %}
+
+### 12. 후원자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.global.set("backerAccessToken", response.body.data.accessToken);
+    client.global.set("userId", response.body.data.user.id);
+%}
+
+### 13. Case A: 상품합계 정확히 50000 — 장바구니 담기
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardIdFree}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed: " + response.body); %}
+
+### 14. Case A 주문 생성 — expectedTotalAmount = 50000 (배송비 0)
+< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardIdFree}}, "quantity": 1, "expectedUnitPrice": 50000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 50000, "expectedTotalAmount": 50000,
+  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+}
+
+> {%
+    client.test("50000원 상품합계 -> 배송비 무료", function() {
+        client.assert(response.status === 200, "place order failed: " + response.body);
+        client.assert(response.body.data.itemsAmount === 50000, "itemsAmount mismatch: " + response.body.data.itemsAmount);
+        client.assert(response.body.data.shippingFee === 0, "shippingFee should be 0: " + response.body.data.shippingFee);
+        client.assert(response.body.data.totalAmount === 50000, "totalAmount mismatch: " + response.body.data.totalAmount);
+    });
+%}
+
+### 15. Case B: 상품합계 49999 — 장바구니 담기
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardIdPaid}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed: " + response.body); %}
+
+### 16. Case B 주문 생성 — expectedTotalAmount = 52999 (배송비 3000)
+< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardIdPaid}}, "quantity": 1, "expectedUnitPrice": 49999}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 49999, "expectedTotalAmount": 52999,
+  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+}
+
+> {%
+    client.test("49999원 상품합계 -> 배송비 3000 부과", function() {
+        client.assert(response.status === 200, "place order failed: " + response.body);
+        client.assert(response.body.data.itemsAmount === 49999, "itemsAmount mismatch: " + response.body.data.itemsAmount);
+        client.assert(response.body.data.shippingFee === 3000, "shippingFee should be 3000: " + response.body.data.shippingFee);
+        client.assert(response.body.data.totalAmount === 52999, "totalAmount mismatch: " + response.body.data.totalAmount);
+    });
+%}

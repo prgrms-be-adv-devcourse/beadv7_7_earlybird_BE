@@ -1,0 +1,159 @@
+### 629-internal-cleanup-by-owner.http — [usecase-test] CASE-09. 내부 정리 API로 owner 파일 일괄 삭제 (#629)
+###
+### project-service가 프로젝트 삭제 시 호출하는 내부 정리 API(DELETE /internal/v1/files)가 해당
+### owner의 파일을 모두 일괄 삭제하는지 확인한다. /internal/v1/** 는 gateway 라우트가 없다
+### (CLAUDE.md) — file-service 포트(:8087)에 직접 요청한다. 이 스텝은 로컬 전용
+### (프로덕션에서는 8087에 외부 접근 불가).
+
+### 1. CREATOR1 회원가입
+< {%
+    client.global.set("file629Email", "file629-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file629Email}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR1",
+  "phoneNumber": "010-2000-0011"
+}
+
+> {%
+    client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file629Email}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file629AccessToken", response.body.data.accessToken);
+    client.global.set("file629RefreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{file629AccessToken}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-000-000110",
+  "accountHolder": "파일테스트CREATOR1"
+}
+
+> {%
+    client.test("창작자 전환 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{file629RefreshToken}}"
+}
+
+> {%
+    client.test("토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file629AccessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{file629AccessToken}}
+
+> {%
+    client.test("카테고리 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("file629CategoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{file629AccessToken}}
+Content-Type: application/json
+
+{
+  "title": "파일테스트 프로젝트 629",
+  "categoryId": {{file629CategoryId}},
+  "summary": "file-service CASE-09 검증용",
+  "description": "629-internal-cleanup-by-owner.http 로 생성",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file629ProjectId", response.body.data.projectId);
+%}
+
+### 7. presign 발급
+POST {{baseUrl}}/api/v1/files/presigned-upload
+Authorization: Bearer {{file629AccessToken}}
+Content-Type: application/json
+
+{
+  "contentType": "image/png",
+  "originalName": "thumbnail2.png"
+}
+
+> {%
+    client.test("presign 발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file629StoredUrl", response.body.data.storedUrl);
+%}
+
+### 8. 파일 등록 (fileId2)
+POST {{baseUrl}}/api/v1/files
+Authorization: Bearer {{file629AccessToken}}
+Content-Type: application/json
+
+{
+  "ownerType": "PROJECT",
+  "ownerId": {{file629ProjectId}},
+  "storedUrl": "{{file629StoredUrl}}",
+  "originalName": "thumbnail2.png",
+  "contentType": "image/png",
+  "fileSize": 102400,
+  "sortOrder": 0
+}
+
+> {%
+    client.test("파일 등록 성공(fileId2 발급)", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(!!response.body.data.id, "fileId2 missing");
+    });
+    client.global.set("file629FileId2", response.body.data.id);
+%}
+
+### 9. 내부 정리 API 호출 — owner 단위 일괄 삭제, file-service 직접 호출(로컬 전용)
+DELETE http://localhost:8087/internal/v1/files?ownerType=PROJECT&ownerId={{file629ProjectId}}
+
+> {%
+    client.test("내부 정리 API 성공(200)", function() {
+        client.assert(response.status === 200, "internal cleanup failed: " + response.status + " " + response.body);
+    });
+%}
+
+### 10. owner 기준 재조회 — 빈 배열 기대
+GET {{baseUrl}}/api/v1/files?ownerType=PROJECT&ownerId={{file629ProjectId}}
+
+> {%
+    client.test("재조회 결과 빈 배열 (owner의 모든 파일 삭제됨)", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.length === 0, "expected empty file list, got: " + JSON.stringify(response.body.data));
+    });
+%}

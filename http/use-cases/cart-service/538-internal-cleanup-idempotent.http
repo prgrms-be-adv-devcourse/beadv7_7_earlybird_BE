@@ -1,0 +1,136 @@
+### 538-internal-cleanup-idempotent.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/538
+### CASE-23. 내부 Cart cleanup은 반복 호출, 빈 목록, 없는 Cart에 대해 멱등적이다 (Order retry-safe)
+###
+### /internal/v1/** 는 게이트웨이 라우트가 없어(CLAUDE.md) cart-service 자신의 포트(:8085)로 직접
+### 요청한다 — 로컬 전용, production 드롭다운으로는 실행 불가.
+
+### --- 사용자 1: 이미 삭제된 품목에 대해 반복 호출 + 빈 목록 호출 ---
+
+### 1. (게이트웨이 경유) 사용자 1 회원가입
+< {% client.global.set("user1Email", "cart538u1-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{user1Email}}", "password": "rawPassword1!", "name": "카트538유저1", "phoneNumber": "010-1111-0025"}
+
+> {% client.test("사용자1 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 사용자 1 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{user1Email}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("사용자1 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken1", response.body.data.accessToken);
+    client.global.set("userId1", response.body.data.user.id);
+%}
+
+### 3. IN_PROGRESS 프로젝트/리워드 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken1}}
+
+> {%
+    client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 리워드 2개 이상 조회
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken1}}
+
+> {%
+    client.test("리워드 2개 이상", function() { client.assert(response.status === 200 && response.body.data.length >= 2, response.body); });
+    client.global.set("rewardId1", response.body.data[0].rewardId);
+    client.global.set("rewardId2", response.body.data[1].rewardId);
+%}
+
+### 5. 두 리워드 담기
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken1}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId1}}, "quantity": 1}, {"rewardId": {{rewardId2}}, "quantity": 1}]}
+
+> {% client.test("사용자1 Cart 준비 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 6. (cart-service 직접) Reward1을 내부 삭제 — 이미 삭제된 상태를 만들기 위한 사전 삭제
+< {% request.variables.set("rewardId1", client.global.get("rewardId1")); %}
+DELETE http://localhost:8085/internal/v1/carts/users/{{userId1}}/items
+Content-Type: application/json
+
+{"rewardIds": [{{rewardId1}}]}
+
+> {% client.test("사전 삭제 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 7. (cart-service 직접) 이미 삭제된 Reward1을 다시 삭제 요청 — 200, no-op 이어야 한다
+< {% request.variables.set("rewardId1", client.global.get("rewardId1")); %}
+DELETE http://localhost:8085/internal/v1/carts/users/{{userId1}}/items
+Content-Type: application/json
+
+{"rewardIds": [{{rewardId1}}]}
+
+> {% client.test("이미 삭제된 품목 재삭제는 200 (no-op)", function() { client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body); }); %}
+
+### 8. (cart-service 직접) 빈 목록으로 삭제 요청 — 200, 아무것도 변경되지 않아야 한다
+DELETE http://localhost:8085/internal/v1/carts/users/{{userId1}}/items
+Content-Type: application/json
+
+{"rewardIds": []}
+
+> {% client.test("빈 목록 삭제는 200 (no-op)", function() { client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body); }); %}
+
+### 9. (게이트웨이 경유) 재확인 — Reward2는 그대로, Reward1은 여전히 없음
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken1}}
+
+> {%
+    client.test("Reward2만 남아있고 상태가 안정적으로 수렴", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.itemCount === 1, "expected itemCount 1, got " + response.body.data.itemCount);
+        client.assert(String(response.body.data.projects[0].rewards[0].rewardId) === String(client.global.get("rewardId2")),
+            "expected only reward2 to remain");
+    });
+%}
+
+### --- 사용자 2: Cart 자체가 없는 상태에서 cleanup 호출 ---
+
+### 10. (게이트웨이 경유) 사용자 2 회원가입 — Cart를 한 번도 만들지 않는다
+< {% client.global.set("user2Email", "cart538u2-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{user2Email}}", "password": "rawPassword1!", "name": "카트538유저2", "phoneNumber": "010-1111-0026"}
+
+> {% client.test("사용자2 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 11. 사용자 2 로그인 (userId 확보용)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{user2Email}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("사용자2 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("userId2", response.body.data.user.id);
+%}
+
+### 12. (cart-service 직접) Cart가 없는 사용자 2에 대해 cleanup 호출 — 200, 새 Cart가 생성되지 않아야 한다
+< {% request.variables.set("rewardId1", client.global.get("rewardId1")); %}
+DELETE http://localhost:8085/internal/v1/carts/users/{{userId2}}/items
+Content-Type: application/json
+
+{"rewardIds": [{{rewardId1}}]}
+
+> {% client.test("Cart 없는 사용자에 대한 cleanup은 200 (no-op)", function() { client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body); }); %}
+
+### 13. 사용자 2의 Cart가 새로 생기지 않았어야 한다 (조회 시 빈 Cart로 새로 생성되는 것과는 별개 확인)
+GET http://localhost:8085/internal/v1/carts/users/{{userId2}}
+
+> {%
+    client.test("사용자2는 여전히 items가 비어있음", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.items.length === 0, "expected empty items for user with no cart");
+    });
+%}

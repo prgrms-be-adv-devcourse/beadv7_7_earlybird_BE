@@ -1,0 +1,91 @@
+### 551-missing-required-fields-rejected.http — [usecase-test] CASE-12. (Order) 필수 Order 요청 필드 누락을 거부한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/551
+
+< {% client.global.set("backerEmail", "ord551-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "551후원자", "phoneNumber": "010-1000-0018"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+### 1. requests 빈 배열
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "requests": [],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 10000, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": "11111111-0000-0000-0000-000000000001"
+}
+
+> {% client.test("빈 requests -> 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status); }); %}
+
+### 2. receiverName 빈 문자열
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "requests": [{"rewardId": 1, "quantity": 1, "expectedUnitPrice": 10000}],
+  "receiverName": "", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 10000, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": "11111111-0000-0000-0000-000000000002"
+}
+
+> {% client.test("빈 receiverName -> 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status); }); %}
+
+### 3. 금액 null
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "requests": [{"rewardId": 1, "quantity": 1, "expectedUnitPrice": 10000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": null, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": "11111111-0000-0000-0000-000000000003"
+}
+
+> {% client.test("null expectedItemsAmount -> 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status); }); %}
+
+### 4. 요청 수량 0 이하
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "requests": [{"rewardId": 1, "quantity": 0, "expectedUnitPrice": 10000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 10000, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": "11111111-0000-0000-0000-000000000004"
+}
+
+> {% client.test("quantity=0 -> 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status); }); %}
+
+### 5. orderIdempotencyKey null
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "requests": [{"rewardId": 1, "quantity": 1, "expectedUnitPrice": 10000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 10000, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": null
+}
+
+> {% client.test("null orderIdempotencyKey -> 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status); }); %}
+
+### 위 다섯 요청 모두 Order/Cart/재고/Payment에 영향이 없어야 한다 — 실제 Cart가 없는 계정이라 별도 확인 없이도
+### 400으로 거부되면 저장 로직에 도달하지 않았다고 볼 수 있다.

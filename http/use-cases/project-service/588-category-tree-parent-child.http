@@ -1,0 +1,72 @@
+### 588-category-tree-parent-child.http — issue #588
+### CASE-01. (Category) 상위/하위 카테고리 등록 시 트리 구조로 조회된다
+###
+### 환경: 같은 폴더 상위(../../http-client.env.json)의 local/production 사용.
+
+### 1. 관리자 로그인 (UserDataInitializer 시드 계정)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function () {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 2. 상위 카테고리 A 등록 (parentProjectCategoryId 없음)
+< {%
+    client.global.set("catAName", "usecase588-A-" + Date.now());
+%}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "name": "{{catAName}}"
+}
+
+> {%
+    client.test("카테고리 A 등록 성공", function () {
+        client.assert(response.status === 200, "create category A failed: " + response.body);
+    });
+    client.global.set("categoryAId", response.body.data.id);
+%}
+
+### 3. 하위 카테고리 B 등록 (parentProjectCategoryId = A_id)
+< {%
+    client.global.set("catBName", "usecase588-B-" + Date.now());
+%}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "name": "{{catBName}}",
+  "parentProjectCategoryId": {{categoryAId}}
+}
+
+> {%
+    client.test("카테고리 B 등록 성공", function () {
+        client.assert(response.status === 200, "create category B failed: " + response.body);
+    });
+    client.global.set("categoryBId", response.body.data.id);
+%}
+
+### 4. 카테고리 트리 조회 — A.children 에 B가 포함되는지 확인
+GET {{baseUrl}}/api/v1/project-categories
+
+> {%
+    client.test("트리 조회에서 A.children에 B 포함", function () {
+        client.assert(response.status === 200, "list categories failed: " + response.body);
+        const a = response.body.data.find(c => String(c.id) === String(client.global.get("categoryAId")));
+        client.assert(!!a, "category A not found in tree");
+        const hasB = a.children.some(c => String(c.id) === String(client.global.get("categoryBId")));
+        client.assert(hasB, "category B not found under A.children");
+    });
+%}

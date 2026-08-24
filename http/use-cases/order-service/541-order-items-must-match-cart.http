@@ -1,0 +1,179 @@
+### 541-order-items-must-match-cart.http — [usecase-test] CASE-03. (Order) 요청 Reward 집합은 Cart와 정확히 일치해야 한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/541
+
+### 1. 창작자 가입/로그인/전환/토큰갱신
+< {% client.global.set("creatorEmail", "ord541-creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "541창작자", "phoneNumber": "010-1000-0005"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+### 2.
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); client.global.set("creatorRefreshToken", response.body.data.refreshToken); %}
+
+### 3.
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-541-000001", "accountHolder": "541창작자"}
+
+> {% client.assert(response.status === 200, "register as creator failed"); %}
+
+### 4.
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+### 5. 카테고리/프로젝트/리워드 2개(101, 102 역할) 등록
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+### 6.
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "541 Cart 일치 검증", "categoryId": {{categoryId}}, "summary": "CASE-03", "description": "541-order-items-must-match-cart.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectId", response.body.data.projectId); %}
+
+### 7. 리워드 101 역할
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 101", "description": "-", "price": 10000, "totalQuantity": 10}
+
+> {% client.global.set("reward101", response.body.data.rewardId); %}
+
+### 8. 리워드 102 역할 — Cart에는 담지 않는다 (요청에만 추가로 넣을 초집합 케이스용)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 102 (Cart 미포함)", "description": "-", "price": 10000, "totalQuantity": 10}
+
+> {% client.global.set("reward102", response.body.data.rewardId); %}
+
+### 9. 리워드 103 역할 — 역시 Cart에는 담지 않는다
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 103 (Cart 미포함)", "description": "-", "price": 10000, "totalQuantity": 10}
+
+> {% client.global.set("reward103", response.body.data.rewardId); %}
+
+### 10. 관리자 로그인 + 승인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+### 11.
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
+
+### 12. 후원자 준비
+< {% client.global.set("backerEmail", "ord541-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "541후원자", "phoneNumber": "010-1000-0006"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+### 13.
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+### 14. Cart에는 정확히 Reward 101, 102만 담는다
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{reward101}}, "quantity": 1}, {"rewardId": {{reward102}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### 15. 부분집합(Reward 101만) 주문 시도 -> 400
+< {% request.variables.set("k1", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{reward101}}, "quantity": 1, "expectedUnitPrice": 10000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 10000, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": "{{k1}}"
+}
+
+> {%
+    client.test("Cart 부분집합 주문 -> 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(JSON.stringify(response.body).includes("Order items must match the current Cart"), "unexpected message: " + response.body);
+    });
+%}
+
+### 16. 초집합(101,102,103) 주문 시도 -> 400
+< {% request.variables.set("k2", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [
+    {"rewardId": {{reward101}}, "quantity": 1, "expectedUnitPrice": 10000},
+    {"rewardId": {{reward102}}, "quantity": 1, "expectedUnitPrice": 10000},
+    {"rewardId": {{reward103}}, "quantity": 1, "expectedUnitPrice": 10000}
+  ],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 30000, "expectedTotalAmount": 33000,
+  "orderIdempotencyKey": "{{k2}}"
+}
+
+> {%
+    client.test("Cart 초집합 주문 -> 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(JSON.stringify(response.body).includes("Order items must match the current Cart"), "unexpected message: " + response.body);
+    });
+%}
+
+### 17. 두 시도 모두 실패했으므로 Cart는 그대로 (101,102 유지) 확인
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{backerAccessToken}}
+
+> {%
+    client.test("Cart 변경 없음 (여전히 2개)", function() {
+        client.assert(response.body.data.itemCount === 2, "cart item count changed: " + JSON.stringify(response.body.data));
+    });
+%}

@@ -1,0 +1,262 @@
+### 539-happy-path-full-order.http — [usecase-test] CASE-01. (Order) 현재 Cart에서 Order를 정상 생성하고 결제한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/539
+###
+### 원본 이슈는 고정 fixture(userId=1001, rewardId=101 등)를 쓰는 단위/통합 테스트 서술이라,
+### 여기서는 실제 API로 재현 가능한 동등한 흐름(신규 창작자가 프로젝트/리워드를 만들고,
+### 신규 후원자가 그 리워드를 장바구니에 담아 주문)으로 옮겼다. CREATED -> PAYMENT_REQUEST -> PAID
+### 전이 자체는 FakePaymentGateway가 항상 즉시 승인하므로 응답이 바로 PAID로 온다.
+###
+### 환경: local/production, http-client.env.json 재사용. 순서대로 실행.
+
+### 1. 창작자 회원가입
+< {%
+    client.global.set("creatorEmail", "ord539-creator-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{creatorEmail}}",
+  "password": "rawPassword1!",
+  "name": "539테스트창작자",
+  "phoneNumber": "010-1000-0001"
+}
+
+> {%
+    client.test("창작자 회원가입 성공", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 창작자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{creatorEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.global.set("creatorAccessToken", response.body.data.accessToken);
+    client.global.set("creatorRefreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-539-000001",
+  "accountHolder": "539테스트창작자"
+}
+
+> {%
+    client.test("창작자 전환 성공", function() {
+        client.assert(response.status === 200, "register as creator failed: " + response.body);
+    });
+%}
+
+### 4. access token 재발급 (CREATOR role 반영)
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{creatorRefreshToken}}"
+}
+
+> {%
+    client.global.set("creatorAccessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {%
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록 (PENDING_REVIEW)
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{
+  "title": "539 정상 주문 테스트 프로젝트",
+  "categoryId": {{categoryId}},
+  "summary": "CASE-01 정상 생성/결제 검증용",
+  "description": "539-happy-path-full-order.http",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.global.set("projectId", response.body.data.projectId);
+%}
+
+### 7. 리워드 등록 (단가 12000, 재고 10)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{
+  "name": "Reward A",
+  "description": "539 테스트 리워드",
+  "price": 12000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 등록 성공", function() {
+        client.assert(response.status === 200, "register reward failed: " + response.body);
+    });
+    client.global.set("rewardId", response.body.data.rewardId);
+%}
+
+### 8. 관리자 로그인 (시드 계정)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 9. 관리자 심사 승인 (PENDING_REVIEW -> IN_PROGRESS)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("프로젝트 승인 성공(IN_PROGRESS)", function() {
+        client.assert(response.status === 200, "approve failed: " + response.body);
+        client.assert(response.body.data.status === "IN_PROGRESS", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 10. 후원자 회원가입
+< {%
+    client.global.set("backerEmail", "ord539-backer-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{backerEmail}}",
+  "password": "rawPassword1!",
+  "name": "539테스트후원자",
+  "phoneNumber": "010-1000-0002"
+}
+
+> {%
+    client.test("후원자 회원가입 성공", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 11. 후원자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{backerEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.global.set("backerAccessToken", response.body.data.accessToken);
+    client.global.set("userId", response.body.data.user.id);
+%}
+
+### 12. 장바구니에 리워드 담기 (수량 2 -> 상품합계 24000)
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "projectId": {{projectId}},
+  "items": [{"rewardId": {{rewardId}}, "quantity": 2}]
+}
+
+> {%
+    client.test("장바구니 담기 성공", function() {
+        client.assert(response.status === 200, "add to cart failed: " + response.body);
+    });
+%}
+
+### 13. 주문 생성 — 이슈 본문 fixture와 동일한 금액 구조(상품합계 24000, 배송비 3000, 총액 27000)
+< {%
+    request.variables.set("orderIdempotencyKey", crypto.randomUUID());
+%}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}},
+  "projectId": {{projectId}},
+  "requests": [
+    {"rewardId": {{rewardId}}, "quantity": 2, "expectedUnitPrice": 12000}
+  ],
+  "receiverName": "Kim",
+  "receiverPhone": "010-1111-2222",
+  "shippingAddress": "Seoul",
+  "zipCode": "01234",
+  "expectedItemsAmount": 24000,
+  "expectedTotalAmount": 27000,
+  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+}
+
+> {%
+    client.test("주문 생성 성공, PAID", function() {
+        client.assert(response.status === 200, "place order failed: " + response.body);
+        client.assert(response.body.data.result.code === "ORDER_CREATED", "unexpected result code: " + JSON.stringify(response.body.data.result));
+        client.assert(response.body.data.status === "PAID", "unexpected order status: " + response.body.data.status);
+        client.assert(response.body.data.itemsAmount === 24000, "unexpected itemsAmount: " + response.body.data.itemsAmount);
+        client.assert(response.body.data.shippingFee === 3000, "unexpected shippingFee: " + response.body.data.shippingFee);
+        client.assert(response.body.data.totalAmount === 27000, "unexpected totalAmount: " + response.body.data.totalAmount);
+        client.assert(!!response.body.data.id, "order id missing");
+    });
+    client.global.set("orderId", response.body.data.id);
+%}
+
+### 14. 주문 상세 재조회 — order_items에 스냅샷된 리워드 이름/단가/수량 확인
+GET {{baseUrl}}/api/v1/orders/{{orderId}}?userId={{userId}}
+Authorization: Bearer {{backerAccessToken}}
+
+> {%
+    client.test("주문 상세에 orderItems 스냅샷 반영", function() {
+        client.assert(response.status === 200, "get order detail failed: " + response.body);
+        const item = response.body.data.orderItems[0];
+        client.assert(item.name === "Reward A", "unexpected item name: " + item.name);
+        client.assert(item.price === 12000, "unexpected item price: " + item.price);
+        client.assert(item.quantity === 2, "unexpected item quantity: " + item.quantity);
+    });
+%}
+
+### 15. 장바구니가 비워졌는지 확인 (cart cleanup)
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{backerAccessToken}}
+
+> {%
+    client.test("주문한 리워드가 장바구니에서 제거됨", function() {
+        client.assert(response.status === 200, "get cart failed: " + response.body);
+        client.assert(response.body.data.itemCount === 0, "cart still has items: " + JSON.stringify(response.body.data));
+    });
+%}
+
+### 참고: order_items.stock_reserved, cart_cleanup_outboxes(COMPLETED), order_payment_status_outboxes(PUBLISHED),
+### Reward 재고 -2, Project 후원 금액 반영 등 DB 레벨 상세 값은 위 API 응답만으로는 검증 불가 — 필요 시 DB 직접 확인.

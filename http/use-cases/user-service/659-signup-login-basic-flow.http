@@ -1,0 +1,55 @@
+### 659-signup-login-basic-flow.http — 회원가입 → 로그인 기본 흐름
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/659
+###
+### 다른 인증/토큰 관련 use case(#660~#667)의 전제가 되는 가장 기본적인 흐름.
+### 환경 전환: http-client.env.json 의 local/production 사용.
+
+### 1. 회원가입
+< {%
+    client.global.set("userEmail", "uc659-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "유스케이스659",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인 (access/refresh token 발급)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공, accessToken/refreshToken 모두 포함", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+        client.assert(!!response.body.data.accessToken, "accessToken missing");
+        client.assert(!!response.body.data.refreshToken, "refreshToken missing");
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 내 정보 조회 — 방금 가입한 회원 정보가 맞는지 확인
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("내 정보 조회 성공, 가입 시 이메일과 일치", function() {
+        client.assert(response.status === 200, "get me failed: " + response.body);
+        client.assert(response.body.data.email === client.global.get("userEmail"), "email mismatch");
+    });
+%}

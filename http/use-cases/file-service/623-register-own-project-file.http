@@ -1,0 +1,142 @@
+### 623-register-own-project-file.http — [usecase-test] CASE-03. 본인 소유 프로젝트에 파일 등록 (#623)
+###
+### presign으로 발급받은 storedUrl을, 본인이 소유한 프로젝트를 대상으로 메타데이터 등록할 수
+### 있는지 확인한다 (FileService#register — ownerType=PROJECT면 project-service에 creatorId를
+### 물어 요청자와 일치하는지 검증).
+
+### 1. CREATOR1 회원가입
+< {%
+    client.global.set("file623Email", "file623-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file623Email}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR1",
+  "phoneNumber": "010-2000-0003"
+}
+
+> {%
+    client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file623Email}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file623AccessToken", response.body.data.accessToken);
+    client.global.set("file623RefreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{file623AccessToken}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-000-000003",
+  "accountHolder": "파일테스트CREATOR1"
+}
+
+> {%
+    client.test("창작자 전환 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. role 갱신 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{file623RefreshToken}}"
+}
+
+> {%
+    client.test("토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file623AccessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{file623AccessToken}}
+
+> {%
+    client.test("카테고리 조회 성공, 1건 이상", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.length > 0, "no categories found");
+    });
+    client.global.set("file623CategoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록 (CREATOR1 소유)
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{file623AccessToken}}
+Content-Type: application/json
+
+{
+  "title": "파일테스트 프로젝트 623",
+  "categoryId": {{file623CategoryId}},
+  "summary": "file-service CASE-03 검증용",
+  "description": "623-register-own-project-file.http 로 생성",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file623ProjectId", response.body.data.projectId);
+%}
+
+### 7. presigned 업로드 URL 발급
+POST {{baseUrl}}/api/v1/files/presigned-upload
+Authorization: Bearer {{file623AccessToken}}
+Content-Type: application/json
+
+{
+  "contentType": "image/png",
+  "originalName": "thumbnail.png"
+}
+
+> {%
+    client.test("presign 발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file623StoredUrl", response.body.data.storedUrl);
+%}
+
+### 8. 파일 메타데이터 등록 — 본인 소유 프로젝트를 ownerId로 지정
+POST {{baseUrl}}/api/v1/files
+Authorization: Bearer {{file623AccessToken}}
+Content-Type: application/json
+
+{
+  "ownerType": "PROJECT",
+  "ownerId": {{file623ProjectId}},
+  "storedUrl": "{{file623StoredUrl}}",
+  "originalName": "thumbnail.png",
+  "contentType": "image/png",
+  "fileSize": 102400,
+  "sortOrder": 0
+}
+
+> {%
+    client.test("파일 등록 성공(200), fileId 발급", function() {
+        client.assert(response.status === 200, "register failed: " + response.body);
+        client.assert(!!response.body.data.id, "fileId missing");
+    });
+    client.global.set("file623FileId", response.body.data.id);
+%}

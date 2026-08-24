@@ -1,0 +1,24 @@
+### 634-pg-webhook-no-auth.http — PG 웹훅 인증 없이 허용
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/634
+###
+### POST /api/v1/payments/webhook은 PG사가 직접 호출하는 경로라 permitAll이다.
+### Authorization 헤더 없이도 payment-service까지 라우팅되는지(=게이트웨이가 401로 막지
+### 않는지) 확인한다. paymentKey는 존재하지 않는 값이라 payment-service 자체 로직에서는
+### 실패(404/4xx)할 수 있다 — 여기서 중요한 건 "게이트웨이가 401을 반환하지 않는다"는 것뿐이다.
+
+### 1. Authorization 헤더 없이 웹훅 호출
+POST {{baseUrl}}/api/v1/payments/webhook
+Content-Type: application/json
+
+{
+  "eventType": "PAYMENT_STATUS_CHANGED",
+  "data": {
+    "paymentKey": "uc634-nonexistent-payment-key"
+  }
+}
+
+> {%
+    client.test("게이트웨이가 401로 막지 않음 (permitAll)", function() {
+        client.assert(response.status !== 401, "webhook was blocked by gateway auth (401) — should be permitAll");
+    });
+%}

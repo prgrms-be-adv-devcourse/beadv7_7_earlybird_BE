@@ -1,0 +1,177 @@
+### 627-delete-by-non-uploader-forbidden.http — [usecase-test] CASE-07. 업로더 본인이 아니면 삭제 불가 (#627)
+###
+### 파일을 업로드한 사람이 아닌 다른 사용자가 삭제를 시도하면 403으로 거부되는지 확인한다
+### (FileService#delete — file.isUploadedBy(requesterId) 검증).
+
+### 1. CREATOR1(업로더) 회원가입
+< {%
+    client.global.set("file627Email1", "file627-uploader-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file627Email1}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR1",
+  "phoneNumber": "010-2000-0008"
+}
+
+> {%
+    client.test("CREATOR1 회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. CREATOR1 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file627Email1}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("CREATOR1 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file627AccessToken1", response.body.data.accessToken);
+    client.global.set("file627RefreshToken1", response.body.data.refreshToken);
+%}
+
+### 3. CREATOR1 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{file627AccessToken1}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-000-000081",
+  "accountHolder": "파일테스트CREATOR1"
+}
+
+> {%
+    client.test("CREATOR1 창작자 전환 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. CREATOR1 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{file627RefreshToken1}}"
+}
+
+> {%
+    client.test("CREATOR1 토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file627AccessToken1", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{file627AccessToken1}}
+
+> {%
+    client.test("카테고리 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("file627CategoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{file627AccessToken1}}
+Content-Type: application/json
+
+{
+  "title": "파일테스트 프로젝트 627",
+  "categoryId": {{file627CategoryId}},
+  "summary": "file-service CASE-07 검증용",
+  "description": "627-delete-by-non-uploader-forbidden.http 로 생성",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file627ProjectId", response.body.data.projectId);
+%}
+
+### 7. presign 발급
+POST {{baseUrl}}/api/v1/files/presigned-upload
+Authorization: Bearer {{file627AccessToken1}}
+Content-Type: application/json
+
+{
+  "contentType": "image/png",
+  "originalName": "thumbnail.png"
+}
+
+> {%
+    client.test("presign 발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file627StoredUrl", response.body.data.storedUrl);
+%}
+
+### 8. 파일 등록 (업로더 = CREATOR1)
+POST {{baseUrl}}/api/v1/files
+Authorization: Bearer {{file627AccessToken1}}
+Content-Type: application/json
+
+{
+  "ownerType": "PROJECT",
+  "ownerId": {{file627ProjectId}},
+  "storedUrl": "{{file627StoredUrl}}",
+  "originalName": "thumbnail.png",
+  "contentType": "image/png",
+  "fileSize": 102400,
+  "sortOrder": 0
+}
+
+> {%
+    client.test("파일 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file627FileId", response.body.data.id);
+%}
+
+### 9. CREATOR2(비업로더) 회원가입
+< {%
+    client.global.set("file627Email2", "file627-other-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file627Email2}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR2",
+  "phoneNumber": "010-2000-0009"
+}
+
+> {%
+    client.test("CREATOR2 회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 10. CREATOR2 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file627Email2}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("CREATOR2 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file627AccessToken2", response.body.data.accessToken);
+%}
+
+### 11. CREATOR2(비업로더)가 삭제 시도 — 403 기대
+DELETE {{baseUrl}}/api/v1/files/{{file627FileId}}
+Authorization: Bearer {{file627AccessToken2}}
+
+> {%
+    client.test("403 Forbidden (업로더 본인 아님)", function() {
+        client.assert(response.status === 403, "expected 403, got " + response.status + ": " + response.body);
+    });
+%}

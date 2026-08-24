@@ -1,0 +1,78 @@
+### 501-post-accumulates-quantity.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/501
+### CASE-04. 같은 Reward를 POST로 다시 추가하면 행을 중복 생성하지 않고 수량을 누적한다
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입
+< {%
+    client.global.set("userEmail", "cart501-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트501", "phoneNumber": "010-1111-0005"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. IN_PROGRESS 프로젝트/리워드 조회 (remainingQuantity 넉넉한 것 필요)
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 1건 이상", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 리워드 조회
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("리워드 1건 이상, 재고 충분", function() {
+        client.assert(response.status === 200 && response.body.data.length > 0, response.body);
+        client.assert(response.body.data[0].remainingQuantity >= 5, "need remainingQuantity>=5");
+    });
+    client.global.set("rewardId", response.body.data[0].rewardId);
+%}
+
+### 5. 최초 추가: quantity=2
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 2}]}
+
+> {%
+    client.test("최초 추가 성공, quantity=2", function() {
+        client.assert(response.status === 200, response.body);
+        const r = response.body.data.projects[0].rewards.find(x => String(x.rewardId) === String(client.global.get("rewardId")));
+        client.assert(r.quantity === 2, "expected quantity 2, got " + r.quantity);
+    });
+%}
+
+### 6. 같은 Reward를 다시 POST: quantity=3 → 누적되어 5가 되어야 한다 (중복 행 생성 아님)
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 3}]}
+
+> {%
+    client.test("누적되어 quantity=5, itemCount는 여전히 1", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.itemCount === 1, "itemCount should stay 1 (no duplicate row), got " + response.body.data.itemCount);
+        const r = response.body.data.projects[0].rewards.find(x => String(x.rewardId) === String(client.global.get("rewardId")));
+        client.assert(r.quantity === 5, "expected accumulated quantity 5 (2+3), got " + r.quantity);
+    });
+%}

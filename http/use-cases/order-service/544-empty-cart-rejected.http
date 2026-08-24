@@ -1,0 +1,40 @@
+### 544-empty-cart-rejected.http — [usecase-test] CASE-05. (Order) 빈 Cart에서는 Order를 생성할 수 없다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/544
+
+### 1. 후원자만 가입/로그인 (Cart를 비워둔 채로 바로 주문 시도)
+< {% client.global.set("backerEmail", "ord544-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "544후원자", "phoneNumber": "010-1000-0009"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+### 2.
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+### 3. Cart가 비어있는 상태에서 문법적으로 정상인 주문 요청 — 임의 rewardId(1)로 시도
+< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": 1,
+  "requests": [{"rewardId": 1, "quantity": 1, "expectedUnitPrice": 10000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 10000, "expectedTotalAmount": 13000,
+  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+}
+
+> {%
+    client.test("빈 Cart 주문 -> 409", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+        client.assert(JSON.stringify(response.body).includes("Order Cart is empty"), "unexpected message: " + response.body);
+    });
+%}

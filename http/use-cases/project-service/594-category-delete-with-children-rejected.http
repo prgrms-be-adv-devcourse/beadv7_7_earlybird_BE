@@ -1,0 +1,51 @@
+### 594-category-delete-with-children-rejected.http — issue #594
+### CASE-07. (Category) 하위 카테고리가 있는 카테고리는 삭제가 거부된다
+
+### 1. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 2. 카테고리 A 등록
+< {% client.global.set("catAName", "usecase594-A-" + Date.now()); %}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catAName}}" }
+
+> {%
+    client.test("A 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("categoryAId", response.body.data.id);
+%}
+
+### 3. 카테고리 B 등록 (parent = A)
+< {% client.global.set("catBName", "usecase594-B-" + Date.now()); %}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catBName}}", "parentProjectCategoryId": {{categoryAId}} }
+
+> {%
+    client.test("B 등록 성공", function () { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. 하위 카테고리(B)가 있는 A 삭제 시도 -> 409
+DELETE {{baseUrl}}/api/v1/project-categories/{{categoryAId}}
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("하위 카테고리 존재 -> 삭제 거부(409)", function () {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}

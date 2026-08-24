@@ -1,0 +1,168 @@
+### 624-register-foreign-project-file-forbidden.http — [usecase-test] CASE-04. 본인 소유가 아닌 프로젝트 등록 거부 (#624)
+###
+### 요청자가 소유하지 않은 프로젝트를 ownerId로 지정해 파일을 등록하려 하면 403으로 거부되는지
+### 확인한다 (FileService#register — projectPort.getCreatorId(ownerId) != uploaderId).
+
+### 1. CREATOR1(프로젝트 소유자) 회원가입
+< {%
+    client.global.set("file624Email1", "file624-owner-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file624Email1}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR1",
+  "phoneNumber": "010-2000-0004"
+}
+
+> {%
+    client.test("CREATOR1 회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. CREATOR1 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file624Email1}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("CREATOR1 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file624AccessToken1", response.body.data.accessToken);
+    client.global.set("file624RefreshToken1", response.body.data.refreshToken);
+%}
+
+### 3. CREATOR1 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{file624AccessToken1}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-000-000041",
+  "accountHolder": "파일테스트CREATOR1"
+}
+
+> {%
+    client.test("CREATOR1 창작자 전환 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. CREATOR1 토큰 재발급 (role 갱신)
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{file624RefreshToken1}}"
+}
+
+> {%
+    client.test("CREATOR1 토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file624AccessToken1", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{file624AccessToken1}}
+
+> {%
+    client.test("카테고리 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("file624CategoryId", response.body.data[0].id);
+%}
+
+### 6. CREATOR1 소유 프로젝트 등록
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{file624AccessToken1}}
+Content-Type: application/json
+
+{
+  "title": "파일테스트 프로젝트 624",
+  "categoryId": {{file624CategoryId}},
+  "summary": "file-service CASE-04 검증용",
+  "description": "624-register-foreign-project-file-forbidden.http 로 생성",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file624ProjectId", response.body.data.projectId);
+%}
+
+### 7. CREATOR2(비소유자) 회원가입
+< {%
+    client.global.set("file624Email2", "file624-other-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file624Email2}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR2",
+  "phoneNumber": "010-2000-0005"
+}
+
+> {%
+    client.test("CREATOR2 회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 8. CREATOR2 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file624Email2}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("CREATOR2 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file624AccessToken2", response.body.data.accessToken);
+%}
+
+### 9. CREATOR2로 별도 presign 발급 후 확보 (실제 업로드는 CASE-01과 동일하게 생략 가능)
+POST {{baseUrl}}/api/v1/files/presigned-upload
+Authorization: Bearer {{file624AccessToken2}}
+Content-Type: application/json
+
+{
+  "contentType": "image/png",
+  "originalName": "other.png"
+}
+
+> {%
+    client.test("CREATOR2 presign 발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file624StoredUrl2", response.body.data.storedUrl);
+%}
+
+### 10. CREATOR2가 CREATOR1 소유 프로젝트를 ownerId로 지정해 등록 시도 — 403 기대
+POST {{baseUrl}}/api/v1/files
+Authorization: Bearer {{file624AccessToken2}}
+Content-Type: application/json
+
+{
+  "ownerType": "PROJECT",
+  "ownerId": {{file624ProjectId}},
+  "storedUrl": "{{file624StoredUrl2}}",
+  "originalName": "other.png",
+  "contentType": "image/png",
+  "fileSize": 51200,
+  "sortOrder": 0
+}
+
+> {%
+    client.test("403 Forbidden (본인 소유 프로젝트 아님)", function() {
+        client.assert(response.status === 403, "expected 403, got " + response.status + ": " + response.body);
+    });
+%}

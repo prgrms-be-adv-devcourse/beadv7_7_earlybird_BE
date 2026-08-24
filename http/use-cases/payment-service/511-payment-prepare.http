@@ -1,0 +1,47 @@
+### 511-payment-prepare.http — [usecase-test] 1. 결제 준비 요청 생성 (#511)
+###
+### order-service가 주문 소유자/주문ID/금액을 전달하면 payment-service가 READY 결제를 생성하고
+### Toss 결제창에 필요한 정보(paymentId, pgOrderId, amount)를 반환하는지 확인한다.
+###
+### /internal/v1/** 는 gateway에 라우트가 없다(서비스 간 호출 전용, CLAUDE.md) — payment-service
+### 포트(:8082)에 직접 요청한다. 로컬 실행 환경 전용, production에서는 외부에서 이 포트에
+### 접근할 수 없다(k8s 클러스터 내부에서만 도달 가능).
+### PaymentPreparationService#prepare 는 orderId 실존 여부를 order-service에 확인하지 않으므로
+### (외래키 값일 뿐) 아무 orderId나 써도 된다 — 매번 새 값을 써서 재실행 가능하게 한다.
+
+### 1. 결제 준비 요청 생성
+< {%
+    client.global.set("payment511UserId", 9001);
+    client.global.set("payment511OrderId", Date.now());
+    client.global.set("payment511Amount", 10000);
+%}
+POST http://localhost:8082/internal/v1/payments/prepare
+Content-Type: application/json
+
+{
+  "userId": {{payment511UserId}},
+  "orderId": {{payment511OrderId}},
+  "amount": {{payment511Amount}}
+}
+
+> {%
+    client.test("결제 준비 성공(200), READY", function() {
+        client.assert(response.status === 200, "prepare failed: " + response.body);
+        client.assert(response.body.data.status === "READY", "unexpected status: " + response.body.data.status);
+        client.assert(!!response.body.data.pgOrderId, "pgOrderId missing");
+        client.assert(Number(response.body.data.amount) === Number(client.global.get("payment511Amount")), "amount mismatch");
+    });
+    client.global.set("payment511PaymentId", response.body.data.paymentId);
+%}
+
+### 2. 방금 만든 결제를 orderId로 재조회 — 저장된 금액/주문ID 일치 확인
+GET http://localhost:8082/internal/v1/payments?orderId={{payment511OrderId}}
+
+> {%
+    client.test("재조회 성공, 저장값 일치", function() {
+        client.assert(response.status === 200, "get by orderId failed: " + response.body);
+        client.assert(String(response.body.data.orderId) === String(client.global.get("payment511OrderId")), "orderId mismatch");
+        client.assert(String(response.body.data.paymentId) === String(client.global.get("payment511PaymentId")), "paymentId mismatch");
+        client.assert(response.body.data.status === "READY", "unexpected status: " + response.body.data.status);
+    });
+%}

@@ -1,0 +1,1051 @@
+### 518-max-50-distinct-items.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/518
+### CASE-14. Cart는 50개의 서로 다른 Reward를 허용하고 51번째는 거부한다 (Cart.MAX_DISTINCT_ITEMS = 50)
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+### 대량의 서로 다른 리워드가 필요해 창작자로 새 프로젝트를 만들고 리워드 51개를 등록한 뒤,
+### 그중 50개를 한 번에 Cart에 담아 정확히 경계에서 거부되는지 확인한다.
+
+### 1. 창작자 회원가입
+< {%
+    client.global.set("creatorEmail", "cart518creator-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{creatorEmail}}",
+  "password": "rawPassword1!",
+  "name": "카트518창작자",
+  "phoneNumber": "010-1111-0004"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{creatorEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-518-000000",
+  "accountHolder": "카트518창작자"
+}
+
+> {%
+    client.test("창작자 전환 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. 토큰 재발급 (role=CREATOR 반영)
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+> {%
+    client.test("토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("카테고리 1건 이상", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.length > 0, "no categories");
+    });
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "카트518 대량리워드 테스트 프로젝트",
+  "categoryId": {{categoryId}},
+  "summary": "50개 distinct item 상한 테스트용",
+  "description": "518-max-50-distinct-items.http 로 생성",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("projectId", response.body.data.projectId);
+%}
+
+### 7. 관리자 로그인 (시드 계정)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 8. 관리자 승인 (PENDING_REVIEW -> IN_PROGRESS, 주문/Cart 가능 상태로 전환)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("승인 성공(IN_PROGRESS)", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.status === "IN_PROGRESS", response.body.data.status);
+    });
+%}
+
+### 9. 리워드 1 등록 (51개 중 1번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 1",
+  "description": "대량 리워드 테스트용 1번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 1 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 10. 리워드 2 등록 (51개 중 2번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 2",
+  "description": "대량 리워드 테스트용 2번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 2 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 11. 리워드 3 등록 (51개 중 3번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 3",
+  "description": "대량 리워드 테스트용 3번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 3 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 12. 리워드 4 등록 (51개 중 4번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 4",
+  "description": "대량 리워드 테스트용 4번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 4 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 13. 리워드 5 등록 (51개 중 5번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 5",
+  "description": "대량 리워드 테스트용 5번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 5 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 14. 리워드 6 등록 (51개 중 6번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 6",
+  "description": "대량 리워드 테스트용 6번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 6 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 15. 리워드 7 등록 (51개 중 7번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 7",
+  "description": "대량 리워드 테스트용 7번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 7 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 16. 리워드 8 등록 (51개 중 8번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 8",
+  "description": "대량 리워드 테스트용 8번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 8 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 17. 리워드 9 등록 (51개 중 9번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 9",
+  "description": "대량 리워드 테스트용 9번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 9 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 18. 리워드 10 등록 (51개 중 10번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 10",
+  "description": "대량 리워드 테스트용 10번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 10 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 19. 리워드 11 등록 (51개 중 11번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 11",
+  "description": "대량 리워드 테스트용 11번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 11 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 20. 리워드 12 등록 (51개 중 12번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 12",
+  "description": "대량 리워드 테스트용 12번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 12 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 21. 리워드 13 등록 (51개 중 13번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 13",
+  "description": "대량 리워드 테스트용 13번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 13 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 22. 리워드 14 등록 (51개 중 14번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 14",
+  "description": "대량 리워드 테스트용 14번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 14 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 23. 리워드 15 등록 (51개 중 15번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 15",
+  "description": "대량 리워드 테스트용 15번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 15 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 24. 리워드 16 등록 (51개 중 16번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 16",
+  "description": "대량 리워드 테스트용 16번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 16 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 25. 리워드 17 등록 (51개 중 17번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 17",
+  "description": "대량 리워드 테스트용 17번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 17 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 26. 리워드 18 등록 (51개 중 18번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 18",
+  "description": "대량 리워드 테스트용 18번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 18 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 27. 리워드 19 등록 (51개 중 19번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 19",
+  "description": "대량 리워드 테스트용 19번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 19 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 28. 리워드 20 등록 (51개 중 20번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 20",
+  "description": "대량 리워드 테스트용 20번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 20 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 29. 리워드 21 등록 (51개 중 21번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 21",
+  "description": "대량 리워드 테스트용 21번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 21 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 30. 리워드 22 등록 (51개 중 22번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 22",
+  "description": "대량 리워드 테스트용 22번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 22 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 31. 리워드 23 등록 (51개 중 23번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 23",
+  "description": "대량 리워드 테스트용 23번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 23 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 32. 리워드 24 등록 (51개 중 24번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 24",
+  "description": "대량 리워드 테스트용 24번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 24 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 33. 리워드 25 등록 (51개 중 25번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 25",
+  "description": "대량 리워드 테스트용 25번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 25 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 34. 리워드 26 등록 (51개 중 26번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 26",
+  "description": "대량 리워드 테스트용 26번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 26 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 35. 리워드 27 등록 (51개 중 27번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 27",
+  "description": "대량 리워드 테스트용 27번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 27 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 36. 리워드 28 등록 (51개 중 28번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 28",
+  "description": "대량 리워드 테스트용 28번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 28 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 37. 리워드 29 등록 (51개 중 29번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 29",
+  "description": "대량 리워드 테스트용 29번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 29 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 38. 리워드 30 등록 (51개 중 30번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 30",
+  "description": "대량 리워드 테스트용 30번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 30 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 39. 리워드 31 등록 (51개 중 31번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 31",
+  "description": "대량 리워드 테스트용 31번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 31 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 40. 리워드 32 등록 (51개 중 32번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 32",
+  "description": "대량 리워드 테스트용 32번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 32 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 41. 리워드 33 등록 (51개 중 33번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 33",
+  "description": "대량 리워드 테스트용 33번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 33 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 42. 리워드 34 등록 (51개 중 34번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 34",
+  "description": "대량 리워드 테스트용 34번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 34 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 43. 리워드 35 등록 (51개 중 35번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 35",
+  "description": "대량 리워드 테스트용 35번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 35 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 44. 리워드 36 등록 (51개 중 36번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 36",
+  "description": "대량 리워드 테스트용 36번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 36 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 45. 리워드 37 등록 (51개 중 37번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 37",
+  "description": "대량 리워드 테스트용 37번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 37 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 46. 리워드 38 등록 (51개 중 38번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 38",
+  "description": "대량 리워드 테스트용 38번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 38 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 47. 리워드 39 등록 (51개 중 39번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 39",
+  "description": "대량 리워드 테스트용 39번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 39 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 48. 리워드 40 등록 (51개 중 40번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 40",
+  "description": "대량 리워드 테스트용 40번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 40 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 49. 리워드 41 등록 (51개 중 41번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 41",
+  "description": "대량 리워드 테스트용 41번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 41 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 50. 리워드 42 등록 (51개 중 42번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 42",
+  "description": "대량 리워드 테스트용 42번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 42 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 51. 리워드 43 등록 (51개 중 43번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 43",
+  "description": "대량 리워드 테스트용 43번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 43 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 52. 리워드 44 등록 (51개 중 44번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 44",
+  "description": "대량 리워드 테스트용 44번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 44 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 53. 리워드 45 등록 (51개 중 45번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 45",
+  "description": "대량 리워드 테스트용 45번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 45 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 54. 리워드 46 등록 (51개 중 46번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 46",
+  "description": "대량 리워드 테스트용 46번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 46 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 55. 리워드 47 등록 (51개 중 47번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 47",
+  "description": "대량 리워드 테스트용 47번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 47 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 56. 리워드 48 등록 (51개 중 48번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 48",
+  "description": "대량 리워드 테스트용 48번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 48 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 57. 리워드 49 등록 (51개 중 49번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 49",
+  "description": "대량 리워드 테스트용 49번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 49 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 58. 리워드 50 등록 (51개 중 50번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 50",
+  "description": "대량 리워드 테스트용 50번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 50 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 59. 리워드 51 등록 (51개 중 51번째)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "카트518 리워드 51",
+  "description": "대량 리워드 테스트용 51번째 리워드",
+  "price": 1000,
+  "totalQuantity": 10
+}
+
+> {%
+    client.test("리워드 51 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("rewardIdCsv", (client.global.get("rewardIdCsv") || "") + response.body.data.rewardId + ",");
+%}
+
+### 60. 첫 50개 리워드를 한 번에 Cart에 담는다 — 정확히 경계까지는 성공해야 한다
+< {%
+    const ids = client.global.get("rewardIdCsv").split(",").filter(Boolean).map(Number);
+    client.global.set("first50", ids.slice(0, 50));
+    client.global.set("reward51", ids[50]);
+    const items = ids.slice(0, 50).map(id => ({ rewardId: id, quantity: 1 }));
+    request.variables.set("itemsJson", JSON.stringify(items));
+%}
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "projectId": {{projectId}},
+  "items": {{itemsJson}}
+}
+
+> {%
+    client.test("50개 distinct reward 추가 성공", function() {
+        client.assert(response.status === 200, "adding 50 distinct rewards failed: " + response.body);
+        client.assert(response.body.data.itemCount === 50, "itemCount should be 50, got " + response.body.data.itemCount);
+    });
+%}
+
+### 61. 51번째로 서로 다른 리워드를 추가하면 거부되어야 한다
+< {%
+    request.variables.set("reward51", client.global.get("reward51"));
+%}
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "projectId": {{projectId}},
+  "items": [{"rewardId": {{reward51}}, "quantity": 1}]
+}
+
+> {%
+    client.test("51번째 distinct reward 추가는 409로 거부됨", function() {
+        client.assert(response.status === 409, "expected 409 for 51st distinct reward, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 62. Cart는 여전히 정확히 50개 품목이어야 한다
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Cart 품목 수는 50 유지", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.itemCount === 50, "itemCount should stay 50, got " + response.body.data.itemCount);
+    });
+%}

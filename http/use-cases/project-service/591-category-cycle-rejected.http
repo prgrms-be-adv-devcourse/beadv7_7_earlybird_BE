@@ -1,0 +1,71 @@
+### 591-category-cycle-rejected.http — issue #591
+### CASE-04. (Category) 자손 카테고리를 상위로 지정하면 순환 참조로 거부된다
+### A > B > C 트리를 만든 뒤 A의 상위를 C로 지정 시도.
+
+### 1. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function () {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 2. 카테고리 A 등록
+< {% client.global.set("catAName", "usecase591-A-" + Date.now()); %}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catAName}}" }
+
+> {%
+    client.test("A 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("categoryAId", response.body.data.id);
+%}
+
+### 3. 카테고리 B 등록 (parent = A)
+< {% client.global.set("catBName", "usecase591-B-" + Date.now()); %}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catBName}}", "parentProjectCategoryId": {{categoryAId}} }
+
+> {%
+    client.test("B 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("categoryBId", response.body.data.id);
+%}
+
+### 4. 카테고리 C 등록 (parent = B) — A > B > C
+< {% client.global.set("catCName", "usecase591-C-" + Date.now()); %}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catCName}}", "parentProjectCategoryId": {{categoryBId}} }
+
+> {%
+    client.test("C 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("categoryCId", response.body.data.id);
+%}
+
+### 5. A의 상위를 자신의 자손인 C로 지정 시도 -> 400 (순환 참조)
+PUT {{baseUrl}}/api/v1/project-categories/{{categoryAId}}
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catAName}}", "parentProjectCategoryId": {{categoryCId}} }
+
+> {%
+    client.test("순환 참조 -> 400", function () {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}

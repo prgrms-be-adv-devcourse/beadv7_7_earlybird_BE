@@ -1,0 +1,54 @@
+### 641-pg-reconciliation-completed.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/641
+###
+### 식별자·금액이 모두 일치하는 결제의 월별 PG 대사가 정상 완료되는지 확인한다.
+###
+### 사전 준비(이 .http 파일로는 만들 수 없음): 대상 settlementMonth에 완료·미취소 주문 결제 사실과,
+### 같은 pgOrderId·금액을 반환하는 PG 정산 조회 더미가 이미 구성돼 있어야 한다.
+### PG 대사 실행 상태(COMPLETED)와 결제별 reconciliationStatus(CONFIRMED)는 별도 조회 API가 없어
+### 직접 검증할 수 없다 — 여기서는 실행 자체가 에러 없이 끝나는지만 확인한다.
+###
+### 환경: 같은 폴더의 http-client.env.json (local/production)
+
+### 0. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 1. PG 대사 실행
+< {%
+    request.variables.set("settlementMonth", new Date().toISOString().slice(0, 7));
+%}
+POST {{baseUrl}}/api/v1/settlements/pg-reconciliations/runs
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "settlementMonth": "{{settlementMonth}}"
+}
+
+> {%
+    client.test("PG 대사 실행 성공(200)", function() {
+        client.assert(response.status === 200, "pg reconciliation run failed: " + response.body);
+    });
+%}
+
+### 2. (간접 확인) 대사 완료만으로는 프로젝트 정산/지급이 생성되지 않아야 한다
+GET {{baseUrl}}/api/v1/settlements/all
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("관리자 통합 목록 조회 성공", function() {
+        client.assert(response.status === 200, "admin settlement list failed: " + response.body);
+    });
+%}

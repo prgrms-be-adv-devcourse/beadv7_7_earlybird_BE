@@ -1,0 +1,48 @@
+### 593-category-delete-leaf.http — issue #593
+### CASE-06. (Category) 하위/참조가 없는 카테고리는 정상적으로 삭제된다
+
+### 1. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 2. 말단 카테고리 C 등록 (parent 없음, 하위/참조 없음)
+< {% client.global.set("catCName", "usecase593-C-" + Date.now()); %}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catCName}}" }
+
+> {%
+    client.test("C 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("categoryCId", response.body.data.id);
+%}
+
+### 3. C 삭제
+DELETE {{baseUrl}}/api/v1/project-categories/{{categoryCId}}
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("C 삭제 성공", function () {
+        client.assert(response.status === 200, "delete failed: " + response.body);
+    });
+%}
+
+### 4. 삭제 확인 — 재조회 시 404
+GET {{baseUrl}}/api/v1/project-categories/{{categoryCId}}
+
+> {%
+    client.test("삭제된 카테고리 재조회 -> 404", function () {
+        client.assert(response.status === 404, "expected 404, got " + response.status);
+    });
+%}
