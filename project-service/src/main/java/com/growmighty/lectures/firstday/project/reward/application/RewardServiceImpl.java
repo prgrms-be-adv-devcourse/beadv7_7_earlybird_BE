@@ -47,14 +47,10 @@ public class RewardServiceImpl implements RewardService {
         if (existing.isPresent()) {
             return RewardResponse.from(existing.get());
         }
-        Reward reward;
-        try {
-            reward = rewardRepository.saveAndFlush(request.toEntity(projectId));
-        } catch (DataIntegrityViolationException e) {
-            return rewardRepository.findByProjectIdAndIdempotencyKey(projectId, request.idempotencyKey())
-                    .map(RewardResponse::from)
-                    .orElseThrow(() -> e);
-        }
+        // ponytail: Project.create()와 동일한 이유로 진짜 동시 요청 레이스는 지금 생략한다
+        // (같은 트랜잭션 안에서 DataIntegrityViolationException을 잡으면 UnexpectedRollbackException만
+        // 대신 난다 — ProjectServiceImpl.create() 주석 참고).
+        Reward reward = rewardRepository.save(request.toEntity(projectId));
         projectServiceProvider.getObject().reindex(projectId);
         return RewardResponse.from(reward);
     }

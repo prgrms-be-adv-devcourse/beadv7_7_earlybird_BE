@@ -62,7 +62,7 @@ class ProjectServiceImplSearchIndexingTest {
         ProjectCreateRequest request = new ProjectCreateRequest(1L, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30), UUID.randomUUID());
         when(projectCategoryRepository.existsById(1L)).thenReturn(true);
-        when(projectRepository.saveAndFlush(any(Project.class))).thenReturn(project);
+        when(projectRepository.save(any(Project.class))).thenReturn(project);
 
         projectService.create(1L, request);
 

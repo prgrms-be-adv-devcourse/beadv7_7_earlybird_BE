@@ -25,7 +25,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -82,14 +81,14 @@ public class ProjectServiceImpl implements ProjectService {
             return ProjectResponse.from(existing.get());
         }
         validateCategoryExists(request.categoryId());
-        Project project;
-        try {
-            project = projectRepository.saveAndFlush(request.toEntity(creatorId));
-        } catch (DataIntegrityViolationException e) {
-            return projectRepository.findByCreatorIdAndIdempotencyKey(creatorId, request.idempotencyKey())
-                    .map(ProjectResponse::from)
-                    .orElseThrow(() -> e);
-        }
+        // ponytail: 조회 후 삽입(check-then-insert) 사이에 정확히 같은 순간 겹치는 진짜 동시 요청은
+        // 유니크 제약 위반으로 500이 날 수 있다 — RewardStockTransactionExecutor처럼 삽입을 별도
+        // @Transactional 빈으로 분리해 이 메서드의 트랜잭션 밖에서 DataIntegrityViolationException을
+        // 잡아야 완전히 막을 수 있다(같은 트랜잭션 안에서 catch하면 flush 실패로 Hibernate가 이미
+        // rollback-only 표시를 해서 UnexpectedRollbackException만 대신 난다 — 실제로 안 잡힘).
+        // 이 흐름은 사람이 순차적으로(에러 확인 후) 재클릭하는 재시도라 진짜 동시 충돌 가능성은
+        // 낮다고 보고 지금은 생략 — 필요해지면 이 우회로 승격.
+        Project project = projectRepository.save(request.toEntity(creatorId));
         searchPort.index(project);
         return ProjectResponse.from(project);
     }

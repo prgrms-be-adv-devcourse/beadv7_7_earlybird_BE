@@ -67,11 +67,11 @@ class RewardServiceImplOwnershipTest {
     @Test
     void register_byOwner_succeeds() {
         RewardCreateRequest request = new RewardCreateRequest("이름", "설명", BigDecimal.TEN, 5, UUID.randomUUID());
-        when(rewardRepository.saveAndFlush(any(Reward.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(rewardRepository.save(any(Reward.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         rewardService.register(1L, OWNER_ID, request);
 
-        verify(rewardRepository).saveAndFlush(any(Reward.class));
+        verify(rewardRepository).save(any(Reward.class));
     }
 
     @Test
@@ -82,7 +82,7 @@ class RewardServiceImplOwnershipTest {
 
         rewardService.register(1L, OWNER_ID, request);
 
-        verify(rewardRepository, never()).saveAndFlush(any());
+        verify(rewardRepository, never()).save(any());
     }
 
     @Test

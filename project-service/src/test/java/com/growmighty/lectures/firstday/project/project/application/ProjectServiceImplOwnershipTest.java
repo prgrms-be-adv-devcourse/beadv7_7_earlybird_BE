@@ -76,7 +76,7 @@ class ProjectServiceImplOwnershipTest {
     void create_usesGivenCreatorId() {
         ProjectCreateRequest request = new ProjectCreateRequest(null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30), UUID.randomUUID());
-        when(projectRepository.saveAndFlush(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(projectRepository.save(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = projectService.create(OWNER_ID, request);
 
@@ -94,7 +94,7 @@ class ProjectServiceImplOwnershipTest {
         var response = projectService.create(OWNER_ID, request);
 
         assertThat(response.creatorId()).isEqualTo(OWNER_ID);
-        verify(projectRepository, never()).saveAndFlush(any());
+        verify(projectRepository, never()).save(any());
         verify(searchPort, never()).index(any());
     }
 
