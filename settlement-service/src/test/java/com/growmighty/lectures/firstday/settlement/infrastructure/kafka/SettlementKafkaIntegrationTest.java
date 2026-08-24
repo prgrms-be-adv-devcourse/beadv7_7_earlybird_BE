@@ -17,6 +17,7 @@ import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.re
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -43,13 +44,16 @@ import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.ContainerTestUtils;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
+import org.springframework.kafka.support.serializer.JsonSerializer;
 
 @SpringBootTest(properties = {
         "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
         "spring.kafka.listener.auto-startup=true",
         "spring.kafka.consumer.auto-offset-reset=earliest",
         "spring.kafka.consumer.key-deserializer=org.apache.kafka.common.serialization.StringDeserializer",
-        "spring.kafka.consumer.value-deserializer=org.apache.kafka.common.serialization.StringDeserializer",
+        "spring.kafka.consumer.value-deserializer=org.springframework.kafka.support.serializer.ErrorHandlingDeserializer",
+        "spring.kafka.consumer.properties.spring.deserializer.value.delegate.class=org.springframework.kafka.support.serializer.JsonDeserializer",
+        "spring.kafka.consumer.properties.spring.json.trusted.packages=com.growmighty.lectures.firstday.*",
         "spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer",
         "spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer",
         "settlement.refund-outbox.publish-fixed-delay=3600000"
@@ -237,6 +241,27 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     @Test
+    void routesDeserializationFailureToDltWithoutSavingInbox() throws Exception {
+        long projectId = 81_008L;
+
+        try (Consumer<String, String> dltConsumer = consumer("project-deserialization-dlt")) {
+            dltConsumer.subscribe(List.of(KafkaTopics.PROJECT_STATUS_CHANGED_DLT));
+            KafkaTestUtils.getRecords(dltConsumer, Duration.ofSeconds(1));
+            sendMalformedProjectStatus(projectId, "not-json");
+
+            ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(
+                    dltConsumer,
+                    KafkaTopics.PROJECT_STATUS_CHANGED_DLT,
+                    Duration.ofSeconds(10)
+            );
+
+            assertThat(objectMapper.readValue(record.value(), byte[].class))
+                    .isEqualTo("not-json".getBytes(StandardCharsets.UTF_8));
+            assertThat(outcomeRepository.existsById(projectId)).isFalse();
+        }
+    }
+
+    @Test
     void rollsBackPersistenceFailureThenRoutesItToDlt() throws Exception {
         long projectId = 81_004L;
         long savedOrderId = 91_004L;
@@ -313,12 +338,31 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     private void send(String topic, String key, Object event) throws Exception {
+        try (KafkaProducer<String, Object> producer = new KafkaProducer<>(Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getBrokersAsString(),
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class,
+                JsonSerializer.TYPE_MAPPINGS, String.join(",",
+                        "projectStatusChanged:" + ProjectStatusChangedEvent.class.getName(),
+                        "orderPaymentStatusChanged:" + OrderPaymentStatusChangedEvent.class.getName(),
+                        "projectRefundProcessed:" + ProjectRefundProcessedEvent.class.getName()
+                )
+        ))) {
+            producer.send(new ProducerRecord<>(topic, key, event)).get();
+        }
+    }
+
+    private void sendMalformedProjectStatus(long projectId, String value) throws Exception {
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getBrokersAsString(),
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
         ))) {
-            producer.send(new ProducerRecord<>(topic, key, objectMapper.writeValueAsString(event))).get();
+            ProducerRecord<String, String> record = new ProducerRecord<>(
+                    KafkaTopics.PROJECT_STATUS_CHANGED, Long.toString(projectId), value
+            );
+            record.headers().add("__TypeId__", "projectStatusChanged".getBytes(StandardCharsets.UTF_8));
+            producer.send(record).get();
         }
     }
 
