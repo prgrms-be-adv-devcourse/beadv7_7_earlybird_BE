@@ -4,7 +4,6 @@ import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
-import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,7 +13,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,11 +39,13 @@ class PaymentServiceTest {
         paymentStatusOutboxRepository = new InMemoryPaymentStatusOutboxRepository();
         paymentGateway = new RecordingPaymentGateway();
         ApplicationEventPublisher applicationEventPublisher = event -> { };
+        PaymentStatusOutboxAppender paymentStatusOutboxAppender = new PaymentStatusOutboxAppender(
+            paymentStatusOutboxRepository,
+            applicationEventPublisher
+        );
         PaymentConfirmationService paymentConfirmationService = new PaymentConfirmationService( // <-- SAGA 상태 전이 의존성 구성
             paymentRepository,
-            paymentStatusOutboxRepository,
-            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10), Duration.ofMinutes(30)),
-            applicationEventPublisher // <-- 즉시 발행 리스너는 단위 테스트에서 미구성
+            paymentStatusOutboxAppender
         );
         paymentPreparationService = new PaymentPreparationService(paymentRepository);
         paymentService = new PaymentService(

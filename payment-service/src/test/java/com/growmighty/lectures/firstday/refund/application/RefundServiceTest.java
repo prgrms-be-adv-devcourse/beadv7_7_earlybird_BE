@@ -1,6 +1,9 @@
 package com.growmighty.lectures.firstday.refund.application;
 
-import com.growmighty.lectures.firstday.payment.domain.*;
+import com.growmighty.lectures.firstday.payment.application.PaymentStatusOutboxAppender;
+import com.growmighty.lectures.firstday.payment.domain.Payment;
+import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
+import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
 import com.growmighty.lectures.firstday.refund.application.dto.RefundCancellationTarget;
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import com.growmighty.lectures.firstday.refund.domain.*;
@@ -9,7 +12,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -39,16 +41,13 @@ class RefundServiceTest {
     private RefundRepository refundRepository;
 
     @Mock
-    private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
-
-    @Mock
     private BulkRefundResultOutboxRepository bulkRefundResultOutboxRepository;
 
     @Mock
-    private RefundRecoveryProperties refundRecoveryProperties;
+    private PaymentStatusOutboxAppender paymentStatusOutboxAppender;
 
     @Mock
-    private ApplicationEventPublisher applicationEventPublisher;
+    private RefundRecoveryProperties refundRecoveryProperties;
 
     @InjectMocks
     private RefundService refundService;
@@ -111,15 +110,13 @@ class RefundServiceTest {
         Refund refund = requestedRefund();
         when(refundRepository.findById(REFUND_ID)).thenReturn(Optional.of(refund));
         when(paymentRepository.findById(PAYMENT_ID)).thenReturn(Optional.of(payment));
-        when(paymentStatusOutboxRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0)); // <-- 저장된 Outbox 반환 모사
-
         refundService.completeRefund(REFUND_ID);
 
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.COMPLETED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
         verify(refundRepository).save(refund);
         verify(paymentRepository).save(payment);
-        verify(applicationEventPublisher).publishEvent(any(PaymentStatusOutbox.class));
+        verify(paymentStatusOutboxAppender).appendIfAbsent(payment); // <-- Outbox 생성 책임 위임 검증
     }
 
     // 변경 : 일괄 취소 결과 Outbox를 상태별 중복 무시 insert로 저장
@@ -136,6 +133,7 @@ class RefundServiceTest {
 
         refundService.completeRefund(REFUND_ID);
 
+        verify(paymentStatusOutboxAppender).appendIfAbsent(payment); // <-- Outbox 생성 책임 위임 검증
         verify(bulkRefundResultOutboxRepository).insertIfAbsent(
             REFUND_REQUEST_ID,
             BulkRefundResultStatus.COMPLETED
