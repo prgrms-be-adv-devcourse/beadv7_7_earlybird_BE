@@ -25,7 +25,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public final class PayoutExecutionService implements PayoutExecutor {
 
-    private static final int MAX_ATTEMPTS = 4;
     private static final String TRANSACTION_DESCRIPTION = "얼리버드";
 
     private final PayoutObligationRepository payoutObligationRepository;
@@ -186,13 +185,12 @@ public final class PayoutExecutionService implements PayoutExecutor {
             PayoutAttempt attempt,
             PayoutGatewayResult.Failed failed
     ) {
-        boolean retryable = failed.retryable() && payoutObligation.attemptCount() < MAX_ATTEMPTS;
         payoutObligation.failAttempt(
                 attempt,
                 failed.payoutId(),
                 failed.errorCode(),
                 LocalDateTime.now(clock),
-                retryable
+                failed.retryable()
         );
     }
 

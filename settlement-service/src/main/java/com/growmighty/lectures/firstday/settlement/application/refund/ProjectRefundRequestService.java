@@ -11,7 +11,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,12 +36,7 @@ public class ProjectRefundRequestService {
         // ponytail: oldest incomplete inputs can fill one run; add a persisted retry cursor if that backlog grows.
         for (ProjectOutcomeFact outcome : inputRepository.findRefundOutcomes(dueBefore, OUTCOME_BATCH_SIZE)) {
             List<OrderPaymentFact> payments = inputRepository.findPayments(outcome.projectId());
-            if (!hasCompleteInput(outcome, payments)) {
-                continue;
-            }
-            List<OrderPaymentFact> refundablePayments = payments.stream()
-                    .filter(payment -> payment.status() == OrderPaymentFact.Status.COMPLETED)
-                    .toList();
+            List<OrderPaymentFact> refundablePayments = outcome.refundablePaymentsDueBefore(dueBefore, payments);
             if (refundablePayments.isEmpty()) {
                 continue;
             }
@@ -54,17 +48,5 @@ public class ProjectRefundRequestService {
             )));
         }
         return List.copyOf(created);
-    }
-
-    private static boolean hasCompleteInput(
-            ProjectOutcomeFact outcome,
-            List<OrderPaymentFact> payments
-    ) {
-        return !payments.isEmpty() && payments.stream().allMatch(payment ->
-                Objects.equals(outcome.projectId(), payment.projectId())
-                        && !payment.completedAt().isAfter(outcome.occurredAt())
-                        && (payment.cancelledAt() == null
-                        || !payment.cancelledAt().isAfter(outcome.occurredAt()))
-        );
     }
 }

@@ -26,6 +26,29 @@ class PayoutObligationTest {
     }
 
     @Test
+    @DisplayName("재시도 가능한 실패도 네 번째 시도 뒤에는 지급 조치 필요로 전이한다")
+    void limitsRetryableFailures() {
+        PayoutObligation payoutObligation = payoutObligation();
+
+        for (int sequence = 1; sequence <= 4; sequence++) {
+            PayoutAttempt attempt = payoutObligation.startAttempt(
+                    "ref-" + sequence,
+                    "key-" + sequence,
+                    LocalDateTime.of(2026, 8, 3, 9, sequence)
+            );
+            payoutObligation.failAttempt(
+                    attempt,
+                    "toss-" + sequence,
+                    "TEMPORARY",
+                    LocalDateTime.of(2026, 8, 3, 10, sequence),
+                    true
+            );
+        }
+
+        assertThat(payoutObligation.status()).isEqualTo(PayoutStatus.ACTION_REQUIRED);
+    }
+
+    @Test
     @DisplayName("지급 프로필의 창작자가 정산과 다르면 지급 의무 생성을 거부한다")
     void rejectsDifferentCreatorProfile() {
         ProjectSettlement settlement = ProjectSettlement.confirm(
