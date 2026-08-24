@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.ai.tool.feign.httpClient.project;
 
 import com.growmighty.lectures.firstday.ai.tool.feign.httpClient.project.dto.ProjectSearchApiData;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.file.FileLookupPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectSearchPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchOutcome;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
@@ -21,6 +22,8 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
 
     private final ProjectSearchFeignClient projectSearchFeignClient;
     private final CircuitBreakerFactory circuitBreakerFactory;
+
+    private final FileLookupPort fileLookupPort;
 
     @Override
     public ProjectSearchOutcome search(String keyword, Long categoryId, String status, String sort) {
@@ -54,7 +57,8 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
             ProjectStatusDisplay.toKorean(data.status()),
             data.goalAmount(),
             data.fundedAmount(),
-            data.endAt()
+            data.endAt(),
+            data.thumbnailId() != null ? fileLookupPort.findThumbnailUrl(data.projectId(), data.thumbnailId()) : null
         );
     }
 

@@ -34,12 +34,14 @@ public class ProjectSearchTool {
         ToolInvocationRecorder recorder =
             (ToolInvocationRecorder) toolContext.getContext().get(ToolInvocationRecorder.TOOL_CONTEXT_KEY);
         recorder.recordToolUsed("search_projects");
-        return projectSearchPort.search(
+        ProjectSearchOutcome outcome = projectSearchPort.search(
             keyword,
             categoryId,
             status != null ? status.name() : null,
             sort != null ? sort.name() : null
         );
+        recorder.recordProjects(outcome.projects());
+        return outcome;
     }
 
 }

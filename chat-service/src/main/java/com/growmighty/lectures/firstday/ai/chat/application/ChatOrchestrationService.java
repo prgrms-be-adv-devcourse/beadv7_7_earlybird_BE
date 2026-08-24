@@ -42,7 +42,7 @@ public class ChatOrchestrationService {
         if (metadataSent.compareAndSet(false, true)) {
             recorder.send(SseEmitter.event()
                 .name("metadata")
-                .data(ChatStreamMetadata.of(recorder.toolsUsed(), recorder.policyReferences())));
+                .data(ChatStreamMetadata.of(recorder.toolsUsed(), recorder.policyReferences(), recorder.projects())));
         }
         recorder.send(SseEmitter.event().name("chunk").data(chunk));
     }

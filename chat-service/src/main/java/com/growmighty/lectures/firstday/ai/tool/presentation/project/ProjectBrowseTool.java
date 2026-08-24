@@ -31,11 +31,13 @@ public class ProjectBrowseTool {
         ToolInvocationRecorder recorder =
             (ToolInvocationRecorder) toolContext.getContext().get(ToolInvocationRecorder.TOOL_CONTEXT_KEY);
         recorder.recordToolUsed("browse_projects");
-        return projectSearchPort.search(
+        ProjectSearchOutcome outcome = projectSearchPort.search(
             null,
             categoryId,
             status != null ? status.name() : null,
             sort != null ? sort.name() : null
         );
+        recorder.recordProjects(outcome.projects());
+        return outcome;
     }
 }

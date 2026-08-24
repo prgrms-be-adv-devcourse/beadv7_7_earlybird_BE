@@ -2,13 +2,11 @@ package com.growmighty.lectures.firstday.ai.tool.infrastructure;
 
 import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ToolStartEvent;
 import com.growmighty.lectures.firstday.ai.policy.infrastructure.search.PolicyChunkResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -24,6 +22,7 @@ public class ToolInvocationRecorder {
     public static final String TOOL_CONTEXT_KEY = "recorder";
 
     private final Set<String> toolsUsed = new LinkedHashSet<>();
+    private final List<ProjectSearchResult> projects = new ArrayList<>();
     private final List<PolicyChunkResult> policyReferences = new ArrayList<>();
     private final SseEmitter emitter;
     private final AtomicInteger toolSequence = new AtomicInteger(0);
@@ -46,6 +45,14 @@ public class ToolInvocationRecorder {
         } catch (IOException e) {
             emitter.completeWithError(e);
         }
+    }
+
+    public void recordProjects(List<ProjectSearchResult> results) {
+        projects.addAll(results);
+    }
+
+    public List<ProjectSearchResult> projects() {
+        return List.copyOf(projects);
     }
 
     public void recordPolicyReferences(List<PolicyChunkResult> references) {
