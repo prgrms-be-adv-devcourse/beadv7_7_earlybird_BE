@@ -28,7 +28,8 @@ import java.util.function.Supplier;
 @Component
 @ConditionalOnProperty(
     name = "payment.gateway",
-    havingValue = "toss"
+    havingValue = "toss",
+    matchIfMissing = true
 )
 public class TossPaymentGateway implements PaymentGateway {
     private final RestClient tossRestClient;

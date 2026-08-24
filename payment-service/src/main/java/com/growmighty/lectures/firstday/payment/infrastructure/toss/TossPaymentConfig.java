@@ -8,7 +8,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@ConditionalOnProperty(name = "payment.gateway", havingValue = "toss")
+@ConditionalOnProperty(name = "payment.gateway", havingValue = "toss", matchIfMissing = true)
 public class TossPaymentConfig {
 
     @Bean

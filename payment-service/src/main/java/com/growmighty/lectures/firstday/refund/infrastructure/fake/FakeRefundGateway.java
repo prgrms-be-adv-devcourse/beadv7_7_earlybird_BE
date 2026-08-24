@@ -8,8 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(
     name = "payment.gateway",
-    havingValue = "fake",
-    matchIfMissing = true
+    havingValue = "fake"
 )
 public class FakeRefundGateway implements RefundGateway {
 
