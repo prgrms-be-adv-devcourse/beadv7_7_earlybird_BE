@@ -46,11 +46,7 @@ public class RefundService {
                 )
             ));
 
-        return new RefundCancellationTarget(
-            refund.getId(),
-            payment.getPaymentKey().value(),
-            refund.getReason(),
-            refund.getCancelIdempotencyKey().value());
+        return toCancellationTarget(payment, refund);
     }
 
     @Transactional
@@ -64,6 +60,16 @@ public class RefundService {
 
         refundRepository.save(refund);
         recordBulkRefundResultIfCompleted(refund.getRefundRequestId());
+    }
+
+    // PG 환불 요청에 필요한 취소 대상을 생성
+    private RefundCancellationTarget toCancellationTarget(Payment payment, Refund refund) {
+        return new RefundCancellationTarget(
+            refund.getId(),
+            payment.getPaymentKey().value(),
+            refund.getReason(),
+            refund.getCancelIdempotencyKey().value()
+        );
     }
 
     private Payment findPaidPayment(Long paymentId) {
@@ -152,11 +158,6 @@ public class RefundService {
         refund.startRequest();
         refundRepository.save(refund);
 
-        return new RefundCancellationTarget(
-            refund.getId(),
-            payment.getPaymentKey().value(),
-            refund.getReason(),
-            refund.getCancelIdempotencyKey().value()
-        );
+        return toCancellationTarget(payment, refund);
     }
 }

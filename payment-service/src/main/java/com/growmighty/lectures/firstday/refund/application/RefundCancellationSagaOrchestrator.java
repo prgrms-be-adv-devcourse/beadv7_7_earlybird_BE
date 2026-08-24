@@ -34,16 +34,22 @@ public class RefundCancellationSagaOrchestrator {
 
             refundService.completeRefund(target.refundId());
         } catch (RefundGatewayException exception) {
-            try {
-                if (exception.getFailureType() == RefundGatewayFailureType.DEFINITIVE) {
-                    refundService.failRefund(target.refundId());
-                } else {
-                    refundService.scheduleRetry(target.refundId());
-                }
-            } catch (OptimisticLockingFailureException optimisticLockException) {
-                log.info("다른 요청에서 환불 상태 전이가 이미 완료되었습니다. refundId={}", target.refundId());
-            }
+            handleGatewayFailure(target, exception);
             throw exception;
+        } catch (OptimisticLockingFailureException optimisticLockException) {
+            log.info("다른 요청에서 환불 상태 전이가 이미 완료되었습니다. refundId={}", target.refundId());
+        }
+    }
+
+    // Toss 환불 실패 유형에 따라 환불 상태를 확정 실패 또는 재시도로 전이
+    private void handleGatewayFailure(RefundCancellationTarget target, RefundGatewayException exception) {
+        try {
+            if (exception.getFailureType() == RefundGatewayFailureType.DEFINITIVE) {
+                refundService.failRefund(target.refundId());
+                return;
+            }
+
+            refundService.scheduleRetry(target.refundId());
         } catch (OptimisticLockingFailureException optimisticLockException) {
             log.info("다른 요청에서 환불 상태 전이가 이미 완료되었습니다. refundId={}", target.refundId());
         }
