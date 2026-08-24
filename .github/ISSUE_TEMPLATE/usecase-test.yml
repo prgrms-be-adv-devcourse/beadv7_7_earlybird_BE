@@ -1,0 +1,59 @@
+name: 유스케이스 테스트 (Use Case Test)
+description: 테스트할 서비스별 use case 등록
+title: "[usecase-test] "
+labels: ["🧪 테스트 케이스"]
+body:
+  - type: dropdown
+    id: service
+    attributes:
+      label: 대상 서비스
+      options:
+        - order-service
+        - project-service
+        - payment-service
+        - user-service
+        - cart-service
+        - settlement-service
+        - file-service
+        - board-service
+        - notification-service
+        - chat-service
+        - gateway-server
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: case 설명
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: 테스트 초기설정 방법
+      description: 필요한 data, 유저 권한 등
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 테스트 순서
+      description: 번호를 매겨 순서대로 작성 (호출할 API 포함)
+      placeholder: |
+        1. POST /api/v1/users/signup 로 회원가입
+        2. POST /api/v1/users/me/creator 로 창작자 등록
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 결과
+    validations:
+      required: true
+  - type: checkboxes
+    id: result
+    attributes:
+      label: 테스트 결과
+      options:
+        - label: 로컬에서 통과
+        - label: 운영(prod)에서 통과
