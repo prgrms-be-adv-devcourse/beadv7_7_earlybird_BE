@@ -32,22 +32,6 @@ public class PaymentService {
         }
     }
 
-    /**
-     *
-     * confirm 메소드 자체는 프론트에서 토스 결제창을 호출하고, 사용자가 결제를 승인한 후
-     * 토스가 paymentKey와 orderId(PgOrderId), amount를 프론트에 반환합니다. 그 이후
-     * 프론트가 Payment 서비스의 Post /api/v1/payments/confirm API를 호출합니다.
-     * 그렇게 되면 Payment 서비스가 토스 승인 API를 호출하고, 성공하면 PAID 및 Outbox에 저장하는데
-     * 현재 세미 프로젝트 상황에서는 프론트가 구현되지 않아 실제로 프론트에서 동작여부를 확인할 수 업습니다.
-     * <p>
-     * 대신 백엔드에서 Curl을 통해 실제 동작함을 확인헀습니다.
-     *
-     * @param paymentKey
-     * @param pgOrderId
-     * @param amount
-     * @return
-     *
-     */
     public PaymentInfo confirm(Long requesterId, String paymentKey, String pgOrderId, BigDecimal amount) {
 
         Payment payment = paymentRepository.findByPgOrderId(pgOrderId)
