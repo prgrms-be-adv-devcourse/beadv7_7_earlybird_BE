@@ -29,7 +29,8 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 @ConditionalOnProperty(
     name = "payment.gateway",
-    havingValue = "toss"
+    havingValue = "toss",
+    matchIfMissing = true
 )
 public class TossRefundGateway implements RefundGateway {
     private final RestClient tossRestClient;
