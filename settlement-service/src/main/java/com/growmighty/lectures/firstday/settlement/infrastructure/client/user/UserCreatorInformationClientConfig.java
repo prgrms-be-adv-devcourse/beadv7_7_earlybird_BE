@@ -20,12 +20,8 @@ import org.springframework.web.client.RestClient;
 public class UserCreatorInformationClientConfig {
 
     @Bean
-    @LoadBalanced
-    public RestClient.Builder creatorInformationLoadBalancedRestClientBuilder() { return RestClient.builder(); }
-
-    @Bean
     public RestClient creatorInformationRestClient(
-            @Qualifier("creatorInformationLoadBalancedRestClientBuilder") RestClient.Builder builder,
+            @LoadBalanced RestClient.Builder builder,
             UserCreatorInformationClientProperties properties
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();

@@ -15,14 +15,8 @@ import org.springframework.web.client.RestClient;
 public class OrderPaymentRecoveryClientConfig {
 
     @Bean
-    @LoadBalanced
-    public RestClient.Builder orderPaymentRecoveryLoadBalancedRestClientBuilder() {
-        return RestClient.builder();
-    }
-
-    @Bean
     public RestClient orderPaymentRecoveryRestClient(
-            @Qualifier("orderPaymentRecoveryLoadBalancedRestClientBuilder") RestClient.Builder builder,
+            @LoadBalanced RestClient.Builder builder,
             OrderPaymentRecoveryClientProperties properties
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();

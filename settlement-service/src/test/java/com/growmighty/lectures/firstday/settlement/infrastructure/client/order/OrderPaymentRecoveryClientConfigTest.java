@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPaymentRecoveryReader;
+import com.growmighty.lectures.firstday.settlement.infrastructure.client.SettlementRestClientConfig;
 import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,11 @@ import org.springframework.web.client.RestClient;
 class OrderPaymentRecoveryClientConfigTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(OrderPaymentRecoveryClientConfig.class, ObjectMapperConfig.class);
+            .withUserConfiguration(
+                    SettlementRestClientConfig.class,
+                    OrderPaymentRecoveryClientConfig.class,
+                    ObjectMapperConfig.class
+            );
 
     @Test
     @DisplayName("Order 복구 HTTP reader 하나와 기존 연결·응답 제한시간을 구성한다")
@@ -35,7 +40,7 @@ class OrderPaymentRecoveryClientConfigTest {
                     assertThat(context).hasBean("orderPaymentRecoveryRestClient");
                     assertThat(context.getBean("orderPaymentRecoveryRestClient")).isInstanceOf(RestClient.class);
                     assertThat(context.getBeanFactory().findAnnotationOnBean(
-                            "orderPaymentRecoveryLoadBalancedRestClientBuilder", LoadBalanced.class
+                            "loadBalancedRestClientBuilder", LoadBalanced.class
                     )).isNotNull();
 
                     OrderPaymentRecoveryClientProperties properties = context.getBean(
