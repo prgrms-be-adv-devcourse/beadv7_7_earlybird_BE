@@ -108,4 +108,11 @@ public interface ProjectService {
      * 직접 알 필요 없이 이 포트만으로 published/closed/open 여부를 판단할 수 있게 한다.
      */
     Optional<ProjectStatusView> findStatusView(Long projectId);
+
+    /**
+     * ES 색인의 rewardNames는 project-service가 색인 시점에 리워드를 직접 다시 조회해 채운다 —
+     * 리워드 이름이 바뀌면(등록/수정/삭제) 그 프로젝트를 재색인해야 검색에 반영된다. 프로젝트가
+     * 이미 사라졌으면(고아 리워드) 조용히 무시한다.
+     */
+    void reindex(Long projectId);
 }

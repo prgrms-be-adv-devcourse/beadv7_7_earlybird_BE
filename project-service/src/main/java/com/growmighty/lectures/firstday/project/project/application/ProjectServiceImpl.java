@@ -38,6 +38,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -70,6 +71,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectSearchPort searchPort;
     private final ApplicationEventPublisher eventPublisher;
     private final FilePort filePort;
+    private final Clock clock;
 
     @Override
     @Transactional
@@ -224,6 +226,7 @@ public class ProjectServiceImpl implements ProjectService {
         validateOwnershipOrAdmin(project, requesterId, requesterRole);
         project.cancel();
         deactivateRewards(projectId);
+        eventPublisher.publishEvent(new ProjectClosedEvent(projectId));
         return ProjectResponse.from(project);
     }
 
@@ -309,6 +312,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.updateFundedAmount(fundedAmount);
         project.closeEarlyAsSucceeded();
         deactivateRewards(projectId);
+        eventPublisher.publishEvent(new ProjectClosedEvent(projectId));
         return ProjectResponse.from(project);
     }
 
@@ -335,7 +339,7 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void closeExpiredProjects() {
-        List<Project> expired = projectRepository.findByStatusAndEndAtLessThan(ProjectStatus.IN_PROGRESS, LocalDate.now());
+        List<Project> expired = projectRepository.findByStatusAndEndAtLessThan(ProjectStatus.IN_PROGRESS, LocalDate.now(clock));
         ProjectService self = selfProvider.getObject();
         for (Project project : expired) {
             try {
@@ -466,6 +470,11 @@ public class ProjectServiceImpl implements ProjectService {
         if (!project.getCreatorId().equals(requesterId)) {
             throw new IllegalArgumentException("본인이 등록한 프로젝트만 취소할 수 있습니다. projectId=" + project.getProjectId());
         }
+    }
+
+    @Override
+    public void reindex(Long projectId) {
+        projectRepository.findById(projectId).ifPresent(searchPort::index);
     }
 
     private Project getProject(Long projectId) {

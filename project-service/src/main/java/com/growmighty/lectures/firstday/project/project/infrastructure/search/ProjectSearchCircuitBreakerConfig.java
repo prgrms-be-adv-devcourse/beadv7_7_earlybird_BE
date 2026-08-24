@@ -47,6 +47,15 @@ public class ProjectSearchCircuitBreakerConfig {
      * 한쪽의 장애/트래픽 패턴이 다른 쪽의 서킷 오픈 여부에 영향을 준다(그 반대도 마찬가지).
      */
     static final String PROJECT_AUTOCOMPLETE_ID = "projectAutocomplete";
+    /**
+     * OpenAI 임베딩 호출 전용 서킷브레이커 id. doSearch/doBulkIndex가 이미 바깥쪽 projectSearch
+     * 브레이커로 감싸여 있지만, ProjectEmbeddingService.generateEmbedding()이 예외를 내부에서
+     * 삼키고 null을 반환하는 graceful degradation 설계라 그 예외가 바깥쪽 브레이커까지 전파되지
+     * 않는다(즉 OpenAI 실패가 projectSearch의 실패율에 안 잡힌다). 이 id로 임베딩 호출만 따로
+     * 감싸야, OpenAI 장애 시 몇 번 실패한 뒤로는 재색인 페이지당 최대 50번 풀타임아웃을 기다리는
+     * 대신 즉시(CallNotPermittedException) null로 강등할 수 있다.
+     */
+    static final String PROJECT_EMBEDDING_ID = "projectEmbedding";
 
     private final TimeLimiterRegistry timeLimiterRegistry;
 
@@ -58,6 +67,9 @@ public class ProjectSearchCircuitBreakerConfig {
                 .build());
         timeLimiterRegistry.addConfiguration(PROJECT_AUTOCOMPLETE_ID, TimeLimiterConfig.custom()
                 .timeoutDuration(Duration.ofMillis(800))
+                .build());
+        timeLimiterRegistry.addConfiguration(PROJECT_EMBEDDING_ID, TimeLimiterConfig.custom()
+                .timeoutDuration(Duration.ofSeconds(5))
                 .build());
     }
 
@@ -77,6 +89,6 @@ public class ProjectSearchCircuitBreakerConfig {
                     .waitDurationInOpenState(Duration.ofSeconds(10))
                     .permittedNumberOfCallsInHalfOpenState(2)
                     .build()),
-                PROJECT_SEARCH_ID, PROJECT_AUTOCOMPLETE_ID);
+                PROJECT_SEARCH_ID, PROJECT_AUTOCOMPLETE_ID, PROJECT_EMBEDDING_ID);
     }
 }

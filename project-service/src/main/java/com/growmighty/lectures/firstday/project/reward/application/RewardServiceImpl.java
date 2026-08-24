@@ -44,6 +44,7 @@ public class RewardServiceImpl implements RewardService {
                 "종료된 프로젝트(성공/실패/취소)에는 리워드를 추가할 수 없습니다. 현재 상태=" + project.status());
         }
         Reward reward = rewardRepository.save(request.toEntity(projectId));
+        projectServiceProvider.getObject().reindex(projectId);
         return RewardResponse.from(reward);
     }
 
@@ -74,13 +75,14 @@ public class RewardServiceImpl implements RewardService {
     @Transactional
     public RewardResponse update(Long rewardId, Long requesterId, RewardUpdateRequest request) {
         Reward reward = getRewardEntity(rewardId);
-        Optional<ProjectStatusView> project = findProjectStatus(reward.getProjectId());
-        project.ifPresent(p -> validateOwnership(p, requesterId));
-        if (project.isPresent() && project.get().closed()) {
+        ProjectStatusView project = findProjectStatus(reward.getProjectId())
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + reward.getProjectId()));
+        validateOwnership(project, requesterId);
+        if (project.closed()) {
             throw new IllegalStateException(
-                "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.get().status());
+                "종료된 프로젝트(성공/실패/취소)의 리워드는 수정할 수 없습니다. 현재 상태=" + project.status());
         }
-        if (project.isPresent() && project.get().published()) {
+        if (project.published()) {
             if (request.name() != null || request.description() != null
                     || request.price() != null || request.totalQuantity() != null || request.clearTotalQuantity()) {
                 throw new IllegalArgumentException("공개된 프로젝트의 리워드는 수량 추가(increaseQuantity)만 가능합니다.");
@@ -95,6 +97,9 @@ public class RewardServiceImpl implements RewardService {
             }
             reward.updateBeforePublish(request.name(), request.description(), request.price(),
                 request.totalQuantity(), request.clearTotalQuantity());
+            if (request.name() != null) {
+                projectServiceProvider.getObject().reindex(reward.getProjectId());
+            }
         }
         return RewardResponse.from(reward);
     }
@@ -114,12 +119,14 @@ public class RewardServiceImpl implements RewardService {
     @Transactional
     public void delete(Long rewardId, Long requesterId) {
         Reward reward = getRewardEntity(rewardId);
-        Optional<ProjectStatusView> project = findProjectStatus(reward.getProjectId());
-        project.ifPresent(p -> validateOwnership(p, requesterId));
-        if (project.isPresent() && project.get().published()) {
+        ProjectStatusView project = findProjectStatus(reward.getProjectId())
+            .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + reward.getProjectId()));
+        validateOwnership(project, requesterId);
+        if (project.published()) {
             throw new IllegalStateException("공개된 프로젝트의 리워드 비활성화는 관리자 전용 API를 이용하세요.");
         }
         rewardRepository.delete(reward);
+        projectServiceProvider.getObject().reindex(reward.getProjectId());
     }
 
     /**
@@ -220,12 +227,12 @@ public class RewardServiceImpl implements RewardService {
     }
 
     /**
-     * update()/delete()의 published 여부 판단용. ProjectService.findStatusView()가 내부적으로
-     * 공유 락(최신 커밋 상태)으로 조회해준다 — 일반 조회는 REPEATABLE READ 스냅샷에 갇혀 동시에
-     * 승인(approve)된 최신 상태를 못 볼 수 있기 때문. register()가 프로젝트 존재 여부를 검증하지
-     * 않아 부모 프로젝트가 사라진 "고아" 리워드가 있을 수 있다 — 이 경우 404로 막아버리면
-     * 그 리워드를 영영 정리할 방법이 없으므로, 존재하지 않으면 "공개 전"과 동일하게
-     * 취급한다(자유 수정/하드 삭제 허용).
+     * register()/update()/delete()의 published 여부 판단용. ProjectService.findStatusView()가
+     * 내부적으로 공유 락(최신 커밋 상태)으로 조회해준다 — 일반 조회는 REPEATABLE READ 스냅샷에
+     * 갇혀 동시에 승인(approve)된 최신 상태를 못 볼 수 있기 때문. register()와 마찬가지로
+     * update()/delete()도 프로젝트가 없으면 orElseThrow로 404 처리한다 — 프로젝트 삭제
+     * (ProjectServiceImpl.deleteInternal)가 같은 트랜잭션에서 리워드를 먼저 지우므로 부모가
+     * 사라진 "고아" 리워드는 정상 경로로는 생기지 않는다.
      */
     private Optional<ProjectStatusView> findProjectStatus(Long projectId) {
         return projectServiceProvider.getObject().findStatusView(projectId);

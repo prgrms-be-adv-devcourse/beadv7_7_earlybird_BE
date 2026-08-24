@@ -5,13 +5,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -22,9 +27,22 @@ class ProjectEmbeddingServiceTest {
     private ProjectEmbeddingService embeddingService;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         embeddingModel = mock(EmbeddingModel.class);
-        embeddingService = new ProjectEmbeddingService(embeddingModel);
+        CircuitBreakerFactory circuitBreakerFactory = mock(CircuitBreakerFactory.class);
+        CircuitBreaker circuitBreaker = mock(CircuitBreaker.class);
+        when(circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_EMBEDDING_ID)).thenReturn(circuitBreaker);
+        when(circuitBreaker.run(any(Supplier.class), any(Function.class))).thenAnswer(invocation -> {
+            Supplier<Object> toRun = invocation.getArgument(0);
+            Function<Throwable, Object> fallback = invocation.getArgument(1);
+            try {
+                return toRun.get();
+            } catch (Throwable t) {
+                return fallback.apply(t);
+            }
+        });
+        embeddingService = new ProjectEmbeddingService(embeddingModel, circuitBreakerFactory);
     }
 
     private Project sampleProject() {
@@ -51,7 +69,7 @@ class ProjectEmbeddingServiceTest {
     @Test
     @DisplayName("EmbeddingModel이 없으면 null을 반환하며 예외를 던지지 않는다")
     void generateEmbedding_modelNull_returnsNull() {
-        ProjectEmbeddingService serviceWithoutModel = new ProjectEmbeddingService(null);
+        ProjectEmbeddingService serviceWithoutModel = new ProjectEmbeddingService(null, mock(CircuitBreakerFactory.class));
 
         float[] result = serviceWithoutModel.generateEmbedding("키워드");
 
