@@ -237,59 +237,17 @@ jobs:
   smoke-test:
     name: smoke test (live flow)
     needs: deploy
-    runs-on: ubuntu-latest
     # needs: deploy 만으로 충분하다 - deploy 자신이 이미 deploy-k8s에 needs를 걸고 있고, needs
     # 체인의 기본 조건(success())상 deploy-k8s/deploy 둘 중 하나라도 skip/실패하면 이 잡도 자동
     # skip되므로 위 두 잡의 if 조건(#154/#155 참고 - 여기선 무관)을 다시 반복할 필요가 없다.
-    #
-    # #157: CI가 아니라 배포 후 스모크 테스트로 넣은 이유 - CI는 config/discovery/gateway/
-    # user/project/order-service 전체 스택을 새로 띄워야 하는데, 그 오케스트레이션 비용이
-    # #112(CD가 서비스당 순차 컴파일로 ~20분 걸리던 문제)와 같은 성격의 부담을 CI 쪽에도
-    # 그대로 옮기는 셈이다. 반면 배포 직후엔 스택이 이미 떠 있으므로(k8s 3종 + 나머지),
-    # 새로 띄우는 비용 없이 실제 운영 baseUrl을 상대로 바로 검증할 수 있다.
-    #
-    # 실패 시 처리: 자동 롤백은 하지 않는다 - 지금 이 리포에 롤백 자동화가 없고(수동
-    # `kubectl rollout undo`만 존재, deploy job 주석 참고), 이 잡 하나를 위해 새로 만들 정도로
-    # #157 범위가 넓지 않다. 대신 잡을 실패시켜 Actions 탭에 빨간불로 남긴다 - 사람이 보고
-    # 필요하면 수동으로 rollout undo하는 흐름.
     #
     # #410이 머지되기 전까지는 이 잡이 placeOrder 스텝에서 계속 빨간불이다 - cart-service가
     # 게이트웨이 경유로 도달 불가능해(CartController 경로가 gateway cart-route와 어긋남)
     # addToCart가 항상 실패하고, 그 뒤 주문 생성도 "Order Cart is empty"로 막힌다. #154/#155와
     # 같은 성격의 활성화 전제 조건 - #410 머지 후 이 잡이 실제로 통과하는지 재확인할 것.
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.IMAGE_TAG }}
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      # deploy job의 rollout status(k8s 3종)와 docker compose up -d(caddy 재시작 포함)가 이미
-      # 끝난 뒤라 대부분 바로 준비돼 있지만, DNS/엣지 전파 지연을 감안해 짧게 재시도한다.
-      # Caddyfile은 /api/* 만 gateway로 proxy하므로(그 외 경로는 fe로 감) 실제 API 경로로
-      # 확인한다 - 인증이 없어 401이 나도 게이트웨이까지는 도달했다는 뜻이라 준비된 것으로 본다.
-      # 000(연결 자체 실패)과 502/503/504(업스트림 다운)만 "아직 준비 안 됨"으로 취급.
-      - name: 게이트웨이 준비 대기
-        run: |
-          for i in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' https://earlybird-team5.duckdns.org/api/v1/projects || echo 000)
-            case "$code" in
-              000|502|503|504)
-                echo "게이트웨이 아직 준비 안 됨 (HTTP $code, $i/12) - 5초 후 재시도"
-                sleep 5
-                ;;
-              *)
-                exit 0
-                ;;
-            esac
-          done
-          echo "게이트웨이가 준비되지 않아 스모크 테스트를 진행할 수 없음"
-          exit 1
-
-      - name: 후원자/창작자 플로우 라이브 테스트
-        run: ./gradlew :system-test:liveTest -Dsystem-test.baseUrl=https://earlybird-team5.duckdns.org
+    #
+    # #453: 실제 스모크 테스트 로직(게이트웨이 준비 대기 + 라이브 테스트, #157 배경 포함)은
+    # smoke-test.yml로 분리했다 - 그 파일 상단 주석 참고.
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      ref: ${{ env.IMAGE_TAG }}
