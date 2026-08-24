@@ -54,6 +54,7 @@ Order ← Kafka: 결제 상태 반영
 | `amount` | Payment에 저장된 전액 금액 |
 | `reason` | `USER_CANCEL`, `GOAL_FAILED` |
 | `status` | `PLANNED`, `REQUESTED`, `RETRY_PENDING`, `COMPLETED`, `FAILED` |
+| `version` | 환불 완료·실패·재시도 상태 전이의 낙관적 락 버전 |
 | `retryCount` / `nextRetryAt` | 환불 복구 재시도 정보 |
 
 ### PaymentStatusOutbox
@@ -67,7 +68,7 @@ Order ← Kafka: 결제 상태 반영
 ```text
 READY → CONFIRMING → PAID → CANCELLED
   └──────────────→ FAILED
-FAILED ── Toss 정합화 결과 DONE ──→ PAID
+FAILED ── Toss 정합화 결과 COMPLETED ──→ PAID
 ```
 
 - `READY`: 결제 준비 완료
@@ -76,7 +77,7 @@ FAILED ── Toss 정합화 결과 DONE ──→ PAID
 - `FAILED`: 확정 승인 실패 또는 대기 시간 초과
 - `CANCELLED`: Toss 취소 완료 후 전액 환불이 반영된 상태
 
-`FAILED → PAID`는 응답 유실 뒤 복구 배치나 웹훅 조회가 Toss의 `DONE`을 확인했을 때만 허용한다.
+`FAILED → PAID`는 응답 유실 뒤 복구 배치나 웹훅 조회가 Toss의 `COMPLETED`를 확인했을 때만 허용한다.
 
 ### Refund
 
@@ -111,13 +112,13 @@ PLANNED → REQUESTED → COMPLETED
 
 ## 5. 결제 준비
 
-1. Order가 `userId`, `orderId`, `amount`로 내부 prepare API를 호출한다.
+1. Order가 `userId`, `orderId`, `amount`로 [내부 Prepare API](src/main/java/com/growmighty/lectures/firstday/payment/presentation/PaymentInternalController.java)를 호출한다.
 2. 기존 Payment가 없으면 `READY` Payment와 `pgOrderId`, 승인 멱등 키를 생성한다.
 3. 같은 `userId`, `orderId`, `amount`의 재요청은 기존 READY Payment를 반환한다.
 4. 동시 생성으로 `order_id` 유니크 충돌이 발생하면, 생성 트랜잭션을 종료한 뒤 새 트랜잭션에서 기존 Payment를 조회해 반환한다.
 5. 사용자·금액이 다르거나 기존 상태가 `CONFIRMING`, `PAID`, `FAILED`, `CANCELLED`면 요청을 거절한다.
 
-`PaymentService`는 유니크 충돌을 조정하고, 실제 생성·재조회 트랜잭션은 `PaymentPreparationService`가 담당한다. 같은 객체 내부 호출로 트랜잭션이 무시되는 문제를 피하기 위한 분리다.
+[PaymentService](src/main/java/com/growmighty/lectures/firstday/payment/application/PaymentService.java) 는 유니크 충돌을 조정하고, 실제 생성·재조회 트랜잭션은 [PaymentPreparationService.java](src/main/java/com/growmighty/lectures/firstday/payment/application/PaymentPreparationService.java) 가 담당한다. 같은 객체 내부 호출로 트랜잭션이 무시되는 문제를 피하기 위한 분리다.
 
 ## 6. 승인 Saga와 복구
 
@@ -134,11 +135,11 @@ PAID                           FAILED
   └── 결과 불명: 웹훅 또는 복구 배치의 Toss 조회 후 정합화
 ```
 
-1. `PaymentConfirmationService.startConfirmation()`이 `READY → CONFIRMING`을 저장하고 승인 대상 정보를 반환한다.
-2. `PaymentApprovalSagaOrchestrator`가 DB 트랜잭션 없이 Toss 승인 API를 호출한다.
+1. [PaymentConfirmationService](src/main/java/com/growmighty/lectures/firstday/payment/application/PaymentConfirmationService.java)`.startConfirmation()`이 `READY → CONFIRMING`을 저장하고 승인 대상 정보를 반환한다.
+2. `[PaymentApprovalSagaOrchestrator](src/main/java/com/growmighty/lectures/firstday/payment/application/PaymentApprovalSagaOrchestrator.java) 가 DB 트랜잭션 없이 Toss 승인 API를 호출한다.
 3. 성공 응답의 paymentKey·pgOrderId·amount를 검증한 뒤 `PAID`로 전이한다.
 4. `DEFINITIVE` 실패는 `FAILED`로 전이한다. 네트워크 오류, 5xx, 408, 429처럼 처리 결과가 불명인 `UNCERTAIN` 실패는 `CONFIRMING`으로 남긴다.
-5. `@Version` 충돌은 `PaymentConfirmationInProgressException`으로 변환해 동시 승인 요청을 거절한다.
+5. READY → CONFIRMING 선점의 `@Version` 충돌은 `PaymentConfirmationInProgressException`으로 변환해 동시 승인 요청을 거절한다. PAID 완료 저장에서 충돌하면 다른 경로가 이미 PAID로 확정했는지 재조회해, PAID이면 정상 결과를 반환하고 아니면 예외를 전파한다.
 
 `CONFIRMING` 결제는 기본 3분 경과 후 복구 대상이며, 복구 배치는 최대 100건씩 Toss 상태를 조회한다. Toss가 계속 `PENDING`이고 기본 10분을 초과하면 `FAILED`로 전이한다. `READY` 결제는 기본 30분을 초과하면 `FAILED`로 만료한다.
 
@@ -168,6 +169,7 @@ PAID Payment
 
 - 환불 금액은 요청값이 아니라 저장된 `Payment.amount`를 사용한다.
 - Toss 취소 성공 후 Refund 완료와 Payment 취소는 같은 트랜잭션에서 반영한다.
+- Refund의 완료·실패·재시도 상태 전이는 `@Version`으로 낙관적 락을 적용한다.
 - `REQUESTED` 환불이 기본 3분을 초과하면 복구 배치가 Toss 상태를 조회한다.
 - Toss 조회 결과가 `CANCELLED`면 완료, `COMPLETED`·`FAILED`·`EXPIRED`면 실패, `PENDING`이면 재시도를 예약한다.
 - 일괄 환불 결과는 별도 `BulkRefundResultOutbox`에 저장해 Kafka 발행한다.
@@ -197,23 +199,28 @@ PENDING ── claim ──→ PROCESSING ── Kafka 성공 ──→ SENT
 
 ## 10. 웹훅 정합화
 
-Webhook body의 상태·금액·주문 번호는 신뢰하지 않는다. 전달받은 `paymentKey`로 Toss를 다시 조회하고, 응답의 `pgOrderId`, `paymentKey`, `amount`을 Payment와 검증한 뒤 공통 정합화 로직을 호출한다.
+Webhook body에는 `eventType`, `paymentKey`가 전달되며 현재 구현은 `paymentKey`를 사용한다. 전달받은 `paymentKey`로 Toss를 다시 조회하고, 응답의 `pgOrderId`, `paymentKey`, `amount`을 Payment와 검증한 뒤 `PaymentReconciliationService`가 상태를 정합화한다.
 
-현재 Webhook 엔드포인트는 Toss 서명 검증을 하지 않는다. 요청 본문만으로 상태를 바꾸지는 않지만, 임의 호출이 Toss 조회 RateLimiter를 소모할 수 있으므로 운영 환경에서는 서명 검증 또는 Gateway ACL이 필요하다.
+Webhook 요청 본문만으로 내부 상태를 바꾸지는 않는다. 다만 임의 호출이 Toss 조회 RateLimiter를 소모할 수 있으므로 운영 환경에서는 Gateway ACL, 인바운드 Rate Limit 등 수신 경로 접근 제어가 필요하다.
 
 ## 11. 테스트
 
 - `PaymentServiceTest`: prepare 멱등성, 소유권 검증, 승인 요청 회귀
 - `PaymentConfirmationServiceConcurrencyTest`: MySQL Testcontainers 기반 동시 승인 선점
-- `PaymentConfirmationServiceReconcileTest`, `PaymentRecoveryServiceTest`: 승인 결과 정합화·복구
+- `PaymentConfirmationServiceReconcileTest`, `PaymentReconciliationServiceTest`, `PaymentRecoveryServiceTest`: 승인 실패·PG 상태 정합화·복구
 - `PaymentStatusOutbox*Test`: 즉시 발행, 재시도, PROCESSING 복구
 - `RefundServiceTest`, `RefundRecoveryServiceTest`: 환불 완료·실패·재시도·복구
 - `TossPaymentGatewayTest`, `TossRefundGatewayTest`: Toss 응답 및 오류 분류
 
 ## 12. 현재 한계와 후속 과제
 
-- `Refund`에는 `@Version` 또는 작업 선점이 없어 완료·실패·재시도 전이가 동시에 실행되면 상태가 덮어써질 수 있다.
 - Payment Status Outbox 생성은 `exists → save` 방식이다. 동일 상태 Outbox 생성 경합의 중복 키 예외 정책은 보류 상태다.
-- 승인 응답과 웹훅·복구 정합화가 경합하면 Payment는 PAID여도 원래 confirm 요청이 예외를 반환할 수 있다.
-- 다중 인스턴스 환경의 일괄 환불 작업 선점은 아직 구현하지 않았다.
-- Toss webhook 서명 검증과 운영 환경 Gateway ACL이 필요하다.
+  - 해당 부분은 현재로서는 단일 인스턴스 이고, 동일 결제 상태 전이가 낙관적 락으로 대부분 직렬화 되는 구조이다.
+  - 유니크 제약으로 데이터 중복은 막고 있고, 실제로 중복 키 예외나, 동시 요청 부하가 관측되면 이슈를 진행할 예정이다. [링크](https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/486)
+- 다중 인스턴스 환경의 일괄 환불 작업과 일괄 환불 결과 Outbox 발행은 아직 원자적 선점이 없다.
+  - 다중 인스턴스 환경에 대한 작업은 추후 이슈로 남긴다. [링크](https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/488)
+- Payment Status Outbox는 발행 전 `PENDING → PROCESSING`으로 선점하지만, Kafka 성공 후 SENT 저장 전 프로세스 장애가 나면 재발행될 수 있다. 소비 측 멱등성이 필요하다.
+  - 해당 부분은 Order-Service에서 Inbox로 eventId를 수신함을 확인했으므로, 멱등성이 보장된다.
+- Webhook 수신 경로의 Gateway ACL·인바운드 Rate Limit은 운영 인프라에서 적용해야 한다.
+  - 해당 부분은 현재 인프라 차원에서 막는 것이 YAGNI 기법에 따라 가장 간편하지만, AWS 기본 내장 기능을 사용함이 기술적으로 좋지 않은 방향이라면,
+  - 별도로 API RATE LIMIT를 추가할 예정이다. 이슈로 남긴다. [링크](https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/490)

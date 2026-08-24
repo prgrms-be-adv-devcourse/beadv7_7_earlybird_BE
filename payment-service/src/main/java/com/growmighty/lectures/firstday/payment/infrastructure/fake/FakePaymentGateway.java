@@ -105,6 +105,11 @@ public class FakePaymentGateway implements PaymentGateway {
                 && this.amount.compareTo(amount) == 0;
         }
 
+        // 추가 : paymentKey 기준 Fake PG 승인 이력 조회
+        private boolean hasPaymentKey(String paymentKey) {
+            return this.paymentKey.equals(paymentKey);
+        }
+
         private boolean isProcessing() {
             return approval == null;
         }
@@ -120,11 +125,31 @@ public class FakePaymentGateway implements PaymentGateway {
 
             return approval;
         }
+
+        // 추가 : 완료된 Fake PG 승인 결과를 조회 응답으로 변환
+        private PgPayment getPayment() {
+            PgApproval approval = getApproval();
+
+            return new PgPayment(
+                approval.paymentKey(),
+                approval.pgOrderId(),
+                approval.amount(),
+                PgPaymentStatus.COMPLETED
+            );
+        }
     }
 
     @Override
     public PgPayment getPayment(String paymentKey) {
-        throw new UnsupportedOperationException("Fake PG에서는 결제 조회를 지원하지 않습니다.");
+        validatePaymentKey(paymentKey); // <-- paymentKey 검증
+
+        return approvalsByIdempotencyKey.values().stream() // <-- 승인 이력에서 paymentKey 조회
+            .filter(attempt -> attempt.hasPaymentKey(paymentKey))
+            .findFirst()
+            .map(ApprovalAttempt::getPayment)
+            .orElseThrow(() -> new IllegalStateException(
+                "paymentKey에 해당하는 승인 이력이 없습니다. paymentKey=" + paymentKey
+            ));
     }
 
     private void validateApprovalRequest(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
