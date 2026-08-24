@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.user.application.TokenProvider;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.user.application.UserService;
+import com.growmighty.lectures.firstday.user.application.dto.CreatorProfileInfo;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -207,9 +208,21 @@ class UserControllerTest {
         mockMvc.perform(post("/api/v1/users/me/creator")
                         .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"bankName\":\"\",\"accountNumber\":\"\",\"accountHolder\":\"\"}"))
+                        .content("{\"bankCode\":\"\",\"accountNumber\":\"\",\"accountHolder\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/me/creator 는 지원하지 않는 은행 코드면 400 과 검증 메시지를 반환한다")
+    void registerAsCreator_withInvalidBankCode_returns400WithMessage() throws Exception {
+        mockMvc.perform(post("/api/v1/users/me/creator")
+                        .header(JwtHeaders.USER_ID, "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bankCode\":\"99\",\"accountNumber\":\"110-123-456789\",\"accountHolder\":\"김하나한\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.errors[0].message").exists());
     }
 
     @Test
@@ -221,9 +234,22 @@ class UserControllerTest {
         mockMvc.perform(post("/api/v1/users/me/creator")
                         .header(JwtHeaders.USER_ID, "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"bankName\":\"신한은행\",\"accountNumber\":\"110-123-456789\",\"accountHolder\":\"김하나한\"}"))
+                        .content("{\"bankCode\":\"88\",\"accountNumber\":\"110-123-456789\",\"accountHolder\":\"김하나한\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.role").value("CREATOR"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users/creators/{userId} 는 창작자의 이름과 정산 계좌 정보를 반환한다")
+    void getCreatorProfile_returnsNameAndBankInfo() throws Exception {
+        CreatorProfileInfo info = new CreatorProfileInfo(1L, "김하나한", "010-0000-0000", "신한은행", "88", "김하나한");
+        when(userService.getCreatorProfile(1L)).thenReturn(info);
+
+        mockMvc.perform(get("/api/v1/users/creators/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value(1))
+                .andExpect(jsonPath("$.data.name").value("김하나한"))
+                .andExpect(jsonPath("$.data.bankCode").value("88"));
     }
 
     @Test

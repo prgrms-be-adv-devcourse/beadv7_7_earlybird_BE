@@ -55,7 +55,7 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "bankName": "신한은행",
+  "bankCode": "88",
   "accountNumber": "110-123-456789",
   "accountHolder": "창작자플로우"
 }

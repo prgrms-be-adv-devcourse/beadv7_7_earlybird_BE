@@ -73,7 +73,7 @@ class CreatorFlowLiveTest {
     @Order(3)
     void registerAsCreator() throws Exception {
         String body = """
-                {"bankName":"신한은행","accountNumber":"110-123-456789","accountHolder":"창작자플로우"}
+                {"bankCode":"88","accountNumber":"110-123-456789","accountHolder":"창작자플로우"}
                 """;
         JsonNode data = post("/api/v1/users/me/creator", body, accessToken, 200);
         assertThat(data.get("role").asText()).isEqualTo("CREATOR");

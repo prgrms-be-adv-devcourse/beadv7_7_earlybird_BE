@@ -23,6 +23,10 @@ public class CreatorProfile extends BaseEntity {
     @Column(nullable = false)
     private String bankName;
 
+    /** 토스페이먼츠 지급대행 기관 코드(두 자리) — https://docs.tosspayments.com/codes/org-codes */
+    @Column(nullable = false)
+    private String bankCode;
+
     /** 정산 계좌 — 민감정보. DB 컬럼에는 AES-GCM 암호문으로 저장된다 (#123). */
     @Column(nullable = false)
     private AccountNumber accountNumber;
@@ -30,26 +34,29 @@ public class CreatorProfile extends BaseEntity {
     @Column(nullable = false)
     private String accountHolder;
 
-    private CreatorProfile(Long userId, String bankName, String accountNumber, String accountHolder) {
+    private CreatorProfile(Long userId, String bankCode, String accountNumber, String accountHolder) {
         if (userId == null) {
             throw new IllegalArgumentException("userId는 필수입니다.");
         }
-        if (bankName == null || bankName.isBlank() || accountNumber == null || accountNumber.isBlank()
-                || accountHolder == null || accountHolder.isBlank()) {
+        if (accountNumber == null || accountNumber.isBlank() || accountHolder == null || accountHolder.isBlank()) {
             throw new IllegalArgumentException("정산 계좌 정보는 비어 있을 수 없습니다.");
         }
+        BankCode bank = BankCode.fromCode(bankCode);
         this.userId = userId;
-        this.bankName = bankName;
+        this.bankName = bank.getBankName();
+        this.bankCode = bank.getCode();
         this.accountNumber = new AccountNumber(accountNumber);
         this.accountHolder = accountHolder;
     }
 
-    public static CreatorProfile register(Long userId, String bankName, String accountNumber, String accountHolder) {
-        return new CreatorProfile(userId, bankName, accountNumber, accountHolder);
+    public static CreatorProfile register(Long userId, String bankCode, String accountNumber, String accountHolder) {
+        return new CreatorProfile(userId, bankCode, accountNumber, accountHolder);
     }
 
-    public void updateAccount(String bankName, String accountNumber, String accountHolder) {
-        this.bankName = bankName;
+    public void updateAccount(String bankCode, String accountNumber, String accountHolder) {
+        BankCode bank = BankCode.fromCode(bankCode);
+        this.bankName = bank.getBankName();
+        this.bankCode = bank.getCode();
         this.accountNumber = new AccountNumber(accountNumber);
         this.accountHolder = accountHolder;
     }

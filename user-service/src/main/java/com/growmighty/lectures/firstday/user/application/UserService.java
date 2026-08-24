@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.user.application;
 
 import com.growmighty.lectures.firstday.user.application.dto.ChangeRoleCommand;
+import com.growmighty.lectures.firstday.user.application.dto.CreatorProfileInfo;
 import com.growmighty.lectures.firstday.user.application.dto.LoginCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterCreatorCommand;
 import com.growmighty.lectures.firstday.user.application.dto.RegisterUserCommand;
@@ -74,8 +75,18 @@ public class UserService {
         }
         user.becomeCreator();
         creatorProfileRepository.save(CreatorProfile.register(
-                command.userId(), command.bankName(), command.accountNumber(), command.accountHolder()));
+                command.userId(), command.bankCode(), command.accountNumber(), command.accountHolder()));
         return UserInfo.from(user);
+    }
+
+    /** 관리자용 창작자 단건 조회 — 정산 내역 조회 화면에 표기할 창작자 신원/정산 계좌 정보. */
+    @Transactional(readOnly = true)
+    public CreatorProfileInfo getCreatorProfile(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + userId));
+        CreatorProfile profile = creatorProfileRepository.findByUserId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("판매자로 등록되지 않은 유저입니다. userId=" + userId));
+        return CreatorProfileInfo.of(user, profile);
     }
 
     /** 발표/시연 편의용 role 전환(#430). 정식 창작자 등록(정산 계좌 등)과 무관하게 role만 바꾼다. */
