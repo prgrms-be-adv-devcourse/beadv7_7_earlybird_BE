@@ -25,6 +25,8 @@ body:
     id: description
     attributes:
       label: case 설명
+      placeholder: |
+        창작자가 프로젝트를 등록하고 승인 없이 바로 펀딩을 시작할 수 있는지 확인
     validations:
       required: true
   - type: textarea
@@ -32,6 +34,9 @@ body:
     attributes:
       label: 테스트 초기설정 방법
       description: 필요한 data, 유저 권한 등
+      placeholder: |
+        - CREATOR role을 가진 테스트 계정 1개 필요 (없으면 POST /api/v1/users/me/creator로 먼저 전환)
+        - project-service DB에 카테고리 시드 데이터 존재해야 함
     validations:
       required: true
   - type: textarea
@@ -48,6 +53,9 @@ body:
     id: expected
     attributes:
       label: 기대 결과
+      placeholder: |
+        - 응답 200, project 상태가 FUNDING으로 바뀜
+        - GET /api/v1/projects/{id} 재조회 시 status: "FUNDING" 확인됨
     validations:
       required: true
   - type: checkboxes
