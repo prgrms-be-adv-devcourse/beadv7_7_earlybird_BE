@@ -41,11 +41,14 @@ class PaymentServiceTest {
         paymentStatusOutboxRepository = new InMemoryPaymentStatusOutboxRepository();
         paymentGateway = new RecordingPaymentGateway();
         ApplicationEventPublisher applicationEventPublisher = event -> { };
+        PaymentStatusOutboxAppender paymentStatusOutboxAppender = new PaymentStatusOutboxAppender(
+            paymentStatusOutboxRepository,
+            applicationEventPublisher
+        );
         PaymentConfirmationService paymentConfirmationService = new PaymentConfirmationService( // <-- SAGA 상태 전이 의존성 구성
             paymentRepository,
-            paymentStatusOutboxRepository,
-            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10), Duration.ofMinutes(30)),
-            applicationEventPublisher // <-- 즉시 발행 리스너는 단위 테스트에서 미구성
+            paymentStatusOutboxAppender,
+            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10), Duration.ofMinutes(30))
         );
         paymentPreparationService = new PaymentPreparationService(paymentRepository);
         paymentService = new PaymentService(

@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
     JpaAuditingConfig.class,
     PaymentRepositoryAdapter.class,
     PaymentStatusOutboxRepositoryAdapter.class,
+    PaymentStatusOutboxAppender.class,
     PaymentConfirmationService.class,
     PaymentSecurityConfig.class, // <-- PaymentSecurityProperties Bean 등록
     PaymentSensitiveDataCrypto.class // <-- Converter가 주입받는 AES-GCM Bean 등록

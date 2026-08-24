@@ -79,10 +79,32 @@ public class PaymentConfirmationService {
         );
 
         payment.confirm(approval.paymentKey());
-        Payment savedPayment = paymentRepository.save(payment);
-        savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 동일 상태 Outbox 중복 저장 방지
+        savePaymentAndAppendOutbox(payment);
+        return PaymentInfo.from(payment);
+    }
 
-        return PaymentInfo.from(savedPayment);
+    /**
+     * 승인 실패,
+     */
+    @Transactional
+    public void failConfirmation(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if (payment.reconcileFailed()) {
+            savePaymentAndAppendOutbox(payment);
+        }
+    }
+
+    @Transactional
+    public void expireReadyPayment(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if (payment.failIfReadyExpired(
+            LocalDateTime.now(),
+            paymentRecoveryProperties.readyTimeOut()
+        )) {
+            savePaymentAndAppendOutbox(payment);
+        }
     }
 
     /**
@@ -99,32 +121,6 @@ public class PaymentConfirmationService {
         }
 
         return Optional.of(PaymentInfo.from(payment));
-    }
-
-    /**
-     * 승인 실패,
-     */
-    @Transactional
-    public void failConfirmation(Long paymentId) {
-        Payment payment = findPayment(paymentId);
-
-        if (payment.reconcileFailed()) {
-            Payment savedPayment = paymentRepository.save(payment);
-            savePaymentStatusOutboxIfAbsent(savedPayment);
-        }
-    }
-
-    @Transactional
-    public void expireReadyPayment(Long paymentId) {
-        Payment payment = findPayment(paymentId);
-
-        if (payment.failIfReadyExpired(
-            LocalDateTime.now(),
-            paymentRecoveryProperties.readyTimeOut()
-        )) {
-            Payment savedPayment = paymentRepository.save(payment);
-            savePaymentStatusOutboxIfAbsent(savedPayment);
-        }
     }
 
     @Transactional(readOnly = true)
@@ -145,59 +141,13 @@ public class PaymentConfirmationService {
         );
     }
 
-    @Transactional
-    public Optional<PaymentInfo> reconcile(PaymentGateway.PgPayment pgPayment) {
-        Payment payment = paymentRepository.findByPgOrderId(pgPayment.pgOrderId())
-            .orElseThrow(() -> new EntityNotFoundException("paymentKey 에 해당하는 결제가 없습니다."));
-
-        if (!payment.getPaymentKey().value().equals(pgPayment.paymentKey())) { // <-- VO 내부 값 비교
-            throw new IllegalStateException("PG 결제 키가 일치하지 않습니다.");
-        }
-
-        switch (pgPayment.status()) {
-            case  COMPLETED -> {
-                payment.validateApproval(
-                    pgPayment.paymentKey(),
-                    pgPayment.pgOrderId(),
-                    pgPayment.amount()
-                );
-
-                if (payment.reconcileConfirmed(pgPayment.paymentKey())) {
-                    Payment savedPayment = paymentRepository.save(payment);
-                    savePaymentStatusOutboxIfAbsent(savedPayment); // <-- 정합화 경로의 중복 Outbox 저장 방지
-                }
-
-                return Optional.of(PaymentInfo.from(payment));
-            }
-
-            case FAILED , EXPIRED , CANCELLED -> {
-                if (payment.reconcileFailed()) {
-                    Payment savedPayment = paymentRepository.save(payment);
-                    savePaymentStatusOutboxIfAbsent(savedPayment);
-                }
-            }
-
-            case PENDING -> {
-                if (payment.failIfConfirmingExpired(
-                    LocalDateTime.now(),
-                    paymentRecoveryProperties.maximumConfirmingDuration()
-                )) {
-                    Payment savedPayment = paymentRepository.save(payment);
-                    savePaymentStatusOutboxIfAbsent(savedPayment);
-                }
-            }
-        }
-
-        return  Optional.empty();
-    }
-
-    // 추가 : 동일 결제 상태 Outbox 중복 생성 방지
-    private void savePaymentStatusOutboxIfAbsent(Payment payment) {
-        paymentStatusOutboxAppender.appendIfAbsent(payment);
-    }
-
     private Payment findPayment(Long paymentId) {
         return paymentRepository.findById(paymentId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId = " + paymentId));
+    }
+
+    private void savePaymentAndAppendOutbox(Payment payment) {
+        paymentRepository.save(payment);
+        paymentStatusOutboxAppender.appendIfAbsent(payment);
     }
 }
