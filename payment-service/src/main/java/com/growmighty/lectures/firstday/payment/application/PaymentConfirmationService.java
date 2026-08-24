@@ -8,10 +8,7 @@ import com.growmighty.lectures.firstday.payment.application.exception.PaymentCon
 import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,9 +26,8 @@ import java.util.Optional;
 public class PaymentConfirmationService {
 
     private final PaymentRepository paymentRepository;
-    private final PaymentStatusOutboxRepository  paymentStatusOutboxRepository;
+    private final PaymentStatusOutboxAppender paymentStatusOutboxAppender;
     private final PaymentRecoveryProperties paymentRecoveryProperties;
-    private final ApplicationEventPublisher applicationEventPublisher;
 
     /**
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
@@ -197,23 +193,7 @@ public class PaymentConfirmationService {
 
     // 추가 : 동일 결제 상태 Outbox 중복 생성 방지
     private void savePaymentStatusOutboxIfAbsent(Payment payment) {
-        if (paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(
-            payment.getPaymentId(),
-            payment.getStatus()
-        )) {
-            return;
-        }
-
-        PaymentStatusOutbox outbox = paymentStatusOutboxRepository.save(
-            PaymentStatusOutbox.pending(
-                payment.getPaymentId(),
-                payment.getOrderId(),
-                payment.getPgOrderId(),
-                payment.getStatus()
-            )
-        );
-
-        applicationEventPublisher.publishEvent(outbox);
+        paymentStatusOutboxAppender.appendIfAbsent(payment);
     }
 
     private Payment findPayment(Long paymentId) {
