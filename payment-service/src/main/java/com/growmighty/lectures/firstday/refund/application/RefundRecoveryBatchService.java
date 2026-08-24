@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.refund.application.port.RefundRecoveryTa
 import com.growmighty.lectures.firstday.refund.config.RefundRecoveryProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -27,6 +28,8 @@ public class RefundRecoveryBatchService {
         for (RefundRecoveryTarget target : targets) {
             try {
                 refundRecoveryService.recover(target);
+            } catch (OptimisticLockingFailureException exception) {
+                log.info("다른 요청에서 환불 상태 전이가 이미 완료되었습니다. refundId={}", target.refundId());
             } catch (RuntimeException exception) {
                 log.warn("결제 취소 상태 복구에 실패했습니다. refundId={}", target.refundId(), exception);
             }
