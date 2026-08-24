@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.ai.tool.feign.httpClient.project;
 
 import com.growmighty.lectures.firstday.ai.tool.feign.httpClient.project.dto.ProjectSearchApiData;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.ProjectSearchPort;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.dto.ProjectSearchResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectSearchPort;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,7 +48,7 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
             data.title(),
             data.summary(),
             data.categoryId(),
-            data.status(),
+            ProjectStatusDisplay.toKorean(data.status()),
             data.goalAmount(),
             data.fundedAmount(),
             data.endAt()

@@ -1,7 +1,7 @@
-package com.growmighty.lectures.firstday.ai.tool.presentation;
+package com.growmighty.lectures.firstday.ai.tool.presentation.project;
 
-import com.growmighty.lectures.firstday.ai.tool.feign.port.ProjectSearchPort;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.dto.ProjectSearchResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectSearchPort;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.Tool;
@@ -21,7 +21,8 @@ public class ProjectSearchTool {
     public List<ProjectSearchResult> searchProjects(
         @ToolParam(description = "검색 키워드(자연어 그대로 넘겨도 됨, 서버가 하이브리드 검색 처리)")
         String keyword,
-        @ToolParam(description = "카테고리 ID", required = false)
+        @ToolParam(description = "카테고리 ID. 사용자가 카테고리 이름만 언급했다면(ID를 모르면) " +
+            "이 파라미터를 채우기 전에 먼저 list_project_categories를 호출해 이름↔ID를 확인할 것", required = false)
         Long categoryId,
         @ToolParam(description = "project-service ProjectStatus 중 비로그인/BACKER 조회에 노출되는 값만", required = false)
         ProjectSearchStatus status,

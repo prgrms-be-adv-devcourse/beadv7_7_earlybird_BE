@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
-@FeignClient(name = "project-service")
+@FeignClient(name = "project-service", contextId = "projectSearch")
 public interface ProjectSearchFeignClient {
 
     @GetMapping("/api/v1/projects")

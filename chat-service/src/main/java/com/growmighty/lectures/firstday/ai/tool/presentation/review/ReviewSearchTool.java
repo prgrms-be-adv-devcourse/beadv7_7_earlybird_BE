@@ -1,7 +1,7 @@
-package com.growmighty.lectures.firstday.ai.tool.presentation;
+package com.growmighty.lectures.firstday.ai.tool.presentation.review;
 
-import com.growmighty.lectures.firstday.ai.tool.feign.port.ReviewSearchPort;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.dto.ReviewSearchResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.review.ReviewSearchPort;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.review.dto.ReviewSearchResult;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.Tool;

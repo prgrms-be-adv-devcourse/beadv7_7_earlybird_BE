@@ -1,8 +1,8 @@
 package com.growmighty.lectures.firstday.ai.tool.feign.httpClient.review;
 
 import com.growmighty.lectures.firstday.ai.tool.feign.httpClient.review.dto.ReviewSearchApiData;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.ReviewSearchPort;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.dto.ReviewSearchResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.review.ReviewSearchPort;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.review.dto.ReviewSearchResult;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

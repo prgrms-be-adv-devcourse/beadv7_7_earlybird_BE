@@ -1,4 +1,4 @@
-package com.growmighty.lectures.firstday.ai.tool.presentation;
+package com.growmighty.lectures.firstday.ai.tool.presentation.policy;
 
 import com.growmighty.lectures.firstday.ai.policy.domain.PolicyCategory;
 import com.growmighty.lectures.firstday.ai.policy.infrastructure.search.PolicyChunkResult;
