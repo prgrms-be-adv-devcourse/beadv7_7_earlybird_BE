@@ -36,7 +36,12 @@ public class ToolInvocationRecorder {
         toolsUsed.add(toolName);
         send(SseEmitter.event()
             .name("tool_start")
-            .data(new ToolStartEvent(toolName, toolSequence.incrementAndGet())));
+            .data(new ToolStartEvent(
+                toolName,
+                toolSequence.incrementAndGet(),
+                ToolProgressMessages.messageFor(toolName),
+                ToolProgressMessages.completedMessageFor(toolName)
+            )));
     }
 
     public synchronized void send(SseEmitter.SseEventBuilder event) {
