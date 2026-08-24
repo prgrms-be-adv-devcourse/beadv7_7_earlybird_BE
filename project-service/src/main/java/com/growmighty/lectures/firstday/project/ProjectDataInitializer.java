@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 개발용 시드 데이터.
@@ -167,7 +168,7 @@ public class ProjectDataInitializer implements CommandLineRunner {
     }
 
     private void createReward(Long projectId, String name, String description, long price, int quantity) {
-        rewardRepository.save(Reward.register(projectId, name, description, BigDecimal.valueOf(price), quantity));
+        rewardRepository.save(Reward.register(projectId, UUID.randomUUID(), name, description, BigDecimal.valueOf(price), quantity));
     }
 
     private Long category(Long parentCategoryId, String name) {
@@ -180,7 +181,7 @@ public class ProjectDataInitializer implements CommandLineRunner {
         LocalDateTime now = LocalDateTime.now();
         ProjectResponse project = projectService.create(1L, new ProjectCreateRequest(
                 null, title, categoryId, description, description,
-                BigDecimal.valueOf(goalAmount), now, LocalDate.now().plusDays(30)));
+                BigDecimal.valueOf(goalAmount), now, LocalDate.now().plusDays(30), UUID.randomUUID()));
         projectService.approve(project.projectId());
         return project.projectId();
     }

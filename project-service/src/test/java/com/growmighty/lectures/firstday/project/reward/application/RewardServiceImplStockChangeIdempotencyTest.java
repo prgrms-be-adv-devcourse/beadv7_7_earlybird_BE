@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.project.application.ProjectStatusView;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
@@ -47,7 +49,7 @@ class RewardServiceImplStockChangeIdempotencyTest {
 
     @BeforeEach
     void setUp() {
-        reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
+        reward = Reward.register(1L, UUID.randomUUID(), "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
         when(rewardRepository.findById(anyLong())).thenReturn(Optional.of(reward));
         when(projectServiceProvider.getObject()).thenReturn(projectService);
         when(projectService.findStatusView(anyLong())).thenReturn(Optional.of(PUBLISHED_OPEN_VIEW));
@@ -107,7 +109,7 @@ class RewardServiceImplStockChangeIdempotencyTest {
     @Test
     @DisplayName("decreaseStock: 비활성화된 무제한 리워드는 decreaseStockAtomic을 타지 않아도 주문이 거부된다")
     void decreaseStock_inactiveUnlimitedReward_throws() {
-        Reward unlimitedReward = Reward.register(1L, "무제한 굿즈", "설명", BigDecimal.valueOf(5_000), null);
+        Reward unlimitedReward = Reward.register(1L, UUID.randomUUID(), "무제한 굿즈", "설명", BigDecimal.valueOf(5_000), null);
         unlimitedReward.deactivate();
         when(rewardRepository.findById(anyLong())).thenReturn(Optional.of(unlimitedReward));
 

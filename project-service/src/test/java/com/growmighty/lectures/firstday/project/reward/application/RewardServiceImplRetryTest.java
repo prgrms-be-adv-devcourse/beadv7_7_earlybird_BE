@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.project.application.ProjectStatusView;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
@@ -96,7 +98,7 @@ class RewardServiceImplRetryTest {
     @BeforeEach
     void setUp() {
         reset(rewardRepository, projectService);
-        reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
+        reward = Reward.register(1L, UUID.randomUUID(), "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
         when(rewardRepository.findById(anyLong())).thenReturn(Optional.of(reward));
     }
 

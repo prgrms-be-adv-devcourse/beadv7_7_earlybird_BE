@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import com.growmighty.lectures.firstday.project.project.application.ProjectStatusView;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
@@ -45,7 +47,7 @@ class RewardServiceImplOwnershipTest {
     @BeforeEach
     void setUp() {
         ProjectStatusView published = new ProjectStatusView(true, false, true, "IN_PROGRESS", OWNER_ID);
-        reward = Reward.register(1L, "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
+        reward = Reward.register(1L, UUID.randomUUID(), "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
 
         when(projectServiceProvider.getObject()).thenReturn(projectService);
         when(projectService.findStatusView(1L)).thenReturn(Optional.of(published));
@@ -54,7 +56,7 @@ class RewardServiceImplOwnershipTest {
 
     @Test
     void register_byNonOwner_rejected() {
-        RewardCreateRequest request = new RewardCreateRequest("이름", "설명", BigDecimal.TEN, 5);
+        RewardCreateRequest request = new RewardCreateRequest("이름", "설명", BigDecimal.TEN, 5, UUID.randomUUID());
 
         assertThatThrownBy(() -> rewardService.register(1L, OTHER_USER_ID, request))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -64,12 +66,23 @@ class RewardServiceImplOwnershipTest {
 
     @Test
     void register_byOwner_succeeds() {
-        RewardCreateRequest request = new RewardCreateRequest("이름", "설명", BigDecimal.TEN, 5);
-        when(rewardRepository.save(any(Reward.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        RewardCreateRequest request = new RewardCreateRequest("이름", "설명", BigDecimal.TEN, 5, UUID.randomUUID());
+        when(rewardRepository.saveAndFlush(any(Reward.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         rewardService.register(1L, OWNER_ID, request);
 
-        verify(rewardRepository).save(any(Reward.class));
+        verify(rewardRepository).saveAndFlush(any(Reward.class));
+    }
+
+    @Test
+    void register_duplicateIdempotencyKey_returnsExistingWithoutSaving() {
+        UUID key = UUID.randomUUID();
+        when(rewardRepository.findByProjectIdAndIdempotencyKey(1L, key)).thenReturn(Optional.of(reward));
+        RewardCreateRequest request = new RewardCreateRequest("이름", "설명", BigDecimal.TEN, 5, key);
+
+        rewardService.register(1L, OWNER_ID, request);
+
+        verify(rewardRepository, never()).saveAndFlush(any());
     }
 
     @Test

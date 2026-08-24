@@ -43,7 +43,18 @@ public class RewardServiceImpl implements RewardService {
             throw new IllegalStateException(
                 "종료된 프로젝트(성공/실패/취소)에는 리워드를 추가할 수 없습니다. 현재 상태=" + project.status());
         }
-        Reward reward = rewardRepository.save(request.toEntity(projectId));
+        Optional<Reward> existing = rewardRepository.findByProjectIdAndIdempotencyKey(projectId, request.idempotencyKey());
+        if (existing.isPresent()) {
+            return RewardResponse.from(existing.get());
+        }
+        Reward reward;
+        try {
+            reward = rewardRepository.saveAndFlush(request.toEntity(projectId));
+        } catch (DataIntegrityViolationException e) {
+            return rewardRepository.findByProjectIdAndIdempotencyKey(projectId, request.idempotencyKey())
+                    .map(RewardResponse::from)
+                    .orElseThrow(() -> e);
+        }
         projectServiceProvider.getObject().reindex(projectId);
         return RewardResponse.from(reward);
     }

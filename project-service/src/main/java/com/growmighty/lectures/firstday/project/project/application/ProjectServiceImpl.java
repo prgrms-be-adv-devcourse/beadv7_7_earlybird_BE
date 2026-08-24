@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -76,8 +77,19 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @Transactional
     public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
+        Optional<Project> existing = projectRepository.findByCreatorIdAndIdempotencyKey(creatorId, request.idempotencyKey());
+        if (existing.isPresent()) {
+            return ProjectResponse.from(existing.get());
+        }
         validateCategoryExists(request.categoryId());
-        Project project = projectRepository.save(request.toEntity(creatorId));
+        Project project;
+        try {
+            project = projectRepository.saveAndFlush(request.toEntity(creatorId));
+        } catch (DataIntegrityViolationException e) {
+            return projectRepository.findByCreatorIdAndIdempotencyKey(creatorId, request.idempotencyKey())
+                    .map(ProjectResponse::from)
+                    .orElseThrow(() -> e);
+        }
         searchPort.index(project);
         return ProjectResponse.from(project);
     }

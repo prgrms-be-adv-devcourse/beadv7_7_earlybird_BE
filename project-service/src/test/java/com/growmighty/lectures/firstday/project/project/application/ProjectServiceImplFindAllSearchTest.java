@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
@@ -130,7 +132,7 @@ class ProjectServiceImplFindAllSearchTest {
     }
 
     private Project projectWithId(Long projectId) {
-        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         ReflectionTestUtils.setField(project, "projectId", projectId);
         return project;

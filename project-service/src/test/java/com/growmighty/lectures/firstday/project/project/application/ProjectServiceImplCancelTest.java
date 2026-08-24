@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
@@ -54,7 +56,7 @@ class ProjectServiceImplCancelTest {
 
     @BeforeEach
     void setUp() {
-        project = Project.register(OWNER_ID, null, "title", 1L, "summary", "desc",
+        project = Project.register(OWNER_ID, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project.approve();
         when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
