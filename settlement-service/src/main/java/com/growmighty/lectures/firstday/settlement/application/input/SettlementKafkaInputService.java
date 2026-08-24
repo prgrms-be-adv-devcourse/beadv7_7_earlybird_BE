@@ -38,6 +38,7 @@ public class SettlementKafkaInputService {
 
         ProjectOutcomeFact incoming = ProjectOutcomeFact.of(
                 event.projectId(),
+                event.projectName(),
                 event.creatorId(),
                 requiredEnum(ProjectOutcomeFact.Outcome.class, event.status(), "프로젝트 상태"),
                 event.occurredAt().toInstant()
@@ -75,7 +76,7 @@ public class SettlementKafkaInputService {
         if (!inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant())) {
             return;
         }
-        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(event.settlementId())
+        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(event.refundRequestId())
                 .orElseThrow(() -> new IllegalArgumentException("환불 요청을 찾을 수 없습니다."));
         request.recordPaymentResult(event.status(), event.occurredAt().toInstant(), event.orderIds());
         refundRequestedRepository.save(request);
@@ -116,6 +117,9 @@ public class SettlementKafkaInputService {
     private static void validateProjectEvent(SettlementKafkaInput.ProjectStatusChanged event) {
         validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), PROJECT_STATUS_CHANGED);
         validateKey(event.key(), event.projectId(), "projectId");
+        if (event.projectName() == null || event.projectName().isBlank()) {
+            throw new IllegalArgumentException("projectName은 필수입니다.");
+        }
         requirePositive(event.creatorId(), "creatorId");
         requiredEnum(ProjectOutcomeFact.Outcome.class, event.status(), "프로젝트 상태");
     }
@@ -135,7 +139,7 @@ public class SettlementKafkaInputService {
 
     private static void validateRefundResultEvent(SettlementKafkaInput.ProjectRefundProcessed event) {
         validateEnvelope(event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(), PROJECT_REFUND_PROCESSED);
-        validateKey(event.key(), event.settlementId(), "settlementId");
+        validateKey(event.key(), event.refundRequestId(), "refundRequestId");
         validateOrderIds(event.orderIds());
         requiredEnum(RefundProcessingStatus.class, event.status(), "환불 처리 상태");
     }
@@ -205,7 +209,8 @@ public class SettlementKafkaInputService {
     }
 
     private static boolean sameProjectOutcome(ProjectOutcomeFact left, ProjectOutcomeFact right) {
-        return Objects.equals(left.creatorId(), right.creatorId())
+        return Objects.equals(left.projectName(), right.projectName())
+                && Objects.equals(left.creatorId(), right.creatorId())
                 && left.outcome() == right.outcome()
                 && Objects.equals(left.occurredAt(), right.occurredAt());
     }

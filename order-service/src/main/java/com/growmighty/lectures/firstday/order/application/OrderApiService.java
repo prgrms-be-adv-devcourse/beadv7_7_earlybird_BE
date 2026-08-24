@@ -185,7 +185,8 @@ public class OrderApiService {
                     () -> paymentPort.pay(paymentOrder.getId(), paymentOrder.getUserId(),
                             paymentOrder.getTotalAmount().getValue()));
         } catch (RuntimeException e) {
-            if (remoteCalls.isTechnical(e)) {
+            if (remoteCalls.classifyPaymentFailure(e)
+                    == OrderRemoteCallExecutor.PaymentFailureOutcome.AMBIGUOUS) {
                 order.markPaymentPending();
                 return OrderResult.from(orderRepository.save(order));
             }
@@ -203,11 +204,17 @@ public class OrderApiService {
         validateRequesterId(requesterId);
         Order order = getOrderWithItems(orderId);
         verifyOwner(order, requesterId);
+        if (order.isCancellationCompensationPending()) {
+            return OrderResult.from(order);
+        }
         if (!order.isCancelled()) {
             order.validateCancellationAllowed();
             verifyCancellationAllowedByProject(order);
         }
         Order cancelledOrder = cancellationOrchestrationService.cancel(orderId);
+        if (cancelledOrder.isCancellationCompensationPending()) {
+            return OrderResult.from(cancelledOrder);
+        }
         log.info("order cancelled. orderId={}", orderId);
         if (cancellationCompletionService != null) {
             cancellationCompletionService.complete(cancelledOrder);

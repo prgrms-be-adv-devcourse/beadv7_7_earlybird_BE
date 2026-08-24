@@ -44,39 +44,53 @@ class ProjectPayoutRunServiceTest extends MySqlIntegrationTestSupport {
         creatorPayoutProfileRepository.save(profile(20L));
         outcomeRepository.save(outcome(1L, 10L));
         outcomeRepository.save(outcome(2L, 20L));
+        outcomeRepository.save(outcome(3L, 30L));
         paymentRepository.save(reconciledPayment(101L, 1L, "2026-06-30T10:00:00Z"));
         paymentRepository.save(reconciledPayment(102L, 1L, "2026-07-31T10:00:00Z"));
         paymentRepository.save(reconciledPayment(201L, 2L, "2026-06-30T10:00:00Z"));
         paymentRepository.save(completedPayment(202L, 2L, "2026-07-31T10:00:00Z"));
+        paymentRepository.save(reconciledPayment(301L, 3L, "2026-07-31T10:00:00Z"));
         YearMonth payoutMonth = YearMonth.of(2026, 8);
 
         service.run(payoutMonth);
         service.run(payoutMonth);
 
         Long settlementId = projectSettlementRepository.findByProjectId(1L).orElseThrow().id();
+        Long deferredSettlementId = projectSettlementRepository.findByProjectId(3L).orElseThrow().id();
         assertThat(projectSettlementRepository.findByProjectId(2L)).isEmpty();
         assertThat(payoutObligationRepository.findBySettlementId(settlementId).orElseThrow())
                 .extracting(obligation -> obligation.status(), obligation -> obligation.attemptCount())
                 .containsExactly(PayoutStatus.COMPLETED, 1);
+        assertThat(creatorPayoutProfileRepository.findByCreatorId(30L).orElseThrow().status())
+                .isEqualTo(CreatorPayoutStatus.REGISTRATION_PENDING);
+        assertThat(payoutObligationRepository.findBySettlementId(deferredSettlementId)).isEmpty();
+
+        CreatorPayoutProfile pendingProfile = creatorPayoutProfileRepository.findByCreatorId(30L).orElseThrow();
+        pendingProfile.completeRegistration("seller-30", CreatorPayoutStatus.PAYOUT_READY);
+        creatorPayoutProfileRepository.save(pendingProfile);
+
+        service.run(YearMonth.of(2026, 9));
+
+        assertThat(payoutObligationRepository.findBySettlementId(deferredSettlementId).orElseThrow())
+                .extracting(obligation -> obligation.status(), obligation -> obligation.attemptCount())
+                .containsExactly(PayoutStatus.COMPLETED, 1);
         assertThat(runRepository.findAll()).extracting(ProjectPayoutRun::status)
                 .containsOnly(ProjectPayoutRun.Status.COMPLETED);
-        assertThat(runRepository.findAll()).hasSize(2);
+        assertThat(runRepository.findAll()).hasSize(3);
     }
 
     private static CreatorPayoutProfile profile(Long creatorId) {
         return CreatorPayoutProfile.registered(
                 creatorId,
                 "seller-" + creatorId,
-                CreatorPayoutStatus.PAYOUT_READY,
-                "088",
-                "********1234",
-                LocalDateTime.of(2026, 8, 1, 9, 0)
+                CreatorPayoutStatus.PAYOUT_READY
         );
     }
 
     private static ProjectOutcomeFact outcome(Long projectId, Long creatorId) {
         return ProjectOutcomeFact.of(
                 projectId,
+                "프로젝트 " + projectId,
                 creatorId,
                 ProjectOutcomeFact.Outcome.SUCCEEDED,
                 Instant.parse("2026-07-31T10:00:00Z")

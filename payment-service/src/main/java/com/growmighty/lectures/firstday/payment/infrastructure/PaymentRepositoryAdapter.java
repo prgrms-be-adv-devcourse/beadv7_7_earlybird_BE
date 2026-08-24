@@ -49,4 +49,13 @@ public class PaymentRepositoryAdapter implements PaymentRepository {
             PageRequest.of(0, limit)
         );
     }
+
+    @Override
+    public List<Long> findReadyPaymentIdsBefore(LocalDateTime cutoff, int limit) {
+        return jpaRepository.findIdsByStatusAndCreatedAtBeforeOrderByCreatedAtAsc(
+            PaymentStatus.READY,
+            cutoff,
+            PageRequest.of(0, limit)
+        );
+    }
 }

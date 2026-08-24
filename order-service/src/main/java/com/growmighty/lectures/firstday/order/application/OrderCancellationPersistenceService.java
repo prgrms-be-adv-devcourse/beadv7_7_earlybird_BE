@@ -32,12 +32,49 @@ public class OrderCancellationPersistenceService {
         }
         order.assignPgOrderId(pgOrderId);
 
-        if (!order.isCancelled()) {
-            order.validateCancellationAllowed();
-            stockHandler.releaseStock(order);
-            order.cancel();
+        if (order.isCancelled()) {
+            return saveCompletedCancellation(order);
+        }
+        if (order.isCancellationCompensationPending()) {
+            return orderRepository.save(order);
         }
 
+        order.validateCancellationAllowed();
+        return restoreStockAndFinalize(order);
+    }
+
+    @Transactional
+    public Order recoverCancellationCompensation(Long orderId) {
+        Order order = orderRepository.findByIdWithItemsForUpdate(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
+        if (order.isCancelled()) {
+            return saveCompletedCancellation(order);
+        }
+        if (!order.isCancellationCompensationPending()) {
+            throw new IllegalStateException("Order cancellation compensation is not pending. orderId=" + orderId);
+        }
+        return restoreStockAndFinalize(order);
+    }
+
+    private Order restoreStockAndFinalize(Order order) {
+        try {
+            stockHandler.releaseStock(order);
+        } catch (RuntimeException compensationFailure) {
+            if (!order.isCancellationCompensationPending()) {
+                order.markCancellationCompensationPending();
+            }
+            return orderRepository.save(order);
+        }
+
+        if (order.isCancellationCompensationPending()) {
+            order.completeCancellationCompensation();
+        } else {
+            order.cancel();
+        }
+        return saveCompletedCancellation(order);
+    }
+
+    private Order saveCompletedCancellation(Order order) {
         Order savedOrder = orderRepository.save(order);
         if (paymentStatusOutboxWriter != null) {
             paymentStatusOutboxWriter.saveIfAbsent(savedOrder);

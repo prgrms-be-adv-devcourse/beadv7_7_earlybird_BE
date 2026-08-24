@@ -23,6 +23,22 @@ public enum SettlementErrorCode {
             "S005",
             "프로젝트 환불 요청 내역을 찾을 수 없습니다."
     ),
+    CREATOR_INFORMATION_UNAVAILABLE(
+            "S006",
+            "창작자 정보를 일시적으로 확인할 수 없습니다."
+    ),
+    CREATOR_INFORMATION_INVALID(
+            "S007",
+            "창작자 정보를 확인할 수 없습니다."
+    ),
+    SELLER_REGISTRATION_REJECTED(
+            "S008",
+            "토스 셀러 등록이 거절되었습니다."
+    ),
+    SELLER_REGISTRATION_RESULT_UNKNOWN(
+            "S009",
+            "토스 셀러 등록 결과를 확인할 수 없습니다."
+    ),
     SETTLEMENT_DATA_INCONSISTENT(
             "S500",
             "프로젝트 정산 데이터가 일치하지 않습니다."

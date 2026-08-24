@@ -188,7 +188,7 @@ class OrderRepositoryTests {
             }
 
             @Override
-            public CancellationResult cancel(Long paymentId, BigDecimal amount) {
+            public CancellationResult cancel(Long orderId, Long paymentId, BigDecimal amount) {
                 return new CancellationResult(PaymentResult.Status.UNKNOWN, BigDecimal.valueOf(13_000), 1L, 1L);
             }
 

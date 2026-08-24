@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.payment.domain;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -13,27 +14,28 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PaymentTest {
 
     private static final Long ORDER_ID = 1L;
+    private static final Long USER_ID = 10L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
     private static final String PAYMENT_KEY = "payment-key-1";
 
     @Test
     @DisplayName("0 이하 금액으로는 결제를 생성할 수 없다")
     void ready_invalidAmount_throws() {
-        assertThatThrownBy(() -> Payment.ready(ORDER_ID, BigDecimal.ZERO))
+        assertThatThrownBy(() -> Payment.ready(USER_ID, ORDER_ID, BigDecimal.ZERO))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("주문 식별자 없이는 결제를 생성할 수 없다")
     void ready_withoutOrderId_throws() {
-        assertThatThrownBy(() -> Payment.ready(null, AMOUNT))
+        assertThatThrownBy(() -> Payment.ready(USER_ID, null, AMOUNT))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("READY 결제를 만들면 PG 주문번호와 승인 재시도용 멱등키가 생성된다")
     void ready_generatesPgOrderIdAndApproveIdempotencyKey() {
-        Payment payment = Payment.ready(ORDER_ID, AMOUNT);
+        Payment payment = Payment.ready(USER_ID, ORDER_ID, AMOUNT);
 
         assertThat(payment.getPgOrderId()).startsWith("order-" + ORDER_ID + "-");
         assertThat(payment.getPgOrderId()).hasSizeLessThanOrEqualTo(64);
@@ -127,7 +129,33 @@ class PaymentTest {
         assertThat(payment.getConfirmingAt()).isNull();
     }
 
+    @Test
+    @DisplayName("READY 결제는 만료 시간 전에는 실패 처리되지 않는다")
+    void failIfReadyExpired_beforeMaximumDuration_returnsFalse() {
+        Payment payment = readyPayment();
+        LocalDateTime createdAt = LocalDateTime.now().minusMinutes(30);
+        ReflectionTestUtils.setField(payment, "createdAt", createdAt);
+        Duration maximumDuration = Duration.ofMinutes(30);
+
+        assertThat(payment.failIfReadyExpired(createdAt.plus(maximumDuration).minusNanos(1), maximumDuration))
+            .isFalse();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
+    }
+
+    @Test
+    @DisplayName("READY 결제는 만료 시간에 도달하면 FAILED로 전이된다")
+    void failIfReadyExpired_atMaximumDuration_transitionsToFailed() {
+        Payment payment = readyPayment();
+        LocalDateTime createdAt = LocalDateTime.now().minusMinutes(30);
+        ReflectionTestUtils.setField(payment, "createdAt", createdAt);
+        Duration maximumDuration = Duration.ofMinutes(30);
+
+        assertThat(payment.failIfReadyExpired(createdAt.plus(maximumDuration), maximumDuration))
+            .isTrue();
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+    }
+
     private Payment readyPayment() {
-        return Payment.ready(ORDER_ID, AMOUNT);
+        return Payment.ready(USER_ID, ORDER_ID, AMOUNT);
     }
 }

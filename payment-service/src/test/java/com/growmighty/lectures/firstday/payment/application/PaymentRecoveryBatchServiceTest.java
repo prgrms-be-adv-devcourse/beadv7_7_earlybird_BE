@@ -34,7 +34,8 @@ class PaymentRecoveryBatchServiceTest {
         PaymentRecoveryProperties properties = new PaymentRecoveryProperties(
             Duration.ofMinutes(3),
             BATCH_SIZE,
-            Duration.ofMinutes(10)
+            Duration.ofMinutes(10),
+            Duration.ofMinutes(30)
         );
 
         paymentRecoveryBatchService = new PaymentRecoveryBatchService(
@@ -67,5 +68,17 @@ class PaymentRecoveryBatchServiceTest {
 
         verify(paymentRecoveryService).recover(1L);
         verify(paymentRecoveryService).recover(2L);
+    }
+
+    @Test
+    void 만료된_READY_결제를_배치_크기만큼_조회해_만료처리한다() {
+        when(paymentRepository.findReadyPaymentIdsBefore(any(LocalDateTime.class), eq(BATCH_SIZE)))
+            .thenReturn(List.of(1L, 2L));
+
+        paymentRecoveryBatchService.expireTimedOutPayments();
+
+        verify(paymentRepository).findReadyPaymentIdsBefore(any(LocalDateTime.class), eq(BATCH_SIZE));
+        verify(paymentRecoveryService).expireReadyPayment(1L);
+        verify(paymentRecoveryService).expireReadyPayment(2L);
     }
 }

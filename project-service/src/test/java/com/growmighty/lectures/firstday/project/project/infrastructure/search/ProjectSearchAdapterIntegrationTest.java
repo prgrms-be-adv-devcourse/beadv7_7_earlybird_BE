@@ -1,8 +1,12 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
+import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.reward.domain.Reward;
+import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import com.growmighty.lectures.firstday.project.support.ElasticsearchIntegrationTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,6 +52,10 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     private ProjectSearchAdapter adapter;
     @Autowired
     private ProjectRepository projectRepository;
+    @Autowired
+    private ProjectCategoryRepository categoryRepository;
+    @Autowired
+    private RewardRepository rewardRepository;
 
     private final List<Long> savedProjectIds = new ArrayList<>();
 
@@ -153,5 +161,107 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     @DisplayName("공백만 있는 검색어는 ES를 부르지 않고 빈 목록을 반환한다")
     void autocomplete_blankKeyword_returnsEmptyWithoutCallingEs() {
         assertThat(adapter.autocomplete("   ")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("nori 사전에 없는 속어가 흔한 조사 음절로 쪼개져도, 그 음절 하나만 겹치는 무관한 문서는 안 나온다")
+    void search_oovSlangSplitIntoCommonParticle_doesNotMatchUnrelatedDocuments() {
+        // userdict_ko.txt에 없는 미등록 단어 "냥냥이"는 nori 사전에 없어 ["냥", "냥", "이"] 등으로 쪼개진다.
+        // "이"는 "장인이"/"입니다"처럼 거의 모든 자연스러운 한국어 문장에 등장하는 조사라,
+        // minimum_should_match 없이는 이 음절 하나만 겹쳐도 매치된다(동일 문장으로 재현 검증).
+        Project unrelated = Project.register(1L, null, "수제 가죽 노트커버", 1L,
+                "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.", "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        Project saved = projectRepository.save(unrelated);
+        savedProjectIds.add(saved.getProjectId());
+        adapter.index(saved);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(adapter.search("냥냥이")).doesNotContain(saved.getProjectId()));
+    }
+
+    @Test
+    @DisplayName("RRF 하이브리드 검색: 키워드 매치 프로젝트가 정상적으로 검색된다")
+    void search_rrfHybrid_findsMatchingProjects() {
+        Project matching1 = savedProject("인공지능 로봇 청소기 펀딩");
+        Project matching2 = savedProject("초경량 무선 청소기 개발");
+        Project other = savedProject("유기농 수제 쿠키 세트");
+
+        adapter.index(matching1);
+        adapter.index(matching2);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Long> result = adapter.search("청소기");
+            assertThat(result).contains(matching1.getProjectId(), matching2.getProjectId());
+            assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("제목/요약/본문에 없어도 카테고리명으로 검색하면 찾아진다")
+    void search_matchesByCategoryName() {
+        ProjectCategory category = categoryRepository.save(ProjectCategory.create(null, "수제 액세서리"));
+        Project matching = Project.register(1L, null, "은은한 데일리룩", category.getId(), "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        Project saved = projectRepository.save(matching);
+        savedProjectIds.add(saved.getProjectId());
+        // savedProject()의 categoryId(=1L, 실존하지 않는 더미 참조)와 우연히 겹치지 않도록, 방금 만든
+        // category.getId() 바로 다음 값(역시 실존하지 않음)을 써서 other의 categoryName이 안 채워지게 한다.
+        Project other = projectRepository.save(Project.register(1L, null, "완전히 다른 내용의 프로젝트",
+                category.getId() + 1, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30)));
+        savedProjectIds.add(other.getProjectId());
+
+        adapter.index(saved);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Long> result = adapter.search("액세서리");
+            assertThat(result).contains(saved.getProjectId());
+            assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("제목/요약/본문에 없어도 리워드명으로 검색하면 찾아진다")
+    void search_matchesByRewardName() {
+        Project matching = savedProject("은은한 데일리룩");
+        rewardRepository.save(Reward.register(matching.getProjectId(), "얼리버드 벌레 키링", "설명",
+                BigDecimal.valueOf(3_000), 100));
+        Project other = savedProject("완전히 다른 내용의 프로젝트");
+
+        adapter.index(matching);
+        adapter.index(other);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Long> result = adapter.search("키링");
+            assertThat(result).contains(matching.getProjectId());
+            assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("상위어(애완동물) 검색 시 하위 품목(고양이/강아지)이 모두 검색되고, 하위어(고양이) 검색 시 다른 하위어(강아지)는 오탐되지 않는다")
+    void search_directionalSynonym_matchesSubCategoriesWithoutFalsePositives() {
+        Project catProject = savedProject("고양이 원목 캣타워");
+        Project dogProject = savedProject("강아지 수제 간식 세트");
+        Project otherProject = savedProject("기계식 키보드 제작");
+
+        adapter.index(catProject);
+        adapter.index(dogProject);
+        adapter.index(otherProject);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            // 상위어 검색: 고양이, 강아지 프로젝트 모두 매치
+            List<Long> petResult = adapter.search("애완동물");
+            assertThat(petResult).contains(catProject.getProjectId(), dogProject.getProjectId());
+            assertThat(petResult).doesNotContain(otherProject.getProjectId());
+
+            // 하위어 검색: 해당 하위어만 매치되고 다른 하위어는 제외
+            List<Long> catResult = adapter.search("고양이");
+            assertThat(catResult).contains(catProject.getProjectId());
+            assertThat(catResult).doesNotContain(dogProject.getProjectId(), otherProject.getProjectId());
+        });
     }
 }

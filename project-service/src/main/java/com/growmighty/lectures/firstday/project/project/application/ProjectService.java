@@ -26,7 +26,8 @@ public interface ProjectService {
     /** title prefix 매치(자동완성). 매치 없으면 빈 리스트. ES 장애 시 ServiceUnavailableException. */
     List<ProjectSuggestion> autocomplete(String keyword);
 
-    ProjectResponse findById(Long projectId);
+    /** 비공개(PENDING_REVIEW/REJECTED) 프로젝트는 소유자 본인 또는 ADMIN만 조회할 수 있다. */
+    ProjectResponse findById(Long projectId, Long requesterId, UserRole requesterRole);
 
     /** requesterId가 본인이 등록한 프로젝트가 아니면 거부한다. */
     ProjectResponse update(Long projectId, Long requesterId, ProjectUpdateRequest request);

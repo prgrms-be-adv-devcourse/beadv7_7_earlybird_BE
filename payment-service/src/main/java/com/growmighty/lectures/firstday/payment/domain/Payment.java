@@ -28,6 +28,9 @@ public class Payment extends BaseEntity {
     @Column(name = "id")
     private Long paymentId;
 
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
     /** orderdb.orders.id (논리) — 일괄 환불 배치의 역추적 키. 주문당 결제 1건(멱등성). */
     @Column(name = "order_id", nullable = false, unique = true)
     private Long orderId;
@@ -61,8 +64,9 @@ public class Payment extends BaseEntity {
     private PaymentStatus status;
 
 
-    private Payment(Long orderId, BigDecimal amount) {
-        validatePayment(orderId, amount);
+    private Payment(Long userId, Long orderId, BigDecimal amount) {
+        validatePayment(userId, orderId, amount);
+        this.userId = userId;
         this.orderId = orderId;
         this.pgOrderId = generatePgOrderId(orderId);
         this.amount = amount;
@@ -70,7 +74,10 @@ public class Payment extends BaseEntity {
         this.status = PaymentStatus.READY;
     }
 
-    private static void validatePayment(Long orderId, BigDecimal amount) {
+    private static void validatePayment(Long userId, Long orderId, BigDecimal amount) {
+        if (userId == null) {
+            throw new IllegalArgumentException("사용자 식별자는 필수입니다.");
+        }
         if (orderId == null) {
             throw new IllegalArgumentException("주문 식별자는 필수입니다.");
         }
@@ -79,8 +86,8 @@ public class Payment extends BaseEntity {
         }
     }
 
-    public static Payment ready(Long orderId, BigDecimal amount) {
-        return new Payment(orderId, amount);
+    public static Payment ready(Long userId, Long orderId, BigDecimal amount) {
+        return new Payment(userId, orderId, amount);
     }
 
     private static String generatePgOrderId(Long orderId) {
@@ -137,6 +144,10 @@ public class Payment extends BaseEntity {
         return this.status == PaymentStatus.READY;
     }
 
+    public boolean isOwnedBy(Long userId) {
+        return this.userId != null && this.userId.equals(userId);
+    }
+
     public boolean isFailed() {
         return this.status == PaymentStatus.FAILED;
     }
@@ -168,6 +179,20 @@ public class Payment extends BaseEntity {
         }
         this.status = PaymentStatus.FAILED;
         this.confirmingAt = null;
+        return true;
+    }
+
+    public boolean failIfReadyExpired(LocalDateTime now, Duration maximumReadyDuration) {
+        if (!isReady() || getCreatedAt() == null) {
+            return false;
+        }
+
+        LocalDateTime expiredAt = getCreatedAt().plus(maximumReadyDuration);
+        if (now.isBefore(expiredAt)) {
+            return false;
+        }
+
+        this.status = PaymentStatus.FAILED;
         return true;
     }
 
@@ -204,11 +229,7 @@ public class Payment extends BaseEntity {
         return true;
     }
 
-    public void validateApproval(
-        String approvedPaymentKey,
-        String approvedPgOrderId,
-        BigDecimal approvedAmount
-    ) {
+    public void validateApproval(String approvedPaymentKey, String approvedPgOrderId, BigDecimal approvedAmount) {
         if (!this.paymentKey.value().equals(approvedPaymentKey)) {
             throw new IllegalStateException("PG paymentKey가 일치하지 않습니다.");
         }

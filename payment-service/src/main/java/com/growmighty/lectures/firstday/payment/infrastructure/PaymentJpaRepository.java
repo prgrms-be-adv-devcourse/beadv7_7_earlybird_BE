@@ -30,4 +30,13 @@ public interface PaymentJpaRepository extends JpaRepository<Payment, Long> {
         @Param("cutoff") LocalDateTime cutoff,
         Pageable pageable
     );
+
+    @Query("""
+      select payment.paymentId
+      from Payment payment
+      where payment.status = :status
+        and payment.createdAt < :cutoff
+      order by payment.createdAt asc
+      """)
+    List<Long> findIdsByStatusAndCreatedAtBeforeOrderByCreatedAtAsc(PaymentStatus status, LocalDateTime cutoff, Pageable pageable);
 }

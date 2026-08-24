@@ -6,8 +6,11 @@ import com.growmighty.lectures.firstday.refund.application.exception.RefundGatew
 import com.growmighty.lectures.firstday.refund.application.port.RefundGateway;
 import com.growmighty.lectures.firstday.refund.domain.RefundReason;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RefundCancellationSagaOrchestrator {
@@ -15,8 +18,8 @@ public class RefundCancellationSagaOrchestrator {
     private final RefundGateway refundGateway;
 
     // 환불 시작, Toss 취소, 내부 완료 상태 전이를 순서대로 처리
-    public void cancel(Long paymentId, RefundReason reason) {
-        RefundCancellationTarget target = refundService.startRefund(paymentId, reason);
+    public void cancel(Long orderId, Long paymentId) {
+        RefundCancellationTarget target = refundService.startRefund(orderId, paymentId, RefundReason.USER_CANCEL);
         processCancellation(target);
     }
 
@@ -31,13 +34,18 @@ public class RefundCancellationSagaOrchestrator {
 
             refundService.completeRefund(target.refundId());
         } catch (RefundGatewayException exception) {
-            if (exception.getFailureType() == RefundGatewayFailureType.DEFINITIVE) {
-                refundService.failRefund(target.refundId());
-            } else {
-                refundService.scheduleRetry(target.refundId());
+            try {
+                if (exception.getFailureType() == RefundGatewayFailureType.DEFINITIVE) {
+                    refundService.failRefund(target.refundId());
+                } else {
+                    refundService.scheduleRetry(target.refundId());
+                }
+            } catch (OptimisticLockingFailureException optimisticLockException) {
+                log.info("다른 요청에서 환불 상태 전이가 이미 완료되었습니다. refundId={}", target.refundId());
             }
-
             throw exception;
+        } catch (OptimisticLockingFailureException optimisticLockException) {
+            log.info("다른 요청에서 환불 상태 전이가 이미 완료되었습니다. refundId={}", target.refundId());
         }
     }
 }

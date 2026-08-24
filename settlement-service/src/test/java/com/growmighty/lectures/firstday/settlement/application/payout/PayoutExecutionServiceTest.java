@@ -201,10 +201,7 @@ class PayoutExecutionServiceTest {
                 CreatorPayoutProfile.registered(
                         10L,
                         "seller-10",
-                        CreatorPayoutStatus.PAYOUT_READY,
-                        "088",
-                        "********1234",
-                        LocalDateTime.of(2026, 7, 26, 0, 0)
+                        CreatorPayoutStatus.PAYOUT_READY
                 ),
                 LocalDate.of(2026, 8, 3)
         );

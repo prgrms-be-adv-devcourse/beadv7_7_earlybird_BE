@@ -44,6 +44,6 @@ public class InternalOrderController {
 
     @PostMapping("/project-payments")
     public ProjectPaymentsResponse getProjectPayments(@Valid @RequestBody ProjectPaymentsRequest request) {
-        return ProjectPaymentsResponse.from(internalOrderApiService.getProjectPayments(request.projectIds()));
+        return ProjectPaymentsResponse.from(internalOrderApiService.getProjectPayments(request.projectMonth()));
     }
 }

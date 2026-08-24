@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.user.application.TokenProvider;
 import com.growmighty.lectures.firstday.user.application.UserService;
 import com.growmighty.lectures.firstday.user.application.dto.UserInfo;
 import com.growmighty.lectures.firstday.user.presentation.dto.AdminCreatorResponse;
+import com.growmighty.lectures.firstday.user.presentation.dto.ChangeRoleRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.LoginRequest;
 import com.growmighty.lectures.firstday.user.presentation.dto.LoginResponse;
 import com.growmighty.lectures.firstday.user.presentation.dto.RefreshRequest;
@@ -88,5 +89,18 @@ public class UserController {
     @GetMapping("/creators/{userId}")
     public AdminCreatorResponse getCreatorProfile(@PathVariable Long userId) {
         return AdminCreatorResponse.from(userService.getCreatorProfile(userId));
+    }
+
+    /**
+     * 발표/시연 편의용 role 전환(#430). BACKER/CREATOR/ADMIN 사이를 재로그인 없이 자유롭게 전환하고,
+     * 바뀐 role이 반영된 새 access/refresh token을 즉시 발급한다.
+     */
+    @PostMapping("/me/role")
+    public LoginResponse changeRole(@RequestHeader(JwtHeaders.USER_ID) Long userId,
+                                     @Valid @RequestBody ChangeRoleRequest request) {
+        UserInfo info = userService.changeRole(request.toCommand(userId));
+        String accessToken = tokenProvider.issueAccessToken(info.id(), info.role());
+        String refreshToken = tokenProvider.issueRefreshToken(info.id());
+        return LoginResponse.of(accessToken, refreshToken, info);
     }
 }

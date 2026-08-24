@@ -7,10 +7,10 @@ import jakarta.persistence.Converter;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * JPA AttributeConverter for pre-computed vector embedding (float[] <-> JSON String in DB).
+ * 사전 계산된 벡터 임베딩을 위한 JPA AttributeConverter (float[] <-> DB 내 JSON 문자열).
  */
 @Slf4j
-@Converter
+@Converter(autoApply = true)
 public class EmbeddingConverter implements AttributeConverter<float[], String> {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -23,7 +23,7 @@ public class EmbeddingConverter implements AttributeConverter<float[], String> {
         try {
             return OBJECT_MAPPER.writeValueAsString(attribute);
         } catch (JsonProcessingException e) {
-            log.error("Failed to convert float[] embedding to JSON string", e);
+            log.error("float[] 임베딩을 JSON 문자열로 변환하는 데 실패했습니다.", e);
             return null;
         }
     }
@@ -36,7 +36,7 @@ public class EmbeddingConverter implements AttributeConverter<float[], String> {
         try {
             return OBJECT_MAPPER.readValue(dbData, float[].class);
         } catch (JsonProcessingException e) {
-            log.error("Failed to convert JSON string to float[] embedding", e);
+            log.error("JSON 문자열을 float[] 임베딩으로 변환하는 데 실패했습니다.", e);
             return null;
         }
     }

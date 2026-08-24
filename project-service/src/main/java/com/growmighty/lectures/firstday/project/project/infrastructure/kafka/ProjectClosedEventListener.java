@@ -36,6 +36,6 @@ class ProjectClosedEventListener {
             return;
         }
         publisher.publish(ProjectStatusChangedEvent.of(
-                project.getProjectId(), project.getCreatorId(), project.getStatus().name()));
+                project.getProjectId(), project.getTitle(), project.getCreatorId(), project.getStatus().name()));
     }
 }

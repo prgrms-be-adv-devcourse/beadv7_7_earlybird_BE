@@ -9,9 +9,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Repository
 @RequiredArgsConstructor
@@ -77,8 +82,31 @@ public class OrderRepositoryAdapter implements OrderRepository {
     }
 
     @Override
-    public List<Order> findByProjectIdsAndStatusIn(List<Long> projectIds, List<OrderStatus> statuses) {
-        return jpaRepository.findByProjectIdsAndStatusIn(projectIds, statuses);
+    public List<Order> findRecoveryCandidates(List<OrderStatus> statuses, LocalDateTime updatedBefore, int batchSize) {
+        List<Long> candidateIds = jpaRepository.findRecoveryCandidateIds(
+                statuses, updatedBefore, PageRequest.of(0, batchSize));
+        if (candidateIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Order> candidatesById = jpaRepository.findAllByIdInWithItems(candidateIds).stream()
+                .collect(Collectors.toMap(Order::getId, Function.identity()));
+        return candidateIds.stream()
+                .map(candidatesById::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    @Override
+    public List<Order> findByProjectYearAndMonthAndStatusIn(
+        int projectYear,
+        int projectMonth,
+        List<OrderStatus> statuses) {
+
+        return jpaRepository.findByProjectYearAndMonthAndStatusIn(
+            projectYear,
+            projectMonth,
+            statuses);
     }
 
     @Override

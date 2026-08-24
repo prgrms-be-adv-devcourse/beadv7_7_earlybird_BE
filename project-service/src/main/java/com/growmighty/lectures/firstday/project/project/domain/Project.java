@@ -1,7 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.domain;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
@@ -94,7 +93,6 @@ public class Project {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
-    @Convert(converter = com.growmighty.lectures.firstday.project.project.infrastructure.persistence.EmbeddingConverter.class)
     @Column(name = "embedding", columnDefinition = "LONGTEXT")
     private float[] embedding;
 

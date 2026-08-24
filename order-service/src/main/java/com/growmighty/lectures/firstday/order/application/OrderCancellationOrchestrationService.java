@@ -23,7 +23,7 @@ public class OrderCancellationOrchestrationService {
     public Order cancel(Long orderId) {
         Order order = orderRepository.findByIdWithItemsForUpdate(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
-        if (order.isCancelled()) {
+        if (order.isCancelled() || order.isCancellationCompensationPending()) {
             return cancellationPersistenceService.finalizeCancellation(orderId, order.getPgOrderId());
         }
 
@@ -43,7 +43,7 @@ public class OrderCancellationOrchestrationService {
 
         Long paymentId = payment.paymentId();
         CancellationResult cancellation = remoteCalls.execute("payment-cancel",
-                () -> paymentPort.cancel(paymentId, order.getTotalAmount().getValue()));
+                () -> paymentPort.cancel(order.getId(), paymentId, order.getTotalAmount().getValue()));
         if (cancellation == null || cancellation.status() == PaymentResult.Status.UNKNOWN) {
             throw new ServiceUnavailableException("Payment cancellation result is unavailable. orderId=" + orderId);
         }

@@ -36,14 +36,16 @@ public class ProjectPayoutRunService {
             for (ProjectOutcomeFact outcome : inputRepository.findSucceededProjects()) {
                 List<OrderPaymentFact> payments = inputRepository.findCompletedPaymentsByProjectId(outcome.projectId());
                 if (payments.stream().allMatch(this::reconciled)) {
-                    Long settlementId = projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
+                    var settlement = projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
                             outcome.projectId(),
                             outcome.creatorId(),
                             payments.stream().map(OrderPaymentFact::paymentAmount).toList(),
                             payoutMonth.atDay(5),
                             LocalDateTime.now(clock)
-                    )).settlementId();
-                    payoutExecutor.execute(settlementId);
+                    ));
+                    if (settlement.hasPayoutObligation()) {
+                        payoutExecutor.execute(settlement.settlementId());
+                    }
                 }
             }
             run.complete(LocalDateTime.now(clock));

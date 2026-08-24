@@ -29,3 +29,8 @@ jwt:
   secret: dGVzdC1zaWduaW5nLWtleS1hdC1sZWFzdC0yNTYtYml0cy1sb25nIQ==
   access-token-expiration-seconds: 3600
   refresh-token-expiration-seconds: 1209600
+
+# CreatorProfile.accountNumber AES 키 — 운영 값(config-server)과 무관한 테스트 전용 값.
+user:
+  security:
+    encryption-key: MDEyMzQ1Njc4OUFCQ0RFRjAxMjM0NTY3ODlBQkNERUY=

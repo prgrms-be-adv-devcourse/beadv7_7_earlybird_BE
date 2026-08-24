@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -16,12 +17,14 @@ class SettlementInputFactTest {
 
         ProjectOutcomeFact succeeded = ProjectOutcomeFact.of(
                 101L,
+                "프로젝트 101",
                 9L,
                 ProjectOutcomeFact.Outcome.SUCCEEDED,
                 occurredAt
         );
         ProjectOutcomeFact failed = ProjectOutcomeFact.of(
                 102L,
+                "프로젝트 102",
                 10L,
                 ProjectOutcomeFact.Outcome.FAILED,
                 occurredAt
@@ -88,5 +91,28 @@ class SettlementInputFactTest {
 
         assertThat(fact.reconciliationStatus())
                 .isEqualTo(OrderPaymentFact.ReconciliationStatus.CONFIRMED);
+    }
+
+    @Test
+    @DisplayName("실패 프로젝트는 다음 날부터 결과 시각 이전의 미취소 결제 전체만 환불 대상으로 만든다")
+    void determinesRefundablePaymentsFromCompleteInput() {
+        Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
+        ProjectOutcomeFact outcome = ProjectOutcomeFact.of(
+                101L, "프로젝트 101", 9L, ProjectOutcomeFact.Outcome.FAILED, outcomeAt
+        );
+        OrderPaymentFact completed = OrderPaymentFact.completed(
+                1001L, "PG-1001", 101L, Money.wons(50_000), outcomeAt.minusSeconds(60)
+        );
+        OrderPaymentFact cancelled = OrderPaymentFact.completed(
+                1002L, "PG-1002", 101L, Money.wons(30_000), outcomeAt.minusSeconds(60)
+        );
+        cancelled.cancel("PG-1002", 101L, Money.wons(30_000), outcomeAt.minusSeconds(1));
+
+        assertThat(outcome.refundablePaymentsDueBefore(
+                Instant.parse("2026-08-09T00:00:00Z"), List.of(completed, cancelled)
+        )).containsExactly(completed);
+        assertThat(outcome.refundablePaymentsDueBefore(
+                outcomeAt, List.of(completed, cancelled)
+        )).isEmpty();
     }
 }

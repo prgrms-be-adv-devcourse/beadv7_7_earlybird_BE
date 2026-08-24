@@ -28,8 +28,6 @@ public record AdminProjectSettlementDetail(
         LocalDate scheduledDate,
         LocalDateTime completedAt,
         String tossSellerId,
-        String bankCode,
-        String maskedAccountNumber,
         List<PayoutAttempt> attempts
 ) {
 

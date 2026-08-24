@@ -14,6 +14,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -41,7 +43,7 @@ class ProjectControllerEnvelopeTest {
                 BigDecimal.valueOf(1_000_000), BigDecimal.ZERO,
                 LocalDateTime.now(), LocalDate.now().plusDays(30),
                 "IN_PROGRESS", false, null, null, null, null, null, null);
-        when(projectService.findById(1L)).thenReturn(response);
+        when(projectService.findById(eq(1L), any(), any())).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/projects/{projectId}", 1L))
                 .andExpect(status().isOk())

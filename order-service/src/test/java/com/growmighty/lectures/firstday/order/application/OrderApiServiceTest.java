@@ -261,13 +261,13 @@ class OrderApiServiceTest {
         Long orderId = 1L;
         Order order = paidOrder(orderId);
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
-        when(paymentPort.cancel(orderId, BigDecimal.valueOf(23000)));
+        when(paymentPort.cancel(orderId, 1L, BigDecimal.valueOf(23000)));
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         OrderResult result = orderApiService.cancelOrder(orderId, 1L);
 
         assertThat(result.status()).isEqualTo(OrderStatus.CANCELLED);
-        verify(paymentPort).cancel(orderId, BigDecimal.valueOf(23000));
+        verify(paymentPort).cancel(orderId, 1L, BigDecimal.valueOf(23000));
         verify(rewardPort).restoreStock(10L, 2, 1L);
     }
 
@@ -278,7 +278,7 @@ class OrderApiServiceTest {
         Long orderId = 1L;
         Order order = paidOrder(orderId);
         when(orderRepository.findByIdWithItems(orderId)).thenReturn(Optional.of(order));
-        when(paymentPort.cancel(orderId, BigDecimal.valueOf(23000)));
+        when(paymentPort.cancel(orderId, 1L, BigDecimal.valueOf(23000)));
 
         assertThatThrownBy(() -> orderApiService.cancelOrder(orderId, 1L))
                 .isInstanceOf(IllegalStateException.class);

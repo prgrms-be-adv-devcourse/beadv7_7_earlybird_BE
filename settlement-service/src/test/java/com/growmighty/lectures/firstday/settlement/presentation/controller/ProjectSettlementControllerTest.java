@@ -50,7 +50,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                 Money.wons(100_000),
                 Instant.parse("2026-07-15T10:00:00Z")
         ));
-        mockMvc.perform(post("/internal/v1/settlements/pg-reconciliations/runs")
+        mockMvc.perform(post("/api/v1/settlements/pg-reconciliations/runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -59,11 +59,9 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.settlementMonth").value("2026-07"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
-                .andExpect(jsonPath("$.data.confirmedOrderIds[0]").value(9_000_001_001L));
+                .andExpect(jsonPath("$.data").isEmpty());
 
-        mockMvc.perform(post("/internal/v1/settlements/pg-reconciliations/runs")
+        mockMvc.perform(post("/api/v1/settlements/pg-reconciliations/runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -71,7 +69,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data").isEmpty());
 
         assertThat(orderPaymentFactRepository.findById(9_000_001_001L).orElseThrow().reconciliationStatus())
                 .isEqualTo(OrderPaymentFact.ReconciliationStatus.CONFIRMED);
@@ -83,7 +81,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
     @Test
     @DisplayName("PG 대사 수동 실행 요청에 대상 월이 없으면 거부한다")
     void rejectsPgReconciliationRunWithoutSettlementMonth() throws Exception {
-        mockMvc.perform(post("/internal/v1/settlements/pg-reconciliations/runs")
+        mockMvc.perform(post("/api/v1/settlements/pg-reconciliations/runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -94,7 +92,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
     @Test
     @DisplayName("프로젝트 지급 수동 실행 API는 PG 대사 API와 별도 경로로 실행한다")
     void runsProjectPayoutManuallyAtSeparatePath() throws Exception {
-        mockMvc.perform(post("/internal/v1/settlements/project-payouts/runs")
+        mockMvc.perform(post("/api/v1/settlements/project-payouts/runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -103,8 +101,7 @@ class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.payoutMonth").value("2026-08"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data").isEmpty());
     }
 
 }

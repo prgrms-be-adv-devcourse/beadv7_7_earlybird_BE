@@ -11,12 +11,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
 @Service
 public class OrderSagaRecoveryService {
+
+    private static final int RECOVERY_BATCH_SIZE = 100;
+    private static final int RECOVERY_AGE_THRESHOLD_MINUTES = 2;
 
     private final OrderRepository orderRepository;
     private final PaymentPort paymentPort;
@@ -25,13 +29,17 @@ public class OrderSagaRecoveryService {
     private final OrderPaymentResultHandler paymentResultHandler;
     private final OrderPaidCompletionService paidCompletionService;
     private final OrderStockFailureCompletionService stockFailureCompletionService;
+    private final OrderCancellationPersistenceService cancellationPersistenceService;
+    private final OrderCancellationCompletionService cancellationCompletionService;
 
     @Autowired
     public OrderSagaRecoveryService(OrderRepository orderRepository, PaymentPort paymentPort,
                                     OrderRemoteCallExecutor remoteCalls, OrderStockHandler stockHandler,
                                     OrderPaymentResultHandler paymentResultHandler,
                                     OrderPaidCompletionService paidCompletionService,
-                                    OrderStockFailureCompletionService stockFailureCompletionService) {
+                                    OrderStockFailureCompletionService stockFailureCompletionService,
+                                    OrderCancellationPersistenceService cancellationPersistenceService,
+                                    OrderCancellationCompletionService cancellationCompletionService) {
         this.orderRepository = orderRepository;
         this.paymentPort = paymentPort;
         this.remoteCalls = remoteCalls;
@@ -39,6 +47,8 @@ public class OrderSagaRecoveryService {
         this.paymentResultHandler = paymentResultHandler;
         this.paidCompletionService = paidCompletionService;
         this.stockFailureCompletionService = stockFailureCompletionService;
+        this.cancellationPersistenceService = cancellationPersistenceService;
+        this.cancellationCompletionService = cancellationCompletionService;
     }
 
     OrderSagaRecoveryService(OrderRepository orderRepository, PaymentPort paymentPort,
@@ -51,12 +61,17 @@ public class OrderSagaRecoveryService {
         this.paymentResultHandler = paymentResultHandler;
         this.paidCompletionService = null;
         this.stockFailureCompletionService = null;
+        this.cancellationPersistenceService =
+                new OrderCancellationPersistenceService(orderRepository, null, stockHandler);
+        this.cancellationCompletionService = null;
     }
 
     public void recoverPendingOrders() {
         List<OrderStatus> statuses = List.of(OrderStatus.STOCK_PENDING, OrderStatus.PAYMENT_PENDING,
-                OrderStatus.STOCK_COMPENSATION_PENDING, OrderStatus.PAYMENT_COMPENSATION_PENDING);
-        for (Order order : orderRepository.findByStatusIn(statuses)) {
+                OrderStatus.STOCK_COMPENSATION_PENDING, OrderStatus.PAYMENT_COMPENSATION_PENDING,
+                OrderStatus.CANCEL_COMPENSATION_PENDING);
+        LocalDateTime updatedBefore = LocalDateTime.now().minusMinutes(RECOVERY_AGE_THRESHOLD_MINUTES);
+        for (Order order : orderRepository.findRecoveryCandidates(statuses, updatedBefore, RECOVERY_BATCH_SIZE)) {
             try {
                 recoverPendingOrder(order);
             } catch (OptimisticLockingFailureException conflict) {
@@ -82,8 +97,20 @@ public class OrderSagaRecoveryService {
                 order.markPaymentFailed();
                 orderRepository.save(order);
             }
+            case CANCEL_COMPENSATION_PENDING -> recoverCancellationCompensation(order);
             default -> { }
         }
+    }
+
+    private void recoverCancellationCompensation(Order order) {
+        Order recoveredOrder = cancellationPersistenceService.recoverCancellationCompensation(order.getId());
+        if (recoveredOrder.isCancellationCompensationPending()) {
+            return;
+        }
+        if (cancellationCompletionService != null) {
+            cancellationCompletionService.complete(recoveredOrder);
+        }
+        log.info("order cancellation compensation recovered. orderId={}", recoveredOrder.getId());
     }
 
     private void recoverStock(Order order) {
@@ -124,7 +151,8 @@ public class OrderSagaRecoveryService {
             }
             return;
         } catch (RuntimeException failure) {
-            if (remoteCalls.isTechnical(failure)) {
+            if (remoteCalls.classifyPaymentFailure(failure)
+                    == OrderRemoteCallExecutor.PaymentFailureOutcome.AMBIGUOUS) {
                 paymentOrder.markPaymentPending();
             } else {
                 paymentResultHandler.compensatePaymentFailure(paymentOrder);

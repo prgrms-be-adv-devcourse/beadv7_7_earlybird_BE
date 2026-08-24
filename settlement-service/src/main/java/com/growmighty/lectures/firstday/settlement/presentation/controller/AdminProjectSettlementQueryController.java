@@ -2,6 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import com.growmighty.lectures.firstday.settlement.application.query.AdminProjectSettlementQueryService;
+import com.growmighty.lectures.firstday.settlement.application.query.AdminSettlementSort;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectSettlementDetailResponse;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectSettlementListItemResponse;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectRefundDetailResponse;
@@ -10,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -20,8 +22,10 @@ public class AdminProjectSettlementQueryController {
     private final AdminProjectSettlementQueryService queryService;
 
     @GetMapping
-    public List<AdminProjectSettlementListItemResponse> findAll() {
-        return queryService.findAll().stream()
+    public List<AdminProjectSettlementListItemResponse> findAll(
+            @RequestParam(defaultValue = "PUBLISHED_AT") AdminSettlementSort sort
+    ) {
+        return queryService.findAll(sort).stream()
                 .map(AdminProjectSettlementListItemResponse::from)
                 .toList();
     }
@@ -31,8 +35,8 @@ public class AdminProjectSettlementQueryController {
         return AdminProjectSettlementDetailResponse.from(queryService.findDetail(settlementId));
     }
 
-    @GetMapping("/refunds/{projectId}")
-    public AdminProjectRefundDetailResponse findRefundDetail(@PathVariable Long projectId) {
-        return AdminProjectRefundDetailResponse.from(queryService.findRefundDetail(projectId));
+    @GetMapping("/refunds/{refundRequestId}")
+    public AdminProjectRefundDetailResponse findRefundDetail(@PathVariable String refundRequestId) {
+        return AdminProjectRefundDetailResponse.from(queryService.findRefundDetail(refundRequestId));
     }
 }

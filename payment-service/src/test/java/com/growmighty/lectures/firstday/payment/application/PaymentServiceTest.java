@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -20,15 +21,18 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
 
 class PaymentServiceTest {
 
     private static final Long ORDER_ID = 1L;
+    private static final Long USER_ID = 10L;
     private static final BigDecimal AMOUNT = BigDecimal.valueOf(10_000);
 
     private InMemoryPaymentRepository paymentRepository;
     private InMemoryPaymentStatusOutboxRepository paymentStatusOutboxRepository;
     private RecordingPaymentGateway paymentGateway;
+    private PaymentPreparationService paymentPreparationService;
     private PaymentService paymentService;
 
     @BeforeEach
@@ -40,19 +44,21 @@ class PaymentServiceTest {
         PaymentConfirmationService paymentConfirmationService = new PaymentConfirmationService( // <-- SAGA 상태 전이 의존성 구성
             paymentRepository,
             paymentStatusOutboxRepository,
-            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10)),
+            new PaymentRecoveryProperties(Duration.ofMinutes(3), 100, Duration.ofMinutes(10), Duration.ofMinutes(30)),
             applicationEventPublisher // <-- 즉시 발행 리스너는 단위 테스트에서 미구성
         );
+        paymentPreparationService = new PaymentPreparationService(paymentRepository);
         paymentService = new PaymentService(
             paymentRepository,
-            new PaymentApprovalSagaOrchestrator(paymentConfirmationService, paymentGateway) // <-- 승인 SAGA 주입
+            new PaymentApprovalSagaOrchestrator(paymentConfirmationService, paymentGateway), // <-- 승인 SAGA 주입
+            paymentPreparationService
         );
     }
 
     @Test
     @DisplayName("prepare는 서버가 전달받은 주문 정보를 READY 결제로 저장하고 PG 주문번호를 생성한다")
     void prepare_savesReadyPayment() {
-        PaymentPreparationInfo result = paymentService.prepare(ORDER_ID, AMOUNT);
+        PaymentPreparationInfo result = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
 
         Payment saved = paymentRepository.findByOrderId(ORDER_ID).orElseThrow();
 
@@ -66,9 +72,9 @@ class PaymentServiceTest {
     @Test
     @DisplayName("동일한 주문 정보로 prepare를 재요청하면 기존 READY 결제를 반환한다")
     void prepare_withSameRequest_returnsExistingPayment() {
-        PaymentPreparationInfo first = paymentService.prepare(ORDER_ID, AMOUNT);
+        PaymentPreparationInfo first = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
 
-        PaymentPreparationInfo result = paymentService.prepare(ORDER_ID, AMOUNT);
+        PaymentPreparationInfo result = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
 
         assertThat(result.status()).isEqualTo(PaymentStatus.READY);
         assertThat(result.paymentId()).isEqualTo(first.paymentId());
@@ -77,32 +83,70 @@ class PaymentServiceTest {
     }
 
     @Test
+    @DisplayName("동일 주문 생성의 유니크 충돌 시 기존 READY 결제를 반환한다")
+    void prepare_whenDuplicateKeyViolation_returnsExistingPayment() {
+        PaymentPreparationService preparationService = mock(PaymentPreparationService.class);
+        PaymentService service = new PaymentService(
+            paymentRepository,
+            mock(PaymentApprovalSagaOrchestrator.class),
+            preparationService
+        );
+        PaymentPreparationInfo existingPayment = new PaymentPreparationInfo(
+            1L,
+            "order-1-existing",
+            AMOUNT,
+            PaymentStatus.READY
+        );
+        doThrow(new DataIntegrityViolationException("Duplicate entry"))
+            .when(preparationService)
+            .prepare(USER_ID, ORDER_ID, AMOUNT);
+        when(preparationService.getExistingPayment(USER_ID, ORDER_ID, AMOUNT))
+            .thenReturn(existingPayment);
+
+        PaymentPreparationInfo result = service.prepare(USER_ID, ORDER_ID, AMOUNT);
+
+        assertThat(result).isEqualTo(existingPayment);
+        verify(preparationService).prepare(USER_ID, ORDER_ID, AMOUNT);
+        verify(preparationService).getExistingPayment(USER_ID, ORDER_ID, AMOUNT);
+    }
+
+    @Test
     @DisplayName("같은 주문에 다른 금액으로 prepare를 재요청하면 실패한다")
     void prepare_withDifferentAmount_throws() {
-        paymentService.prepare(ORDER_ID, AMOUNT);
+        paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
 
-        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, BigDecimal.valueOf(9_999)))
+        assertThatThrownBy(() -> paymentService.prepare(USER_ID, ORDER_ID, BigDecimal.valueOf(9_999)))
             .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("다른 사용자는 기존 주문의 prepare를 재요청할 수 없다")
+    void prepare_withDifferentUser_throws() {
+        paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
+
+        assertThatThrownBy(() -> paymentService.prepare(999L, ORDER_ID, AMOUNT))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("주문 소유자가 일치하지 않습니다.");
     }
 
     @Test
     @DisplayName("CONFIRMING 결제는 prepare를 재요청할 수 없다")
     void prepare_whenConfirming_throws() {
-        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
         Payment payment = paymentRepository.findById(prepared.paymentId()).orElseThrow();
         payment.startConfirming("payment-key-1");
 
-        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+        assertThatThrownBy(() -> paymentService.prepare(USER_ID, ORDER_ID, AMOUNT))
             .isInstanceOf(PaymentConfirmationInProgressException.class);
     }
 
     @Test
     @DisplayName("PAID 결제는 prepare를 재요청할 수 없다")
     void prepare_whenPaid_throws() {
-        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
-        paymentService.confirm("payment-key-1", prepared.pgOrderId(), AMOUNT);
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
+        paymentService.confirm(USER_ID, "payment-key-1", prepared.pgOrderId(), AMOUNT);
 
-        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+        assertThatThrownBy(() -> paymentService.prepare(USER_ID, ORDER_ID, AMOUNT))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("이미 결제가 완료된 주문입니다.");
     }
@@ -110,12 +154,12 @@ class PaymentServiceTest {
     @Test
     @DisplayName("FAILED 결제는 재결제 처리 전까지 prepare를 재요청할 수 없다")
     void prepare_whenFailed_throws() {
-        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
         Payment payment = paymentRepository.findById(prepared.paymentId()).orElseThrow();
         payment.startConfirming("payment-key-1");
         payment.fail();
 
-        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+        assertThatThrownBy(() -> paymentService.prepare(USER_ID, ORDER_ID, AMOUNT))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("재결제 처리가 필요합니다.");
     }
@@ -123,12 +167,12 @@ class PaymentServiceTest {
     @Test
     @DisplayName("CANCELLED 결제는 prepare를 재요청할 수 없다")
     void prepare_whenCancelled_throws() {
-        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
-        paymentService.confirm("payment-key-1", prepared.pgOrderId(), AMOUNT);
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
+        paymentService.confirm(USER_ID, "payment-key-1", prepared.pgOrderId(), AMOUNT);
         Payment payment = paymentRepository.findById(prepared.paymentId()).orElseThrow();
         payment.cancel();
 
-        assertThatThrownBy(() -> paymentService.prepare(ORDER_ID, AMOUNT))
+        assertThatThrownBy(() -> paymentService.prepare(USER_ID, ORDER_ID, AMOUNT))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("취소된 결제입니다.");
     }
@@ -136,9 +180,9 @@ class PaymentServiceTest {
     @Test
     @DisplayName("confirm은 prepare에 저장된 금액과 멱등키로 승인하고 PAID 처리한다")
     void confirm_approvesUsingPreparedPayment() {
-        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
 
-        PaymentInfo result = paymentService.confirm("payment-key-1", prepared.pgOrderId(), AMOUNT);
+        PaymentInfo result = paymentService.confirm(USER_ID, "payment-key-1", prepared.pgOrderId(), AMOUNT);
         Payment saved = paymentRepository.findByPgOrderId(prepared.pgOrderId()).orElseThrow();
 
         assertThat(result.status()).isEqualTo(PaymentStatus.PAID);
@@ -154,7 +198,7 @@ class PaymentServiceTest {
     @Test
     @DisplayName("PG 승인 응답 paymentKey가 요청 paymentKey와 다르면 결제를 완료하지 않는다")
     void confirm_withDifferentResponsePaymentKey_throws() {
-        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
         paymentGateway.approvalToReturn = new PaymentGateway.PgApproval(
             "different-payment-key",
             prepared.pgOrderId(),
@@ -162,7 +206,7 @@ class PaymentServiceTest {
         );
 
         assertThatThrownBy(() -> paymentService.confirm(
-            "payment-key-1", prepared.pgOrderId(), AMOUNT
+            USER_ID, "payment-key-1", prepared.pgOrderId(), AMOUNT
         )).isInstanceOf(IllegalStateException.class)
             .hasMessage("PG paymentKey가 일치하지 않습니다.");
 
@@ -175,11 +219,11 @@ class PaymentServiceTest {
     @Test
     @DisplayName("이미 PAID인 결제를 다시 confirm하면 PG를 다시 호출하지 않는다")
     void confirm_whenAlreadyPaid_doesNotCallGatewayAgain() {
-        PaymentPreparationInfo prepared = paymentService.prepare(ORDER_ID, AMOUNT);
-        paymentService.confirm("payment-key-1", prepared.pgOrderId(), AMOUNT);
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
+        paymentService.confirm(USER_ID, "payment-key-1", prepared.pgOrderId(), AMOUNT);
 
         assertThatThrownBy(() -> paymentService.confirm(
-            "payment-key-1", prepared.pgOrderId(), AMOUNT
+            USER_ID, "payment-key-1", prepared.pgOrderId(), AMOUNT
         )).isInstanceOf(IllegalStateException.class);
 
         assertThat(paymentGateway.approvalCalls).isEqualTo(1);
@@ -189,8 +233,31 @@ class PaymentServiceTest {
     @DisplayName("prepare되지 않은 pgOrderId로 confirm하면 실패한다")
     void confirm_withoutPreparedPayment_throws() {
         assertThatThrownBy(() -> paymentService.confirm(
-            "payment-key-1", "unknown-order", AMOUNT
+            USER_ID, "payment-key-1", "unknown-order", AMOUNT
         )).isInstanceOf(EntityNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("다른 사용자는 결제를 승인할 수 없다")
+    void confirm_withDifferentUser_throws() {
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
+
+        assertThatThrownBy(() -> paymentService.confirm(
+            999L, "payment-key-1", prepared.pgOrderId(), AMOUNT
+        )).isInstanceOf(IllegalStateException.class)
+            .hasMessage("결제 소유자가 일치하지 않습니다.");
+
+        assertThat(paymentGateway.approvalCalls).isZero();
+    }
+
+    @Test
+    @DisplayName("다른 사용자는 결제 단건 조회를 할 수 없다")
+    void getPayment_withDifferentUser_throws() {
+        PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
+
+        assertThatThrownBy(() -> paymentService.getPayment(prepared.paymentId(), 999L))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("결제 소유자가 일치하지 않습니다.");
     }
 
     private static final class RecordingPaymentGateway implements PaymentGateway {
@@ -313,6 +380,18 @@ class PaymentServiceTest {
                 .filter(Payment::isConfirming)
                 .filter(payment -> payment.getConfirmingAt().isBefore(cutoff))
                 .sorted(Comparator.comparing(Payment::getConfirmingAt))
+                .limit(limit)
+                .map(Payment::getPaymentId)
+                .toList();
+        }
+
+        @Override
+        public List<Long> findReadyPaymentIdsBefore(LocalDateTime cutoff, int limit) {
+            return paymentsById.values().stream()
+                .filter(Payment::isReady)
+                .filter(payment -> payment.getCreatedAt() != null)
+                .filter(payment -> payment.getCreatedAt().isBefore(cutoff))
+                .sorted(Comparator.comparing(Payment::getCreatedAt))
                 .limit(limit)
                 .map(Payment::getPaymentId)
                 .toList();

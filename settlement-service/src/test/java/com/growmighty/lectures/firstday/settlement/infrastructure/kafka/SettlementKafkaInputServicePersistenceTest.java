@@ -62,7 +62,7 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
                 "ProjectStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-07-31T18:00:00+09:00"),
-                101L, 9L, "SUCCEEDED"
+                101L, "프로젝트 101", 9L, "SUCCEEDED"
         ));
         inputService.saveProjectStatus(new SettlementKafkaInput.ProjectStatusChanged(
                 "101",
@@ -70,7 +70,7 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
                 "ProjectStatusChanged",
                 1,
                 OffsetDateTime.parse("2026-07-31T18:00:00+09:00"),
-                101L, 9L, "SUCCEEDED"
+                101L, "프로젝트 101", 9L, "SUCCEEDED"
         ));
 
         inputService.saveOrderPaymentStatus(new SettlementKafkaInput.OrderPaymentStatusChanged(
@@ -94,6 +94,7 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
         OrderPaymentFact payment = paymentRepository.findById(1001L).orElseThrow();
 
         assertThat(inboxRepository.count()).isEqualTo(3);
+        assertThat(outcome.projectName()).isEqualTo("프로젝트 101");
         assertThat(outcome.outcome()).isEqualTo(ProjectOutcomeFact.Outcome.SUCCEEDED);
         assertThat(payment.status()).isEqualTo(OrderPaymentFact.Status.CANCELLED);
         assertThat(payment.paymentAmount().amount()).isEqualByComparingTo("50000");
@@ -210,7 +211,7 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
         Instant occurredAt = Instant.parse("2026-08-01T00:00:00Z");
         return ProjectRefundRequested.request(
                 refundRequestId,
-                ProjectOutcomeFact.of(projectId, 9L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
+                ProjectOutcomeFact.of(projectId, "프로젝트 " + projectId, 9L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
                 orderIds.stream().map(orderId -> OrderPaymentFact.completed(
                         orderId,
                         "PG-" + orderId,

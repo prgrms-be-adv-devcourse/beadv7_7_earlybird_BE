@@ -66,6 +66,12 @@ public class SecurityConfig {
                         //// PG사가 직접 호출
                         .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/payments/webhook").permitAll()
 
+                        // chat
+                        //// 챗봇 - 로그인/비로그인 사용자 모두 호출 가능 (optional-auth). 로그인 시에는
+                        //// UserHeaderForwardingFilter 가 X-User-Id/X-User-Role 을 실어 보내고, 비로그인
+                        //// 시에는 헤더 없이 통과 - 구분은 chat-service 쪽에서 anonId 로 처리한다.
+                        .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/chat/**").permitAll()
+
                         // projects
                         .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/projects/me").hasRole(CREATOR.getCode())
                         .pathMatchers(HttpMethod.GET,
@@ -119,6 +125,9 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET,
                                 URI_PREFIX_API + "/settlements",
                                 URI_PREFIX_API + "/settlements/*").hasRole(CREATOR.getCode())
+                        .pathMatchers(HttpMethod.POST,
+                                URI_PREFIX_API + "/settlements/pg-reconciliations/runs",
+                                URI_PREFIX_API + "/settlements/project-payouts/runs").hasRole(ADMIN.getCode())
                         .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/settlements/close").hasRole(ADMIN.getCode())
 
                         // reports

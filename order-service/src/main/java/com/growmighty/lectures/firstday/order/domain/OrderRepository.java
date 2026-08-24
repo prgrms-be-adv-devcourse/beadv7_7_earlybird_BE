@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.order.domain;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,7 +31,12 @@ public interface OrderRepository {
 
     List<Order> findByStatusIn(List<OrderStatus> statuses);
 
-    List<Order> findByProjectIdsAndStatusIn(List<Long> projectIds, List<OrderStatus> statuses);
+    List<Order> findRecoveryCandidates(List<OrderStatus> statuses, LocalDateTime updatedBefore, int batchSize);
+
+    List<Order> findByProjectYearAndMonthAndStatusIn(
+        int projectYear,
+        int projectMonth,
+        List<OrderStatus> statuses);
 
     /** 페이지 단위 조회 (정산 데모에서 "조금씩 읽기"에 사용) */
     List<Order> findPage(int page, int size);
