@@ -68,11 +68,11 @@ class CreatorApplicationControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/users/creator-applications 는 ADMIN 이 아니면 400 을 반환한다")
-    void findAll_withNonAdminRole_returns400() throws Exception {
+    @DisplayName("GET /api/v1/users/creator-applications 는 ADMIN 이 아니면 403 을 반환한다")
+    void findAll_withNonAdminRole_returns403() throws Exception {
         mockMvc.perform(get("/api/v1/users/creator-applications")
                         .header(JwtHeaders.USER_ROLE, "BACKER"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false));
     }
 
@@ -100,11 +100,11 @@ class CreatorApplicationControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/users/creator-applications/{id}/approve 는 ADMIN 이 아니면 400 을 반환한다")
-    void approve_withNonAdminRole_returns400() throws Exception {
+    @DisplayName("POST /api/v1/users/creator-applications/{id}/approve 는 ADMIN 이 아니면 403 을 반환한다")
+    void approve_withNonAdminRole_returns403() throws Exception {
         mockMvc.perform(post("/api/v1/users/creator-applications/10/approve")
                         .header(JwtHeaders.USER_ROLE, "CREATOR"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false));
     }
 

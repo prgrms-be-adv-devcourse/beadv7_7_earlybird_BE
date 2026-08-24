@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.user.presentation;
 
 import com.growmighty.lectures.firstday.common.entity.UserRole;
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.user.application.CreatorApplicationService;
 import com.growmighty.lectures.firstday.user.domain.CreatorApplicationStatus;
@@ -9,6 +10,7 @@ import com.growmighty.lectures.firstday.user.presentation.dto.CreatorApplication
 import com.growmighty.lectures.firstday.user.presentation.dto.RejectCreatorApplicationRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -68,7 +70,7 @@ public class CreatorApplicationController {
 
     private void requireAdmin(UserRole requesterRole) {
         if (requesterRole != UserRole.ADMIN) {
-            throw new IllegalArgumentException("관리자만 접근할 수 있습니다.");
+            throw new BusinessException(HttpStatus.FORBIDDEN, "관리자만 접근할 수 있습니다.");
         }
     }
 }
