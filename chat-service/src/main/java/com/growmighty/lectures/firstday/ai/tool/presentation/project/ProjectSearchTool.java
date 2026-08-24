@@ -1,15 +1,13 @@
 package com.growmighty.lectures.firstday.ai.tool.presentation.project;
 
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectSearchPort;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchOutcome;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -18,7 +16,7 @@ public class ProjectSearchTool {
     private final ProjectSearchPort projectSearchPort;
 
     @Tool(name = "search_projects", description = "프로젝트를 키워드/카테고리/상태로 검색한다. 사용자가 특정 프로젝트를 찾거나 추천을 요청할 때 사용.")
-    public List<ProjectSearchResult> searchProjects(
+    public ProjectSearchOutcome searchProjects(
         @ToolParam(description = "검색 키워드(자연어 그대로 넘겨도 됨, 서버가 하이브리드 검색 처리)")
         String keyword,
         @ToolParam(description = "카테고리 ID. 사용자가 카테고리 이름만 언급했다면(ID를 모르면) " +
