@@ -15,6 +15,7 @@ public record ProjectDetailResult(
     LocalDateTime startAt,
     LocalDate endAt,
     String status,
-    boolean closed
+    boolean closed,
+    String thumbnailUrl
 ) {
 }

@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.ai.tool.presentation.project;
 
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectDetailPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectDetailResult;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
@@ -26,7 +27,19 @@ public class ProjectDetailTool {
         ToolInvocationRecorder recorder =
             (ToolInvocationRecorder) toolContext.getContext().get(ToolInvocationRecorder.TOOL_CONTEXT_KEY);
         recorder.recordToolUsed("get_project_detail");
-        return projectDetailPort.findById(projectId);
+        ProjectDetailResult detail = projectDetailPort.findById(projectId);
+        recorder.recordProjectDetail(new ProjectSearchResult(
+            detail.projectId(),
+            detail.title(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            detail.thumbnailUrl()
+        ));
+        return detail;
     }
 
 }

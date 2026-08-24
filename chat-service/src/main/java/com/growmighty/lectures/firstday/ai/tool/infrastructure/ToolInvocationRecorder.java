@@ -23,6 +23,7 @@ public class ToolInvocationRecorder {
 
     private final Set<String> toolsUsed = new LinkedHashSet<>();
     private final List<ProjectSearchResult> projects = new ArrayList<>();
+    private final List<ProjectSearchResult> detailProjects = new ArrayList<>();
     private final List<PolicyChunkResult> policyReferences = new ArrayList<>();
     private final SseEmitter emitter;
     private final AtomicInteger toolSequence = new AtomicInteger(0);
@@ -56,8 +57,12 @@ public class ToolInvocationRecorder {
         projects.addAll(results);
     }
 
+    public void recordProjectDetail(ProjectSearchResult results) {
+        detailProjects.add(results);
+    }
+
     public List<ProjectSearchResult> projects() {
-        return List.copyOf(projects);
+        return detailProjects.isEmpty() ? List.copyOf(projects) : List.copyOf(detailProjects);
     }
 
     public void recordPolicyReferences(List<PolicyChunkResult> references) {
