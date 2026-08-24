@@ -1,0 +1,144 @@
+### 546-unorderable-reward-removed-from-cart.http — [usecase-test] CASE-07. (Order) 주문 불가 또는 재고 부족 Reward는 Order 저장 전에 Cart에서 제거된다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/546
+
+< {% client.global.set("creatorEmail", "ord546-creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "546창작자", "phoneNumber": "010-1000-0010"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); client.global.set("creatorRefreshToken", response.body.data.refreshToken); %}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-546-000001", "accountHolder": "546창작자"}
+
+> {% client.assert(response.status === 200, "register as creator failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+###
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+###
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "546 재고부족 Cart 정리 검증", "categoryId": {{categoryId}}, "summary": "CASE-07", "description": "546.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectId", response.body.data.projectId); %}
+
+### 리워드 재고를 2로 등록 (이후 admin이 quantity를 1로 줄여 Cart 수량(2)보다 부족하게 만든다)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 101", "description": "-", "price": 10000, "totalQuantity": 2}
+
+> {% client.global.set("rewardId", response.body.data.rewardId); %}
+
+### 관리자 승인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
+
+### 후원자 준비
+< {% client.global.set("backerEmail", "ord546-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "546후원자", "phoneNumber": "010-1000-0011"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+### Cart에 수량 2 담기 (이 시점엔 재고 2로 충분)
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 2}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### 관리자가 재고를 1로 감소 (Cart 수량 2보다 부족하게 만든다) — decreaseQuantity는 "이미 판매된 수량 밑으로는 불가"이므로
+### 아직 주문 전인 이 시점엔 감소가 허용된다.
+PATCH {{baseUrl}}/api/v1/rewards/{{rewardId}}/quantity
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{"amount": 1}
+
+> {% client.assert(response.status === 200, "decrease quantity failed: " + response.body); %}
+
+### Cart와 일치하는(수량 2) 주문 요청 — 재고가 1뿐이라 재검증에서 실패해야 한다
+< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardId}}, "quantity": 2, "expectedUnitPrice": 10000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 20000, "expectedTotalAmount": 23000,
+  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+}
+
+> {%
+    client.test("재고 부족 Reward -> 409, Order 미생성", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}
+
+### Cart에서 해당 리워드가 자동 제거되었는지 확인
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{backerAccessToken}}
+
+> {%
+    client.test("재고 부족 Reward가 Cart에서 자동 제거됨", function() {
+        client.assert(response.body.data.itemCount === 0, "reward should have been removed from cart: " + JSON.stringify(response.body.data));
+    });
+%}

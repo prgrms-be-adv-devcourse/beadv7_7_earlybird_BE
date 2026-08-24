@@ -1,0 +1,156 @@
+### 628-delete-by-uploader-succeeds.http — [usecase-test] CASE-08. 업로더 본인은 파일 삭제 가능 (#628)
+###
+### 파일을 업로드한 본인이 삭제를 요청하면 정상적으로 삭제되고, 이후 owner 조회 목록에서
+### 제외되는지 확인한다.
+
+### 1. CREATOR1(업로더) 회원가입
+< {%
+    client.global.set("file628Email", "file628-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file628Email}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR1",
+  "phoneNumber": "010-2000-0010"
+}
+
+> {%
+    client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file628Email}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file628AccessToken", response.body.data.accessToken);
+    client.global.set("file628RefreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{file628AccessToken}}
+Content-Type: application/json
+
+{
+  "bankCode": "88",
+  "accountNumber": "110-000-000100",
+  "accountHolder": "파일테스트CREATOR1"
+}
+
+> {%
+    client.test("창작자 전환 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{file628RefreshToken}}"
+}
+
+> {%
+    client.test("토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file628AccessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{file628AccessToken}}
+
+> {%
+    client.test("카테고리 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("file628CategoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{file628AccessToken}}
+Content-Type: application/json
+
+{
+  "title": "파일테스트 프로젝트 628",
+  "categoryId": {{file628CategoryId}},
+  "summary": "file-service CASE-08 검증용",
+  "description": "628-delete-by-uploader-succeeds.http 로 생성",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file628ProjectId", response.body.data.projectId);
+%}
+
+### 7. presign 발급
+POST {{baseUrl}}/api/v1/files/presigned-upload
+Authorization: Bearer {{file628AccessToken}}
+Content-Type: application/json
+
+{
+  "contentType": "image/png",
+  "originalName": "thumbnail.png"
+}
+
+> {%
+    client.test("presign 발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file628StoredUrl", response.body.data.storedUrl);
+%}
+
+### 8. 파일 등록
+POST {{baseUrl}}/api/v1/files
+Authorization: Bearer {{file628AccessToken}}
+Content-Type: application/json
+
+{
+  "ownerType": "PROJECT",
+  "ownerId": {{file628ProjectId}},
+  "storedUrl": "{{file628StoredUrl}}",
+  "originalName": "thumbnail.png",
+  "contentType": "image/png",
+  "fileSize": 102400,
+  "sortOrder": 0
+}
+
+> {%
+    client.test("파일 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file628FileId", response.body.data.id);
+%}
+
+### 9. 업로더 본인이 삭제 — 200 기대
+DELETE {{baseUrl}}/api/v1/files/{{file628FileId}}
+Authorization: Bearer {{file628AccessToken}}
+
+> {%
+    client.test("삭제 성공(200)", function() {
+        client.assert(response.status === 200, "delete failed: " + response.status + " " + response.body);
+    });
+%}
+
+### 10. owner 기준 재조회 — 삭제된 파일이 목록에서 제외되는지 확인
+GET {{baseUrl}}/api/v1/files?ownerType=PROJECT&ownerId={{file628ProjectId}}
+
+> {%
+    client.test("재조회 목록에서 삭제된 파일 제외됨", function() {
+        client.assert(response.status === 200, response.body);
+        const found = response.body.data.find(f => String(f.id) === String(client.global.get("file628FileId")));
+        client.assert(!found, "deleted file still present in owner list");
+    });
+%}

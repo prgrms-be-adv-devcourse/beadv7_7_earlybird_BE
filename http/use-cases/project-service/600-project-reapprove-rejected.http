@@ -1,0 +1,109 @@
+### 600-project-reapprove-rejected.http — issue #600
+### CASE-05. (Project) 이미 승인된 프로젝트를 다시 승인하면 거부된다
+
+### 1~4. 창작자 계정 준비
+< {% client.global.set("creatorEmail", "usecase600-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "프로젝트600테스트", "phoneNumber": "010-1111-3333" }
+
+> {% client.test("회원가입 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!" }
+
+> {%
+    client.test("로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "bankCode": "88", "accountNumber": "110-123-456789", "accountHolder": "프로젝트600테스트" }
+
+> {% client.test("창작자 전환 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
+> {%
+    client.test("토큰 재발급 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 확보 + 6. 프로젝트 B 등록
+GET {{baseUrl}}/api/v1/project-categories
+
+> {%
+    client.assert(response.body.data.length > 0, "no categories found");
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+###
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "usecase600 프로젝트",
+  "categoryId": {{categoryId}},
+  "summary": "issue #600 검증용",
+  "description": "issue #600",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 B 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("projectBId", response.body.data.projectId);
+%}
+
+### 7. 관리자 로그인 + 8. 1차 승인 (IN_PROGRESS로 전이)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{ "email": "admin@earlybird.co.kr", "password": "rawPassword3!" }
+
+> {%
+    client.test("관리자 로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectBId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("1차 승인 성공(IN_PROGRESS)", function () {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.status === "IN_PROGRESS", response.body.data.status);
+    });
+%}
+
+### 9. IN_PROGRESS 상태에서 재승인 시도 -> 409
+POST {{baseUrl}}/api/v1/projects/{{projectBId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("재승인 -> 409 (심사 대기 상태 아님)", function () {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}

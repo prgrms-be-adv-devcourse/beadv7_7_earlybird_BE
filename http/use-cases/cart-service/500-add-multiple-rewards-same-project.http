@@ -1,0 +1,98 @@
+### 500-add-multiple-rewards-same-project.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/500
+### CASE-03. 한 Project의 여러 Reward를 한 번에 추가한다
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+### 전제: 대상 프로젝트에 리워드가 2개 이상 있어야 한다 (ProjectDataInitializer 시드는 프로젝트당 2~3개를 만든다).
+
+### 1. 회원가입
+< {%
+    client.global.set("userEmail", "cart500-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "카트500",
+  "phoneNumber": "010-1111-0003"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. 리워드가 2개 이상인 IN_PROGRESS 프로젝트 탐색
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 1건 이상", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.length > 0, "no IN_PROGRESS projects");
+    });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 리워드 목록 조회 (2개 이상 필요 — 부족하면 다른 projectId로 3번부터 다시 실행)
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("리워드 2개 이상 조회", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.length >= 2, "need at least 2 rewards on this project, got " + response.body.data.length);
+    });
+    client.global.set("rewardId1", response.body.data[0].rewardId);
+    client.global.set("rewardId2", response.body.data[1].rewardId);
+%}
+
+### 5. 두 리워드를 한 번에 POST로 추가
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "projectId": {{projectId}},
+  "items": [
+    {"rewardId": {{rewardId1}}, "quantity": 1},
+    {"rewardId": {{rewardId2}}, "quantity": 3}
+  ]
+}
+
+> {%
+    client.test("두 리워드 모두 추가됨(itemCount=2)", function() {
+        client.assert(response.status === 200, "add to cart failed: " + response.body);
+        client.assert(response.body.data.itemCount === 2, "itemCount should be 2, got " + response.body.data.itemCount);
+        const rewards = response.body.data.projects[0].rewards;
+        const r1 = rewards.find(r => String(r.rewardId) === String(client.global.get("rewardId1")));
+        const r2 = rewards.find(r => String(r.rewardId) === String(client.global.get("rewardId2")));
+        client.assert(r1 && r1.quantity === 1, "reward1 quantity should be 1");
+        client.assert(r2 && r2.quantity === 3, "reward2 quantity should be 3");
+    });
+%}
+
+### 6. GET으로 재확인
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("GET 조회 시에도 두 리워드 모두 존재", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.itemCount === 2, "itemCount should be 2");
+    });
+%}

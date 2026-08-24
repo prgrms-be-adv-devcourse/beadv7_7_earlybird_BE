@@ -1,0 +1,165 @@
+### 520-price-subtotal-shipping-total.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/520
+### CASE-16. Cart 응답에서 가격, 소계, 배송비, 총액을 계산한다 (무료배송 기준 50000, 기본 배송비 3000)
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+### 배송비 임계값(50000)을 정확히 넘나드는 계산을 확인하기 위해 가격이 12000/26000인 전용 리워드를 만든다.
+
+### 1. 창작자 회원가입
+< {% client.global.set("creatorEmail", "cart520creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "카트520창작자", "phoneNumber": "010-1111-0016"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-520-000000", "accountHolder": "카트520창작자"}
+
+> {% client.test("창작자 전환 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 4. 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{refreshToken}}"}
+
+> {%
+    client.test("토큰 재발급 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 5. 카테고리 조회
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("카테고리 1건 이상", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+### 6. 프로젝트 등록 (Project A)
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"title": "Project A (카트520 금액계산 테스트)", "categoryId": {{categoryId}}, "summary": "가격/배송비/총액 계산 검증", "description": "520-price-subtotal-shipping-total.http 로 생성", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {%
+    client.test("프로젝트 등록 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("projectId", response.body.data.projectId);
+%}
+
+### 7. Reward A 등록 (가격 12000)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"name": "Reward A", "description": "12000원 리워드", "price": 12000, "totalQuantity": 100}
+
+> {%
+    client.test("Reward A 등록 성공, price=12000", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(Number(response.body.data.price) === 12000, "expected price 12000, got " + response.body.data.price);
+    });
+    client.global.set("rewardAId", response.body.data.rewardId);
+%}
+
+### 8. Reward B 등록 (가격 26000)
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"name": "Reward B", "description": "26000원 리워드", "price": 26000, "totalQuantity": 100}
+
+> {%
+    client.test("Reward B 등록 성공, price=26000", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(Number(response.body.data.price) === 26000, "expected price 26000, got " + response.body.data.price);
+    });
+    client.global.set("rewardBId", response.body.data.rewardId);
+%}
+
+### 9. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {%
+    client.test("관리자 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 10. 관리자 승인
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("승인 성공(IN_PROGRESS)", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.status === "IN_PROGRESS", response.body.data.status);
+    });
+%}
+
+### 11. Reward A(12000원) 2개 담기 → 소계 24000, 배송비 3000(<50000), 총액 27000
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardAId}}, "quantity": 2}]}
+
+> {%
+    client.test("소계 24000, 배송비 3000, 총액 27000 (무료배송 미달)", function() {
+        client.assert(response.status === 200, response.body);
+        const p = response.body.data.projects[0];
+        client.assert(Number(p.itemsAmount) === 24000, "expected itemsAmount 24000, got " + p.itemsAmount);
+        client.assert(Number(p.shippingFee) === 3000, "expected shippingFee 3000, got " + p.shippingFee);
+        client.assert(Number(p.totalAmount) === 27000, "expected totalAmount 27000, got " + p.totalAmount);
+        client.assert(Number(response.body.data.totalItemsAmount) === 24000, "totalItemsAmount mismatch");
+        client.assert(Number(response.body.data.totalShippingFee) === 3000, "totalShippingFee mismatch");
+        client.assert(Number(response.body.data.totalAmount) === 27000, "totalAmount mismatch");
+    });
+%}
+
+### 12. Reward B(26000원) 1개 추가 → 소계 50000(24000+26000), 무료배송(0), 총액 50000
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardBId}}, "quantity": 1}]}
+
+> {%
+    client.test("소계 50000, 무료배송(0), 총액 50000", function() {
+        client.assert(response.status === 200, response.body);
+        const p = response.body.data.projects[0];
+        client.assert(Number(p.itemsAmount) === 50000, "expected itemsAmount 50000, got " + p.itemsAmount);
+        client.assert(Number(p.shippingFee) === 0, "expected free shipping (0), got " + p.shippingFee);
+        client.assert(Number(p.totalAmount) === 50000, "expected totalAmount 50000, got " + p.totalAmount);
+        client.assert(Number(response.body.data.totalItemsAmount) === 50000, "totalItemsAmount mismatch");
+        client.assert(Number(response.body.data.totalShippingFee) === 0, "totalShippingFee mismatch");
+        client.assert(Number(response.body.data.totalAmount) === 50000, "totalAmount mismatch");
+    });
+%}

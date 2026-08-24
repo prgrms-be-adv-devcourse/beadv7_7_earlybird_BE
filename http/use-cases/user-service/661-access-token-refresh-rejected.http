@@ -1,0 +1,72 @@
+### 661-access-token-refresh-rejected.http — access token으로 /refresh 호출 시 거부
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/661
+###
+### JwtTokenProvider.parseRefreshToken 은 tokenType claim 이 refresh 가 아니면 401 을 던진다.
+### 로그인 시 발급받은 accessToken 을 refreshToken 자리에 넣으면 거부되는지, 실제 refreshToken 을
+### 넣으면 정상 재발급되는지 확인한다.
+
+### 1. 회원가입
+< {%
+    client.global.set("userEmail", "uc661-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "유스케이스661",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인 (access/refresh token 발급)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+### 3. accessToken 을 refreshToken 자리에 넣어 /refresh 호출 — 거부되어야 함
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{accessToken}}"
+}
+
+> {%
+    client.test("access token으로 refresh 시도는 401", function() {
+        client.assert(response.status === 401, "expected 401, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 4. 비교: 실제 refreshToken 으로 /refresh 호출 — 정상 재발급되어야 함
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+> {%
+    client.test("실제 refreshToken 으로는 재발급 성공", function() {
+        client.assert(response.status === 200, "refresh failed: " + response.body);
+        client.assert(!!response.body.data.accessToken, "accessToken missing");
+    });
+%}

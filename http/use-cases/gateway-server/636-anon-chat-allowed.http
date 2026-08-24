@@ -1,0 +1,21 @@
+### 636-anon-chat-allowed.http — 비로그인 챗봇 익명 처리
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/636
+###
+### POST /api/v1/chat/** 는 로그인/비로그인 모두 호출 가능한 optional-auth 경로다.
+### Authorization 헤더 없이 호출해도 게이트웨이가 401로 막지 않는지 확인한다.
+### (X-User-Id 헤더가 실제로 안 실리는지는 chat-service 로그로만 확인 가능 — 이 파일은
+### "게이트웨이가 인증을 요구하지 않는다"는 부분만 검증한다.)
+
+### 1. Authorization 헤더 없이 챗봇 메시지 전송
+POST {{baseUrl}}/api/v1/chat/messages
+Content-Type: application/json
+
+{
+  "message": "안녕하세요 (유스케이스636 익명 테스트)"
+}
+
+> {%
+    client.test("게이트웨이가 401로 막지 않음 (permitAll)", function() {
+        client.assert(response.status !== 401, "anonymous chat request was blocked by gateway auth (401) — should be permitAll");
+    });
+%}

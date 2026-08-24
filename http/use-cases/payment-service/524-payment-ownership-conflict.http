@@ -1,0 +1,132 @@
+### 524-payment-ownership-conflict.http — [usecase-test] 4. 결제 조회 시 요청자 소유권 검증 (#524)
+###
+### 결제 소유자는 조회 가능하고, 다른 사용자는 paymentId/orderId로 조회할 수 없는지 확인한다.
+### PaymentService#validateRequesterByPayment 가 불일치 시 IllegalStateException(409, "결제 소유자가
+### 일치하지 않습니다.")을 던진다(GlobalExceptionHandler가 IllegalStateException -> 409로 매핑).
+###
+### 결제 준비(prepare)는 /internal/v1/** 라 gateway에 라우트가 없다 — payment-service 포트(:8082)에
+### 직접 요청한다. 이 스텝은 로컬 전용(프로덕션에서는 8082에 외부 접근 불가) — 이 파일 전체가
+### 로컬 전용이라고 보면 된다.
+
+### 1. 사용자 A 회원가입
+< {%
+    client.global.set("payment524EmailA", "payment524-a-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{payment524EmailA}}",
+  "password": "rawPassword1!",
+  "name": "결제소유자A",
+  "phoneNumber": "010-1111-0001"
+}
+
+> {%
+    client.test("A 회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 사용자 A 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{payment524EmailA}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("A 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("payment524AccessTokenA", response.body.data.accessToken);
+    client.global.set("payment524UserIdA", response.body.data.user.id);
+%}
+
+### 3. 사용자 B 회원가입
+< {%
+    client.global.set("payment524EmailB", "payment524-b-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{payment524EmailB}}",
+  "password": "rawPassword1!",
+  "name": "다른사용자B",
+  "phoneNumber": "010-1111-0002"
+}
+
+> {%
+    client.test("B 회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 4. 사용자 B 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{payment524EmailB}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("B 로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("payment524AccessTokenB", response.body.data.accessToken);
+%}
+
+### 5. A 소유의 결제 준비 (payment-service 직접 호출, 로컬 전용)
+< {%
+    client.global.set("payment524OrderId", Date.now());
+%}
+POST http://localhost:8082/internal/v1/payments/prepare
+Content-Type: application/json
+
+{
+  "userId": {{payment524UserIdA}},
+  "orderId": {{payment524OrderId}},
+  "amount": 12000
+}
+
+> {%
+    client.test("A 소유 결제 준비 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("payment524PaymentId", response.body.data.paymentId);
+%}
+
+### 6. A 본인이 paymentId로 조회 — 200 기대
+GET {{baseUrl}}/api/v1/payments/{{payment524PaymentId}}
+Authorization: Bearer {{payment524AccessTokenA}}
+
+> {%
+    client.test("A 본인 조회 성공(200)", function() {
+        client.assert(response.status === 200, "A get by paymentId failed: " + response.body);
+    });
+%}
+
+### 7. A 본인이 orderId로 조회 — 200 기대
+GET {{baseUrl}}/api/v1/payments?orderId={{payment524OrderId}}
+Authorization: Bearer {{payment524AccessTokenA}}
+
+> {%
+    client.test("A 본인 orderId 조회 성공(200)", function() {
+        client.assert(response.status === 200, "A get by orderId failed: " + response.body);
+    });
+%}
+
+### 8. B가 A의 paymentId로 조회 시도 — 409 기대
+GET {{baseUrl}}/api/v1/payments/{{payment524PaymentId}}
+Authorization: Bearer {{payment524AccessTokenB}}
+
+> {%
+    client.test("B 조회는 409 Conflict", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 9. B가 A의 orderId로 조회 시도 — 409 기대
+GET {{baseUrl}}/api/v1/payments?orderId={{payment524OrderId}}
+Authorization: Bearer {{payment524AccessTokenB}}
+
+> {%
+    client.test("B의 orderId 조회도 409 Conflict", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}

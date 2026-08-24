@@ -1,0 +1,53 @@
+### 642-pg-reconciliation-rerun-recovery.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/642
+###
+### 같은 정산 월을 재실행할 때, 불일치가 해소된 결제가 REVIEW_REQUIRED → CONFIRMED로 복구되는지 확인한다.
+###
+### 사전 준비(이 .http로는 만들 수 없음): #567 시나리오로 REVIEW_REQUIRED가 된 결제가 있어야 하고,
+### 재실행 전에 PG fixture 금액을 주문 결제 사실과 일치하도록 바꿔둬야 한다(더미 설정 변경, 서버 재기동 필요할 수 있음).
+### 결제별 reconciliationStatus는 조회 API가 없어 이 .http로 직접 확인할 수 없다.
+###
+### 환경: 같은 폴더의 http-client.env.json (local/production)
+
+### 0. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 1. 같은 settlementMonth로 PG 대사 재실행 — #567/#641 실행 시 사용한 것과 동일한 월을 넣는다
+< {%
+    request.variables.set("settlementMonth", new Date().toISOString().slice(0, 7));
+%}
+POST {{baseUrl}}/api/v1/settlements/pg-reconciliations/runs
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "settlementMonth": "{{settlementMonth}}"
+}
+
+> {%
+    client.test("PG 대사 재실행 성공(200)", function() {
+        client.assert(response.status === 200, "pg reconciliation rerun failed: " + response.body);
+    });
+%}
+
+### 2. (간접 확인) 복구됐다면 이후 project-payouts/runs 실행 시 이 프로젝트가 정산 대상에 포함될 수 있다
+GET {{baseUrl}}/api/v1/settlements/all
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("관리자 통합 목록 조회 성공", function() {
+        client.assert(response.status === 200, "admin settlement list failed: " + response.body);
+    });
+%}

@@ -1,0 +1,74 @@
+### 502-patch-replaces-quantity.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/502
+### CASE-05. PATCH는 기존 수량에 누적하지 않고 요청 수량으로 교체한다
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "cart502-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트502", "phoneNumber": "010-1111-0006"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. 리워드 2개 이상, 재고 충분한 IN_PROGRESS 프로젝트 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 리워드 조회
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("리워드 2개 이상, 재고 충분", function() {
+        client.assert(response.status === 200 && response.body.data.length >= 2, response.body);
+        client.assert(response.body.data[0].remainingQuantity >= 5 && response.body.data[1].remainingQuantity >= 6, "insufficient seed stock");
+    });
+    client.global.set("rewardId1", response.body.data[0].rewardId);
+    client.global.set("rewardId2", response.body.data[1].rewardId);
+%}
+
+### 5. 사전 상태 준비: Reward1=5, Reward2=2
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId1}}, "quantity": 5}, {"rewardId": {{rewardId2}}, "quantity": 2}]}
+
+> {% client.test("사전 상태 준비 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 6. PATCH로 Reward1=3, Reward2=4 요청 — 8/6이 아니라 정확히 요청값으로 교체되어야 한다
+PATCH {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId1}}, "quantity": 3}, {"rewardId": {{rewardId2}}, "quantity": 4}]}
+
+> {%
+    client.test("PATCH는 누적이 아니라 교체", function() {
+        client.assert(response.status === 200, response.body);
+        const rewards = response.body.data.projects[0].rewards;
+        const r1 = rewards.find(r => String(r.rewardId) === String(client.global.get("rewardId1")));
+        const r2 = rewards.find(r => String(r.rewardId) === String(client.global.get("rewardId2")));
+        client.assert(r1.quantity === 3, "reward1 should be replaced to 3, got " + r1.quantity);
+        client.assert(r2.quantity === 4, "reward2 should be replaced to 4, got " + r2.quantity);
+        client.assert(response.body.data.itemCount === 2, "no extra rows should be created");
+    });
+%}

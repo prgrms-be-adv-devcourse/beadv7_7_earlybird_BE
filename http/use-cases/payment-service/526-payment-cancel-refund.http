@@ -1,0 +1,124 @@
+### 526-payment-cancel-refund.http — [usecase-test] 5. 주문 취소 시 Toss 환불 및 CANCELLED 상태 전이 (#526)
+###
+### order-service가 PAID 결제의 취소를 요청하면 환불을 수행하고 결제를 CANCELLED로 전이시키는지,
+### 그리고 같은 취소 요청을 한 번 더 보내도 중복 환불/중복 Outbox가 생기지 않고 409로 막히는지 확인한다.
+###
+### prepare/cancel 모두 /internal/v1/** 라 gateway에 라우트가 없다 — payment-service 포트(:8082)에
+### 직접 요청한다. 이 파일 전체가 로컬 실행 환경 전용(프로덕션에서는 8082에 외부 접근 불가).
+### payment.gateway 가 어느 프로필에도 설정돼 있지 않아(config repo 확인) local/production 모두
+### FakePaymentGateway/FakeRefundGateway로 동작 — 실제 Toss 환불 API는 호출되지 않는다.
+
+### 1. 로그인 (JWT 확보 — confirm 호출에 필요)
+< {%
+    client.global.set("payment526Email", "payment526-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{payment526Email}}",
+  "password": "rawPassword1!",
+  "name": "환불테스트",
+  "phoneNumber": "010-1111-0003"
+}
+
+> {%
+    client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{payment526Email}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("payment526AccessToken", response.body.data.accessToken);
+    client.global.set("payment526UserId", response.body.data.user.id);
+%}
+
+### 3. 결제 준비 (READY)
+< {%
+    client.global.set("payment526OrderId", Date.now());
+    client.global.set("payment526Amount", 18000);
+%}
+POST http://localhost:8082/internal/v1/payments/prepare
+Content-Type: application/json
+
+{
+  "userId": {{payment526UserId}},
+  "orderId": {{payment526OrderId}},
+  "amount": {{payment526Amount}}
+}
+
+> {%
+    client.test("결제 준비 성공(READY)", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("payment526PgOrderId", response.body.data.pgOrderId);
+    client.global.set("payment526PaymentId", response.body.data.paymentId);
+%}
+
+### 4. 결제 승인 (PAID로 전이) — 이후 취소 대상 결제를 만들기 위한 사전 단계
+< {%
+    client.global.set("payment526PaymentKey", "fake-pg-key-" + Date.now());
+%}
+POST {{baseUrl}}/api/v1/payments/confirm
+Authorization: Bearer {{payment526AccessToken}}
+Content-Type: application/json
+
+{
+  "paymentKey": "{{payment526PaymentKey}}",
+  "pgOrderId": "{{payment526PgOrderId}}",
+  "amount": {{payment526Amount}}
+}
+
+> {%
+    client.test("결제 승인 성공(PAID)", function() {
+        client.assert(response.status === 200, "confirm failed: " + response.body);
+        client.assert(response.body.data.status === "PAID", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 5. 첫 번째 취소(환불) 요청 — payment-service 직접 호출, 로컬 전용
+POST http://localhost:8082/internal/v1/payments/cancel
+Content-Type: application/json
+
+{
+  "orderId": {{payment526OrderId}},
+  "paymentId": {{payment526PaymentId}}
+}
+
+> {%
+    client.test("첫 취소 성공(200), CANCELLED", function() {
+        client.assert(response.status === 200, "1st cancel failed: " + response.body);
+        client.assert(response.body.data.status === "CANCELLED", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 6. 재조회 — CANCELLED 확인 (payment_status_outbox/Kafka 소비 로그는 DB/콘솔에서 별도 확인)
+GET http://localhost:8082/internal/v1/payments?orderId={{payment526OrderId}}
+
+> {%
+    client.test("재조회해도 CANCELLED", function() {
+        client.assert(response.status === 200, "get by orderId failed: " + response.body);
+        client.assert(response.body.data.status === "CANCELLED", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 7. 동일한 취소 요청 재전송 — 두 번째 취소는 409로 막혀야 한다(중복 환불/중복 Outbox 없이)
+POST http://localhost:8082/internal/v1/payments/cancel
+Content-Type: application/json
+
+{
+  "orderId": {{payment526OrderId}},
+  "paymentId": {{payment526PaymentId}}
+}
+
+> {%
+    client.test("두 번째 취소는 409 Conflict", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+    });
+%}

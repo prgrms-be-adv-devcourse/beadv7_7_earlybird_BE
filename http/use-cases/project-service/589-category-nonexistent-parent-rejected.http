@@ -1,0 +1,37 @@
+### 589-category-nonexistent-parent-rejected.http — issue #589
+### CASE-02. (Category) 존재하지 않는 카테고리를 상위로 지정하면 등록이 거부된다
+
+### 1. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function () {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 2. 존재하지 않는 parentProjectCategoryId(999999999)로 카테고리 등록 시도 -> 404
+< {%
+    client.global.set("catName", "usecase589-" + Date.now());
+%}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "name": "{{catName}}",
+  "parentProjectCategoryId": 999999999
+}
+
+> {%
+    client.test("존재하지 않는 상위 카테고리 -> 404", function () {
+        client.assert(response.status === 404, "expected 404, got " + response.status + ": " + response.body);
+    });
+%}

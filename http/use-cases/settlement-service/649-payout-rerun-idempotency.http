@@ -1,0 +1,69 @@
+### 649-payout-rerun-idempotency.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/649
+###
+### 같은 지급 월을 다시 실행해도 이미 완료된 프로젝트의 정산·지급 의무·지급 시도가 중복되지
+### 않는지 확인한다.
+###
+### 사전 준비: 프로젝트 정산과 지급이 이미 완료된 성공 프로젝트가 있어야 한다(예: #643 실행 이후 상태).
+### settlementId를 미리 확보해둔다.
+###
+### 환경: 같은 폴더의 http-client.env.json (local/production)
+
+### 0. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 1. 정산 상세 사전 조회 — {{settlementId}}를 이미 완료된 정산 값으로 채워 재실행 전 상태를 기록
+GET {{baseUrl}}/api/v1/settlements/all/{{settlementId}}
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("재실행 전 정산 상세 조회 성공, COMPLETED 확인", function() {
+        client.assert(response.status === 200, "settlement detail failed: " + response.body);
+        client.assert(response.body.data.payout.status === "COMPLETED", "expected already COMPLETED before rerun");
+    });
+    client.global.set("attemptCountBefore", response.body.data.payout.attempts.length);
+%}
+
+### 2. 같은 payoutMonth로 프로젝트 지급 재실행
+< {%
+    request.variables.set("payoutMonth", new Date().toISOString().slice(0, 7));
+%}
+POST {{baseUrl}}/api/v1/settlements/project-payouts/runs
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "payoutMonth": "{{payoutMonth}}"
+}
+
+> {%
+    client.test("프로젝트 지급 재실행 성공(200)", function() {
+        client.assert(response.status === 200, "project payout rerun failed: " + response.body);
+    });
+%}
+
+### 3. 같은 settlementId로 다시 조회 — 상태·시도 개수가 그대로인지 확인
+GET {{baseUrl}}/api/v1/settlements/all/{{settlementId}}
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("재실행 후에도 정산/지급이 중복되지 않음", function() {
+        client.assert(response.status === 200, "settlement detail failed: " + response.body);
+        client.assert(response.body.data.payout.status === "COMPLETED", "payout status should remain COMPLETED");
+        const attempts = response.body.data.payout.attempts;
+        client.assert(attempts.length === client.global.get("attemptCountBefore"), "attempt count should not change after rerun");
+        client.assert(attempts.filter(a => a.status === "COMPLETED").length === 1, "expected exactly one COMPLETED attempt");
+    });
+%}

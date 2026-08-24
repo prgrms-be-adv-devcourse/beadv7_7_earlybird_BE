@@ -1,0 +1,104 @@
+### 647-payout-retry-success.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/647
+###
+### 재시도 가능한 지급 실패가 최종 확인되면 새 지급 시도를 만들고, 이후 재실행에서 성공 결과를
+### 반영하는지 확인한다.
+###
+### ⚠️ 이 시나리오는 중간에 settlement-service를 다른 환경변수로 "재기동"하는 수동 조작이 필요해
+### 이 .http 파일만으로는 끝까지 자동 실행할 수 없다 — 아래 순서대로 수동 개입 지점을 지키며 진행한다.
+###
+### 사전 준비: 지급 조건을 충족한 성공 프로젝트 + 지급 가능한 창작자 프로필.
+### 1단계는 SETTLEMENT_DUMMY_PAYOUT_SCENARIO=RETRYABLE_FAILED 로 기동된 상태에서 실행한다.
+###
+### 환경: 같은 폴더의 http-client.env.json (local/production)
+
+### 0. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 1. [SETTLEMENT_DUMMY_PAYOUT_SCENARIO=RETRYABLE_FAILED 상태에서] 프로젝트 지급 실행
+< {%
+    request.variables.set("payoutMonth", new Date().toISOString().slice(0, 7));
+%}
+POST {{baseUrl}}/api/v1/settlements/project-payouts/runs
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "payoutMonth": "{{payoutMonth}}"
+}
+
+> {%
+    client.test("프로젝트 지급 실행 성공(200)", function() {
+        client.assert(response.status === 200, "project payout run failed: " + response.body);
+    });
+%}
+
+### 2. 관리자 통합 목록에서 대상 settlementId 확인
+GET {{baseUrl}}/api/v1/settlements/all
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("관리자 통합 목록 조회 성공", function() {
+        client.assert(response.status === 200, "admin settlement list failed: " + response.body);
+    });
+%}
+
+### 3. 정산 상세 조회 — {{settlementId}}를 2번 응답 값으로 채운다
+GET {{baseUrl}}/api/v1/settlements/all/{{settlementId}}
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("첫 지급 시도 FAILED, 지급 상태 RETRY_WAITING", function() {
+        client.assert(response.status === 200, "settlement detail failed: " + response.body);
+        client.assert(response.body.data.payout.status === "RETRY_WAITING", "unexpected payout status: " + response.body.data.payout.status);
+        client.assert(response.body.data.payout.attempts.length === 1, "expected exactly one attempt");
+        client.assert(response.body.data.payout.attempts[0].status === "FAILED", "expected first attempt FAILED");
+    });
+%}
+
+### ⚠️ 수동 개입: 여기서 DB를 유지한 채 settlement-service를
+### SETTLEMENT_DUMMY_PAYOUT_SCENARIO=COMPLETED 로 재기동한 뒤 아래 4번부터 이어서 실행한다.
+
+### 4. [SETTLEMENT_DUMMY_PAYOUT_SCENARIO=COMPLETED 상태에서] 같은 payoutMonth로 프로젝트 지급 재실행
+POST {{baseUrl}}/api/v1/settlements/project-payouts/runs
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{
+  "payoutMonth": "{{payoutMonth}}"
+}
+
+> {%
+    client.test("프로젝트 지급 재실행 성공(200)", function() {
+        client.assert(response.status === 200, "project payout rerun failed: " + response.body);
+    });
+%}
+
+### 5. 같은 정산 상세 재조회 — 두 번째 지급 시도가 COMPLETED, 최종 지급 상태 COMPLETED 확인
+GET {{baseUrl}}/api/v1/settlements/all/{{settlementId}}
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("재시도 성공, 최종 COMPLETED", function() {
+        client.assert(response.status === 200, "settlement detail failed: " + response.body);
+        client.assert(response.body.data.payout.status === "COMPLETED", "unexpected final payout status: " + response.body.data.payout.status);
+        const attempts = response.body.data.payout.attempts;
+        client.assert(attempts.length === 2, "expected two payout attempts, got " + attempts.length);
+        client.assert(attempts[1].status === "COMPLETED", "expected second attempt COMPLETED");
+        client.assert(attempts[0].refPayoutId !== attempts[1].refPayoutId, "refPayoutId should differ between attempts");
+        client.assert(attempts[0].idempotencyKey !== attempts[1].idempotencyKey, "idempotencyKey should differ between attempts");
+        client.assert(attempts.filter(a => a.status === "COMPLETED").length === 1, "expected exactly one COMPLETED attempt");
+    });
+%}

@@ -1,0 +1,52 @@
+### 631-creator-only-backer-403.http — CREATOR 전용 API를 BACKER가 호출 시 403
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/631
+###
+### hasRole(CREATOR)로 지정된 API(GET /api/v1/projects/me)를 BACKER가 호출하면 403인지 확인.
+### #584(BACKER→ADMIN)와 달리 CREATOR 전용 규칙을 커버.
+
+### 1. 회원가입
+< {%
+    client.global.set("userEmail", "uc631-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "유스케이스631",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인 (BACKER role)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공, BACKER role", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+        client.assert(response.body.data.user.role === "BACKER", "unexpected role: " + response.body.data.user.role);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. BACKER 토큰으로 CREATOR 전용 API 호출 — 403이어야 함
+GET {{baseUrl}}/api/v1/projects/me
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("BACKER가 CREATOR 전용 API 호출 시 403", function() {
+        client.assert(response.status === 403, "expected 403, got " + response.status + ": " + response.body);
+    });
+%}

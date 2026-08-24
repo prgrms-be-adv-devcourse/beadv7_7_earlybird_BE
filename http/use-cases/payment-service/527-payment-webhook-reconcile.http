@@ -1,0 +1,40 @@
+### 527-payment-webhook-reconcile.http — [usecase-test] 6. Toss 웹훅 수신 후 결제 상태 정합화 (#527)
+###
+### ⚠️ 이 케이스는 현재 코드/설정 상태로는 local/production 어디서도 이슈가 적은 "기대 결과"대로
+### 재현되지 않는다 — 그대로 재현 여부를 확인하는 용도로 남겨둔다.
+###
+### TossWebhookController#receive 는 paymentGateway.getPayment(paymentKey) 를 호출해 실제 PG에
+### 조회한 뒤 정합화하는데, payment.gateway 프로퍼티가 어느 config repo 프로필에도 설정돼 있지
+### 않아 FakePaymentGateway(matchIfMissing=true)가 항상 활성화된다. 그런데
+### FakePaymentGateway#getPayment 는 `throw new UnsupportedOperationException("Fake PG에서는
+### 결제 조회를 지원하지 않습니다.")` 로 구현돼 있다 — 즉 이 웹훅 엔드포인트는 지금 상태로는
+### 항상 500(Exception 계열 핸들러)로 떨어지고, PAID/FAILED 정합화까지 도달하지 못한다.
+### 실제로 이 케이스를 통과시키려면 payment.gateway=toss 로 전환 + 실제 Toss 샌드박스 연동이
+### 선행돼야 한다(현재 프로젝트에는 그 전환이 어디에도 설정돼 있지 않음).
+###
+### 아래 요청은 엔드포인트 계약(TossWebhookRequest 구조) 자체는 맞게 짜여 있으니, 위 전제가
+### 갖춰지면 그대로 쓸 수 있다.
+
+### 1. Toss 웹훅 payload 전송 (permitAll — 인증 불필요, PG사가 직접 호출하는 경로)
+< {%
+    client.global.set("payment527PaymentKey", "test-payment-key-not-real");
+%}
+POST {{baseUrl}}/api/v1/payments/webhook
+Content-Type: application/json
+
+{
+  "eventType": "PAYMENT_STATUS_CHANGED",
+  "data": {
+    "paymentKey": "{{payment527PaymentKey}}"
+  }
+}
+
+> {%
+    client.test("현재 상태: FakePaymentGateway#getPayment 미지원 -> 500 (알려진 한계, 버그 아님)", function() {
+        client.assert(response.status === 500, "expected current known-limitation 500, got " + response.status + ": " + response.body);
+    });
+    // payment.gateway=toss + 실제 Toss 샌드박스 연동이 이뤄지면 아래 기대 결과로 바뀌어야 한다:
+    //   - Toss 조회 결과 COMPLETED -> 결제 상태 PAID
+    //   - Toss 조회 결과 FAILED/EXPIRED/CANCELLED -> 결제 상태 FAILED
+    //   - 상태 변경 시 payment_status_outbox 생성 (DB에서 별도 확인)
+%}

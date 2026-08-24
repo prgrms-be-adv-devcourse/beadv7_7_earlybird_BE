@@ -1,0 +1,57 @@
+### 585-header-forgery-defense.http — X-User-Id/X-User-Role 헤더 위조 방어
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/585
+###
+### UserHeaderForwardingFilter는 클라이언트가 보낸 X-User-Id/X-User-Role 헤더를 항상 먼저
+### 제거한 뒤, 검증된 JWT 값으로만 다시 채운다. A 계정의 JWT로 요청하면서 X-User-Id에 임의의
+### 다른 값을 직접 실어 보내도, /api/v1/users/me 응답은 여전히 A 본인의 정보여야 한다.
+
+### 1. 계정 A 회원가입
+< {%
+    client.global.set("userEmailA", "uc585a-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmailA}}",
+  "password": "rawPassword1!",
+  "name": "유스케이스585A",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("A 회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 계정 A 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmailA}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("A 로그인 성공", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+    });
+    client.global.set("accessTokenA", response.body.data.accessToken);
+    client.global.set("userIdA", response.body.data.user.id);
+%}
+
+### 3. A의 JWT로 요청하면서 X-User-Id에 임의의 다른 값(9999999), X-User-Role에 ADMIN을 직접 실어 보냄
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{accessTokenA}}
+X-User-Id: 9999999
+X-User-Role: ADMIN
+
+> {%
+    client.test("위조된 헤더는 무시되고 실제 A 본인의 정보가 반환됨", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body);
+        client.assert(String(response.body.data.id) === String(client.global.get("userIdA")), "response identity mismatch — forged X-User-Id may have been trusted! got id=" + response.body.data.id + " expected=" + client.global.get("userIdA"));
+        client.assert(response.body.data.role === "BACKER", "forged X-User-Role may have been trusted — got role=" + response.body.data.role);
+    });
+%}

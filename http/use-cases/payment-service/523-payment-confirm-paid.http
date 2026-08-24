@@ -1,0 +1,103 @@
+### 523-payment-confirm-paid.http — [usecase-test] 3. Toss 결제 승인 및 PAID 상태 전이 (#523)
+###
+### READY 결제를 승인 결과로 확정해 PAID로 전이시키는지 확인한다.
+### payment.gateway 설정값이 어느 프로필에도 없어(config repo 확인) local/production 모두
+### 기본값인 FakePaymentGateway로 동작한다 — 실제 Toss 결제창 대신, 임의의 paymentKey로도
+### FakePaymentGateway#approve 가 그대로 승인 처리한다(멱등키 검증만 함).
+###
+### 준비(prepare)는 /internal/v1/** 라 gateway에 라우트가 없다 — payment-service 포트(:8082)에
+### 직접 요청한다. 이 스텝은 로컬 실행 환경 전용(프로덕션에서는 8082에 외부 접근 불가) — 이 파일
+### 전체가 로컬 전용이라고 보면 된다. payment_status_outbox/Kafka 소비 로그 확인은 DB/Kafka 콘솔에서
+### 수동으로 확인.
+
+### 1. 로그인 (JWT 확보)
+< {%
+    client.global.set("payment523Email", "payment523-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{payment523Email}}",
+  "password": "rawPassword1!",
+  "name": "결제승인테스트",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{payment523Email}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+    });
+    client.global.set("payment523AccessToken", response.body.data.accessToken);
+    client.global.set("payment523UserId", response.body.data.user.id);
+%}
+
+### 3. 결제 준비 (READY) — payment-service에 직접 요청, 로컬 전용
+< {%
+    client.global.set("payment523OrderId", Date.now());
+    client.global.set("payment523Amount", 15000);
+%}
+POST http://localhost:8082/internal/v1/payments/prepare
+Content-Type: application/json
+
+{
+  "userId": {{payment523UserId}},
+  "orderId": {{payment523OrderId}},
+  "amount": {{payment523Amount}}
+}
+
+> {%
+    client.test("결제 준비 성공(READY)", function() {
+        client.assert(response.status === 200, "prepare failed: " + response.body);
+        client.assert(response.body.data.status === "READY", "unexpected status: " + response.body.data.status);
+    });
+    client.global.set("payment523PgOrderId", response.body.data.pgOrderId);
+    client.global.set("payment523PaymentId", response.body.data.paymentId);
+%}
+
+### 4. 결제 승인 — 실제 Toss 결제창 대신 FakePaymentGateway가 임의 paymentKey를 그대로 승인한다
+< {%
+    client.global.set("payment523PaymentKey", "fake-pg-key-" + Date.now());
+%}
+POST {{baseUrl}}/api/v1/payments/confirm
+Authorization: Bearer {{payment523AccessToken}}
+Content-Type: application/json
+
+{
+  "paymentKey": "{{payment523PaymentKey}}",
+  "pgOrderId": "{{payment523PgOrderId}}",
+  "amount": {{payment523Amount}}
+}
+
+> {%
+    client.test("결제 승인 성공(PAID)", function() {
+        client.assert(response.status === 200, "confirm failed: " + response.body);
+        client.assert(response.body.data.status === "PAID", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 5. 재조회 — PAID 상태 확정 확인 (payment_status_outbox/Kafka 소비 로그는 DB/콘솔에서 별도 확인)
+GET {{baseUrl}}/api/v1/payments/{{payment523PaymentId}}
+Authorization: Bearer {{payment523AccessToken}}
+
+> {%
+    client.test("재조회해도 PAID", function() {
+        client.assert(response.status === 200, "get payment failed: " + response.body);
+        client.assert(response.body.data.status === "PAID", "unexpected status: " + response.body.data.status);
+    });
+%}

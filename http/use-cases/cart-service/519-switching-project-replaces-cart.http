@@ -1,0 +1,95 @@
+### 519-switching-project-replaces-cart.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/519
+### CASE-15. 다른 Project의 Reward를 추가하면 기존 Project 품목을 모두 교체한다 (단일 Project Cart 정책)
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "cart519-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트519", "phoneNumber": "010-1111-0015"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. 서로 다른 IN_PROGRESS 프로젝트 2개 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 2개 이상", function() {
+        client.assert(response.status === 200 && response.body.data.length >= 2, response.body);
+    });
+    client.global.set("projectAId", response.body.data[0].projectId);
+    client.global.set("projectBId", response.body.data[1].projectId);
+%}
+
+### 4. Project A 리워드 1개 이상, Project B 리워드 2개 이상 조회
+GET {{baseUrl}}/api/v1/projects/{{projectAId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Project A 리워드 1건 이상", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("rewardA1", response.body.data[0].rewardId);
+%}
+
+### 5. Project B 리워드 조회
+GET {{baseUrl}}/api/v1/projects/{{projectBId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Project B 리워드 2건 이상", function() { client.assert(response.status === 200 && response.body.data.length >= 2, response.body); });
+    client.global.set("rewardB1", response.body.data[0].rewardId);
+    client.global.set("rewardB2", response.body.data[1].rewardId);
+%}
+
+### 6. Project A의 Reward를 Cart에 담는다
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectAId}}, "items": [{"rewardId": {{rewardA1}}, "quantity": 1}]}
+
+> {% client.test("Project A 담기 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 7. Project B의 Reward 2개를 POST로 담는다 — 기존 Project A 품목은 모두 제거되어야 한다
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectBId}}, "items": [{"rewardId": {{rewardB1}}, "quantity": 1}, {"rewardId": {{rewardB2}}, "quantity": 2}]}
+
+> {%
+    client.test("Project 전환 시 기존 품목 교체", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.projects.length === 1, "should have exactly 1 project group, got " + response.body.data.projects.length);
+        const project = response.body.data.projects[0];
+        client.assert(String(project.projectId) === String(client.global.get("projectBId")), "cart should now belong to project B");
+        client.assert(project.rewards.length === 2, "should have 2 rewards from project B, got " + project.rewards.length);
+        const hasA = project.rewards.some(r => String(r.rewardId) === String(client.global.get("rewardA1")));
+        client.assert(!hasA, "project A's reward should have been removed (orphan removal)");
+    });
+%}
+
+### 8. GET으로 재확인
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Cart는 Project B 품목만 존재", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.projects.length === 1, "expected 1 project group");
+        client.assert(String(response.body.data.projects[0].projectId) === String(client.global.get("projectBId")), "expected project B");
+    });
+%}

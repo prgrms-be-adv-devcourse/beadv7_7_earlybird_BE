@@ -1,0 +1,136 @@
+### 614-reward-internal-decrease-stock.http — issue #614
+### CASE-09. (Reward) 구매 시 내부 API 호출로 재고가 차감된다
+###
+### /internal/v1/** 는 게이트웨이 라우팅이 없다(CLAUDE.md — Eureka 내부망 전용, 외부 노출 없음).
+### 이 파일의 내부 API 호출 단계는 project-service에 직접 접속 가능한 local 환경에서만
+### 의미가 있다(로컬: http://localhost:8081). production에서는 이 단계를 건너뛴다.
+
+### 1~4. 창작자 계정 준비 (baseUrl = 게이트웨이, local/production 공통)
+< {% client.global.set("creatorEmail", "usecase614-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "리워드614테스트", "phoneNumber": "010-1111-3333" }
+
+> {% client.test("회원가입 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{ "email": "{{creatorEmail}}", "password": "rawPassword1!" }
+
+> {%
+    client.test("로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "bankCode": "88", "accountNumber": "110-123-456789", "accountHolder": "리워드614테스트" }
+
+> {% client.test("창작자 전환 성공", function () { client.assert(response.status === 200, response.body); }); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
+> {%
+    client.test("토큰 재발급 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 5~7. 카테고리 확보, 프로젝트+리워드(totalQuantity=15) 등록, 관리자 승인으로 공개
+GET {{baseUrl}}/api/v1/project-categories
+
+> {%
+    client.assert(response.body.data.length > 0, "no categories found");
+    client.global.set("categoryId", response.body.data[0].id);
+%}
+
+###
+< {%
+    const now = new Date();
+    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", endAt.toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "usecase614 프로젝트",
+  "categoryId": {{categoryId}},
+  "summary": "issue #614 검증용",
+  "description": "issue #614",
+  "goalAmount": 1000000,
+  "startAt": "{{startAt}}",
+  "endAt": "{{endAt}}"
+}
+
+> {%
+    client.test("프로젝트 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("projectId", response.body.data.projectId);
+%}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "name": "usecase614 리워드", "description": "issue #614", "price": 10000, "totalQuantity": 15 }
+
+> {%
+    client.test("리워드 등록 성공, 수량 15", function () {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.remainingQuantity === 15, response.body.data.remainingQuantity);
+    });
+    client.global.set("rewardId", response.body.data.rewardId);
+%}
+
+### 8~9. 관리자 승인 (색인은 이 케이스와 무관 — 재고 API 자체는 상태와 무관하게 동작)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{ "email": "admin@earlybird.co.kr", "password": "rawPassword3!" }
+
+> {%
+    client.test("관리자 로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("프로젝트 공개 성공", function () { client.assert(response.status === 200, response.body); });
+%}
+
+### 10. [로컬 전용] project-service에 직접 재고 차감 요청 (orderId=usecase614-1001)
+POST http://localhost:8081/internal/v1/rewards/{{rewardId}}/decrease-stock
+Content-Type: application/json
+
+{ "quantity": 2, "orderId": 1001 }
+
+> {%
+    client.test("재고 차감 성공", function () { client.assert(response.status === 200, "decrease-stock failed: " + response.body); });
+%}
+
+### 11. 재조회 -> remainingQuantity 15 -> 13, totalQuantity 그대로 15
+GET {{baseUrl}}/api/v1/rewards/{{rewardId}}
+
+> {%
+    client.test("차감 반영 확인", function () {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.remainingQuantity === 13, "unexpected remainingQuantity: " + response.body.data.remainingQuantity);
+        client.assert(response.body.data.totalQuantity === 15, "unexpected totalQuantity: " + response.body.data.totalQuantity);
+    });
+%}

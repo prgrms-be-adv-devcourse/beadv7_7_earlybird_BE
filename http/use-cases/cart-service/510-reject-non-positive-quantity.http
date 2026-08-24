@@ -1,0 +1,90 @@
+### 510-reject-non-positive-quantity.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/510
+### CASE-08. null, 0, 음수 수량을 거부한다 (Jakarta validation, quantity=0은 삭제가 아니다)
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "cart510-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트510", "phoneNumber": "010-1111-0009"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. IN_PROGRESS 프로젝트/리워드 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 리워드 조회
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("리워드 1건 이상", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("rewardId", response.body.data[0].rewardId);
+%}
+
+### 5. 사전 상태 준비: Reward=2
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 2}]}
+
+> {% client.test("사전 상태 준비 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 6. POST quantity=0 → 400 (삭제 동작 아님)
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 0}]}
+
+> {% client.test("quantity=0은 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body); }); %}
+
+### 7. PATCH quantity=-1 → 400
+PATCH {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": -1}]}
+
+> {% client.test("quantity=-1은 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body); }); %}
+
+### 8. POST quantity=null → 400
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": null}]}
+
+> {% client.test("quantity=null은 400", function() { client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body); }); %}
+
+### 9. 세 요청 모두 거부되었으므로 Reward는 여전히 quantity=2로 남아있어야 한다
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Cart 변경 없음, quantity=2 유지", function() {
+        client.assert(response.status === 200, response.body);
+        const r = response.body.data.projects[0].rewards.find(x => String(x.rewardId) === String(client.global.get("rewardId")));
+        client.assert(r.quantity === 2, "quantity should remain 2, got " + r.quantity);
+    });
+%}

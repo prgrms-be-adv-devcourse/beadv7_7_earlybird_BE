@@ -1,0 +1,30 @@
+### 587-cors-disallowed-origin-blocked.http — 허용되지 않은 Origin CORS 차단
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/587
+###
+### cors.allowed-origins(로컬 기본값 http://localhost:5173)에 없는 Origin에서 오는 요청은
+### Access-Control-Allow-Origin 헤더 없이 응답되어야 한다(브라우저가 이를 보고 차단).
+### production 환경에서는 CORS_ALLOWED_ORIGINS 값을 먼저 확인하고 그 값으로 "허용된 Origin" 요청을 바꿔서 실행할 것.
+
+### 1. 허용되지 않은 Origin으로 preflight(OPTIONS) 요청
+OPTIONS {{baseUrl}}/api/v1/projects
+Origin: http://evil.example.com
+Access-Control-Request-Method: GET
+
+> {%
+    client.test("허용 안된 Origin은 Access-Control-Allow-Origin 헤더가 없어야 함", function() {
+        const allowOrigin = response.headers.valueOf("Access-Control-Allow-Origin");
+        client.assert(!allowOrigin, "unexpected Access-Control-Allow-Origin for disallowed origin: " + allowOrigin);
+    });
+%}
+
+### 2. 비교: 허용된 Origin(local 기본값)으로 동일 preflight 요청
+OPTIONS {{baseUrl}}/api/v1/projects
+Origin: http://localhost:5173
+Access-Control-Request-Method: GET
+
+> {%
+    client.test("허용된 Origin은 Access-Control-Allow-Origin 헤더에 그대로 반환됨", function() {
+        const allowOrigin = response.headers.valueOf("Access-Control-Allow-Origin");
+        client.assert(allowOrigin === "http://localhost:5173", "expected allowed origin echoed back, got: " + allowOrigin);
+    });
+%}

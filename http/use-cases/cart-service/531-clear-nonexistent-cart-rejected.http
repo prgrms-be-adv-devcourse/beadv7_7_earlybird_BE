@@ -1,0 +1,35 @@
+### 531-clear-nonexistent-cart-rejected.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/531
+### CASE-20. 존재하지 않는 Cart를 비우려고 하면 거부한다 (내부 cleanup과 달리 외부 clear는 기존 Cart 필요)
+### (EntityNotFoundException → 404)
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입 (Cart를 한 번도 만들지 않은 신규 사용자)
+< {% client.global.set("userEmail", "cart531-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트531", "phoneNumber": "010-1111-0021"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. Cart 자체가 없는 상태에서 DELETE /api/v1/carts 시도 → 404
+DELETE {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Cart가 없으면 404", function() {
+        client.assert(response.status === 404, "expected 404, got " + response.status + ": " + response.body);
+    });
+%}

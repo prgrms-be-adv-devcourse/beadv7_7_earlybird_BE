@@ -1,0 +1,51 @@
+### 569-unsupported-payment-callback-status-rejected.http — [usecase-test] CASE-29. (Order) 지원하지 않는 payment callback status를 거부한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/569
+###
+### /internal/v1/** 는 Eureka 내부망 전용이라 gateway-server에 라우트가 없다(CLAUDE.md) — 반드시
+### order-service를 직접(로컬 :8080) 호출해야 한다. 운영(prod)에서는 외부에서 도달 불가능하므로
+### 이 파일은 local 환경에서만 실행 가능하다.
+###
+### status 값 자체의 유효성만 검증하는 case라, order-service가 켜져 있고 임의의 존재하는 orderId만
+### 있으면 된다(주문의 현재 상태와 무관하게 검증돼야 함). 먼저 backer-flow.http 등으로 주문을 하나
+### 만들어 orderId를 얻은 뒤 아래 orderId 변수를 채워 넣고 실행할 것.
+
+@orderServiceUrl = http://localhost:8080
+@orderId = 1
+
+### 1. 대문자 미지원 status "SUCCESS" -> 400
+PUT {{orderServiceUrl}}/internal/v1/orders/{{orderId}}/payment-status
+Content-Type: application/json
+
+{"status": "SUCCESS"}
+
+> {%
+    client.test("SUCCESS -> 400 Unsupported payment status", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(JSON.stringify(response.body).includes("Unsupported payment status"), "unexpected message: " + response.body);
+    });
+%}
+
+### 2. 소문자 "paid" -> 400 (대소문자 구분)
+PUT {{orderServiceUrl}}/internal/v1/orders/{{orderId}}/payment-status
+Content-Type: application/json
+
+{"status": "paid"}
+
+> {%
+    client.test("소문자 paid -> 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(JSON.stringify(response.body).includes("Unsupported payment status"), "unexpected message: " + response.body);
+    });
+%}
+
+### 3. 빈 status -> 400 (request validation, @NotBlank)
+PUT {{orderServiceUrl}}/internal/v1/orders/{{orderId}}/payment-status
+Content-Type: application/json
+
+{"status": ""}
+
+> {%
+    client.test("빈 status -> 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}

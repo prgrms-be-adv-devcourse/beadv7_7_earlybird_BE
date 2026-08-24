@@ -1,0 +1,118 @@
+### 663-creator-application-approve-role-change.http — 창작자 전환 신청 → 관리자 승인 → role CREATOR 전환
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/663
+###
+### BACKER가 /me/creator-application 으로 신청하면 PENDING 상태로 생성되고, ADMIN이
+### /creator-applications/{id}/approve 로 승인하면 신청자의 role이 CREATOR로 바뀌는지 확인한다.
+### 관리자 계정은 creator-flow.http 와 동일하게 UserDataInitializer가 시드하는 admin@earlybird.co.kr 사용.
+
+### 1. 회원가입 (신청자)
+< {%
+    client.global.set("userEmail", "uc663-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "유스케이스663",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인 (신청자, BACKER role)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공, BACKER role", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+        client.assert(response.body.data.user.role === "BACKER", "unexpected role: " + response.body.data.user.role);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. 창작자 전환 신청 (PENDING 상태로 생성)
+POST {{baseUrl}}/api/v1/users/me/creator-application
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "creatorName": "유스케이스663 창작자",
+  "category": "테크",
+  "introduction": "663 테스트용 신청",
+  "businessNumber": "123-45-67890",
+  "portfolioUrl": "https://example.com/portfolio",
+  "bankCode": "88",
+  "accountNumber": "110-123-456789",
+  "accountHolder": "유스케이스663"
+}
+
+> {%
+    client.test("신청 생성 성공, 상태 PENDING", function() {
+        client.assert(response.status === 200, "apply failed: " + response.body);
+        client.assert(response.body.data.status === "PENDING", "unexpected status: " + response.body.data.status);
+    });
+    client.global.set("applicationId", response.body.data.id);
+%}
+
+### 4. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공(role=ADMIN)", function() {
+        client.assert(response.status === 200, "admin login failed: " + response.body);
+        client.assert(response.body.data.user.role === "ADMIN", "unexpected role: " + response.body.data.user.role);
+    });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 5. 관리자: PENDING 신청 목록 조회 — 방금 만든 신청 포함 확인
+GET {{baseUrl}}/api/v1/users/creator-applications?status=PENDING
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("PENDING 목록에 방금 만든 신청 포함", function() {
+        client.assert(response.status === 200, "find applications failed: " + response.body);
+        const found = response.body.data.some(a => String(a.id) === String(client.global.get("applicationId")));
+        client.assert(found, "just-created application not found in PENDING list");
+    });
+%}
+
+### 6. 관리자: 신청 승인
+POST {{baseUrl}}/api/v1/users/creator-applications/{{applicationId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {%
+    client.test("승인 성공, 상태 APPROVED", function() {
+        client.assert(response.status === 200, "approve failed: " + response.body);
+        client.assert(response.body.data.status === "APPROVED", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 7. 신청자: 내 정보 재조회 — role이 CREATOR로 바뀌었는지 확인
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("승인 후 role이 CREATOR로 전환됨", function() {
+        client.assert(response.status === 200, "get me failed: " + response.body);
+        client.assert(response.body.data.role === "CREATOR", "unexpected role: " + response.body.data.role);
+    });
+%}

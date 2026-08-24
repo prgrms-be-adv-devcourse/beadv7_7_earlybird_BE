@@ -1,0 +1,83 @@
+### 667-role-instant-switch.http — 발표용 role 즉시 전환 (/me/role)
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/667
+###
+### POST /api/v1/users/me/role (#430, 발표/시연 편의용)은 재로그인 없이 BACKER/CREATOR/ADMIN
+### 사이를 자유롭게 전환하고, 바뀐 role이 반영된 새 access/refresh token을 즉시 발급한다.
+### 심사 절차가 있는 /me/creator-application 흐름과 달리 즉시 반영되며, 새로 발급된 토큰이
+### 실제로 CREATOR 전용 API(게이트웨이 hasRole 검사)를 바로 통과하는지까지 확인한다.
+
+### 1. 회원가입
+< {%
+    client.global.set("userEmail", "uc667-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "유스케이스667",
+  "phoneNumber": "010-1111-2222"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인 (BACKER role)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공, 현재 role은 BACKER", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+        client.assert(response.body.data.user.role === "BACKER", "unexpected role: " + response.body.data.user.role);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. role을 CREATOR로 즉시 전환 — 재로그인 없이 새 토큰이 바로 발급됨
+POST {{baseUrl}}/api/v1/users/me/role
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "role": "CREATOR"
+}
+
+> {%
+    client.test("role CREATOR로 즉시 전환, 새 토큰 발급", function() {
+        client.assert(response.status === 200, "change role failed: " + response.body);
+        client.assert(response.body.data.user.role === "CREATOR", "unexpected role: " + response.body.data.user.role);
+        client.assert(!!response.body.data.accessToken, "new accessToken missing");
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 4. 새 토큰으로 CREATOR 전용 API 호출 — 게이트웨이 hasRole(CREATOR) 검사를 바로 통과해야 함
+GET {{baseUrl}}/api/v1/projects/me
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("새 토큰으로 CREATOR 전용 API 통과(200, 403 아님)", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 5. 내 정보 재조회 — role이 CREATOR로 바뀌었는지 최종 확인
+GET {{baseUrl}}/api/v1/users/me
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("role이 CREATOR로 반영됨", function() {
+        client.assert(response.status === 200, "get me failed: " + response.body);
+        client.assert(response.body.data.role === "CREATOR", "unexpected role: " + response.body.data.role);
+    });
+%}

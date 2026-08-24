@@ -1,0 +1,60 @@
+### 498-initial-empty-cart.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/498
+### CASE-01. 최초 Cart 조회 시 빈 Cart를 생성하고 반환한다
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입 (아직 Cart가 없는 신규 사용자)
+< {%
+    client.global.set("userEmail", "cart498-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!",
+  "name": "카트498",
+  "phoneNumber": "010-1111-0001"
+}
+
+> {%
+    client.test("회원가입 성공(200)", function() {
+        client.assert(response.status === 200, "signup failed: " + response.body);
+    });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() {
+        client.assert(response.status === 200, "login failed: " + response.body);
+    });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("userId", response.body.data.user.id);
+%}
+
+### 3. 최초 Cart 조회 — 이 사용자는 carts 행이 아직 없어야 한다
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("빈 Cart가 생성되어 반환됨", function() {
+        client.assert(response.status === 200, "get cart failed: " + response.body);
+        const data = response.body.data;
+        client.assert(data.cartId != null, "cartId should be generated");
+        client.assert(String(data.userId) === String(client.global.get("userId")), "userId mismatch");
+        client.assert(data.itemCount === 0, "itemCount should be 0");
+        client.assert(data.items.length === 0, "items should be empty");
+        client.assert(data.projects.length === 0, "projects should be empty");
+        client.assert(Number(data.totalItemsAmount) === 0, "totalItemsAmount should be 0");
+        client.assert(Number(data.totalShippingFee) === 0, "totalShippingFee should be 0");
+        client.assert(Number(data.totalAmount) === 0, "totalAmount should be 0");
+    });
+%}

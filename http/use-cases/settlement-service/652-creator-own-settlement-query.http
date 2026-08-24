@@ -1,0 +1,86 @@
+### 652-creator-own-settlement-query.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/652
+###
+### 창작자가 자신의 프로젝트 정산 목록·상세만 조회할 수 있고, 다른 창작자의 정산 상세는
+### 조회할 수 없는지 확인한다.
+###
+### 사전 준비: 서로 다른 두 창작자 A/B에게 각각 프로젝트 정산이 존재해야 한다(예: #643/#649
+### 시나리오로 미리 만들어둔 정산). 신규로 회원가입한 창작자는 정산이 없으니 이 테스트에는
+### 못 쓴다 — 아래 이메일/비밀번호를 실제 정산이 있는 두 창작자 계정으로 바꿔서 실행한다.
+###
+### 환경: 같은 폴더의 http-client.env.json (local/production)
+
+### 1. 창작자 A 로그인 — {{creatorAEmail}}/{{creatorAPassword}}를 실제 계정으로 바꿔서 실행
+< {%
+    request.variables.set("creatorAEmail", "REPLACE_WITH_CREATOR_A_EMAIL");
+    request.variables.set("creatorAPassword", "REPLACE_WITH_CREATOR_A_PASSWORD");
+%}
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{creatorAEmail}}",
+  "password": "{{creatorAPassword}}"
+}
+
+> {%
+    client.test("창작자 A 로그인 성공(role=CREATOR)", function() {
+        client.assert(response.status === 200, "creator A login failed: " + response.body);
+        client.assert(response.body.data.user.role === "CREATOR", "expected CREATOR role, got: " + response.body.data.user.role);
+    });
+    client.global.set("creatorAToken", response.body.data.accessToken);
+%}
+
+### 2. 창작자 A 본인 정산 목록 조회
+GET {{baseUrl}}/api/v1/settlements
+Authorization: Bearer {{creatorAToken}}
+
+> {%
+    client.test("본인 정산 목록 조회 성공, 1건 이상", function() {
+        client.assert(response.status === 200, "get my settlements failed: " + response.body);
+        client.assert(response.body.data.length > 0, "expected at least one settlement for creator A");
+    });
+    client.global.set("creatorASettlementId", response.body.data[0].settlementId);
+%}
+
+### 3. 창작자 A 본인 정산 상세 조회 — 정산 기준액/공제 내역/지급액/지급 상태가 포함돼야 한다
+GET {{baseUrl}}/api/v1/settlements/{{creatorASettlementId}}
+Authorization: Bearer {{creatorAToken}}
+
+> {%
+    client.test("본인 정산 상세 조회 성공, 계좌번호 원문 미포함", function() {
+        client.assert(response.status === 200, "get my settlement detail failed: " + response.body);
+        client.assert(response.body.data.breakdown.settlementBaseAmount !== undefined, "missing settlementBaseAmount");
+        client.assert(response.body.data.payout.status !== undefined, "missing payout status");
+        client.assert(JSON.stringify(response.body.data).indexOf("accountNumber") === -1, "response should not expose raw account number");
+    });
+%}
+
+### 4. 창작자 B 로그인 — {{creatorBEmail}}/{{creatorBPassword}}를 실제 계정으로 바꿔서 실행
+< {%
+    request.variables.set("creatorBEmail", "REPLACE_WITH_CREATOR_B_EMAIL");
+    request.variables.set("creatorBPassword", "REPLACE_WITH_CREATOR_B_PASSWORD");
+%}
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{creatorBEmail}}",
+  "password": "{{creatorBPassword}}"
+}
+
+> {%
+    client.test("창작자 B 로그인 성공(role=CREATOR)", function() {
+        client.assert(response.status === 200, "creator B login failed: " + response.body);
+    });
+    client.global.set("creatorBToken", response.body.data.accessToken);
+%}
+
+### 5. 창작자 B의 토큰으로 창작자 A의 정산 상세 조회 시도 — 거부돼야 한다
+GET {{baseUrl}}/api/v1/settlements/{{creatorASettlementId}}
+Authorization: Bearer {{creatorBToken}}
+
+> {%
+    client.test("다른 창작자의 정산 상세는 조회할 수 없음", function() {
+        client.assert(response.status !== 200, "creator B should NOT be able to view creator A's settlement detail, got: " + response.status);
+    });
+%}

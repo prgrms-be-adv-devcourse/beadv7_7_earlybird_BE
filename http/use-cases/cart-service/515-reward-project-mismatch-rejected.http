@@ -1,0 +1,85 @@
+### 515-reward-project-mismatch-rejected.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/515
+### CASE-12. Reward의 Project와 요청 Project가 다르면 거부한다
+### (CartService: "Reward does not belong to the project. projectId=...")
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+### 시드 데이터 기준 서로 다른 두 IN_PROGRESS 프로젝트가 필요하다 (ProjectDataInitializer는 4개를 만든다).
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "cart515-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트515", "phoneNumber": "010-1111-0013"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. 서로 다른 IN_PROGRESS 프로젝트 2개 이상 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 2개 이상", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.length >= 2, "need at least 2 IN_PROGRESS projects, got " + response.body.data.length);
+    });
+    client.global.set("projectAId", response.body.data[0].projectId);
+    client.global.set("projectBId", response.body.data[1].projectId);
+%}
+
+### 4. Project A의 리워드 조회 (요청은 Project B로 보낼 것)
+GET {{baseUrl}}/api/v1/projects/{{projectAId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Project A 리워드 1건 이상", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("rewardIdFromA", response.body.data[0].rewardId);
+%}
+
+### 5. POST — Project A 소속 Reward를 Project B로 요청 → 400
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectBId}}, "items": [{"rewardId": {{rewardIdFromA}}, "quantity": 1}]}
+
+> {%
+    client.test("Project 불일치 POST는 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 6. PATCH도 동일하게 거부되어야 한다
+PATCH {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectBId}}, "items": [{"rewardId": {{rewardIdFromA}}, "quantity": 1}]}
+
+> {%
+    client.test("Project 불일치 PATCH도 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 7. Cart는 비어있어야 한다
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Cart는 비어있음", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.itemCount === 0, "expected empty cart, got itemCount=" + response.body.data.itemCount);
+    });
+%}

@@ -1,0 +1,52 @@
+### 622-presign-upload-rejected-mime.http — [usecase-test] CASE-02. 허용되지 않는 MIME 타입은 presign 거부 (#622)
+###
+### PresignedUploadRequest#contentType 은 `^image/(jpeg|png|webp|gif)$` 로 제한된다(Bean Validation) —
+### 이미지가 아닌 MIME(text/html)으로 요청하면 400으로 거부되는지 확인한다.
+
+### 1. CREATOR1 회원가입
+< {%
+    client.global.set("file622Email", "file622-" + Date.now() + "@earlybird.co.kr");
+%}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+  "email": "{{file622Email}}",
+  "password": "rawPassword1!",
+  "name": "파일테스트CREATOR2",
+  "phoneNumber": "010-2000-0002"
+}
+
+> {%
+    client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); });
+%}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "{{file622Email}}",
+  "password": "rawPassword1!"
+}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("file622AccessToken", response.body.data.accessToken);
+%}
+
+### 3. 허용되지 않는 MIME(text/html)으로 presign 요청 — 400 기대
+POST {{baseUrl}}/api/v1/files/presigned-upload
+Authorization: Bearer {{file622AccessToken}}
+Content-Type: application/json
+
+{
+  "contentType": "text/html",
+  "originalName": "x.html"
+}
+
+> {%
+    client.test("400 Bad Request (Bean Validation)", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}

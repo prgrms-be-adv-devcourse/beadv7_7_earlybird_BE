@@ -1,0 +1,162 @@
+### 554-concurrent-duplicate-request-db-unique.http — [usecase-test] CASE-15. (Order) 동시 중복 요청은 DB 유니크 위반에서 복구한다
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/554
+###
+### 주의: IntelliJ HTTP Client는 요청을 순차 실행하므로 이 파일만으로는 진짜 동시성(같은 saveAndFlush 순간에
+### 두 요청이 동시에 도달하는 상황)을 재현할 수 없다. 아래 "동시 요청" 구간의 요청을 두 개의 에디터 탭(또는
+### 터미널 두 개에서 curl로)에서 거의 동시에 실행해야 실제 레이스 컨디션을 재현할 수 있다.
+### 이 파일은 그 전제(같은 사용자/같은 키/같은 body의 두 요청)를 준비해주는 용도.
+
+< {% client.global.set("creatorEmail", "ord554-creator-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "554창작자", "phoneNumber": "010-1000-0023"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); client.global.set("creatorRefreshToken", response.body.data.refreshToken); %}
+
+###
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-554-000001", "accountHolder": "554창작자"}
+
+> {% client.assert(response.status === 200, "register as creator failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{creatorRefreshToken}}"}
+
+> {% client.global.set("creatorAccessToken", response.body.data.accessToken); %}
+
+###
+GET {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{creatorAccessToken}}
+
+> {% client.global.set("categoryId", response.body.data[0].id); %}
+
+###
+< {%
+    const now = new Date();
+    request.variables.set("startAt", now.toISOString().slice(0, 19));
+    request.variables.set("endAt", new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10));
+%}
+POST {{baseUrl}}/api/v1/projects
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"title": "554 동시요청 유니크 복구 검증", "categoryId": {{categoryId}}, "summary": "CASE-15", "description": "554.http", "goalAmount": 1000000, "startAt": "{{startAt}}", "endAt": "{{endAt}}"}
+
+> {% client.global.set("projectId", response.body.data.projectId); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{creatorAccessToken}}
+Content-Type: application/json
+
+{"name": "Reward 101", "description": "-", "price": 12000, "totalQuantity": 10}
+
+> {% client.global.set("rewardId", response.body.data.rewardId); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+###
+POST {{baseUrl}}/api/v1/projects/{{projectId}}/approve
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
+
+###
+< {% client.global.set("backerEmail", "ord554-backer-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "554후원자", "phoneNumber": "010-1000-0024"}
+
+> {% client.assert(response.status === 200, "signup failed"); %}
+
+###
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+###
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}]}
+
+> {% client.assert(response.status === 200, "add to cart failed"); %}
+
+### === 동시 요청 A — 이 요청과 바로 아래 B를, 새 탭 2개를 열어 거의 동시에 실행(Ctrl+Enter)한다 ===
+< {% client.global.set("raceKey", crypto.randomUUID()); %}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardId}}, "quantity": 1, "expectedUnitPrice": 12000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 12000, "expectedTotalAmount": 15000,
+  "orderIdempotencyKey": "{{raceKey}}"
+}
+
+> {%
+    client.test("요청 A 성공, PAID", function() {
+        client.assert(response.status === 200, "place order A failed: " + response.body);
+    });
+    client.global.set("orderIdA", response.body.data.id);
+%}
+
+### === 동시 요청 B (같은 사용자/같은 키/같은 body) — A와 거의 동시에 실행할 것 ===
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{backerAccessToken}}
+Content-Type: application/json
+
+{
+  "userId": {{userId}}, "projectId": {{projectId}},
+  "requests": [{"rewardId": {{rewardId}}, "quantity": 1, "expectedUnitPrice": 12000}],
+  "receiverName": "Kim", "receiverPhone": "010-1111-2222", "shippingAddress": "Seoul", "zipCode": "01234",
+  "expectedItemsAmount": 12000, "expectedTotalAmount": 15000,
+  "orderIdempotencyKey": "{{raceKey}}"
+}
+
+> {%
+    client.test("요청 B도 같은 Order를 반환 (둘 다 성공, 같은 order id)", function() {
+        client.assert(response.status === 200, "place order B failed: " + response.body);
+        client.assert(String(response.body.data.id) === String(client.global.get("orderIdA")), "A/B order id mismatch — race condition may not have occurred (순차 실행됨), 두 요청을 실제로 동시에 실행했는지 확인");
+    });
+%}
+
+### 순차 실행되어 위 검증이 의미 없어졌더라도, 아래로 (user_id, orderIdempotencyKey) 조합의 주문이
+### 정확히 1건인지는 내 후원 내역으로 항상 확인 가능하다.
+GET {{baseUrl}}/api/v1/orders/me?userId={{userId}}
+Authorization: Bearer {{backerAccessToken}}
+
+> {%
+    client.test("동일 키로 생성된 Order는 정확히 1건", function() {
+        const matches = response.body.data.filter(o => String(o.id) === String(client.global.get("orderIdA")));
+        client.assert(matches.length === 1, "expected exactly 1 order for this key, got " + matches.length);
+    });
+%}

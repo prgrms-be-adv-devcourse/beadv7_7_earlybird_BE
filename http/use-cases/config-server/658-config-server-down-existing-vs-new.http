@@ -1,0 +1,19 @@
+### 658-config-server-down-existing-vs-new.http — config-server 다운 시 기존/신규 서비스 영향 차이
+### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/658
+###
+### ⚠️ 절반만 HTTP로 테스트 가능: "이미 기동된 서비스는 config-server 중지와 무관하게 계속
+### 정상 응답한다"는 아래 1번으로 검증 가능하다. 반면 "config-server가 없는 상태에서 새 서비스를
+### 기동하면 설정을 못 가져와 기동 자체가 실패한다"는 부분은 호출할 API 자체가 없다(기동이
+### 안 되니 확인할 엔드포인트도 없음) — project-service를 config-server 중지 상태에서 새로
+### 기동 시도해보고, 기동 로그에 config 조회 실패가 명확히 남는지 수동으로 확인할 것.
+###
+### 사전 준비(수동): order-service를 미리 정상 기동해둔 뒤 config-server를 중지하고 아래 1번을 실행.
+
+### 1. config-server가 중지된 상태에서, 이미 떠 있는 order-service가 계속 정상 응답하는지 확인
+GET {{baseUrl}}/api/v1/projects
+
+> {%
+    client.test("config-server 중지와 무관하게 이미 떠 있는 서비스는 계속 응답함", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + " — 이미 기동된 서비스가 config-server 중지의 영향을 받고 있음(예상과 다름)");
+    });
+%}

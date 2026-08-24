@@ -1,0 +1,80 @@
+### 507-duplicate-reward-in-request-rejected.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/507
+### CASE-07. 하나의 POST/PATCH 요청에 중복 Reward ID가 있으면 원자적으로 거부한다
+### (CartService: "Duplicate rewardId is not allowed. rewardId={id}")
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "cart507-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "카트507", "phoneNumber": "010-1111-0008"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+%}
+
+### 3. IN_PROGRESS 프로젝트/리워드 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 4. 리워드 조회
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("리워드 1건 이상", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("rewardId", response.body.data[0].rewardId);
+%}
+
+### 5. POST — 같은 rewardId를 두 번 포함해 요청 → 400, Cart는 변경되지 않아야 한다
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}, {"rewardId": {{rewardId}}, "quantity": 2}]}
+
+> {%
+    client.test("중복 rewardId POST는 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 6. PATCH도 동일하게 거부되어야 한다
+PATCH {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}, {"rewardId": {{rewardId}}, "quantity": 2}]}
+
+> {%
+    client.test("중복 rewardId PATCH도 400", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 7. 두 요청 모두 거부되었으므로 Cart는 여전히 비어 있어야 한다
+GET {{baseUrl}}/api/v1/carts
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("Cart는 비어있음 (부분 반영 없음)", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.itemCount === 0, "cart should remain empty, got itemCount=" + response.body.data.itemCount);
+    });
+%}

@@ -1,0 +1,44 @@
+### 592-category-rename.http — issue #592
+### CASE-05. (Category) 카테고리 이름을 수정할 수 있다
+
+### 1. 관리자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{
+  "email": "admin@earlybird.co.kr",
+  "password": "rawPassword3!"
+}
+
+> {%
+    client.test("관리자 로그인 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("adminAccessToken", response.body.data.accessToken);
+%}
+
+### 2. 카테고리 A 등록 (parent 없음)
+< {% client.global.set("catAName", "usecase592-A-" + Date.now()); %}
+POST {{baseUrl}}/api/v1/project-categories
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catAName}}" }
+
+> {%
+    client.test("A 등록 성공", function () { client.assert(response.status === 200, response.body); });
+    client.global.set("categoryAId", response.body.data.id);
+%}
+
+### 3. A의 이름만 변경 (parentProjectCategoryId 는 기존 값 null 유지)
+< {% client.global.set("catANewName", "usecase592-A-renamed-" + Date.now()); %}
+PUT {{baseUrl}}/api/v1/project-categories/{{categoryAId}}
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{ "name": "{{catANewName}}", "parentProjectCategoryId": null }
+
+> {%
+    client.test("이름 변경 반영", function () {
+        client.assert(response.status === 200, "update failed: " + response.body);
+        client.assert(response.body.data.name === client.global.get("catANewName"), "name not updated");
+    });
+%}
