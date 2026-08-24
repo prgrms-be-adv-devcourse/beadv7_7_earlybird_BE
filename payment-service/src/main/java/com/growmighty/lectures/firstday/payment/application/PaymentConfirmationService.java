@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.payment.application;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmationTarget;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
-import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
@@ -54,7 +53,7 @@ public class PaymentConfirmationService {
             payment.getPaymentId(),
             payment.getPgOrderId(),
             payment.getAmount(),
-            payment.getApproveIdempotencyKey().value() // <-- PG에는 평문 값만 전달
+            payment.getApproveIdempotencyKey().value()
         );
     }
 
@@ -104,24 +103,6 @@ public class PaymentConfirmationService {
         }
 
         return Optional.of(PaymentInfo.from(payment));
-    }
-
-    @Transactional(readOnly = true)
-    public PaymentRecoveryTarget getRecoveryTarget(Long paymentId) {
-        Payment payment = findPayment(paymentId);
-
-        if(!payment.isConfirming()) {
-            throw new IllegalStateException("CONFIRMING 상태의 결제만 복구할 수 있습니다. 현재 상태 : " + payment.getStatus());
-        }
-
-        if (payment.getPaymentKey() == null) { // <-- VO는 생성 시 공백을 거부함
-            throw new IllegalStateException("CONFIRMING 상태의 결제에 paymentKey가 없습니다. paymentId = " + paymentId);
-        }
-
-        return new PaymentRecoveryTarget(
-            payment.getPaymentId(),
-            payment.getPaymentKey().value() // <-- PG 조회에는 평문 값만 전달
-        );
     }
 
     private Payment findPayment(Long paymentId) {
