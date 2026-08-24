@@ -10,8 +10,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
@@ -88,6 +90,35 @@ class RefundCancellationSagaOrchestratorTest {
         inOrder.verify(refundService).startPlannedRefund(REFUND_ID);
         inOrder.verify(refundGateway).refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
         inOrder.verify(refundService).completeRefund(REFUND_ID);
+    }
+
+    @Test
+    void cancel_ignoresOptimisticLockFailureWhenAnotherRequestCompletesRefund() {
+        RefundCancellationTarget target = target();
+        when(refundService.startRefund(ORDER_ID, PAYMENT_ID, RefundReason.USER_CANCEL)).thenReturn(target);
+        doThrow(new OptimisticLockingFailureException("환불 상태가 변경되었습니다."))
+            .when(refundService).completeRefund(REFUND_ID);
+
+        assertThatCode(() -> orchestrator.cancel(ORDER_ID, PAYMENT_ID))
+            .doesNotThrowAnyException();
+
+        verify(refundService).completeRefund(REFUND_ID);
+    }
+
+    @Test
+    void cancel_keepsGatewayExceptionWhenOptimisticLockFailureOccursWhileFailingRefund() {
+        RefundCancellationTarget target = target();
+        RefundGatewayException exception = gatewayException(RefundGatewayFailureType.DEFINITIVE);
+        when(refundService.startRefund(ORDER_ID, PAYMENT_ID, RefundReason.USER_CANCEL)).thenReturn(target);
+        doThrow(exception).when(refundGateway)
+            .refund(PAYMENT_KEY, RefundReason.USER_CANCEL, CANCEL_IDEMPOTENCY_KEY);
+        doThrow(new OptimisticLockingFailureException("환불 상태가 변경되었습니다."))
+            .when(refundService).failRefund(REFUND_ID);
+
+        assertThatThrownBy(() -> orchestrator.cancel(ORDER_ID, PAYMENT_ID))
+            .isSameAs(exception);
+
+        verify(refundService).failRefund(REFUND_ID);
     }
 
     private RefundCancellationTarget target() {

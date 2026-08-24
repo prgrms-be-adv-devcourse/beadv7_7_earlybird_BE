@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -68,6 +69,19 @@ class RefundRecoveryBatchServiceTest {
 
         verify(refundRecoveryService).recover(target(1L)); // <-- 실패 후에도 다음 대상 진행
         verify(refundRecoveryService).recover(target(2L)); // <-- 실패 후에도 다음 대상 진행
+    }
+
+    @Test
+    void 낙관적_락_충돌이_발생해도_다음_환불을_계속_복구한다() {
+        when(refundRecoveryTargetReader.findTimedOutRequestTargets(any(LocalDateTime.class), eq(BATCH_SIZE)))
+            .thenReturn(List.of(target(1L), target(2L)));
+        doThrow(new OptimisticLockingFailureException("환불 상태가 변경되었습니다."))
+            .when(refundRecoveryService).recover(target(1L));
+
+        refundRecoveryBatchService.recoverTimedOutRefunds();
+
+        verify(refundRecoveryService).recover(target(1L));
+        verify(refundRecoveryService).recover(target(2L));
     }
 
     // 추가 : 복구 대상 DTO 생성, 배치 테스트 공통 입력값
