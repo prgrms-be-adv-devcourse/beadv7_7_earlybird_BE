@@ -1,25 +1,53 @@
 package com.growmighty.lectures.firstday.ai.chat.application;
 
-import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ChatMessageResponse;
+import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ChatStreamMetadata;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @RequiredArgsConstructor
 public class ChatOrchestrationService {
+    private static final long SSE_TIMEOUT_MILLIS = 60_000L;
+
     private final ChatClient chatClient;
-    private final ToolInvocationRecorder recorder;
 
-    public ChatMessageResponse sendMessage(String conversationId, String message) {
-        String reply = chatClient.prompt()
+    public SseEmitter sendMessage(String conversationId, String message) {
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
+        ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+        AtomicBoolean metadataSent = new AtomicBoolean(false);
+
+        chatClient.prompt()
             .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+            .toolContext(Map.of(ToolInvocationRecorder.TOOL_CONTEXT_KEY, recorder))
             .user(message)
-            .call()
-            .content();
+            .stream()
+            .content()
+            .subscribe(
+                chunk -> emitChunk(emitter, recorder, metadataSent, chunk),
+                emitter::completeWithError,
+                emitter::complete
+            );
 
-        return ChatMessageResponse.of(reply, recorder.toolsUsed(), recorder.policyReferences());
+        return emitter;
+    }
+
+    private void emitChunk(SseEmitter emitter, ToolInvocationRecorder recorder, AtomicBoolean metadataSent, String chunk) {
+        try {
+            if (metadataSent.compareAndSet(false, true)) {
+                emitter.send(SseEmitter.event()
+                    .name("metadata")
+                    .data(ChatStreamMetadata.of(recorder.toolsUsed(), recorder.policyReferences())));
+            }
+            emitter.send(SseEmitter.event().name("chunk").data(chunk));
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
     }
 }

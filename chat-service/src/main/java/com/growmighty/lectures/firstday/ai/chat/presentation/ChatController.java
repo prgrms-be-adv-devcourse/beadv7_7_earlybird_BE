@@ -2,7 +2,6 @@ package com.growmighty.lectures.firstday.ai.chat.presentation;
 
 import com.growmighty.lectures.firstday.ai.chat.application.ChatOrchestrationService;
 import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ChatMessageRequest;
-import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ChatMessageResponse;
 import com.growmighty.lectures.firstday.ai.conversation.application.ConversationIdentityResolver;
 import com.growmighty.lectures.firstday.ai.conversation.domain.ConversationIdentity;
 import com.growmighty.lectures.firstday.ai.conversation.infrastructure.ConversationHistoryStore;
@@ -12,7 +11,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/v1/chat")
@@ -24,8 +25,8 @@ public class ChatController {
     private final AnonIdCookieWriter cookieWriter;
     private final ChatOrchestrationService chatOrchestrationService;
 
-    @PostMapping("/messages")
-    public ChatMessageResponse sendMessage(
+    @PostMapping(value = "/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter sendMessage(
         @RequestHeader(value = JwtHeaders.USER_ID, required = false) Long userId,
         @CookieValue(value = AnonIdCookieWriter.COOKIE_NAME, required = false) String anonId,
         @Valid @RequestBody ChatMessageRequest request,

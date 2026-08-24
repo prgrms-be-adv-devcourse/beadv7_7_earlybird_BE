@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.ai.policy.infrastructure.search.PolicyCh
 import com.growmighty.lectures.firstday.ai.policy.infrastructure.search.PolicySearchPort;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -16,7 +17,6 @@ import java.util.List;
 public class PolicySearchTool {
 
     private final PolicySearchPort policySearchPort;
-    private final ToolInvocationRecorder recorder;
 
     @Tool(name = "search_policy", description = "얼리버드 서비스 정책에 대한 질문에 답하기 위해 정책 문서를 검색한다.")
     public List<PolicyChunkResult> searchPolicy(
@@ -31,12 +31,15 @@ public class PolicySearchTool {
             "PAYMENT: 결제 수단, 결제 실패/취소 처리\n" +
             "SETTLEMENT: 펀딩 성공 시 창작자 정산, 실패 시 백커 일괄환불\n" +
             "GENERAL: 얼리버드가 어떤 플랫폼인지, All-or-Nothing 펀딩 방식, 수수료 정책 등 특정 도메인 서비스에 속하지 않는 일반 소개", required = false)
-        PolicyCategory category
+        PolicyCategory category,
+        ToolContext toolContext
     ) {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("query는 비어 있을 수 없습니다.");
         }
         List<PolicyChunkResult> results = policySearchPort.search(query, category);
+        ToolInvocationRecorder recorder =
+            (ToolInvocationRecorder) toolContext.getContext().get(ToolInvocationRecorder.TOOL_CONTEXT_KEY);
         recorder.recordToolUsed("search_policy");
         recorder.recordPolicyReferences(results);
         return results;
