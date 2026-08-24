@@ -76,7 +76,7 @@ Authorization: Bearer {{accessToken}}
 
 ### 5. 장바구니에 리워드 담기 — 주문 생성이 요구하는 항목은 장바구니 내용과 정확히 일치해야 한다
 ### (OrderApiService#commandFromCart)
-POST {{baseUrl}}/api/v1/users/{{userId}}/cart/items
+POST {{baseUrl}}/api/v1/carts/items
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
