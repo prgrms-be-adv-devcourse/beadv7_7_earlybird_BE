@@ -5,7 +5,6 @@ import com.growmighty.lectures.firstday.payment.application.dto.PaymentConfirmat
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentRecoveryTarget;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
-import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 /** 클래스 별도 생성 이유 : PaymentService 내부 메서드 끼리 호출하면 트랜잭션이 적용되지 않아서.
@@ -27,7 +25,6 @@ public class PaymentConfirmationService {
 
     private final PaymentRepository paymentRepository;
     private final PaymentStatusOutboxAppender paymentStatusOutboxAppender;
-    private final PaymentRecoveryProperties paymentRecoveryProperties;
 
     /**
      * 이 메서드가 끝나면 트랜잭션도 끝남 -> 외부 PG 호출 동안 DB 트랜잭션을 붙잡지 않음
@@ -95,22 +92,8 @@ public class PaymentConfirmationService {
         }
     }
 
-    @Transactional
-    public void expireReadyPayment(Long paymentId) {
-        Payment payment = findPayment(paymentId);
-
-        if (payment.failIfReadyExpired(
-            LocalDateTime.now(),
-            paymentRecoveryProperties.readyTimeOut()
-        )) {
-            savePaymentAndAppendOutbox(payment);
-        }
-    }
-
     /**
      * 승인 응답 처리 경합 후 다른 경로에서 확정한 PAID 결제 결과 조회
-     * @param paymentId
-     * @return
      */
     @Transactional(readOnly = true)
     public Optional<PaymentInfo> findPaidPaymentInfo(Long paymentId) {

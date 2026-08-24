@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.payment.application;
 
-import com.growmighty.lectures.firstday.payment.config.PaymentRecoveryProperties;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
@@ -12,8 +11,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
-import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,9 +25,6 @@ class PaymentConfirmationServiceReconcileTest {
 
     @Mock
     private PaymentRepository paymentRepository;
-
-    @Mock
-    private PaymentRecoveryProperties paymentRecoveryProperties;
 
     @Mock
     private PaymentStatusOutboxAppender paymentStatusOutboxAppender;
@@ -61,21 +55,6 @@ class PaymentConfirmationServiceReconcileTest {
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
         verify(paymentRepository, never()).save(any());
         verifyNoInteractions(paymentStatusOutboxAppender);
-    }
-
-    @Test
-    void 장기체류한_READY_결제는_FAILED로_변경하고_Outbox를_저장한다() {
-        Payment payment = Payment.ready(1L, ORDER_ID, AMOUNT);
-        ReflectionTestUtils.setField(payment, "paymentId", 1L);
-        ReflectionTestUtils.setField(payment, "createdAt", LocalDateTime.now().minusMinutes(31));
-        when(paymentRepository.findById(payment.getPaymentId())).thenReturn(Optional.of(payment));
-        when(paymentRecoveryProperties.readyTimeOut()).thenReturn(Duration.ofMinutes(30));
-
-        paymentConfirmationService.expireReadyPayment(payment.getPaymentId());
-
-        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
-        verify(paymentRepository).save(payment);
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment);
     }
 
     private Payment confirmingPayment() {
