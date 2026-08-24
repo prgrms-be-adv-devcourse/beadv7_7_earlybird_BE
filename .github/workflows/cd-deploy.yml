@@ -248,6 +248,11 @@ jobs:
     #
     # #453: 실제 스모크 테스트 로직(게이트웨이 준비 대기 + 라이브 테스트, #157 배경 포함)은
     # smoke-test.yml로 분리했다 - 그 파일 상단 주석 참고.
+    #
+    # 여기서 env.IMAGE_TAG를 참조할 수 없다 - 재사용 워크플로 호출(uses:)의 with:는
+    # github/needs/vars/inputs/secrets 컨텍스트만 허용하고 env는 지원하지 않는다(step이
+    # 없는 호출이라 env가 채워질 시점 자체가 없음). 그래서 top-level env.IMAGE_TAG를 만든
+    # 원래 표현식을 그대로 다시 쓴다.
     uses: ./.github/workflows/smoke-test.yml
     with:
-      ref: ${{ env.IMAGE_TAG }}
+      ref: ${{ github.event.workflow_run.head_sha || github.sha }}
