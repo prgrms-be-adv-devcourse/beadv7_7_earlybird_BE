@@ -117,9 +117,6 @@ admin@earlybird.co.kr 계정을 쓴다). 같은 폴더의 `http-client.env.json`
 `local`(`http://localhost:8000`)/`production`(DuckDNS 게이트웨이) 두 환경의 `baseUrl`을 정의해두었으므로,
 IntelliJ 우측 상단 환경 드롭다운에서 골라 그대로 재사용하면 된다 — 요청 파일을 환경별로 복제할 필요는 없다.
 
-두 라이브 플로우는 `system-test` 모듈의 JUnit 테스트(`BackerFlowLiveTest`, `CreatorFlowLiveTest`)로도
-동일하게 검증할 수 있다 — 로컬/운영 스택이 떠 있는 상태에서 `./gradlew :system-test:liveTest`.
-
 현재 모든 서비스는 인메모리 H2를 쓴다 (`ddl-auto: create`, 재시작 시 초기화). 각 서비스의 `/h2-console` 에서 DB를 볼 수 있다.
 
 ## 문서
