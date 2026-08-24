@@ -69,14 +69,14 @@ class FileControllerTest {
     }
 
     @Test
-    @DisplayName("presign: 유효한 이미지 contentType(jpeg, jpg, png, image/*)이면 200 성공한다")
+    @DisplayName("presign: 유효한 이미지 contentType(jpeg, jpg, png 등)이면 200 성공한다")
     void presign_validImageContentTypes_succeeds() throws Exception {
         org.mockito.Mockito.when(fileService.issuePresignedUpload(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new com.growmighty.lectures.firstday.file.application.dto.PresignedUploadInfo(
                         "https://s3.example.com/upload", "https://cdn.example.com/files/1/a.jpg", java.util.Map.of("Content-Type", "image/jpeg")
                 ));
 
-        for (String contentType : java.util.List.of("image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "image/*", "IMAGE/JPEG")) {
+        for (String contentType : java.util.List.of("image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "IMAGE/JPEG")) {
             mockMvc.perform(post("/api/v1/files/presigned-upload")
                             .header(JwtHeaders.USER_ID, "1")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -88,15 +88,17 @@ class FileControllerTest {
     }
 
     @Test
-    @DisplayName("presign: 이미지가 아닌 contentType(예: text/html, application/pdf)이면 400으로 거부된다")
+    @DisplayName("presign: 이미지가 아니거나 구체적이지 않은 contentType(text/html, image/*, image/svg+xml 등)이면 400으로 거부된다")
     void presign_nonImageContentType_rejectedWith400() throws Exception {
-        mockMvc.perform(post("/api/v1/files/presigned-upload")
-                        .header(JwtHeaders.USER_ID, "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"contentType":"text/html","originalName":"a.html"}
-                                """))
-                .andExpect(status().isBadRequest());
+        for (String contentType : java.util.List.of("text/html", "application/pdf", "image/*", "image/svg+xml")) {
+            mockMvc.perform(post("/api/v1/files/presigned-upload")
+                            .header(JwtHeaders.USER_ID, "1")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"contentType":"%s","originalName":"a.html"}
+                                    """.formatted(contentType)))
+                    .andExpect(status().isBadRequest());
+        }
 
         verifyNoInteractions(fileService);
     }
