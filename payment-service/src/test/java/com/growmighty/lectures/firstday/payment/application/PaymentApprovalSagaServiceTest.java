@@ -10,9 +10,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -96,6 +98,48 @@ class PaymentApprovalSagaServiceTest {
             .isSameAs(exception);
 
         verify(paymentConfirmationService, never()).failConfirmation(PAYMENT_ID);
+    }
+
+    @Test
+    void 승인_완료_경합에서_다른_경로가_PAID로_확정했으면_PAID를_반환한다() {
+        PaymentConfirmationTarget target = confirmationTarget();
+        PaymentGateway.PgApproval approval = new PaymentGateway.PgApproval(PAYMENT_KEY, PG_ORDER_ID, AMOUNT);
+        PaymentInfo paidPayment = paidPayment();
+        when(paymentConfirmationService.startConfirmation(PAYMENT_KEY, PG_ORDER_ID, AMOUNT))
+            .thenReturn(target);
+        when(paymentGateway.approve(PAYMENT_KEY, PG_ORDER_ID, AMOUNT, IDEMPOTENCY_KEY))
+            .thenReturn(approval);
+        doThrow(new OptimisticLockingFailureException("결제 상태가 변경되었습니다."))
+            .when(paymentConfirmationService).completeConfirmation(PAYMENT_ID, PAYMENT_KEY, approval);
+        when(paymentConfirmationService.findPaidPaymentInfo(PAYMENT_ID))
+            .thenReturn(Optional.of(paidPayment));
+
+        PaymentInfo result = paymentApprovalSagaService.approve(PAYMENT_KEY, PG_ORDER_ID, AMOUNT);
+
+        assertThat(result).isEqualTo(paidPayment);
+    }
+
+    @Test
+    void 승인_완료_경합에서_PAID가_아니면_낙관적_락_예외를_전파한다() {
+        PaymentConfirmationTarget target = confirmationTarget();
+        PaymentGateway.PgApproval approval = new PaymentGateway.PgApproval(PAYMENT_KEY, PG_ORDER_ID, AMOUNT);
+        OptimisticLockingFailureException exception = new OptimisticLockingFailureException("결제 상태가 변경되었습니다.");
+        when(paymentConfirmationService.startConfirmation(PAYMENT_KEY, PG_ORDER_ID, AMOUNT))
+            .thenReturn(target);
+        when(paymentGateway.approve(PAYMENT_KEY, PG_ORDER_ID, AMOUNT, IDEMPOTENCY_KEY))
+            .thenReturn(approval);
+        doThrow(exception).when(paymentConfirmationService)
+            .completeConfirmation(PAYMENT_ID, PAYMENT_KEY, approval);
+        when(paymentConfirmationService.findPaidPaymentInfo(PAYMENT_ID))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> paymentApprovalSagaService.approve(PAYMENT_KEY, PG_ORDER_ID, AMOUNT))
+            .isSameAs(exception);
+    }
+
+    // 추가 : 승인 완료 결과 DTO 생성
+    private PaymentInfo paidPayment() {
+        return new PaymentInfo(PAYMENT_ID, ORDER_ID, PG_ORDER_ID, AMOUNT, PaymentStatus.PAID);
     }
 
     private PaymentConfirmationTarget confirmationTarget() {

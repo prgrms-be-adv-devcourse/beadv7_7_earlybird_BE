@@ -47,6 +47,9 @@ public class PaymentApprovalSagaOrchestrator {
                 paymentKey,
                 approval
             );
+        } catch (OptimisticLockingFailureException exception) {
+            return paymentConfirmationService.findPaidPaymentInfo(target.paymentId())
+                .orElseThrow(() -> exception);
         } catch (PaymentGatewayException exception) {
             if (exception.getFailureType() == PaymentGatewayFailureType.DEFINITIVE) {
                 paymentConfirmationService.failConfirmation(target.paymentId());

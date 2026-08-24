@@ -90,6 +90,22 @@ public class PaymentConfirmationService {
     }
 
     /**
+     * 승인 응답 처리 경합 후 다른 경로에서 확정한 PAID 결제 결과 조회
+     * @param paymentId
+     * @return
+     */
+    @Transactional(readOnly = true)
+    public Optional<PaymentInfo> findPaidPaymentInfo(Long paymentId) {
+        Payment payment = findPayment(paymentId);
+
+        if (!payment.isPaid()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(PaymentInfo.from(payment));
+    }
+
+    /**
      * 승인 실패,
      */
     @Transactional
