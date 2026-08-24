@@ -16,8 +16,7 @@ import java.util.concurrent.ConcurrentMap;
 @Component
 @ConditionalOnProperty(
     name = "payment.gateway",
-    havingValue = "fake",
-    matchIfMissing = true
+    havingValue = "fake"
 )
 public class FakePaymentGateway implements PaymentGateway {
 
