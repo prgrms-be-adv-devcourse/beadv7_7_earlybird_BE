@@ -37,10 +37,10 @@ public class PolicySearchTool {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("query는 비어 있을 수 없습니다.");
         }
-        List<PolicyChunkResult> results = policySearchPort.search(query, category);
         ToolInvocationRecorder recorder =
             (ToolInvocationRecorder) toolContext.getContext().get(ToolInvocationRecorder.TOOL_CONTEXT_KEY);
         recorder.recordToolUsed("search_policy");
+        List<PolicyChunkResult> results = policySearchPort.search(query, category);
         recorder.recordPolicyReferences(results);
         return results;
     }

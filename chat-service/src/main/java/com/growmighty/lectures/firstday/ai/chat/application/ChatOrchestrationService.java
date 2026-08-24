@@ -20,7 +20,7 @@ public class ChatOrchestrationService {
 
     public SseEmitter sendMessage(String conversationId, String message) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
-        ToolInvocationRecorder recorder = new ToolInvocationRecorder();
+        ToolInvocationRecorder recorder = new ToolInvocationRecorder(emitter);
         AtomicBoolean metadataSent = new AtomicBoolean(false);
 
         chatClient.prompt()
@@ -30,7 +30,7 @@ public class ChatOrchestrationService {
             .stream()
             .content()
             .subscribe(
-                chunk -> emitChunk(emitter, recorder, metadataSent, chunk),
+                chunk -> emitChunk(recorder, metadataSent, chunk),
                 emitter::completeWithError,
                 emitter::complete
             );
@@ -38,16 +38,12 @@ public class ChatOrchestrationService {
         return emitter;
     }
 
-    private void emitChunk(SseEmitter emitter, ToolInvocationRecorder recorder, AtomicBoolean metadataSent, String chunk) {
-        try {
-            if (metadataSent.compareAndSet(false, true)) {
-                emitter.send(SseEmitter.event()
-                    .name("metadata")
-                    .data(ChatStreamMetadata.of(recorder.toolsUsed(), recorder.policyReferences())));
-            }
-            emitter.send(SseEmitter.event().name("chunk").data(chunk));
-        } catch (Exception e) {
-            emitter.completeWithError(e);
+    private void emitChunk(ToolInvocationRecorder recorder, AtomicBoolean metadataSent, String chunk) {
+        if (metadataSent.compareAndSet(false, true)) {
+            recorder.send(SseEmitter.event()
+                .name("metadata")
+                .data(ChatStreamMetadata.of(recorder.toolsUsed(), recorder.policyReferences())));
         }
+        recorder.send(SseEmitter.event().name("chunk").data(chunk));
     }
 }
