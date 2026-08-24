@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.project.category.application;
 
 import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
+import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +22,7 @@ class ProjectCategoryServiceImplDeleteTest {
 
     private final ProjectCategoryRepository projectCategoryRepository = mock(ProjectCategoryRepository.class);
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
+    private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectCategoryService> selfProvider = mock(ObjectProvider.class);
 
@@ -29,7 +31,7 @@ class ProjectCategoryServiceImplDeleteTest {
 
     @BeforeEach
     void setUp() {
-        projectCategoryService = new ProjectCategoryServiceImpl(projectCategoryRepository, projectRepository, selfProvider);
+        projectCategoryService = new ProjectCategoryServiceImpl(projectCategoryRepository, projectRepository, searchPort, selfProvider);
         category = ProjectCategory.create(null, "전자기기");
         when(projectCategoryRepository.findById(1L)).thenReturn(Optional.of(category));
     }

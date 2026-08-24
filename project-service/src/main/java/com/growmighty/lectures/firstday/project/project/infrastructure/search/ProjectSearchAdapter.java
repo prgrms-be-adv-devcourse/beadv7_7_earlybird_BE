@@ -248,9 +248,17 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
      */
     private List<Long> searchFallback(String keyword, Throwable cause) {
         log.warn("프로젝트 검색 호출 실패, DB LIKE 검색으로 대체합니다. 원인: {}", cause.toString());
-        return projectRepository.findByTitleContainingIgnoreCaseOrderByCreatedAtDesc(keyword).stream()
+        return projectRepository.findByTitleContainingIgnoreCaseOrderByCreatedAtDesc(escapeLikeWildcards(keyword)).stream()
                 .map(Project::getProjectId)
                 .toList();
+    }
+
+    /**
+     * MySQL의 LIKE는 escape 절을 따로 안 줘도 기본적으로 백슬래시를 이스케이프 문자로 쓴다 —
+     * 검색어에 든 %, _를 그대로 넘기면 사용자가 의도하지 않은 와일드카드로 해석돼 매칭이 틀어진다.
+     */
+    private String escapeLikeWildcards(String keyword) {
+        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override

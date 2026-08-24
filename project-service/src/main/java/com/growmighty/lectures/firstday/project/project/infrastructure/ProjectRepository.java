@@ -23,6 +23,9 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
     /** 카테고리 삭제 전 참조무결성 체크(ProjectCategoryServiceImpl.delete()) 전용. */
     boolean existsByCategoryId(Long categoryId);
 
+    /** 카테고리 이름 변경 시 소속 프로젝트를 전부 재색인하기 위한 조회(ProjectCategoryServiceImpl.updateTransactional()). */
+    List<Project> findByCategoryId(Long categoryId);
+
     /** ProjectInternalController(서비스 간 내부 API) 전용 — role 없이 상태만으로 조회. */
     List<Project> findByStatus(ProjectStatus status);
 
