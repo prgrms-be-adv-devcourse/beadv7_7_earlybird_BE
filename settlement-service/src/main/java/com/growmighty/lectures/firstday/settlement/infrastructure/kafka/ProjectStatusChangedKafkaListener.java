@@ -1,7 +1,5 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.kafka;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
 import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInput;
 import com.growmighty.lectures.firstday.settlement.application.input.SettlementKafkaInputService;
@@ -16,17 +14,16 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ProjectStatusChangedKafkaListener {
 
-    private final ObjectMapper objectMapper;
     private final SettlementKafkaInputService inputService;
 
     @KafkaListener(
             topics = KafkaTopics.PROJECT_STATUS_CHANGED,
             groupId = "settlement-service",
-            containerFactory = "settlementKafkaListenerContainerFactory"
+            containerFactory = "settlementKafkaListenerContainerFactory",
+            properties = "spring.json.type.mapping=projectStatusChanged:com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectStatusChangedEvent"
     )
-    public void consume(ConsumerRecord<String, String> record, Acknowledgment acknowledgment)
-            throws JsonProcessingException {
-        ProjectStatusChangedEvent event = objectMapper.readValue(record.value(), ProjectStatusChangedEvent.class);
+    public void consume(ConsumerRecord<String, ProjectStatusChangedEvent> record, Acknowledgment acknowledgment) {
+        ProjectStatusChangedEvent event = record.value();
         inputService.saveProjectStatus(new SettlementKafkaInput.ProjectStatusChanged(
                 record.key(),
                 event.eventId(), event.eventType(), event.schemaVersion(), event.occurredAt(),
