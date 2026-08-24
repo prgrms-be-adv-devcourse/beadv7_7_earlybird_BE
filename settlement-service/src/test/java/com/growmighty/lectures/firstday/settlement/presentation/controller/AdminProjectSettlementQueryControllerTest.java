@@ -4,6 +4,7 @@ package com.growmighty.lectures.firstday.settlement.presentation.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -15,6 +16,8 @@ import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmProjectSettlementCommand;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ConfirmedProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.application.settlement.ProjectSettlementService;
+import com.growmighty.lectures.firstday.settlement.application.port.user.CreatorInformation;
+import com.growmighty.lectures.firstday.settlement.application.port.user.CreatorInformationReader;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
@@ -38,6 +41,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,11 +68,17 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     @Autowired
     private SpringDataProjectOutcomeFactRepository outcomeRepository;
 
+    @MockitoBean
+    private CreatorInformationReader creatorInformationReader;
+
     @Test
     @DisplayName("관리자는 등록 대기 창작자의 셀러 등록을 결정적 더미 결과로 완료한다")
     void registersPendingCreatorPayoutProfile() throws Exception {
         long creatorId = 80_000_001L;
         creatorPayoutProfileRepository.save(CreatorPayoutProfile.awaitingRegistration(creatorId));
+        when(creatorInformationReader.read(creatorId)).thenReturn(new CreatorInformation(
+                "creator@example.com", "창작자", "01012345678"
+        ));
 
         mockMvc.perform(post("/api/v1/settlements/creator-payout-profiles/{creatorId}/registration", creatorId)
                         .header(JwtHeaders.USER_ROLE, UserRole.ADMIN.name()))
