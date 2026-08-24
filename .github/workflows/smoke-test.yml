@@ -1,29 +1,33 @@
 name: Smoke Test
 
-# cd-deploy.yml의 smoke-test 잡에서 분리했다 (#453) - 게이트웨이 준비 대기 로직이
-# cd-deploy.yml 안에 있으면 배포 스텝들 사이에 묻혀 스모크 테스트만 따로 손보거나
-# 재사용하기 어려웠다. workflow_call로 두면 cd-deploy.yml은 이 워크플로를 호출만
-# 하고, 이 파일 하나만 봐도 스모크 테스트의 전체 흐름이 드러난다.
+# cd-deploy.yml의 smoke-test 잡에서 분리했다 (#453) - CD Build가 CI 완료를 트리거로
+# 잡듯, CD Deploy 완료를 트리거로 도는 독립 워크플로로 둔다. cd-deploy.yml이 이 워크플로를
+# uses:로 호출하는 방식(reusable workflow)도 써봤지만, 그 호출의 with:는 env 컨텍스트를
+# 지원하지 않아 IMAGE_TAG를 그대로 넘길 수 없었다 - CD Build/CD Deploy와 동일하게
+# workflow_run 체이닝으로 두면 그 문제 자체가 없고, 잡 구조도 나머지 두 워크플로와
+# 일관된다.
 on:
-  workflow_call:
-    inputs:
-      ref:
-        description: 체크아웃할 커밋 SHA (system-test 코드 기준 - baseUrl은 항상 운영 배포본을 대상으로 한다)
-        required: true
-        type: string
-  # cd-deploy.yml 실행 없이 지금 떠 있는 운영 스택만 단독으로 재검증하고 싶을 때 수동 실행.
+  workflow_run:
+    workflows: [CD Deploy]
+    types: [completed]
+  # 배포 체인 없이 지금 떠 있는 운영 스택만 단독으로 재검증하고 싶을 때 수동 실행.
+  # workflow_dispatch를 GitHub UI에서 실행할 때 "Use workflow from"으로 브랜치/태그를
+  # 고르면 그 커밋이 github.sha가 된다 (cd-deploy.yml과 동일한 패턴).
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 체크아웃할 커밋 SHA/브랜치
-        required: false
-        default: main
-        type: string
+
+env:
+  IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   smoke-test:
     name: smoke test (live flow)
     runs-on: ubuntu-latest
+    # CD Build가 CI의 workflow_run에 거는 것과 동일한 게이팅 - CD Deploy가 실제로 성공한
+    # 경우에만 돈다. branch 확인은 CD Build 단계에서 이미 걸렀으므로(그 파일 주석 참고)
+    # 여기서 다시 하지 않는다.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     # #157: CI가 아니라 배포 후 스모크 테스트로 넣은 이유 - CI는 config/discovery/gateway/
     # user/project/order-service 전체 스택을 새로 띄워야 하는데, 그 오케스트레이션 비용이
     # #112(CD가 서비스당 순차 컴파일로 ~20분 걸리던 문제)와 같은 성격의 부담을 CI 쪽에도
@@ -34,13 +38,18 @@ jobs:
     # `kubectl rollout undo`만 존재, cd-deploy.yml의 deploy 잡 주석 참고), 이 잡 하나를 위해
     # 새로 만들 정도로 #157 범위가 넓지 않다. 대신 잡을 실패시켜 Actions 탭에 빨간불로
     # 남긴다 - 사람이 보고 필요하면 수동으로 rollout undo하는 흐름.
+    #
+    # #410이 머지되기 전까지는 이 잡이 placeOrder 스텝에서 계속 빨간불이다 - cart-service가
+    # 게이트웨이 경유로 도달 불가능해(CartController 경로가 gateway cart-route와 어긋남)
+    # addToCart가 항상 실패하고, 그 뒤 주문 생성도 "Order Cart is empty"로 막힌다. #154/#155와
+    # 같은 성격의 활성화 전제 조건 - #410 머지 후 이 잡이 실제로 통과하는지 재확인할 것.
     steps:
       - name: 배포 후 10분 대기
         run: sleep 600
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ env.IMAGE_TAG }}
 
       - uses: actions/setup-java@v4
         with:

@@ -233,26 +233,7 @@ jobs:
             # 않으므로(--all과 다름) 매번 안전하게 돌릴 수 있고, ec2-user는 NOPASSWD sudo라
             # 이 비대화형 셸에서도 문제없이 동작한다(확인 완료).
             sudo k3s crictl rmi --prune
-
-  smoke-test:
-    name: smoke test (live flow)
-    needs: deploy
-    # needs: deploy 만으로 충분하다 - deploy 자신이 이미 deploy-k8s에 needs를 걸고 있고, needs
-    # 체인의 기본 조건(success())상 deploy-k8s/deploy 둘 중 하나라도 skip/실패하면 이 잡도 자동
-    # skip되므로 위 두 잡의 if 조건(#154/#155 참고 - 여기선 무관)을 다시 반복할 필요가 없다.
-    #
-    # #410이 머지되기 전까지는 이 잡이 placeOrder 스텝에서 계속 빨간불이다 - cart-service가
-    # 게이트웨이 경유로 도달 불가능해(CartController 경로가 gateway cart-route와 어긋남)
-    # addToCart가 항상 실패하고, 그 뒤 주문 생성도 "Order Cart is empty"로 막힌다. #154/#155와
-    # 같은 성격의 활성화 전제 조건 - #410 머지 후 이 잡이 실제로 통과하는지 재확인할 것.
-    #
-    # #453: 실제 스모크 테스트 로직(게이트웨이 준비 대기 + 라이브 테스트, #157 배경 포함)은
-    # smoke-test.yml로 분리했다 - 그 파일 상단 주석 참고.
-    #
-    # 여기서 env.IMAGE_TAG를 참조할 수 없다 - 재사용 워크플로 호출(uses:)의 with:는
-    # github/needs/vars/inputs/secrets 컨텍스트만 허용하고 env는 지원하지 않는다(step이
-    # 없는 호출이라 env가 채워질 시점 자체가 없음). 그래서 top-level env.IMAGE_TAG를 만든
-    # 원래 표현식을 그대로 다시 쓴다.
-    uses: ./.github/workflows/smoke-test.yml
-    with:
-      ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+#
+# #453: smoke-test는 이 파일에서 완전히 분리됐다 - CD Build가 CI 완료를 트리거로 도는
+# 것과 동일하게, smoke-test.yml이 이 워크플로(CD Deploy)의 완료를 workflow_run 트리거로
+# 받아 독립적으로 돈다 (그 파일 상단 주석 참고).
