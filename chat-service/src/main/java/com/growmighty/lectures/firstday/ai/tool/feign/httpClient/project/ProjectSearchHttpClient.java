@@ -44,8 +44,9 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
             .limit(RECOMMENDATION_LIMIT)
             .map(this::toResult)
             .toList();
-        boolean hasMore = data.size() > RECOMMENDATION_LIMIT;
-        return new ProjectSearchOutcome(projects, hasMore);
+        int totalCount = data.size();
+        boolean hasMore = totalCount > RECOMMENDATION_LIMIT;
+        return new ProjectSearchOutcome(projects, hasMore, totalCount);
     }
 
     private ProjectSearchResult toResult(ProjectSearchApiData data) {

@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ProjectSearchOutcome(
     List<ProjectSearchResult> projects,
-    boolean hasMore
+    boolean hasMore,
+    int totalCount
 ) {
 }
