@@ -17,7 +17,7 @@ import java.util.List;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Cart extends BaseEntity {
-    public static final int MAX_DISTINCT_ITEMS = 50;
+    public static final int MAX_DISTINCT_ITEMS = 10;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
