@@ -52,6 +52,7 @@ class ProjectServiceImplSearchIndexingTest {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
                 projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, filePort, Clock.systemDefaultZone());
+        when(selfProvider.getObject()).thenReturn(projectService);
         project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
     }

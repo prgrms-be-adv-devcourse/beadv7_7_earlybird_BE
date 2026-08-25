@@ -40,10 +40,12 @@ class RewardServiceImplStockChangeIdempotencyTest {
     private final StockChangeLogRepository stockChangeLogRepository = mock(StockChangeLogRepository.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> projectServiceProvider = mock(ObjectProvider.class);
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<RewardService> selfProvider = mock(ObjectProvider.class);
     private final RewardStockTransactionExecutor rewardStockTransactionExecutor =
             new RewardStockTransactionExecutor(rewardRepository, projectServiceProvider, stockChangeLogRepository);
     private final RewardServiceImpl rewardService =
-            new RewardServiceImpl(rewardRepository, projectServiceProvider, rewardStockTransactionExecutor);
+            new RewardServiceImpl(rewardRepository, projectServiceProvider, selfProvider, rewardStockTransactionExecutor);
 
     private Reward reward;
 

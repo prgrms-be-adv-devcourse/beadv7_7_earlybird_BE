@@ -79,10 +79,17 @@ class RewardServiceImplRetryTest {
             return new RewardStockTransactionExecutor(rewardRepository, projectServiceProvider, stockChangeLogRepository);
         }
 
+        // selfProvider는 여기서 mock으로 만들지 않는다 — register()가 이제
+        // self-invocation(selfProvider.getObject().registerInternal(...))으로 @Transactional을
+        // 태우므로, 진짜 rewardService 프록시를 가리켜야 트랜잭션 경계가 실제로 분리된다.
+        // ObjectProvider<T>는 Spring이 순환 의존 걱정 없이 자동으로 지연 주입해주는 타입이라, 아래
+        // rewardService(...) 빈 메서드의 파라미터로 그냥 선언만 하면 Spring이 실제 프록시를 돌려주는
+        // 진짜 ObjectProvider를 준다(ProjectServiceImplRetryTest.selfProvider와 동일 패턴).
         @Bean
         RewardService rewardService(RewardRepository rewardRepository, ObjectProvider<ProjectService> projectServiceProvider,
+                                     ObjectProvider<RewardService> selfProvider,
                                      RewardStockTransactionExecutor rewardStockTransactionExecutor) {
-            return new RewardServiceImpl(rewardRepository, projectServiceProvider, rewardStockTransactionExecutor);
+            return new RewardServiceImpl(rewardRepository, projectServiceProvider, selfProvider, rewardStockTransactionExecutor);
         }
     }
 

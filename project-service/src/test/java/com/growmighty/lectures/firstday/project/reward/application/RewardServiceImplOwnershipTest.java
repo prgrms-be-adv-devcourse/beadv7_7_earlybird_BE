@@ -37,10 +37,12 @@ class RewardServiceImplOwnershipTest {
     private final StockChangeLogRepository stockChangeLogRepository = mock(StockChangeLogRepository.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> projectServiceProvider = mock(ObjectProvider.class);
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<RewardService> selfProvider = mock(ObjectProvider.class);
     private final RewardStockTransactionExecutor rewardStockTransactionExecutor =
             new RewardStockTransactionExecutor(rewardRepository, projectServiceProvider, stockChangeLogRepository);
     private final RewardServiceImpl rewardService =
-            new RewardServiceImpl(rewardRepository, projectServiceProvider, rewardStockTransactionExecutor);
+            new RewardServiceImpl(rewardRepository, projectServiceProvider, selfProvider, rewardStockTransactionExecutor);
 
     private Reward reward;
 
@@ -50,6 +52,7 @@ class RewardServiceImplOwnershipTest {
         reward = Reward.register(1L, UUID.randomUUID(), "노트커버", "설명", BigDecimal.valueOf(10_000), 10);
 
         when(projectServiceProvider.getObject()).thenReturn(projectService);
+        when(selfProvider.getObject()).thenReturn(rewardService);
         when(projectService.findStatusView(1L)).thenReturn(Optional.of(published));
         when(rewardRepository.findById(1L)).thenReturn(Optional.of(reward));
     }

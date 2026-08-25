@@ -18,9 +18,12 @@ public record RewardCreateRequest(
         @NotNull BigDecimal price,
         @PositiveOrZero Integer totalQuantity,
         // Project.idempotencyKey와 동일 계약 — 재시도 시 같은 키를 재전송해야 중복 생성되지 않는다.
-        @NotNull UUID idempotencyKey
+        // 미전송 클라이언트와의 하위 호환을 위해 필수는 아니다 — 미전송 시 재시도 중복 방지는
+        // 적용되지 않는다(기존 동작과 동일).
+        UUID idempotencyKey
 ) {
     public Reward toEntity(Long projectId) {
-        return Reward.register(projectId, idempotencyKey, name, description, price, totalQuantity);
+        UUID key = idempotencyKey != null ? idempotencyKey : UUID.randomUUID();
+        return Reward.register(projectId, key, name, description, price, totalQuantity);
     }
 }
