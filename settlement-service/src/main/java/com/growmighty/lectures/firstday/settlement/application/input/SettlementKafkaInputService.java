@@ -76,8 +76,7 @@ public class SettlementKafkaInputService {
         if (!inputRepository.markProcessed(event.eventId(), event.eventType(), event.occurredAt().toInstant())) {
             return;
         }
-        Long refundRequestId = parseRefundRequestId(event.refundRequestId());
-        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(refundRequestId)
+        ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(event.refundRequestId())
                 .orElseThrow(() -> new IllegalArgumentException("환불 요청을 찾을 수 없습니다."));
         request.recordPaymentResult(event.status(), event.occurredAt().toInstant(), event.orderIds());
         refundRequestedRepository.save(request);
@@ -143,16 +142,6 @@ public class SettlementKafkaInputService {
         validateKey(event.key(), event.refundRequestId(), "refundRequestId");
         validateOrderIds(event.orderIds());
         requiredEnum(RefundProcessingStatus.class, event.status(), "환불 처리 상태");
-    }
-
-    private static Long parseRefundRequestId(String value) {
-        try {
-            Long parsed = Long.valueOf(value);
-            requirePositive(parsed, "refundRequestId");
-            return parsed;
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("refundRequestId는 양의 숫자여야 합니다.", exception);
-        }
     }
 
     private static void validateEnvelope(

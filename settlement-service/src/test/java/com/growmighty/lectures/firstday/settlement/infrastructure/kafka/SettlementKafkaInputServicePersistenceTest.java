@@ -107,12 +107,12 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
         refundRequestedRepository.save(request);
         UUID eventId = UUID.randomUUID();
         SettlementKafkaInput.ProjectRefundProcessed event = new SettlementKafkaInput.ProjectRefundProcessed(
-                request.refundRequestId().toString(),
+                String.valueOf(request.refundRequestId()),
                 eventId,
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-01T09:05:00+09:00"),
-                request.refundRequestId().toString(), List.of(1001L, 1002L), "COMPLETED"
+                request.refundRequestId(), List.of(1001L, 1002L), "COMPLETED"
         );
 
         inputService.saveProjectRefundProcessed(event);
@@ -134,7 +134,7 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
         ProjectRefundRequested request = refundRequest(94_000_103L, 103L, List.of(1004L, 1005L));
         refundRequestedRepository.save(request);
         SettlementKafkaInput.ProjectRefundProcessed event = refundResult(
-                request.refundRequestId().toString(),
+                request.refundRequestId(),
                 UUID.randomUUID(),
                 "FAILED",
                 "2026-08-01T09:05:00+09:00",
@@ -158,7 +158,7 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
         UUID eventId = UUID.randomUUID();
 
         assertThatThrownBy(() -> inputService.saveProjectRefundProcessed(refundResult(
-                request.refundRequestId().toString(), eventId, "FAILED", "2026-08-01T09:05:00+09:00", List.of(1007L)
+                request.refundRequestId(), eventId, "FAILED", "2026-08-01T09:05:00+09:00", List.of(1007L)
         ))).isInstanceOf(IllegalArgumentException.class);
 
         ProjectRefundRequested stored = refundRequestedRepository.findByRefundRequestId(request.refundRequestId())
@@ -175,11 +175,11 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
         ProjectRefundRequested request = refundRequest(94_000_102L, 102L, List.of(1003L));
         refundRequestedRepository.save(request);
         inputService.saveProjectRefundProcessed(refundResult(
-                request.refundRequestId().toString(), UUID.randomUUID(), "COMPLETED", "2026-08-01T09:05:00+09:00", List.of(1003L)
+                request.refundRequestId(), UUID.randomUUID(), "COMPLETED", "2026-08-01T09:05:00+09:00", List.of(1003L)
         ));
 
         assertThatThrownBy(() -> inputService.saveProjectRefundProcessed(refundResult(
-                request.refundRequestId().toString(), UUID.randomUUID(), "FAILED", "2026-08-01T09:06:00+09:00", List.of(1003L)
+                request.refundRequestId(), UUID.randomUUID(), "FAILED", "2026-08-01T09:06:00+09:00", List.of(1003L)
         ))).isInstanceOf(IllegalStateException.class);
 
         ProjectRefundRequested stored = refundRequestedRepository.findByRefundRequestId(request.refundRequestId())
@@ -189,14 +189,14 @@ class SettlementKafkaInputServicePersistenceTest extends MySqlIntegrationTestSup
     }
 
     private static SettlementKafkaInput.ProjectRefundProcessed refundResult(
-            String refundRequestId,
+            Long refundRequestId,
             UUID eventId,
             String status,
             String occurredAt,
             List<Long> orderIds
     ) {
         return new SettlementKafkaInput.ProjectRefundProcessed(
-                refundRequestId,
+                String.valueOf(refundRequestId),
                 eventId,
                 "ProjectRefundProcessed",
                 1,

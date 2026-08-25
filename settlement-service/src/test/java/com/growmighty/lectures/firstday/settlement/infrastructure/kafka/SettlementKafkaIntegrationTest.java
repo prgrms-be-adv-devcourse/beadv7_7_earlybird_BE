@@ -175,7 +175,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
-                new ProjectRefundProcessedEvent.Payload(request.refundRequestId().toString(), List.of(orderId), "FAILED")
+                new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "FAILED")
         ));
 
         assertThat(await(() -> inboxRepository.existsById(refundProcessedEventId.toString()))).isTrue();
@@ -198,7 +198,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                     "ProjectRefundProcessed",
                     1,
                     OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
-                    new ProjectRefundProcessedEvent.Payload(request.refundRequestId().toString(), List.of(orderId), "PENDING")
+                new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "PENDING")
             ));
 
             ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(
