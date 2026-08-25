@@ -11,10 +11,6 @@ spring:
         initial-interval: 3000
         multiplier: 1.5
         max-interval: 10000
-
-logging:
-  level:
-    org.springframework.ai: DEBUG
 ---
 # 프로필별로 문서를 분리하는 이유는 gateway-server/application.yml 참고 — spring.config.import 를
 # env var 로 통째로 덮어쓰면 이 파일의 import 와 별개로 취급돼 둘 다 처리되는 문제가 있었다.
