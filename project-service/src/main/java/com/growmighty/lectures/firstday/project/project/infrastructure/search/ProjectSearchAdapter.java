@@ -59,7 +59,13 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
      * RRF 공식(Σ 1/(rankConstant+rank))을 애플리케이션 코드에서 직접 계산해 합친다(fuseByRank).
      */
     private static final int RRF_RANK_CONSTANT = 60;
-    /** RRF 스코어 하한: 1/(60+rank) 결합 점수 기준 하위 노이즈 문서 필터링 */
+    /** 키워드 일치(BM25/동의어) RRF 가중치: 명시적 키워드 일치 결과에 높은 우선순위 부여 */
+    private static final double KEYWORD_RRF_WEIGHT = 1.0;
+    /** kNN 의미 벡터 RRF 가중치: 문맥/유사도 기반 보조 추천 가중치 */
+    private static final double KNN_RRF_WEIGHT = 0.8;
+    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.28 미만 노이즈 벡터 제외) */
+    private static final float KNN_SIMILARITY_THRESHOLD = 0.28f;
+    /** RRF 스코어 하한: 가중치 RRF 결합 점수 기준 하위 노이즈 문서 필터링 */
     private static final double RRF_MIN_SCORE = 0.005;
     /** ES 후보 과다조회 한도 — 최종 10개 컷은 ProjectServiceImpl이 MySQL 가시성 필터링 후 수행한다. */
     private static final int AUTOCOMPLETE_CANDIDATE_LIMIT = 50;
@@ -196,6 +202,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                                     .queryVector(vectorList)
                                     .k(20)
                                     .numCandidates(100)
+                                    .similarity(KNN_SIMILARITY_THRESHOLD)
                             ),
                     ProjectDocument.class
             );
@@ -213,11 +220,11 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 .toList();
     }
 
-    /** RRF 공식을 직접 계산해 두 순위 리스트를 합친다 — RRF_RANK_CONSTANT 위 주석 참고. */
+    /** RRF 공식을 직접 계산해 두 순위 리스트를 합친다 (키워드 매칭 우선 가중치 적용). */
     private List<Long> fuseByRank(List<Long> keywordIds, List<Long> knnIds) {
         Map<Long, Double> scores = new HashMap<>();
-        addRankScores(scores, keywordIds);
-        addRankScores(scores, knnIds);
+        addRankScores(scores, keywordIds, KEYWORD_RRF_WEIGHT);
+        addRankScores(scores, knnIds, KNN_RRF_WEIGHT);
 
         Comparator<Map.Entry<Long, Double>> comparator = Map.Entry.<Long, Double>comparingByValue().reversed()
                 .thenComparing(Map.Entry.<Long, Double>comparingByKey().reversed());
@@ -230,9 +237,9 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 .toList();
     }
 
-    private void addRankScores(Map<Long, Double> scores, List<Long> rankedIds) {
+    private void addRankScores(Map<Long, Double> scores, List<Long> rankedIds, double weight) {
         for (int i = 0; i < rankedIds.size(); i++) {
-            double score = 1.0 / (RRF_RANK_CONSTANT + i + 1);
+            double score = weight / (RRF_RANK_CONSTANT + i + 1);
             scores.merge(rankedIds.get(i), score, Double::sum);
         }
     }
