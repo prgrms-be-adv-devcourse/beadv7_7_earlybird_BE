@@ -102,6 +102,9 @@ Content-Type: application/json
     const shippingFee = price >= 50000 ? 0 : 3000;
     request.variables.set("expectedItemsAmount", price);
     request.variables.set("expectedTotalAmount", price + shippingFee);
+    // request.variables 는 이 요청 안에서만 쓰인다 — 8번(결제 승인)에서도 같은 금액이
+    // 필요하므로 요청 간에 유지되는 client.global 에도 따로 저장해 둔다.
+    client.global.set("expectedTotalAmount", price + shippingFee);
     // 같은 (userId, orderIdempotencyKey) 재요청은 새 주문 대신 기존 주문을 그대로 반환한다
     // (OrderApiService#placeOrder) - 매 실행마다 새 주문이 나오도록 매번 새로 발급.
     request.variables.set("orderIdempotencyKey", crypto.randomUUID());
