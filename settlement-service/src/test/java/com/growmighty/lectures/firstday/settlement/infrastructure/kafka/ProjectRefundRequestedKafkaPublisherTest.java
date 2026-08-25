@@ -13,7 +13,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectRefundRequestedEvent;
+import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.PaymentBulkCancelCommand;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -45,7 +45,7 @@ class ProjectRefundRequestedKafkaPublisherTest {
     private KafkaTemplate<Object, Object> kafkaTemplate;
 
     @Captor
-    private ArgumentCaptor<ProjectRefundRequestedEvent> eventCaptor;
+    private ArgumentCaptor<PaymentBulkCancelCommand> eventCaptor;
 
     @Test
     void marksOutboxPublishedOnlyAfterKafkaAcknowledges() {
@@ -63,9 +63,9 @@ class ProjectRefundRequestedKafkaPublisherTest {
         );
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
-        assertThat(eventCaptor.getValue().refundRequestId()).isEqualTo(String.valueOf(request.refundRequestId()));
-        assertThat(eventCaptor.getValue().payload().refundRequestId())
-                .isEqualTo(String.valueOf(request.refundRequestId()));
+        assertThat(eventCaptor.getValue().refundRequestId()).isEqualTo(request.refundRequestId());
+        assertThat(eventCaptor.getValue().orderIds()).containsExactly(1001L);
+        assertThat(eventCaptor.getValue().reason()).isEqualTo("GOAL_FAILED");
     }
 
     @Test
@@ -87,8 +87,8 @@ class ProjectRefundRequestedKafkaPublisherTest {
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
         assertThat(eventCaptor.getAllValues())
-                .extracting(ProjectRefundRequestedEvent::refundRequestId)
-                .containsOnly(String.valueOf(request.refundRequestId()));
+                .extracting(PaymentBulkCancelCommand::refundRequestId)
+                .containsOnly(request.refundRequestId());
     }
 
     @Test
@@ -104,16 +104,37 @@ class ProjectRefundRequestedKafkaPublisherTest {
         assertThat(request.published()).isFalse();
     }
 
+    @Test
+    void mapsCancelledProjectToPaymentUserCancelReason() {
+        ProjectRefundRequested request = request(ProjectOutcomeFact.Outcome.CANCELLED);
+        when(outboxRepository.findPending()).thenReturn(List.of(request));
+        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(String.valueOf(request.refundRequestId())), any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
+        publisher().publishPending();
+
+        verify(kafkaTemplate).send(
+                eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND),
+                eq(String.valueOf(request.refundRequestId())),
+                eventCaptor.capture()
+        );
+        assertThat(eventCaptor.getValue().reason()).isEqualTo("USER_CANCEL");
+    }
+
     private ProjectRefundRequestedKafkaPublisher publisher() {
         return new ProjectRefundRequestedKafkaPublisher(outboxRepository, kafkaTemplate, CLOCK);
     }
 
     private static ProjectRefundRequested request() {
+        return request(ProjectOutcomeFact.Outcome.FAILED);
+    }
+
+    private static ProjectRefundRequested request(ProjectOutcomeFact.Outcome outcomeType) {
         ProjectOutcomeFact outcome = ProjectOutcomeFact.of(
                 101L,
                 "프로젝트 101",
                 9L,
-                ProjectOutcomeFact.Outcome.FAILED,
+                outcomeType,
                 OCCURRED_AT
         );
         OrderPaymentFact payment = OrderPaymentFact.completed(

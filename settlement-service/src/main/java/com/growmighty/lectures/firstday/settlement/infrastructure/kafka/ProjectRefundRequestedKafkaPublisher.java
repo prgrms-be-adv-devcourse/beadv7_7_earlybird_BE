@@ -3,11 +3,9 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.kafka;
 import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
-import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.ProjectRefundRequestedEvent;
+import com.growmighty.lectures.firstday.settlement.infrastructure.kafka.dto.PaymentBulkCancelCommand;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,18 +39,20 @@ public class ProjectRefundRequestedKafkaPublisher {
         }
     }
 
-    private ProjectRefundRequestedEvent eventOf(ProjectRefundRequested request) {
-        return new ProjectRefundRequestedEvent(
-                String.valueOf(request.refundRequestId()),
-                ProjectRefundRequested.EVENT_TYPE,
-                ProjectRefundRequested.SCHEMA_VERSION,
-                OffsetDateTime.ofInstant(request.occurredAt(), clock.getZone()),
-                new ProjectRefundRequestedEvent.Payload(
-                        String.valueOf(request.refundRequestId()),
-                        request.payments().stream()
-                                .map(ProjectRefundRequested.Payment::orderId)
-                                .toList()
-                )
+    private PaymentBulkCancelCommand eventOf(ProjectRefundRequested request) {
+        return new PaymentBulkCancelCommand(
+                request.refundRequestId(),
+                request.payments().stream()
+                        .map(ProjectRefundRequested.Payment::orderId)
+                        .toList(),
+                reasonOf(request)
         );
+    }
+
+    private static String reasonOf(ProjectRefundRequested request) {
+        return switch (request.reason()) {
+            case PROJECT_FAILED -> "GOAL_FAILED";
+            case PROJECT_CANCELLED -> "USER_CANCEL";
+        };
     }
 }
