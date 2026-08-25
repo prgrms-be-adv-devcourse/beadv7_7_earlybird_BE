@@ -12,10 +12,10 @@ import com.growmighty.lectures.firstday.settlement.application.port.order.OrderP
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import java.math.BigDecimal;
 import java.time.YearMonth;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -48,7 +48,7 @@ public final class OrderPaymentRecoveryHttpReader implements OrderPaymentRecover
         } catch (RestClientException exception) {
             throw new SettlementException(ORDER_PAYMENT_INPUTS_UNAVAILABLE, exception);
         }
-        return toRecovery(responseBody, Set.copyOf(request.projectIds()));
+        return toRecovery(responseBody, Set.copyOf(projectIds));
     }
 
     private static ProjectPaymentsRequest request(Set<Long> projectIds, YearMonth settlementMonth) {
@@ -61,34 +61,34 @@ public final class OrderPaymentRecoveryHttpReader implements OrderPaymentRecover
         if (copiedProjectIds.isEmpty()
                 || copiedProjectIds.size() > MAX_PROJECTS_PER_REQUEST
                 || copiedProjectIds.stream().anyMatch(projectId -> projectId == null || projectId <= 0)
-                || settlementMonth == null) {
+                || settlementMonth == null
+                || settlementMonth.getYear() != YearMonth.now().getYear()) {
             throw new IllegalArgumentException("Order 복구 조회 요청이 유효하지 않습니다.");
         }
-        return new ProjectPaymentsRequest(copiedProjectIds.stream().sorted().toList(), settlementMonth.toString());
+        return new ProjectPaymentsRequest(settlementMonth.getMonthValue());
     }
 
     private OrderPaymentRecovery toRecovery(String responseBody, Set<Long> requestedProjectIds) {
-        ProjectPaymentsEnvelope response;
+        List<ProjectPaymentResponse> response;
         try {
-            response = objectMapper.readValue(responseBody, ProjectPaymentsEnvelope.class);
+            response = objectMapper.readValue(
+                    responseBody,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, ProjectPaymentResponse.class)
+            );
         } catch (JsonProcessingException | RuntimeException exception) {
             throw new IllegalArgumentException("Order 복구 응답 형식이 올바르지 않습니다.", exception);
         }
-        if (response == null
-                || !response.success()
-                || response.data() == null
-                || response.data().projects() == null
-                || response.error() != null) {
-            throw new IllegalArgumentException("Order 복구 응답 envelope가 올바르지 않습니다.");
+        if (response == null) {
+            throw new IllegalArgumentException("Order 복구 응답 배열이 올바르지 않습니다.");
         }
 
         try {
-            List<ProjectPayments> projects = response.data().projects().stream()
+            List<ProjectPayments> projects = response.stream()
                     .map(ProjectPaymentResponse::toProjectPayments)
                     .toList();
             Set<Long> responseProjectIds = projects.stream()
                     .map(ProjectPayments::projectId)
-                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                    .collect(Collectors.toSet());
             if (responseProjectIds.size() != projects.size() || !responseProjectIds.equals(requestedProjectIds)) {
                 throw new IllegalArgumentException("Order 복구 응답 프로젝트 집합이 요청과 일치하지 않습니다.");
             }
@@ -100,13 +100,7 @@ public final class OrderPaymentRecoveryHttpReader implements OrderPaymentRecover
         }
     }
 
-    private record ProjectPaymentsRequest(List<Long> projectIds, String settlementMonth) {
-    }
-
-    private record ProjectPaymentsEnvelope(boolean success, ProjectPaymentsData data, Object error) {
-    }
-
-    private record ProjectPaymentsData(List<ProjectPaymentResponse> projects) {
+    private record ProjectPaymentsRequest(Integer projectMonth) {
     }
 
     private record ProjectPaymentResponse(Long projectId, List<OrderPaymentResponse> orders) {
