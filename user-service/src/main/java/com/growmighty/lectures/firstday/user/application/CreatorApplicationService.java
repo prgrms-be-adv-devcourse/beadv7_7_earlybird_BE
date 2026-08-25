@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.user.application;
 
+import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.user.application.dto.ApplyCreatorApplicationCommand;
 import com.growmighty.lectures.firstday.user.application.dto.CreatorApplicationInfo;
@@ -30,9 +31,9 @@ public class CreatorApplicationService {
 
     @Transactional
     public CreatorApplicationInfo apply(ApplyCreatorApplicationCommand command) {
-        userRepository.findById(command.userId())
+        User user = userRepository.findById(command.userId())
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 유저입니다. userId=" + command.userId()));
-        if (creatorProfileRepository.existsByUserId(command.userId())) {
+        if (user.getRole() == UserRole.CREATOR) {
             throw new IllegalStateException("이미 창작자로 등록되어 있습니다. userId=" + command.userId());
         }
         if (applicationRepository.existsByUserIdAndStatus(command.userId(), CreatorApplicationStatus.PENDING)) {
