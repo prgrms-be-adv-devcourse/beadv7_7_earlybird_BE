@@ -32,9 +32,9 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
     private final FileLookupPort fileLookupPort;
 
     @Override
-    public ProjectSearchOutcome search(String keyword, Long categoryId, String status, String sort) {
+    public ProjectSearchOutcome search(String keyword, Long categoryId, String status, String sort, Set<Long> excludeProjectIds) {
         return circuitBreakerFactory.create("projects").run(
-            () -> fetch(keyword, categoryId, status, sort),
+            () -> fetch(keyword, categoryId, status, sort, excludeProjectIds),
             cause -> failHard(keyword, cause)
         );
     }
@@ -44,14 +44,20 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
         throw new ServiceUnavailableException("프로젝트 검색을 처리할 수 없습니다. keyword=" + keyword);
     }
 
-    private ProjectSearchOutcome fetch(String keyword, Long categoryId, String status, String sort) {
+    private ProjectSearchOutcome fetch(String keyword, Long categoryId, String status, String sort, Set<Long> excludeProjectIds) {
         List<ProjectSearchApiData> data = projectSearchFeignClient.search(keyword,categoryId,status,sort).data();
         if (status == null) {
             data = data.stream()
                 .filter(item -> !DEFAULT_EXCLUDED_STATUSES.contains(item.status()))
                 .toList();
         }
-        List<ProjectSearchApiData> candidates = data.stream()
+        int totalCount = data.size();
+
+        List<ProjectSearchApiData> unseen = excludeProjectIds.isEmpty()
+            ? data
+            : data.stream().filter(item -> !excludeProjectIds.contains(item.projectId())).toList();
+
+        List<ProjectSearchApiData> candidates = unseen.stream()
             .limit(RECOMMENDATION_LIMIT)
             .toList();
 
@@ -62,8 +68,8 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
             .map(item -> toResult(item, titleCounts.get(item.title()) > 1))
             .toList();
 
-        int totalCount = data.size();
-        boolean hasMore = totalCount > RECOMMENDATION_LIMIT;
+
+        boolean hasMore = unseen.size() > RECOMMENDATION_LIMIT;
         return new ProjectSearchOutcome(projects, hasMore, totalCount);
     }
 

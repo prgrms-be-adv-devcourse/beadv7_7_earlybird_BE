@@ -9,6 +9,8 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 @Component
 @RequiredArgsConstructor
 public class ProjectSearchTool {
@@ -38,7 +40,8 @@ public class ProjectSearchTool {
             keyword,
             categoryId,
             status != null ? status.name() : null,
-            sort != null ? sort.name() : null
+            sort != null ? sort.name() : null,
+            Set.of()
         );
         recorder.recordProjects(outcome.projects());
         return outcome;

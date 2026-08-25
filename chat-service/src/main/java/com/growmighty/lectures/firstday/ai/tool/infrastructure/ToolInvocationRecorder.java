@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ToolInvocationRecorder {
 
     public static final String TOOL_CONTEXT_KEY = "recorder";
+    private final String conversationId;
 
     private final Set<String> toolsUsed = new LinkedHashSet<>();
     private final List<ProjectSearchResult> projects = new ArrayList<>();
@@ -28,8 +29,13 @@ public class ToolInvocationRecorder {
     private final SseEmitter emitter;
     private final AtomicInteger toolSequence = new AtomicInteger(0);
 
-    public ToolInvocationRecorder(SseEmitter emitter) {
+    public ToolInvocationRecorder(SseEmitter emitter, String conversationId) {
         this.emitter = emitter;
+        this.conversationId = conversationId;
+    }
+
+    public String conversationId() {
+        return conversationId;
     }
 
     // toolsUsed에 기록하는 동시에, 이 tool의 실제 작업이 시작된다는 tool_start 이벤트도 함께 보낸다.

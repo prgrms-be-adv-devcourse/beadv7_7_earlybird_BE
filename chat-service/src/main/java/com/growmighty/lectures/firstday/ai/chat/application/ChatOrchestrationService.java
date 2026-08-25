@@ -20,7 +20,7 @@ public class ChatOrchestrationService {
 
     public SseEmitter sendMessage(String conversationId, String message) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
-        ToolInvocationRecorder recorder = new ToolInvocationRecorder(emitter);
+        ToolInvocationRecorder recorder = new ToolInvocationRecorder(emitter, conversationId);
         AtomicBoolean metadataSent = new AtomicBoolean(false);
 
         chatClient.prompt()

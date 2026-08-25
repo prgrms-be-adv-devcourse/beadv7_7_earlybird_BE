@@ -1,7 +1,9 @@
 package com.growmighty.lectures.firstday.ai.tool.presentation.project;
 
+import com.growmighty.lectures.firstday.ai.conversation.infrastructure.ShownProjectStore;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectSearchPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchOutcome;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
@@ -9,11 +11,14 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 @Component
 @RequiredArgsConstructor
 public class ProjectBrowseTool {
 
     private final ProjectSearchPort projectSearchPort;
+    private final ShownProjectStore shownProjectStore;
 
     @Tool(name = "browse_projects", description = "특정 키워드 없이 카테고리/상태/정렬만으로 프로젝트를 조회한다. " +
         "사용자가 검색어 없이 '지금 진행 중인 프로젝트 보여줘' 같이 조건만으로 전체 목록을 원할 때 사용 - " +
@@ -31,11 +36,17 @@ public class ProjectBrowseTool {
         ToolInvocationRecorder recorder =
             (ToolInvocationRecorder) toolContext.getContext().get(ToolInvocationRecorder.TOOL_CONTEXT_KEY);
         recorder.recordToolUsed("browse_projects");
+        Set<Long> alreadyShown = shownProjectStore.get(recorder.conversationId());
         ProjectSearchOutcome outcome = projectSearchPort.search(
             null,
             categoryId,
             status != null ? status.name() : null,
-            sort != null ? sort.name() : null
+            sort != null ? sort.name() : null,
+            alreadyShown
+        );
+        shownProjectStore.addShown(
+            recorder.conversationId(),
+            outcome.projects().stream().map(ProjectSearchResult::projectId).toList()
         );
         recorder.recordProjects(outcome.projects());
         return outcome;

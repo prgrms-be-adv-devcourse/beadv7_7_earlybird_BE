@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ChatMessageRequ
 import com.growmighty.lectures.firstday.ai.conversation.application.ConversationIdentityResolver;
 import com.growmighty.lectures.firstday.ai.conversation.domain.ConversationIdentity;
 import com.growmighty.lectures.firstday.ai.conversation.infrastructure.ConversationHistoryStore;
+import com.growmighty.lectures.firstday.ai.conversation.infrastructure.ShownProjectStore;
 import com.growmighty.lectures.firstday.ai.conversation.presentation.AnonIdCookieWriter;
 import com.growmighty.lectures.firstday.common.jwt.JwtHeaders;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,6 +23,7 @@ public class ChatController {
 
     private final ConversationIdentityResolver identityResolver;
     private final ConversationHistoryStore historyStore;
+    private final ShownProjectStore shownProjectStore;
     private final AnonIdCookieWriter cookieWriter;
     private final ChatOrchestrationService chatOrchestrationService;
 
@@ -47,5 +49,6 @@ public class ChatController {
     ) {
         ConversationIdentity identity = identityResolver.resolve(userId, anonId);
         historyStore.clear(identity.key());
+        shownProjectStore.clear(identity.key());
     }
 }
