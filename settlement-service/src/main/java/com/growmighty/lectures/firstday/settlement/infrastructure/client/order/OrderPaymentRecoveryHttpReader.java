@@ -69,21 +69,19 @@ public final class OrderPaymentRecoveryHttpReader implements OrderPaymentRecover
     }
 
     private OrderPaymentRecovery toRecovery(String responseBody, Set<Long> requestedProjectIds) {
-        List<ProjectPaymentResponse> response;
+        ProjectPaymentsEnvelope response;
         try {
-            response = objectMapper.readValue(
-                    responseBody,
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, ProjectPaymentResponse.class)
-            );
+            response = objectMapper.readValue(responseBody, ProjectPaymentsEnvelope.class);
         } catch (JsonProcessingException | RuntimeException exception) {
             throw new IllegalArgumentException("Order 복구 응답 형식이 올바르지 않습니다.", exception);
         }
-        if (response == null) {
-            throw new IllegalArgumentException("Order 복구 응답 배열이 올바르지 않습니다.");
+        if (response == null || !response.success() || response.data() == null
+                || response.data().projects() == null || response.error() != null) {
+            throw new IllegalArgumentException("Order 복구 응답 envelope가 올바르지 않습니다.");
         }
 
         try {
-            List<ProjectPayments> projects = response.stream()
+            List<ProjectPayments> projects = response.data().projects().stream()
                     .map(ProjectPaymentResponse::toProjectPayments)
                     .toList();
             Set<Long> responseProjectIds = projects.stream()
@@ -101,6 +99,12 @@ public final class OrderPaymentRecoveryHttpReader implements OrderPaymentRecover
     }
 
     private record ProjectPaymentsRequest(Integer projectMonth) {
+    }
+
+    private record ProjectPaymentsEnvelope(boolean success, ProjectPaymentsData data, Object error) {
+    }
+
+    private record ProjectPaymentsData(List<ProjectPaymentResponse> projects) {
     }
 
     private record ProjectPaymentResponse(Long projectId, List<OrderPaymentResponse> orders) {

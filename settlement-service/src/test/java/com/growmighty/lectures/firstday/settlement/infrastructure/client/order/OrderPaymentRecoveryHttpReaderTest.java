@@ -55,11 +55,11 @@ class OrderPaymentRecoveryHttpReaderTest {
                         {"projectMonth":7}
                         """))
                 .andRespond(withSuccess("""
-                        [
-                          {"projectId": 101, "orders": [
-                            {"orderId": 1001, "pgOrderId": "PAY-1001", "paymentAmount": 50000, "orderStatus": "PAID"}
+                        {"success":true,"data":{"projects":[
+                          {"projectId":101,"orders":[
+                            {"orderId":1001,"pgOrderId":"PAY-1001","paymentAmount":50000,"orderStatus":"PAID"}
                           ]}
-                        ]
+                        ]},"error":null}
                         """, MediaType.APPLICATION_JSON));
 
         OrderPaymentRecovery recovery = reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR, 7));
@@ -118,6 +118,8 @@ class OrderPaymentRecoveryHttpReaderTest {
 
     private void expectSuccess(String body) {
         server.expect(once(), requestTo(BASE_URL + OrderPaymentRecoveryHttpReader.PROJECT_PAYMENTS_PATH))
-                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("""
+                        {"success":true,"data":{"projects":%s},"error":null}
+                        """.formatted(body), MediaType.APPLICATION_JSON));
     }
 }
