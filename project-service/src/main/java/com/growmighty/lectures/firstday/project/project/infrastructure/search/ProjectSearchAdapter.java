@@ -53,8 +53,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final String INDEX_NAME = "projects";
     private static final int DEFAULT_EMBEDDING_DIMENSION = 1536;
     private static final int MAX_RESULTS = 200;
-    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.35 미만 무관 벡터 제외) */
-    private static final float KNN_SIMILARITY_THRESHOLD = 0.35f;
     /**
      * ES의 rrf retriever는 Basic 라이선스에선 호출 자체가 거부된다(Enterprise 전용 기능 게이트,
      * self-generated trial 라이선스는 30일 후 만료) — 그래서 키워드/kNN을 각각 별도로 호출하고
@@ -198,7 +196,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                                     .queryVector(vectorList)
                                     .k(20)
                                     .numCandidates(100)
-                                    .similarity(KNN_SIMILARITY_THRESHOLD)
                             ),
                     ProjectDocument.class
             );
