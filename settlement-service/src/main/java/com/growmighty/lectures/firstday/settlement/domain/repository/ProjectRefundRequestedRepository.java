@@ -10,7 +10,7 @@ public interface ProjectRefundRequestedRepository {
 
     Optional<ProjectRefundRequested> findByProjectId(Long projectId);
 
-    Optional<ProjectRefundRequested> findByRefundRequestId(String refundRequestId);
+    Optional<ProjectRefundRequested> findByRefundRequestId(Long refundRequestId);
 
     List<ProjectRefundRequested> findAllByOrderByOccurredAtDescProjectIdDesc();
 

@@ -12,7 +12,7 @@ public record AdminProjectSettlementListItemResponse(
         AdminSettlementEntry.Type type,
         Long projectId,
         String projectName,
-        String refundRequestId,
+        Long refundRequestId,
         PayoutResponse payout,
         RefundResponse refund,
         RegistrationPendingResponse registrationPending

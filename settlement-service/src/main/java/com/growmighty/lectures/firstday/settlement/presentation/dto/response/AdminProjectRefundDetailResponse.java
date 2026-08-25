@@ -8,7 +8,7 @@ import java.time.ZoneId;
 import java.util.List;
 
 public record AdminProjectRefundDetailResponse(
-        String refundRequestId,
+        Long refundRequestId,
         Long projectId,
         String projectName,
         ProjectCancellationReason reason,

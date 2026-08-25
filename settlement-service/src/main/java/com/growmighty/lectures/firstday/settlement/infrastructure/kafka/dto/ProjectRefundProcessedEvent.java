@@ -11,6 +11,6 @@ public record ProjectRefundProcessedEvent(
         OffsetDateTime occurredAt,
         Payload payload
 ) {
-    public record Payload(String refundRequestId, List<Long> orderIds, String status) {
+    public record Payload(Long refundRequestId, List<Long> orderIds, String status) {
     }
 }

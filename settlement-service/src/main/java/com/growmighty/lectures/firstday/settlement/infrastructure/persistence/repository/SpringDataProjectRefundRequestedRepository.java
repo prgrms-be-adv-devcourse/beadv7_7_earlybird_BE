@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SpringDataProjectRefundRequestedRepository
-        extends JpaRepository<ProjectRefundRequested, String> {
+        extends JpaRepository<ProjectRefundRequested, Long> {
 
     Optional<ProjectRefundRequested> findByProjectId(Long projectId);
 

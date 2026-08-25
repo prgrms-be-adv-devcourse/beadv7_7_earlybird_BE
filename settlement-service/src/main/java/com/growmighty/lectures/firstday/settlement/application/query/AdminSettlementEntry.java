@@ -11,7 +11,7 @@ public record AdminSettlementEntry(
         Type type,
         Long projectId,
         String projectName,
-        String refundRequestId,
+        Long refundRequestId,
         Instant publishedAt,
         Instant processedAt,
         Payout payout,
