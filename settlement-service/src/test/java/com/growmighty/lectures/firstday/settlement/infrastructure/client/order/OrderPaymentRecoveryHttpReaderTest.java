@@ -33,6 +33,7 @@ import org.springframework.web.client.RestClient;
 class OrderPaymentRecoveryHttpReaderTest {
 
     private static final String BASE_URL = "http://order-service";
+    private static final int CURRENT_YEAR = YearMonth.now().getYear();
 
     private MockRestServiceServer server;
     private OrderPaymentRecoveryHttpReader reader;
@@ -45,33 +46,25 @@ class OrderPaymentRecoveryHttpReaderTest {
     }
 
     @Test
-    @DisplayName("대상 월과 정렬된 프로젝트로 Order 결제 복구를 요청하고 완전한 응답을 변환한다")
+    @DisplayName("대상 월로 Order 결제 복구를 요청하고 실제 응답을 변환한다")
     void recoversMonthlyProjectPayments() {
         server.expect(once(), requestTo(BASE_URL + OrderPaymentRecoveryHttpReader.PROJECT_PAYMENTS_PATH))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(content().json("""
-                        {"projectIds":[101,102],"settlementMonth":"2026-07"}
+                        {"projectMonth":7}
                         """))
                 .andRespond(withSuccess("""
-                        {
-                          "success": true,
-                          "data": {
-                            "projects": [
-                              {"projectId": 102, "orders": []},
-                              {"projectId": 101, "orders": [
-                                {"orderId": 1001, "pgOrderId": "PAY-1001", "paymentAmount": 50000, "orderStatus": "PAID"}
-                              ]}
-                            ]
-                          },
-                          "error": null
-                        }
+                        [
+                          {"projectId": 101, "orders": [
+                            {"orderId": 1001, "pgOrderId": "PAY-1001", "paymentAmount": 50000, "orderStatus": "PAID"}
+                          ]}
+                        ]
                         """, MediaType.APPLICATION_JSON));
 
-        OrderPaymentRecovery recovery = reader.recover(Set.of(102L, 101L), YearMonth.of(2026, 7));
+        OrderPaymentRecovery recovery = reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR, 7));
 
         assertThat(recovery.projects()).containsExactly(
-                new ProjectPayments(102L, List.of()),
                 new ProjectPayments(101L, List.of(new OrderPayment(
                         1001L, "PAY-1001", Money.wons(50_000), OrderPayment.Status.PAID
                 )))
@@ -81,18 +74,18 @@ class OrderPaymentRecoveryHttpReaderTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "{\"success\":true,\"data\":{\"projects\":[]},\"error\":null}",
-            "{\"success\":true,\"data\":{\"projects\":[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":0,\"orderStatus\":\"PAID\"}]}]},\"error\":null}",
-            "{\"success\":true,\"data\":{\"projects\":[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"\",\"paymentAmount\":1,\"orderStatus\":\"PAID\"}]}]},\"error\":null}",
-            "{\"success\":true,\"data\":{\"projects\":[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":1,\"orderStatus\":\"UNKNOWN\"}]}]},\"error\":null}",
-            "{\"success\":true,\"data\":{\"projects\":[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":1,\"orderStatus\":\"PAID\"},{\"orderId\":1,\"pgOrderId\":\"PAY-2\",\"paymentAmount\":1,\"orderStatus\":\"PAID\"}]}]},\"error\":null}",
-            "{\"success\":true,\"data\":{\"projects\":[{\"projectId\":101,\"orders\":[]},{\"projectId\":101,\"orders\":[]}]},\"error\":null}"
+            "[]",
+            "[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":0,\"orderStatus\":\"PAID\"}]}]",
+            "[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"\",\"paymentAmount\":1,\"orderStatus\":\"PAID\"}]}]",
+            "[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":1,\"orderStatus\":\"UNKNOWN\"}]}]",
+            "[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":1,\"orderStatus\":\"PAID\"},{\"orderId\":1,\"pgOrderId\":\"PAY-2\",\"paymentAmount\":1,\"orderStatus\":\"PAID\"}]}]",
+            "[{\"projectId\":101,\"orders\":[]},{\"projectId\":101,\"orders\":[]}]"
     })
     @DisplayName("계약에 맞지 않는 응답은 복구 검증 실패로 남긴다")
     void rejectsInvalidRecoveryResponse(String response) {
         expectSuccess(response);
 
-        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(2026, 7)))
+        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR, 7)))
                 .isInstanceOf(IllegalArgumentException.class);
         server.verify();
     }
@@ -103,7 +96,7 @@ class OrderPaymentRecoveryHttpReaderTest {
         server.expect(once(), requestTo(BASE_URL + OrderPaymentRecoveryHttpReader.PROJECT_PAYMENTS_PATH))
                 .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
 
-        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(2026, 7)))
+        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR, 7)))
                 .isInstanceOfSatisfying(SettlementException.class, exception ->
                         assertThat(exception.errorCode()).isEqualTo(
                                 SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE
@@ -112,11 +105,13 @@ class OrderPaymentRecoveryHttpReaderTest {
     }
 
     @Test
-    @DisplayName("비어 있거나 100개를 초과한 프로젝트 요청은 호출 전에 거부한다")
+    @DisplayName("유효하지 않은 프로젝트·월 요청은 호출 전에 거부한다")
     void rejectsInvalidRequest() {
         assertThatThrownBy(() -> reader.recover(Set.of(), YearMonth.of(2026, 7)))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> reader.recover(Set.of(101L), null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR - 1, 7)))
                 .isInstanceOf(IllegalArgumentException.class);
         server.verify();
     }
