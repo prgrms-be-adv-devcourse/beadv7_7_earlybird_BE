@@ -10,7 +10,9 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCloseExpiredResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectReindexResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 
 import java.util.List;
@@ -86,16 +88,19 @@ public interface ProjectService {
     ProjectResponse closeEarlyInternal(Long projectId, BigDecimal fundedAmount);
 
     /** 배치 전용: 마감시각이 지난 진행중 프로젝트를 모금액 기준으로 일괄 성공/실패 확정한다. */
-    void closeExpiredProjects();
+    ProjectCloseExpiredResponse closeExpiredProjects();
 
     /** closeExpiredProjects()가 프로젝트 하나씩 재시도 가능하도록 호출하는 단위. 외부에서 직접 부를 일은 없다. */
     void closeProjectByDeadline(Long projectId);
 
+    /** closeProjectByDeadline() 내부에서 로컬 갱신 + 낙관적 락 재시도를 담당한다. */
+    void closeProjectByDeadlineInternal(Long projectId, java.math.BigDecimal fundedAmount);
+
     /**
-     * closeProjectByDeadline()이 order-service 조회(orderPort.getFundedAmount)를 트랜잭션 밖에서
-     * 끝낸 뒤, 그 결과값만 들고 호출하는 내부용 — 외부에서 직접 부를 일은 없다.
+     * 관리자 전용: ES 인덱스를 DB 데이터로 전부 다시 채운다(장애 복구 / 초기 데이터 색인용).
+     * 50개씩 페이징해서 searchPort.bulkIndex()로 넘긴다.
      */
-    void closeProjectByDeadlineInternal(Long projectId, BigDecimal fundedAmount);
+    ProjectReindexResponse reindexAllProjects();
 
     /**
      * 내부용: order-service에서 pull 조회해온 절대값(누적 총액)으로 한 프로젝트의 fundedAmount를
@@ -106,9 +111,6 @@ public interface ProjectService {
 
     /** 배치 전용: IN_PROGRESS 프로젝트마다 order-service의 현재 확정 누적 총액을 pull해 보정한다. */
     void reconcileFundedAmounts();
-
-    /** 관리자 전용: ES 검색 인덱스가 MySQL과 어긋났을 때 전체를 다시 색인한다(백필/복구). */
-    void reindexAllProjects();
 
     // ── reward 도메인이 호출하는 API (project-service 내부, 도메인 간) ──────
     /**

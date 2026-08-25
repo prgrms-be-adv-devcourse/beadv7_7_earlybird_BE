@@ -8,6 +8,7 @@ import com.growmighty.lectures.firstday.project.project.application.port.OrderPo
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectReindexResponse;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,19 +66,21 @@ class ProjectServiceImplReindexTest {
         when(projectRepository.findAll(any(Pageable.class)))
                 .thenReturn(new PageImpl<>(projects, PageRequest.of(0, 50), projects.size()));
 
-        projectService.reindexAllProjects();
+        ProjectReindexResponse response = projectService.reindexAllProjects();
 
         verify(searchPort).bulkIndex(projects);
+        org.assertj.core.api.Assertions.assertThat(response.totalIndexedCount()).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("프로젝트가 하나도 없으면 bulkIndex를 호출하지 않는다")
+    @DisplayName("프로젝트가 하나도 없으면 bulkIndex를 호출하지 않고 totalIndexedCount 0을 반환한다")
     void reindexAllProjects_noProjects_doesNotCallBulkIndex() {
         when(projectRepository.findAll(any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 50), 0));
 
-        projectService.reindexAllProjects();
+        ProjectReindexResponse response = projectService.reindexAllProjects();
 
         verify(searchPort, never()).bulkIndex(any());
+        org.assertj.core.api.Assertions.assertThat(response.totalIndexedCount()).isEqualTo(0);
     }
 }
