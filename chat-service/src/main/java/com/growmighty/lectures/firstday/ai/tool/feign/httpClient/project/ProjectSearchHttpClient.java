@@ -12,6 +12,9 @@ import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -19,6 +22,9 @@ import java.util.List;
 public class ProjectSearchHttpClient implements ProjectSearchPort {
 
     private static final int RECOMMENDATION_LIMIT = 5;
+
+    // status를 명시적으로 지정한 조회(예 : 취소된 프로젝트 자체를 물어보는 경우)는 이 필터를 타지 않는다.
+    private static final Set<String> DEFAULT_EXCLUDED_STATUSES = Set.of("CANCELLED","FAILED");
 
     private final ProjectSearchFeignClient projectSearchFeignClient;
     private final CircuitBreakerFactory circuitBreakerFactory;
@@ -40,19 +46,32 @@ public class ProjectSearchHttpClient implements ProjectSearchPort {
 
     private ProjectSearchOutcome fetch(String keyword, Long categoryId, String status, String sort) {
         List<ProjectSearchApiData> data = projectSearchFeignClient.search(keyword,categoryId,status,sort).data();
-        List<ProjectSearchResult> projects = data.stream()
+        if (status == null) {
+            data = data.stream()
+                .filter(item -> !DEFAULT_EXCLUDED_STATUSES.contains(item.status()))
+                .toList();
+        }
+        List<ProjectSearchApiData> candidates = data.stream()
             .limit(RECOMMENDATION_LIMIT)
-            .map(this::toResult)
             .toList();
+
+        Map<String, Long> titleCounts = candidates.stream()
+            .collect(Collectors.groupingBy(ProjectSearchApiData::title, Collectors.counting()));
+
+        List<ProjectSearchResult> projects = candidates.stream()
+            .map(item -> toResult(item, titleCounts.get(item.title()) > 1))
+            .toList();
+
         int totalCount = data.size();
         boolean hasMore = totalCount > RECOMMENDATION_LIMIT;
         return new ProjectSearchOutcome(projects, hasMore, totalCount);
     }
 
-    private ProjectSearchResult toResult(ProjectSearchApiData data) {
+    private ProjectSearchResult toResult(ProjectSearchApiData data, boolean disambiguateTitle) {
+        String title = disambiguateTitle ? data.title() + " (#" + data.projectId() + ")" : data.title();
         return new ProjectSearchResult(
             data.projectId(),
-            data.title(),
+            title,
             data.summary(),
             data.categoryId(),
             ProjectStatusDisplay.toKorean(data.status()),

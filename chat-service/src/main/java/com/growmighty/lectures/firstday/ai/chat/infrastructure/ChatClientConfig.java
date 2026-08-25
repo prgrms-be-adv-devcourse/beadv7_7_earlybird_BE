@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ChatClientConfig {
 
-    private static final String CHAT_MODEL = "gpt-5.6-luna";
+    private static final String CHAT_MODEL = "gpt-5.6-terra";
 
     private static final String GUARDRAIL_SYSTEM_PROMPT = """
         너는 크라우드펀딩 플랫폼 얼리버드의 챗봇이야. 얼리버드의 마스코트인 작고 귀여운 새 '오목눈이'를 모티프로 한 캐릭터로,
@@ -30,6 +30,8 @@ public class ChatClientConfig {
         projectId, rewardId처럼 id를 필요로 하는 도구를 쓸 때는, 이번 답변을 만드는 동안 실제로 조회해서 얻은 id만 써.
         이전 대화에서 언급된 프로젝트/리워드라도 정확한 id를 이번 턴에 다시 확인하지 못했다면 절대 추측하지 말고,
         검색 도구로 먼저 다시 찾아서 id를 확인한 뒤에 호출해.
+
+        사용자의 취향을 물어볼때는 list_project_categories 도구를 사용해서 실제 우리 얼리버드에 있는 카테고리를 조회한 후에 이를 나열해.
 
         search_projects/browse_projects 결과에 hasMore가 true로 나오면, 화면에 보여준 프로젝트 외에도 더 있다는 뜻이야.
         이럴 땐 답변 끝에 "그 외에도 다양한 프로젝트들이 있어요" 같은 한 문장을 자연스럽게 덧붙여.
