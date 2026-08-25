@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
@@ -56,7 +58,7 @@ class ProjectServiceImplDeleteTest {
                 projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, filePort, Clock.systemDefaultZone());
         when(selfProvider.getObject()).thenReturn(projectService);
 
-        project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
         when(projectRepository.findByIdForDelete(1L)).thenReturn(Optional.of(project));

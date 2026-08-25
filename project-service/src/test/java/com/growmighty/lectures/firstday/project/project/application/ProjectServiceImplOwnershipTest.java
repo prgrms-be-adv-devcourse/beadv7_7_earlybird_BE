@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
@@ -59,7 +61,7 @@ class ProjectServiceImplOwnershipTest {
 
     @BeforeEach
     void setUp() {
-        project = Project.register(OWNER_ID, null, "title", 1L, "summary", "desc",
+        project = Project.register(OWNER_ID, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
         when(projectRepository.findByIdForDelete(1L)).thenReturn(Optional.of(project));
@@ -73,12 +75,27 @@ class ProjectServiceImplOwnershipTest {
     @DisplayName("create()는 요청받은 creatorId로 프로젝트를 등록한다")
     void create_usesGivenCreatorId() {
         ProjectCreateRequest request = new ProjectCreateRequest(null, "title", 1L, "summary", "desc",
-                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30), UUID.randomUUID());
         when(projectRepository.save(any(Project.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = projectService.create(OWNER_ID, request);
 
         assertThat(response.creatorId()).isEqualTo(OWNER_ID);
+    }
+
+    @Test
+    @DisplayName("create()는 같은 creatorId+idempotencyKey로 재요청하면 기존 프로젝트를 그대로 반환하고 새로 저장/색인하지 않는다")
+    void create_duplicateIdempotencyKey_returnsExistingWithoutSaving() {
+        UUID key = UUID.randomUUID();
+        when(projectRepository.findByCreatorIdAndIdempotencyKey(OWNER_ID, key)).thenReturn(Optional.of(project));
+        ProjectCreateRequest request = new ProjectCreateRequest(null, "title", 1L, "summary", "desc",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30), key);
+
+        var response = projectService.create(OWNER_ID, request);
+
+        assertThat(response.creatorId()).isEqualTo(OWNER_ID);
+        verify(projectRepository, never()).save(any());
+        verify(searchPort, never()).index(any());
     }
 
     @Test

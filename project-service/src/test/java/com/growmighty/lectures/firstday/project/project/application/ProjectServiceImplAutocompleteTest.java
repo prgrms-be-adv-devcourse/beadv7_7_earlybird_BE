@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
@@ -57,7 +59,7 @@ class ProjectServiceImplAutocompleteTest {
 
     /** Project.register()는 항상 PENDING_REVIEW(비공개)로 시작한다 — approve() 호출 시 IN_PROGRESS(공개)로 전환. */
     private Project project(Long projectId, String title, boolean published) {
-        Project project = Project.register(1L, null, title, 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, title, 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         ReflectionTestUtils.setField(project, "projectId", projectId);
         if (published) {

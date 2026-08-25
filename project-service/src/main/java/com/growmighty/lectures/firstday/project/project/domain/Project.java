@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -21,6 +22,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * 프로젝트 = 펀딩 단위 (All-or-Nothing).
@@ -28,7 +30,9 @@ import java.time.LocalDateTime;
  * 카테고리는 Category 도메인의 categoryId로만 참조한다 (같은 서비스, 별도 애그리거트).
  */
 @Entity
-@Table(name = "projects")
+@Table(name = "projects", uniqueConstraints = @UniqueConstraint(
+        name = "uk_projects_creator_id_idempotency_key",
+        columnNames = {"creator_id", "idempotency_key"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)
@@ -40,6 +44,12 @@ public class Project {
 
     @Column(nullable = false)
     private Long creatorId;
+
+    // 재시도(파일 업로드 실패 등)로 같은 클라이언트 요청이 여러 번 오더라도 프로젝트가 중복
+    // 생성되지 않도록 클라이언트가 생성해 보낸 키를 creatorId와 함께 유일 제약으로 묶는다
+    // (order-service의 orderIdempotencyKey와 동일한 패턴).
+    @Column(name = "idempotency_key", nullable = false, updatable = false)
+    private UUID idempotencyKey;
 
     private Long thumbnailId;
 
@@ -103,11 +113,13 @@ public class Project {
     /** 토스페이먼츠 환불정책상 펀딩 기간(startAt~endAt)이 이 개월 수를 넘을 수 없다. */
     private static final int MAX_FUNDING_PERIOD_MONTHS = 3;
 
-    private Project(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
+    private Project(Long creatorId, UUID idempotencyKey, Long thumbnailId, String title, Long categoryId, String summary,
                      String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
         validateGoalAmount(goalAmount);
         validatePeriod(startAt, endAt);
+        validateIdempotencyKey(idempotencyKey);
         this.creatorId = creatorId;
+        this.idempotencyKey = idempotencyKey;
         this.thumbnailId = thumbnailId;
         this.title = title;
         this.categoryId = categoryId;
@@ -121,9 +133,9 @@ public class Project {
         this.submittedAt = LocalDateTime.now();
     }
 
-    public static Project register(Long creatorId, Long thumbnailId, String title, Long categoryId, String summary,
-                                    String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
-        return new Project(creatorId, thumbnailId, title, categoryId, summary, description, goalAmount, startAt, endAt);
+    public static Project register(Long creatorId, UUID idempotencyKey, Long thumbnailId, String title, Long categoryId,
+                                    String summary, String description, BigDecimal goalAmount, LocalDateTime startAt, LocalDate endAt) {
+        return new Project(creatorId, idempotencyKey, thumbnailId, title, categoryId, summary, description, goalAmount, startAt, endAt);
     }
 
     /** 관리자: 심사 승인 (PENDING_REVIEW → IN_PROGRESS) */
@@ -283,6 +295,12 @@ public class Project {
     private void requireStatus(ProjectStatus expected, String message) {
         if (this.status != expected) {
             throw new IllegalStateException(message + " 현재 상태=" + this.status);
+        }
+    }
+
+    private void validateIdempotencyKey(UUID idempotencyKey) {
+        if (idempotencyKey == null) {
+            throw new IllegalArgumentException("idempotencyKey는 필수입니다.");
         }
     }
 

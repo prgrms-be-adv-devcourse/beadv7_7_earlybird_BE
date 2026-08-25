@@ -7,12 +7,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * 리워드 = 펀딩 액수별 후원 옵션(상품). 한정 수량 리워드(얼리버드) 포함.
@@ -20,7 +22,9 @@ import java.math.BigDecimal;
  * totalQuantity가 null이면 무제한 리워드 — 재고 검증/차감·복원을 건너뛴다.
  */
 @Entity
-@Table(name = "rewards")
+@Table(name = "rewards", uniqueConstraints = @UniqueConstraint(
+        name = "uk_rewards_project_id_idempotency_key",
+        columnNames = {"project_id", "idempotency_key"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Reward extends BaseEntity {
@@ -30,6 +34,11 @@ public class Reward extends BaseEntity {
 
     @Column(nullable = false)
     private Long projectId;
+
+    // 프로젝트 생성 흐름에서 리워드도 같은 재시도로 중복 생성될 수 있어 동일한 방식(project_id +
+    // idempotencyKey 유일 제약)으로 막는다 — Project.idempotencyKey와 같은 계약.
+    @Column(name = "idempotency_key", nullable = false, updatable = false)
+    private UUID idempotencyKey;
 
     @Column(nullable = false)
     private String name;
@@ -52,12 +61,16 @@ public class Reward extends BaseEntity {
     @Column(nullable = false)
     private boolean active;
 
-    private Reward(Long projectId, String name, String description, BigDecimal price, Integer totalQuantity) {
+    private Reward(Long projectId, UUID idempotencyKey, String name, String description, BigDecimal price, Integer totalQuantity) {
         validatePrice(price);
         if (totalQuantity != null && totalQuantity < 0) {
             throw new IllegalArgumentException("수량은 0개 이상이어야 합니다. 입력값: " + totalQuantity);
         }
+        if (idempotencyKey == null) {
+            throw new IllegalArgumentException("idempotencyKey는 필수입니다.");
+        }
         this.projectId = projectId;
+        this.idempotencyKey = idempotencyKey;
         this.name = name;
         this.description = description;
         this.price = price;
@@ -66,9 +79,9 @@ public class Reward extends BaseEntity {
         this.active = true;
     }
 
-    public static Reward register(Long projectId, String name, String description,
+    public static Reward register(Long projectId, UUID idempotencyKey, String name, String description,
                                   BigDecimal price, Integer totalQuantity) {
-        return new Reward(projectId, name, description, price, totalQuantity);
+        return new Reward(projectId, idempotencyKey, name, description, price, totalQuantity);
     }
 
     public void decreaseStock(int quantity) {

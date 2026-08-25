@@ -29,6 +29,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
@@ -73,10 +74,35 @@ public class ProjectServiceImpl implements ProjectService {
     private final FilePort filePort;
     private final Clock clock;
 
+    /**
+     * 조회(findByCreatorIdAndIdempotencyKey)와 삽입(createInternal)을 하나의 @Transactional로 묶지
+     * 않는다 — 정확히 같은 순간 겹치는 진짜 동시 요청이 유니크 제약(creatorId, idempotencyKey)에서
+     * 충돌하면 DataIntegrityViolationException을 이 메서드(트랜잭션 밖)에서 잡아야 한다. 같은 트랜잭션
+     * 안에서 catch하면 flush 실패로 Hibernate가 이미 rollback-only 표시를 해서 커밋 시도가
+     * UnexpectedRollbackException으로 변질된다(RewardStockTransactionExecutor.registerStockChange와
+     * 동일한 이유).
+     */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
+        Optional<Project> existing = projectRepository.findByCreatorIdAndIdempotencyKey(creatorId, request.idempotencyKey());
+        if (existing.isPresent()) {
+            return ProjectResponse.from(existing.get());
+        }
+        validateCategoryExists(request.categoryId());
+        try {
+            return selfProvider.getObject().createInternal(creatorId, request);
+        } catch (DataIntegrityViolationException e) {
+            return projectRepository.findByCreatorIdAndIdempotencyKey(creatorId, request.idempotencyKey())
+                    .map(ProjectResponse::from)
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    /** create()가 트랜잭션 밖에서 검증을 끝낸 뒤 호출하는 내부용 — 외부에서 직접 부를 일은 없다. */
     @Override
     @Transactional
-    public ProjectResponse create(Long creatorId, ProjectCreateRequest request) {
-        validateCategoryExists(request.categoryId());
+    public ProjectResponse createInternal(Long creatorId, ProjectCreateRequest request) {
         Project project = projectRepository.save(request.toEntity(creatorId));
         searchPort.index(project);
         return ProjectResponse.from(project);

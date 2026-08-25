@@ -31,11 +31,30 @@ public class RewardServiceImpl implements RewardService {
     // ProjectServiceImpl이 반대로 RewardService(ObjectProvider<RewardService>)를 필요로 해서
     // 생기는 순환 빈 의존을 끊기 위해 ObjectProvider로 지연 조회한다.
     private final ObjectProvider<ProjectService> projectServiceProvider;
+    // register()가 registerInternal()을 프록시를 거쳐 호출해야 DataIntegrityViolationException을
+    // 트랜잭션 밖에서 잡을 수 있다(self-invocation은 프록시를 안 거쳐 @Transactional이 아예
+    // 발동하지 않는다) — ProjectServiceImpl.selfProvider와 동일한 이유.
+    private final ObjectProvider<RewardService> selfProvider;
     private final RewardStockTransactionExecutor rewardStockTransactionExecutor;
 
+    /**
+     * idempotency 조회(registerInternal 밖)와 삽입(registerInternal 안)을 하나의 @Transactional로
+     * 묶지 않는다 — 정확히 같은 순간 겹치는 진짜 동시 요청이 유니크 제약(projectId, idempotencyKey)에서
+     * 충돌하면 DataIntegrityViolationException을 이 메서드(트랜잭션 밖)에서 잡아야 한다. 같은 트랜잭션
+     * 안에서 catch하면 flush 실패로 이미 rollback-only가 된 트랜잭션 커밋 시도가
+     * UnexpectedRollbackException으로 변질된다(RewardStockTransactionExecutor.registerStockChange와
+     * 동일한 이유).
+     */
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public RewardResponse register(Long projectId, Long requesterId, RewardCreateRequest request) {
+        // ProjectServiceImpl.create()/order-service와 동일하게 idempotency 조회를 소유권/closed 검증보다
+        // 먼저 한다 — 응답 유실 후 재시도 시점엔 프로젝트가 이미 종료/취소됐을 수 있는데, 검증을 먼저
+        // 하면 이미 만든 리워드를 반환해야 할 재시도가 IllegalStateException으로 잘못 거부된다.
+        Optional<Reward> existing = rewardRepository.findByProjectIdAndIdempotencyKey(projectId, request.idempotencyKey());
+        if (existing.isPresent()) {
+            return RewardResponse.from(existing.get());
+        }
         ProjectStatusView project = findProjectStatus(projectId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 프로젝트입니다. projectId=" + projectId));
         validateOwnership(project, requesterId);
@@ -43,6 +62,19 @@ public class RewardServiceImpl implements RewardService {
             throw new IllegalStateException(
                 "종료된 프로젝트(성공/실패/취소)에는 리워드를 추가할 수 없습니다. 현재 상태=" + project.status());
         }
+        try {
+            return selfProvider.getObject().registerInternal(projectId, request);
+        } catch (DataIntegrityViolationException e) {
+            return rewardRepository.findByProjectIdAndIdempotencyKey(projectId, request.idempotencyKey())
+                    .map(RewardResponse::from)
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    /** register()가 트랜잭션 밖에서 검증을 끝낸 뒤 호출하는 내부용 — 외부에서 직접 부를 일은 없다. */
+    @Override
+    @Transactional
+    public RewardResponse registerInternal(Long projectId, RewardCreateRequest request) {
         Reward reward = rewardRepository.save(request.toEntity(projectId));
         projectServiceProvider.getObject().reindex(projectId);
         return RewardResponse.from(reward);

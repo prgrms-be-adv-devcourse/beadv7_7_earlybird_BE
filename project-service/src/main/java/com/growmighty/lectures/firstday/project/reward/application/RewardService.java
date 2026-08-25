@@ -11,6 +11,14 @@ public interface RewardService {
     /** projectId가 가리키는 프로젝트의 창작자(requesterId)만 등록할 수 있다. */
     RewardResponse register(Long projectId, Long requesterId, RewardCreateRequest request);
 
+    /**
+     * register()가 idempotency 조회/소유권/closed 검증을 트랜잭션 밖에서 끝낸 뒤 호출하는 내부용 —
+     * 진짜 동시 요청이 유니크 제약(projectId, idempotencyKey)에서 충돌하면
+     * DataIntegrityViolationException을 그대로 던져 register()가 트랜잭션 밖에서 잡게 한다.
+     * 외부에서 직접 부를 일은 없다.
+     */
+    RewardResponse registerInternal(Long projectId, RewardCreateRequest request);
+
     List<RewardResponse> getRewardsByProject(Long projectId);
 
     RewardResponse getReward(Long rewardId);

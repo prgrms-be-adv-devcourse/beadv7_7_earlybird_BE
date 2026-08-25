@@ -7,9 +7,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public interface RewardRepository extends JpaRepository<Reward, Long> {
     List<Reward> findByProjectId(Long projectId);
+
+    /** 리워드 생성 중복 방지 — ProjectRepository.findByCreatorIdAndIdempotencyKey와 동일 패턴. */
+    Optional<Reward> findByProjectIdAndIdempotencyKey(Long projectId, UUID idempotencyKey);
 
     /** 검색 색인 벌크 재구축 시 프로젝트별 N+1 조회를 피하려고 한 번에 묶어 가져온다. */
     List<Reward> findByProjectIdIn(List<Long> projectIds);
