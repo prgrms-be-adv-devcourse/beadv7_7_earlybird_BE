@@ -1,7 +1,11 @@
 ### backer-flow.http — 실제 후원자 플로우 시뮬레이션 (이슈 #149)
 ###
-### 회원가입 → 로그인 → 프로젝트/리워드 조회 → 장바구니 담기 → 후원(주문 생성, PG 결제 승인 포함) →
-### 내 후원 내역 조회 → 후원 취소 로 이어지는 시나리오를 순서대로 실행한다.
+### 회원가입 → 로그인 → 프로젝트/리워드 조회 → 장바구니 담기 → 후원(주문 생성) → 결제 정보 조회 →
+### 결제 승인 → 내 후원 내역 조회 → 후원 상세 조회 → 후원 취소 로 이어지는 시나리오를 순서대로 실행한다.
+###
+### 주문 생성은 결제를 "준비"(prepare, 상태 READY)만 한다 — 실제 승인은 별도의
+### POST /api/v1/payments/confirm 호출로 일어나고, 그게 성공해야 주문이 PAYMENT_PENDING →
+### PAID 로 넘어간다(#580). 그래서 6번 응답은 PAID 가 아니라 PAYMENT_PENDING 이 정상이다.
 ###
 ### 환경 전환: IntelliJ 우측 상단(또는 이 파일 우측 상단) 환경 드롭다운에서 `local` / `production` 선택
 ### — 두 환경의 baseUrl 은 같은 폴더의 http-client.env.json 에 정의돼 있다. 매 요청은 위에서부터
@@ -92,12 +96,15 @@ Content-Type: application/json
     });
 %}
 
-### 6. 후원(주문 생성) — 장바구니 내용대로 재고 차감 + PG 결제 승인(스텁) 포함
+### 6. 후원(주문 생성) — 장바구니 내용대로 재고 차감 + 결제 준비(prepare)
 < {%
     const price = Number(client.global.get("rewardPrice"));
     const shippingFee = price >= 50000 ? 0 : 3000;
     request.variables.set("expectedItemsAmount", price);
     request.variables.set("expectedTotalAmount", price + shippingFee);
+    // request.variables 는 이 요청 안에서만 쓰인다 — 8번(결제 승인)에서도 같은 금액이
+    // 필요하므로 요청 간에 유지되는 client.global 에도 따로 저장해 둔다.
+    client.global.set("expectedTotalAmount", price + shippingFee);
     // 같은 (userId, orderIdempotencyKey) 재요청은 새 주문 대신 기존 주문을 그대로 반환한다
     // (OrderApiService#placeOrder) - 매 실행마다 새 주문이 나오도록 매번 새로 발급.
     request.variables.set("orderIdempotencyKey", crypto.randomUUID());
@@ -125,14 +132,45 @@ Content-Type: application/json
 }
 
 > {%
-    client.test("후원 생성 성공, 결제 완료(PAID)", function() {
+    client.test("후원 생성 성공, 결제 준비(PAYMENT_PENDING)", function() {
         client.assert(response.status === 200, "place order failed: " + response.body);
-        client.assert(response.body.data.status === "PAID", "unexpected order status: " + response.body.data.status);
+        client.assert(response.body.data.status === "PAYMENT_PENDING", "unexpected order status: " + response.body.data.status);
     });
     client.global.set("orderId", response.body.data.id);
 %}
 
-### 7. 내 후원 내역 조회
+### 7. 결제 정보 조회 — 6번은 pgOrderId 를 응답에 안 주므로 별도 조회로 받아온다
+GET {{baseUrl}}/api/v1/payments?orderId={{orderId}}
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("결제 정보 조회 성공, 승인 대기(READY)", function() {
+        client.assert(response.status === 200, "get payment failed: " + response.body);
+        client.assert(response.body.data.status === "READY", "unexpected payment status: " + response.body.data.status);
+    });
+    client.global.set("pgOrderId", response.body.data.pgOrderId);
+%}
+
+### 8. 결제 승인 — 실제 PG(Toss) 체크아웃 완료 콜백을 흉내낸다. fake 게이트웨이 기준으로는
+### paymentKey 가 아무 값이어도 상관없다(운영처럼 실제 토스를 쓰는 환경에서는 이 스텝이 그대로는 안 통한다).
+POST {{baseUrl}}/api/v1/payments/confirm
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "paymentKey": "{{$uuid}}",
+  "pgOrderId": "{{pgOrderId}}",
+  "amount": {{expectedTotalAmount}}
+}
+
+> {%
+    client.test("결제 승인 성공(PAID)", function() {
+        client.assert(response.status === 200, "confirm payment failed: " + response.body);
+        client.assert(response.body.data.status === "PAID", "unexpected payment status: " + response.body.data.status);
+    });
+%}
+
+### 9. 내 후원 내역 조회
 GET {{baseUrl}}/api/v1/orders/me?userId={{userId}}
 Authorization: Bearer {{accessToken}}
 
@@ -143,18 +181,19 @@ Authorization: Bearer {{accessToken}}
     });
 %}
 
-### 8. 후원 상세 조회
+### 10. 후원 상세 조회 — 결제 승인 후이므로 PAID 여야 한다
 GET {{baseUrl}}/api/v1/orders/{{orderId}}?userId={{userId}}
 Authorization: Bearer {{accessToken}}
 
 > {%
-    client.test("후원 상세 조회 성공", function() {
+    client.test("후원 상세 조회 성공, 결제 완료(PAID)", function() {
         client.assert(response.status === 200, "get order detail failed: " + response.body);
         client.assert(response.body.data.id === client.global.get("orderId"), "order id mismatch");
+        client.assert(response.body.data.status === "PAID", "unexpected order status: " + response.body.data.status);
     });
 %}
 
-### 9. 후원 취소 (재고 복원 + 결제 환불(스텁) + 상태 전이)
+### 11. 후원 취소 (재고 복원 + 결제 환불(스텁) + 상태 전이)
 POST {{baseUrl}}/api/v1/orders/{{orderId}}/cancel?userId={{userId}}
 Authorization: Bearer {{accessToken}}
 

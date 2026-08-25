@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
@@ -119,7 +121,7 @@ class ProjectServiceImplRetryTest {
     @BeforeEach
     void setUp() {
         reset(projectRepository, rewardService, orderPort);
-        project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project.approve();
     }
@@ -228,7 +230,7 @@ class ProjectServiceImplRetryTest {
     @Test
     @DisplayName("closeProjectByDeadline: 락 충돌이 아닌 검증 예외(진행중 아님)는 재시도 없이 원래 타입 그대로 전파된다")
     void closeProjectByDeadline_nonLockException_notMasked() {
-        Project notInProgress = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project notInProgress = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         when(orderPort.getFundedAmount(anyLong())).thenReturn(BigDecimal.ZERO);
         when(projectRepository.findById(anyLong())).thenReturn(Optional.of(notInProgress));

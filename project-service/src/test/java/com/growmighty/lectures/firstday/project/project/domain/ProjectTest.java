@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.domain;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -14,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProjectTest {
 
     private Project project(long goalAmount, LocalDate endAt) {
-        return Project.register(1L, null, "title", 1L, "summary", "desc",
+        return Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(goalAmount), LocalDateTime.now(), endAt);
     }
 
@@ -48,7 +50,7 @@ class ProjectTest {
     @DisplayName("마감일이 시작일 이후가 아니면 등록할 수 없다")
     void register_endAtNotAfterStartAt_throws() {
         LocalDateTime startAt = LocalDateTime.now();
-        assertThatThrownBy(() -> Project.register(1L, null, "title", 1L, "summary", "desc",
+        assertThatThrownBy(() -> Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), startAt, startAt.toLocalDate()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -59,7 +61,7 @@ class ProjectTest {
         LocalDateTime startAt = LocalDateTime.of(2026, 1, 27, 0, 0);
         LocalDate endAt = LocalDate.of(2026, 4, 27);
 
-        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), startAt, endAt);
 
         assertThat(project.getEndAt()).isEqualTo(endAt);
@@ -71,7 +73,7 @@ class ProjectTest {
         LocalDateTime startAt = LocalDateTime.of(2026, 1, 27, 0, 0);
         LocalDate endAt = LocalDate.of(2026, 4, 28);
 
-        assertThatThrownBy(() -> Project.register(1L, null, "title", 1L, "summary", "desc",
+        assertThatThrownBy(() -> Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), startAt, endAt))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -114,7 +116,7 @@ class ProjectTest {
     @Test
     @DisplayName("마감일 당일은 하루 종일 포함되어 진행중이면 주문을 받을 수 있다 (2026-07-22 결정)")
     void isOpen_deadlineIsToday_true() {
-        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now().minusDays(1), LocalDate.now());
         project.approve();
         assertThat(project.isOpen()).isTrue();
@@ -123,7 +125,7 @@ class ProjectTest {
     @Test
     @DisplayName("마감일이 어제 이전으로 지났으면 진행중이어도 주문을 받을 수 없다")
     void isOpen_deadlinePassed_false() {
-        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now().minusDays(2), LocalDate.now().minusDays(1));
         project.approve();
         assertThat(project.isOpen()).isFalse();
@@ -182,7 +184,7 @@ class ProjectTest {
     @DisplayName("마감일 연장도 시작일로부터 3개월을 초과할 수 없다")
     void extendDeadline_beyondThreeMonthsFromStartAt_throws() {
         LocalDateTime startAt = LocalDateTime.of(2026, 1, 27, 0, 0);
-        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), startAt, LocalDate.of(2026, 2, 1));
         project.approve();
 

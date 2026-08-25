@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import java.util.UUID;
+
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -82,7 +84,7 @@ class ProjectSearchAdapterTest {
     }
 
     private Project project() {
-        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         ReflectionTestUtils.setField(project, "projectId", 1L);
         return project;

@@ -2,8 +2,10 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.client.order;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPaymentRecovery;
 import com.growmighty.lectures.firstday.settlement.application.port.order.OrderPaymentRecovery.OrderPayment;
@@ -69,21 +71,20 @@ public final class OrderPaymentRecoveryHttpReader implements OrderPaymentRecover
     }
 
     private OrderPaymentRecovery toRecovery(String responseBody, Set<Long> requestedProjectIds) {
-        List<ProjectPaymentResponse> response;
+        ApiResponse<ProjectPaymentsData> response;
         try {
-            response = objectMapper.readValue(
-                    responseBody,
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, ProjectPaymentResponse.class)
-            );
+            response = objectMapper.readValue(responseBody, new TypeReference<>() {
+            });
         } catch (JsonProcessingException | RuntimeException exception) {
             throw new IllegalArgumentException("Order 복구 응답 형식이 올바르지 않습니다.", exception);
         }
-        if (response == null) {
-            throw new IllegalArgumentException("Order 복구 응답 배열이 올바르지 않습니다.");
+        if (response == null || !response.success() || response.data() == null
+                || response.data().projects() == null || response.error() != null) {
+            throw new IllegalArgumentException("Order 복구 응답 envelope가 올바르지 않습니다.");
         }
 
         try {
-            List<ProjectPayments> projects = response.stream()
+            List<ProjectPayments> projects = response.data().projects().stream()
                     .map(ProjectPaymentResponse::toProjectPayments)
                     .toList();
             Set<Long> responseProjectIds = projects.stream()
@@ -101,6 +102,9 @@ public final class OrderPaymentRecoveryHttpReader implements OrderPaymentRecover
     }
 
     private record ProjectPaymentsRequest(Integer projectMonth) {
+    }
+
+    private record ProjectPaymentsData(List<ProjectPaymentResponse> projects) {
     }
 
     private record ProjectPaymentResponse(Long projectId, List<OrderPaymentResponse> orders) {

@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
@@ -109,7 +111,7 @@ class ProjectServiceImplSearchIntegrationTest extends ElasticsearchIntegrationTe
     }
 
     private Project savedProject(String keyword, Long categoryId) {
-        Project project = Project.register(1L, null, keyword + " 프로젝트", categoryId,
+        Project project = Project.register(1L, UUID.randomUUID(), null, keyword + " 프로젝트", categoryId,
                 keyword + " 요약", keyword + " 상세 설명", BigDecimal.valueOf(1_000_000),
                 LocalDateTime.now(), LocalDate.now().plusDays(30));
         return projectRepository.save(project);

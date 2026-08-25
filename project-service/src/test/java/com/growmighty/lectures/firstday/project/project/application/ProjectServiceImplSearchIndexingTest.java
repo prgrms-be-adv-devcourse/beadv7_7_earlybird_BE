@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
@@ -50,7 +52,8 @@ class ProjectServiceImplSearchIndexingTest {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
                 projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, filePort, Clock.systemDefaultZone());
-        project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        when(selfProvider.getObject()).thenReturn(projectService);
+        project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
     }
 
@@ -58,7 +61,7 @@ class ProjectServiceImplSearchIndexingTest {
     @DisplayName("프로젝트 생성 시 색인한다")
     void create_indexesProject() {
         ProjectCreateRequest request = new ProjectCreateRequest(1L, "title", 1L, "summary", "desc",
-                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30), UUID.randomUUID());
         when(projectCategoryRepository.existsById(1L)).thenReturn(true);
         when(projectRepository.save(any(Project.class))).thenReturn(project);
 

@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
@@ -55,9 +57,9 @@ class ProjectServiceImplReindexTest {
     @Test
     @DisplayName("전체 프로젝트를 페이지 단위로 조회해 벌크 색인한다")
     void reindexAllProjects_bulkIndexesEachPage() {
-        Project p1 = Project.register(1L, null, "title1", 1L, "s", "d",
+        Project p1 = Project.register(1L, UUID.randomUUID(), null, "title1", 1L, "s", "d",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
-        Project p2 = Project.register(1L, null, "title2", 1L, "s", "d",
+        Project p2 = Project.register(1L, UUID.randomUUID(), null, "title2", 1L, "s", "d",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         List<Project> projects = List.of(p1, p2);
         when(projectRepository.findAll(any(Pageable.class)))

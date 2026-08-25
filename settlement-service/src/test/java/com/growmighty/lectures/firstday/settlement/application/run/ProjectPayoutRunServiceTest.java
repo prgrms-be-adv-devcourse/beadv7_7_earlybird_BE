@@ -79,6 +79,20 @@ class ProjectPayoutRunServiceTest extends MySqlIntegrationTestSupport {
         assertThat(runRepository.findAll()).hasSize(3);
     }
 
+    @Test
+    @DisplayName("검토 필요 결제가 있는 성공 프로젝트는 정산과 지급을 만들지 않는다")
+    void excludesProjectWithReviewRequiredPayment() {
+        creatorPayoutProfileRepository.save(profile(40L));
+        outcomeRepository.save(outcome(4L, 40L));
+        OrderPaymentFact payment = completedPayment(401L, 4L, "2026-07-31T10:00:00Z");
+        payment.requireReview();
+        paymentRepository.save(payment);
+
+        service.run(YearMonth.of(2026, 8));
+
+        assertThat(projectSettlementRepository.findByProjectId(4L)).isEmpty();
+    }
+
     private static CreatorPayoutProfile profile(Long creatorId) {
         return CreatorPayoutProfile.registered(
                 creatorId,

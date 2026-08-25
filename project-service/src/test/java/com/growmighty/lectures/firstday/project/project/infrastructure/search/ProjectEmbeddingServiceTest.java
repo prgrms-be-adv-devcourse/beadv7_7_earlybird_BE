@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,7 +48,7 @@ class ProjectEmbeddingServiceTest {
     }
 
     private Project sampleProject() {
-        Project project = Project.register(1L, null, "친환경 보틀", 1L, "요약 설명", "상세 설명",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "친환경 보틀", 1L, "요약 설명", "상세 설명",
                 BigDecimal.valueOf(100000), LocalDateTime.now(), LocalDate.now().plusDays(10));
         ReflectionTestUtils.setField(project, "projectId", 100L);
         return project;

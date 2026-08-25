@@ -12,10 +12,14 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpecificationExecutor<Project> {
 
     List<Project> findByCreatorId(Long creatorId);
+
+    /** 프로젝트 생성 중복 방지(order-service의 findByUserIdAndOrderIdempotencyKey와 동일 패턴). */
+    Optional<Project> findByCreatorIdAndIdempotencyKey(Long creatorId, UUID idempotencyKey);
 
     /** ES 장애 시 하이브리드 검색의 DB LIKE 폴백 전용(ProjectSearchAdapter.searchFallback) — 기본 최신순 정렬. */
     List<Project> findByTitleContainingIgnoreCaseOrderByCreatedAtDesc(String title);

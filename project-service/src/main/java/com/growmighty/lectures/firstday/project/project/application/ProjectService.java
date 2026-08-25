@@ -20,6 +20,14 @@ public interface ProjectService {
 
     ProjectResponse create(Long creatorId, ProjectCreateRequest request);
 
+    /**
+     * create()가 idempotency 조회/카테고리 검증을 트랜잭션 밖에서 끝낸 뒤 호출하는 내부용 — 진짜
+     * 동시 요청이 유니크 제약(creatorId, idempotencyKey)에서 충돌하면
+     * DataIntegrityViolationException을 그대로 던져 create()가 트랜잭션 밖에서 잡게 한다.
+     * 외부에서 직접 부를 일은 없다.
+     */
+    ProjectResponse createInternal(Long creatorId, ProjectCreateRequest request);
+
     /** requesterRole이 ADMIN이면 PENDING_REVIEW/REJECTED도 결과에 포함한다. */
     List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole);
 

@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.reward.domain;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class RewardTest {
 
     private Reward reward(int quantity) {
-        return Reward.register(1L, "[얼리버드] 노트커버 1개", "설명", BigDecimal.valueOf(29_000), quantity);
+        return Reward.register(1L, UUID.randomUUID(), "[얼리버드] 노트커버 1개", "설명", BigDecimal.valueOf(29_000), quantity);
     }
 
     @Test
@@ -26,16 +28,16 @@ class RewardTest {
     @Test
     @DisplayName("가격이 0 이하이거나 수량이 음수면 등록할 수 없다")
     void register_invalidValues_throw() {
-        assertThatThrownBy(() -> Reward.register(1L, "x", "d", BigDecimal.ZERO, 1))
+        assertThatThrownBy(() -> Reward.register(1L, UUID.randomUUID(), "x", "d", BigDecimal.ZERO, 1))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Reward.register(1L, "x", "d", BigDecimal.valueOf(1000), -1))
+        assertThatThrownBy(() -> Reward.register(1L, UUID.randomUUID(), "x", "d", BigDecimal.valueOf(1000), -1))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     @DisplayName("총 수량이 null이면 무제한 리워드로 등록되고 항상 후원 가능하다")
     void register_nullTotalQuantity_unlimited() {
-        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        Reward reward = Reward.register(1L, UUID.randomUUID(), "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
         assertThat(reward.getTotalQuantity()).isNull();
         assertThat(reward.getRemainingQuantity()).isNull();
         assertThat(reward.isOrderable()).isTrue();
@@ -44,7 +46,7 @@ class RewardTest {
     @Test
     @DisplayName("무제한 리워드는 재고 차감/복원 검증을 건너뛴다")
     void unlimitedReward_skipsStockValidation() {
-        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        Reward reward = Reward.register(1L, UUID.randomUUID(), "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
 
         reward.decreaseStock(1_000_000);
         assertThat(reward.getRemainingQuantity()).isNull();
@@ -113,7 +115,7 @@ class RewardTest {
     @Test
     @DisplayName("무제한 리워드는 수량 추가 대상이 아니다")
     void increaseQuantity_unlimitedReward_throws() {
-        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        Reward reward = Reward.register(1L, UUID.randomUUID(), "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
         assertThatThrownBy(() -> reward.increaseQuantity(5))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -142,7 +144,7 @@ class RewardTest {
     @Test
     @DisplayName("무제한 리워드는 수량 축소 대상이 아니다")
     void decreaseQuantity_unlimitedReward_throws() {
-        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        Reward reward = Reward.register(1L, UUID.randomUUID(), "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
         assertThatThrownBy(() -> reward.decreaseQuantity(5))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -193,7 +195,7 @@ class RewardTest {
     @Test
     @DisplayName("무제한 리워드도 비활성화되면 차감할 수 없다")
     void decreaseStock_deactivated_unlimitedReward_throws() {
-        Reward reward = Reward.register(1L, "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
+        Reward reward = Reward.register(1L, UUID.randomUUID(), "무제한 후원", "설명", BigDecimal.valueOf(1_000), null);
         reward.deactivate();
 
         assertThatThrownBy(() -> reward.decreaseStock(1))

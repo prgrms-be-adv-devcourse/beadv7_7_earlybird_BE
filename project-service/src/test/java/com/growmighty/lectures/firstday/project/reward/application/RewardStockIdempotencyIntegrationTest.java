@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.reward.application;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.reward.domain.Reward;
@@ -69,7 +71,7 @@ class RewardStockIdempotencyIntegrationTest extends MySqlIntegrationTestSupport 
     }
 
     private Long publishedProject() {
-        Project project = Project.register(1L, null, "title", 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project = projectRepository.save(project);
         project.approve();
@@ -78,7 +80,7 @@ class RewardStockIdempotencyIntegrationTest extends MySqlIntegrationTestSupport 
     }
 
     private Long reward(Long projectId, int totalQuantity) {
-        Reward reward = Reward.register(projectId, "노트커버", "설명", BigDecimal.valueOf(10_000), totalQuantity);
+        Reward reward = Reward.register(projectId, UUID.randomUUID(), "노트커버", "설명", BigDecimal.valueOf(10_000), totalQuantity);
         return rewardRepository.save(reward).getRewardId();
     }
 }

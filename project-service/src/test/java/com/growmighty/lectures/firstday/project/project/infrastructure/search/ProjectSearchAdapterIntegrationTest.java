@@ -1,5 +1,7 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import java.util.UUID;
+
 import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
@@ -60,7 +62,7 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     private final List<Long> savedProjectIds = new ArrayList<>();
 
     private Project savedProject(String title) {
-        Project project = Project.register(1L, null, title, 1L, "summary", "desc",
+        Project project = Project.register(1L, UUID.randomUUID(), null, title, 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         Project saved = projectRepository.save(project);
         savedProjectIds.add(saved.getProjectId());
@@ -169,7 +171,7 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
         // userdict_ko.txt에 없는 미등록 단어 "냥냥이"는 nori 사전에 없어 ["냥", "냥", "이"] 등으로 쪼개진다.
         // "이"는 "장인이"/"입니다"처럼 거의 모든 자연스러운 한국어 문장에 등장하는 조사라,
         // minimum_should_match 없이는 이 음절 하나만 겹쳐도 매치된다(동일 문장으로 재현 검증).
-        Project unrelated = Project.register(1L, null, "수제 가죽 노트커버", 1L,
+        Project unrelated = Project.register(1L, UUID.randomUUID(), null, "수제 가죽 노트커버", 1L,
                 "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.", "장인이 한 땀 한 땀 만드는 가죽 노트커버 펀딩입니다.",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         Project saved = projectRepository.save(unrelated);
@@ -202,13 +204,13 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     @DisplayName("제목/요약/본문에 없어도 카테고리명으로 검색하면 찾아진다")
     void search_matchesByCategoryName() {
         ProjectCategory category = categoryRepository.save(ProjectCategory.create(null, "수제 액세서리"));
-        Project matching = Project.register(1L, null, "은은한 데일리룩", category.getId(), "summary", "desc",
+        Project matching = Project.register(1L, UUID.randomUUID(), null, "은은한 데일리룩", category.getId(), "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         Project saved = projectRepository.save(matching);
         savedProjectIds.add(saved.getProjectId());
         // savedProject()의 categoryId(=1L, 실존하지 않는 더미 참조)와 우연히 겹치지 않도록, 방금 만든
         // category.getId() 바로 다음 값(역시 실존하지 않음)을 써서 other의 categoryName이 안 채워지게 한다.
-        Project other = projectRepository.save(Project.register(1L, null, "완전히 다른 내용의 프로젝트",
+        Project other = projectRepository.save(Project.register(1L, UUID.randomUUID(), null, "완전히 다른 내용의 프로젝트",
                 category.getId() + 1, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30)));
         savedProjectIds.add(other.getProjectId());
@@ -227,7 +229,7 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     @DisplayName("제목/요약/본문에 없어도 리워드명으로 검색하면 찾아진다")
     void search_matchesByRewardName() {
         Project matching = savedProject("은은한 데일리룩");
-        rewardRepository.save(Reward.register(matching.getProjectId(), "얼리버드 벌레 키링", "설명",
+        rewardRepository.save(Reward.register(matching.getProjectId(), UUID.randomUUID(), "얼리버드 벌레 키링", "설명",
                 BigDecimal.valueOf(3_000), 100));
         Project other = savedProject("완전히 다른 내용의 프로젝트");
 
