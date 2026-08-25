@@ -53,7 +53,8 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.POST,
                                 URI_PREFIX_API + "/users/signup",
                                 URI_PREFIX_API + "/users/login",
-                                URI_PREFIX_API + "/users/refresh").permitAll()
+                                URI_PREFIX_API + "/users/refresh",
+                                URI_PREFIX_API + "/users/logout").permitAll()
                         .pathMatchers(HttpMethod.GET,
                                 "/*/v3/api-docs", "/*/v3/api-docs/**",
                                 "/*/swagger-ui.html", "/*/swagger-ui/**").permitAll()
