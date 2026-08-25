@@ -19,7 +19,7 @@ class ProjectDeletedKafkaListenerTest {
     @Test
     @DisplayName("ProjectDeletedEvent 수신 시 해당 프로젝트의 파일들을 삭제한다")
     void onProjectDeleted_deletesFilesByOwner() {
-        ProjectDeletedEvent event = ProjectDeletedEvent.of(100L, 1L);
+        ProjectDeletedEvent event = ProjectDeletedEvent.of(100L);
 
         listener.onProjectDeleted(event);
 

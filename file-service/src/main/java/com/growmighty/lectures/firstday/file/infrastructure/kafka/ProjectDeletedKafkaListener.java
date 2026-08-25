@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.file.infrastructure.kafka;
 
+import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
 import com.growmighty.lectures.firstday.file.application.FileService;
 import com.growmighty.lectures.firstday.file.domain.FileOwnerType;
 import com.growmighty.lectures.firstday.file.infrastructure.kafka.dto.ProjectDeletedEvent;
@@ -17,12 +18,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ProjectDeletedKafkaListener {
 
-    private static final String TOPIC_PROJECT_DELETED = "project.deleted.v1";
-
     private final FileService fileService;
 
     @KafkaListener(
-            topics = TOPIC_PROJECT_DELETED,
+            topics = KafkaTopics.PROJECT_DELETED,
             groupId = "file-service",
             properties = {
                     "spring.json.value.default.type=com.growmighty.lectures.firstday.file.infrastructure.kafka.dto.ProjectDeletedEvent",
