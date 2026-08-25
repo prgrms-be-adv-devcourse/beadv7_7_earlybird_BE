@@ -63,8 +63,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final double KEYWORD_RRF_WEIGHT = 1.0;
     /** kNN 의미 벡터 RRF 가중치: 문맥/유사도 기반 보조 추천 가중치 */
     private static final double KNN_RRF_WEIGHT = 0.8;
-    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.28 미만 노이즈 벡터 제외) */
-    private static final float KNN_SIMILARITY_THRESHOLD = 0.28f;
+    /** text-embedding-3-small 모델 기준 의미 유사도 하한 (0.35 미만 무관 벡터 제외) */
+    private static final float KNN_SIMILARITY_THRESHOLD = 0.35f;
     /** RRF 스코어 하한: 가중치 RRF 결합 점수 기준 하위 노이즈 문서 필터링 */
     private static final double RRF_MIN_SCORE = 0.005;
     /** ES 후보 과다조회 한도 — 최종 10개 컷은 ProjectServiceImpl이 MySQL 가시성 필터링 후 수행한다. */
