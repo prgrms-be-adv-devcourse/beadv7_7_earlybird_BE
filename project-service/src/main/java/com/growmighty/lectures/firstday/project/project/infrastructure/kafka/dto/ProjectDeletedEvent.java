@@ -14,16 +14,16 @@ public record ProjectDeletedEvent(
         OffsetDateTime occurredAt,
         Payload payload
 ) {
-    public record Payload(Long projectId, Long creatorId) {
+    public record Payload(Long projectId) {
     }
 
-    public static ProjectDeletedEvent of(Long projectId, Long creatorId) {
+    public static ProjectDeletedEvent of(Long projectId) {
         return new ProjectDeletedEvent(
                 UUID.randomUUID(),
                 "ProjectDeleted",
                 1,
                 OffsetDateTime.now(),
-                new Payload(projectId, creatorId)
+                new Payload(projectId)
         );
     }
 }

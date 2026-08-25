@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.project.project.application;
 import java.util.UUID;
 
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
-import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
@@ -37,7 +36,6 @@ class ProjectServiceImplSearchIndexingTest {
     private final OrderPort orderPort = mock(OrderPort.class);
     private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-    private final FilePort filePort = mock(FilePort.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
@@ -51,7 +49,7 @@ class ProjectServiceImplSearchIndexingTest {
     void setUp() {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
-                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, filePort, Clock.systemDefaultZone());
+                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, Clock.systemDefaultZone());
         when(selfProvider.getObject()).thenReturn(projectService);
         project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));

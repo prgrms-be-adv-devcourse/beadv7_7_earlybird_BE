@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.kafka;
 
+import com.growmighty.lectures.firstday.common.kafka.KafkaTopics;
 import com.growmighty.lectures.firstday.project.project.infrastructure.kafka.dto.ProjectDeletedEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,7 @@ import static org.mockito.Mockito.when;
 
 class KafkaFileEventPublisherTest {
 
-    private static final String TOPIC_PROJECT_DELETED = "project.deleted.v1";
+    private static final String TOPIC_PROJECT_DELETED = KafkaTopics.PROJECT_DELETED;
 
     @SuppressWarnings("unchecked")
     private final KafkaTemplate<String, ProjectDeletedEvent> kafkaTemplate = mock(KafkaTemplate.class);
