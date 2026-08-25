@@ -187,7 +187,7 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                 AdminSettlementEntry.Type.REFUND,
                 longValue(row[1]),
                 (String) row[2],
-                (String) row[3],
+                longValue(row[3]),
                 publishedAt,
                 paymentResultAt,
                 null,

@@ -346,7 +346,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     @DisplayName("존재하지 않는 refundRequestId의 환불 batch 상세는 찾을 수 없다")
     void doesNotReturnRefundDetailForUnknownRefundRequestId() throws Exception {
         mockMvc.perform(get("/api/v1/settlements/all/refunds/{refundRequestId}", "unknown-refund-request"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -541,7 +541,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         );
         outcomeRepository.save(outcome);
         return ProjectRefundRequested.request(
-                UUID.randomUUID().toString(),
+                93_000_000L + projectId,
                 outcome,
                 List.of(OrderPaymentFact.completed(
                         orderId,

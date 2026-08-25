@@ -30,7 +30,7 @@ public class ProjectRefundRequestedRepositoryAdapter
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<ProjectRefundRequested> findByRefundRequestId(String refundRequestId) {
+    public Optional<ProjectRefundRequested> findByRefundRequestId(Long refundRequestId) {
         return repository.findById(refundRequestId);
     }
 

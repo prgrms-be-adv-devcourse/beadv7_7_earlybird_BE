@@ -38,8 +38,8 @@ public class ProjectRefundRequested extends BaseEntity {
     public static final int SCHEMA_VERSION = 1;
 
     @Id
-    @Column(name = "event_id", nullable = false, updatable = false, length = 36)
-    private String refundRequestId;
+    @Column(name = "event_id", nullable = false, updatable = false)
+    private Long refundRequestId;
 
     @Column(name = "project_id", nullable = false, updatable = false)
     private Long projectId;
@@ -92,7 +92,7 @@ public class ProjectRefundRequested extends BaseEntity {
     }
 
     private ProjectRefundRequested(
-            String refundRequestId,
+            Long refundRequestId,
             Long projectId,
             ProjectCancellationReason reason,
             List<Payment> payments,
@@ -107,7 +107,7 @@ public class ProjectRefundRequested extends BaseEntity {
     }
 
     public static ProjectRefundRequested request(
-            String refundRequestId,
+            Long refundRequestId,
             ProjectOutcomeFact outcome,
             List<OrderPaymentFact> payments,
             Instant occurredAt
@@ -170,7 +170,7 @@ public class ProjectRefundRequested extends BaseEntity {
         }
     }
 
-    public String refundRequestId() {
+    public Long refundRequestId() {
         return refundRequestId;
     }
 
@@ -241,8 +241,8 @@ public class ProjectRefundRequested extends BaseEntity {
 
     @PostLoad
     private void validateState() {
-        if (refundRequestId == null || refundRequestId.isBlank()) {
-            throw new IllegalArgumentException("환불 요청 식별자는 필수입니다.");
+        if (refundRequestId == null || refundRequestId <= 0) {
+            throw new IllegalArgumentException("환불 요청 식별자는 양수여야 합니다.");
         }
         if (projectId == null || projectId <= 0) {
             throw new IllegalArgumentException("프로젝트 식별자는 양수여야 합니다.");

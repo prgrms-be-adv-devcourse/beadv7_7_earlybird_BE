@@ -68,7 +68,7 @@ public class AdminProjectSettlementQueryService {
     }
 
     @Transactional(readOnly = true)
-    public AdminProjectRefundDetail findRefundDetail(String refundRequestId) {
+    public AdminProjectRefundDetail findRefundDetail(Long refundRequestId) {
         ProjectRefundRequested request = refundRequestedRepository.findByRefundRequestId(refundRequestId)
                 .orElseThrow(() -> new SettlementException(PROJECT_REFUND_REQUEST_NOT_FOUND));
         return new AdminProjectRefundDetail(

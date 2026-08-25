@@ -36,7 +36,7 @@ public class AdminProjectSettlementQueryController {
     }
 
     @GetMapping("/refunds/{refundRequestId}")
-    public AdminProjectRefundDetailResponse findRefundDetail(@PathVariable String refundRequestId) {
+    public AdminProjectRefundDetailResponse findRefundDetail(@PathVariable Long refundRequestId) {
         return AdminProjectRefundDetailResponse.from(queryService.findRefundDetail(refundRequestId));
     }
 }

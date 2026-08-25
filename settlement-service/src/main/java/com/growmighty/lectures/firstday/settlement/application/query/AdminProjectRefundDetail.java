@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.List;
 
 public record AdminProjectRefundDetail(
-        String refundRequestId,
+        Long refundRequestId,
         Long projectId,
         String projectName,
         ProjectCancellationReason reason,

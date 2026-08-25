@@ -11,7 +11,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +41,7 @@ public class ProjectRefundRequestService {
                 continue;
             }
             created.add(outboxRepository.save(ProjectRefundRequested.request(
-                    UUID.randomUUID().toString(),
+                    ThreadLocalRandom.current().nextLong(1, Long.MAX_VALUE),
                     outcome,
                     refundablePayments,
                     now

@@ -51,27 +51,28 @@ class ProjectRefundRequestedKafkaPublisherTest {
     void marksOutboxPublishedOnlyAfterKafkaAcknowledges() {
         ProjectRefundRequested request = request();
         when(outboxRepository.findPending()).thenReturn(List.of(request));
-        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(request.refundRequestId()), any()))
+        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(String.valueOf(request.refundRequestId())), any()))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
         publisher().publishPending();
 
         verify(kafkaTemplate).send(
                 eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND),
-                eq(request.refundRequestId()),
+                eq(String.valueOf(request.refundRequestId())),
                 eventCaptor.capture()
         );
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
-        assertThat(eventCaptor.getValue().refundRequestId()).isEqualTo(request.refundRequestId());
-        assertThat(eventCaptor.getValue().payload().refundRequestId()).isEqualTo(request.refundRequestId());
+        assertThat(eventCaptor.getValue().refundRequestId()).isEqualTo(String.valueOf(request.refundRequestId()));
+        assertThat(eventCaptor.getValue().payload().refundRequestId())
+                .isEqualTo(String.valueOf(request.refundRequestId()));
     }
 
     @Test
     void retriesSameOutboxWhenKafkaAcknowledgmentFails() {
         ProjectRefundRequested request = request();
         when(outboxRepository.findPending()).thenReturn(List.of(request));
-        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(request.refundRequestId()), any()))
+        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(String.valueOf(request.refundRequestId())), any()))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("broker unavailable")))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
@@ -80,21 +81,21 @@ class ProjectRefundRequestedKafkaPublisherTest {
 
         verify(kafkaTemplate, org.mockito.Mockito.times(2)).send(
                 eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND),
-                eq(request.refundRequestId()),
+                eq(String.valueOf(request.refundRequestId())),
                 eventCaptor.capture()
         );
         verify(outboxRepository).save(request);
         assertThat(request.published()).isTrue();
         assertThat(eventCaptor.getAllValues())
                 .extracting(ProjectRefundRequestedEvent::refundRequestId)
-                .containsOnly(request.refundRequestId());
+                .containsOnly(String.valueOf(request.refundRequestId()));
     }
 
     @Test
     void keepsOutboxPendingWhenKafkaAcknowledgmentTimesOut() {
         ProjectRefundRequested request = request();
         when(outboxRepository.findPending()).thenReturn(List.of(request));
-        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(request.refundRequestId()), any()))
+        when(kafkaTemplate.send(eq(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND), eq(String.valueOf(request.refundRequestId())), any()))
                 .thenReturn(CompletableFuture.failedFuture(new TimeoutException("broker delayed")));
 
         publisher().publishPending();
@@ -123,7 +124,7 @@ class ProjectRefundRequestedKafkaPublisherTest {
                 OCCURRED_AT.minusSeconds(60)
         );
         return ProjectRefundRequested.request(
-                "3bdb6b7d-ec38-4e66-b8a6-b0fc37cb67d1",
+                91_000_001L,
                 outcome,
                 List.of(payment),
                 OCCURRED_AT

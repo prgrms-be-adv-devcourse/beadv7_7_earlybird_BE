@@ -175,7 +175,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                 "ProjectRefundProcessed",
                 1,
                 OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
-                new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "FAILED")
+                new ProjectRefundProcessedEvent.Payload(request.refundRequestId().toString(), List.of(orderId), "FAILED")
         ));
 
         assertThat(await(() -> inboxRepository.existsById(refundProcessedEventId.toString()))).isTrue();
@@ -198,7 +198,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                     "ProjectRefundProcessed",
                     1,
                     OffsetDateTime.parse("2026-08-02T10:00:00+09:00"),
-                    new ProjectRefundProcessedEvent.Payload(request.refundRequestId(), List.of(orderId), "PENDING")
+                    new ProjectRefundProcessedEvent.Payload(request.refundRequestId().toString(), List.of(orderId), "PENDING")
             ));
 
             ConsumerRecord<String, String> record = KafkaTestUtils.getSingleRecord(
@@ -316,7 +316,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                             .getRecords(commandConsumer, Duration.ofSeconds(10))
                             .records(KafkaTopics.PAYMENT_BULK_CANCEL_COMMAND)
                             .spliterator(), false)
-                    .filter(candidate -> request.refundRequestId().equals(candidate.key()))
+                    .filter(candidate -> String.valueOf(request.refundRequestId()).equals(candidate.key()))
                     .findFirst()
                     .orElseThrow();
             ProjectRefundRequestedEvent event = objectMapper.readValue(
@@ -324,9 +324,9 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
                     ProjectRefundRequestedEvent.class
             );
 
-            assertThat(record.key()).isEqualTo(request.refundRequestId());
-            assertThat(event.refundRequestId()).isEqualTo(request.refundRequestId());
-            assertThat(event.payload().refundRequestId()).isEqualTo(request.refundRequestId());
+            assertThat(record.key()).isEqualTo(String.valueOf(request.refundRequestId()));
+            assertThat(event.refundRequestId()).isEqualTo(String.valueOf(request.refundRequestId()));
+            assertThat(event.payload().refundRequestId()).isEqualTo(String.valueOf(request.refundRequestId()));
             assertThat(event.payload().orderIds())
                     .containsExactly(91_003L);
             assertThat(outboxRepository.findByProjectId(projectId).orElseThrow().published()).isTrue();
@@ -396,7 +396,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
     private static ProjectRefundRequested request(long projectId, long orderId, String pgOrderId) {
         Instant occurredAt = Instant.parse("2026-08-01T00:00:00Z");
         return ProjectRefundRequested.request(
-                UUID.randomUUID().toString(),
+                92_000_000L + projectId,
                 ProjectOutcomeFact.of(projectId, "프로젝트 " + projectId, 703L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
                 List.of(OrderPaymentFact.completed(
                         orderId,
