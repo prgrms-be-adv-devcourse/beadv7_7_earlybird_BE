@@ -10,6 +10,8 @@ public interface FileRepository {
 
     List<File> findByOwnerTypeAndOwnerId(FileOwnerType ownerType, Long ownerId);
 
+    List<File> findByOwnerTypeAndOwnerIdIn(FileOwnerType ownerType, List<Long> ownerIds);
+
     void deleteById(Long id);
 
     void deleteByOwnerTypeAndOwnerId(FileOwnerType ownerType, Long ownerId);
