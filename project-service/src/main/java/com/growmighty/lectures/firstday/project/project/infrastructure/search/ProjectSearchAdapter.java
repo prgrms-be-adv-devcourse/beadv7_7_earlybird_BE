@@ -189,6 +189,11 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
         // kNN Scoping 대상 카테고리 (정확 매칭 우선, 없으면 Intent 적용)
         List<Long> knnScopeCategoryIds = !exactCategoryIds.isEmpty() ? exactCategoryIds : intentCategoryIds;
+        if (!knnScopeCategoryIds.isEmpty()) {
+            log.info("[ProjectSearch] 키워드='{}' -> kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, knnScopeCategoryIds);
+        } else {
+            log.info("[ProjectSearch] 키워드='{}' -> 카테고리 스코프 미적용 (전체 검색)", trimmedKeyword);
+        }
 
         List<String> slangSynonyms = resolveSlangSynonyms(trimmedKeyword);
 
