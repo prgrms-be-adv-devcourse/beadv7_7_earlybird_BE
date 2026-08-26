@@ -19,6 +19,12 @@ earlybird-team5.duckdns.org {
 		reverse_proxy 10.0.0.81:8000
 	}
 
+	# /actuator/*는 gateway-server의 SecurityConfig가 처리한다(health만 permitAll, 나머지는
+	# 인증 필요) - #582/#637. 이 handle 없이는 FE catch-all로 떨어져 항상 FE index.html을 반환한다.
+	handle /actuator/* {
+		reverse_proxy 10.0.0.81:8000
+	}
+
 	handle {
 		reverse_proxy fe:80
 	}
