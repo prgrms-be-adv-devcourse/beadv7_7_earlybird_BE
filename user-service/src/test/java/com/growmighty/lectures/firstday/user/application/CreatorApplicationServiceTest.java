@@ -69,14 +69,16 @@ class CreatorApplicationServiceTest {
     }
 
     @Test
-    @DisplayName("이미 창작자인 유저가 신청하면 예외가 발생한다")
+    @DisplayName("이미 창작자인 유저가 신청하면 예외가 발생한다 (creator_profiles 유무와 무관하게 role로 판단)")
     void apply_whenAlreadyCreator_throws() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(backer()));
-        when(creatorProfileRepository.existsByUserId(1L)).thenReturn(true);
+        User creator = backer();
+        creator.becomeCreator();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(creator));
 
         assertThatThrownBy(() -> creatorApplicationService.apply(applyCommand(1L)))
                 .isInstanceOf(IllegalStateException.class);
 
+        verify(creatorProfileRepository, never()).existsByUserId(any());
         verify(applicationRepository, never()).save(any());
     }
 
@@ -84,7 +86,6 @@ class CreatorApplicationServiceTest {
     @DisplayName("이미 심사 대기 중인 신청이 있으면 다시 신청할 수 없다")
     void apply_withExistingPendingApplication_throws() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(backer()));
-        when(creatorProfileRepository.existsByUserId(1L)).thenReturn(false);
         when(applicationRepository.existsByUserIdAndStatus(1L, CreatorApplicationStatus.PENDING)).thenReturn(true);
 
         assertThatThrownBy(() -> creatorApplicationService.apply(applyCommand(1L)))
@@ -97,7 +98,6 @@ class CreatorApplicationServiceTest {
     @DisplayName("정상 신청하면 PENDING 상태로 저장된다")
     void apply_withValidCommand_savesPendingApplication() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(backer()));
-        when(creatorProfileRepository.existsByUserId(1L)).thenReturn(false);
         when(applicationRepository.existsByUserIdAndStatus(1L, CreatorApplicationStatus.PENDING)).thenReturn(false);
         ArgumentCaptor<CreatorApplication> captor = ArgumentCaptor.forClass(CreatorApplication.class);
         when(applicationRepository.save(captor.capture())).thenAnswer(invocation -> captor.getValue());
