@@ -107,13 +107,15 @@ Authorization: Bearer {{accessToken}}
     });
 %}
 
-### 9. 비로그인 키워드 검색 -> B가 더 이상 포함되지 않음
+### 9. 비로그인 키워드 검색 -> B가 CANCELLED 상태로 검색 결과에 노출됨
 GET {{baseUrl}}/api/v1/projects?keyword={{uniqueKeyword}}
 
 > {%
-    client.test("검색 결과에서 B 제외됨", function () {
+    client.test("검색 결과에 B 포함되고 CANCELLED 상태로 노출됨", function () {
         client.assert(response.status === 200, "search failed: " + response.body);
-        const found = response.body.data.some(p => String(p.projectId) === String(client.global.get("projectBId")));
-        client.assert(!found, "cancelled project B still appears in keyword search results");
+        const b = response.body.data.find(p => String(p.projectId) === String(client.global.get("projectBId")));
+        client.assert(!!b, "project B not found in search results");
+        client.assert(b.status === "CANCELLED", "expected CANCELLED status, got: " + b?.status);
+        client.assert(b.closed === true, "expected closed: true, got: " + b?.closed);
     });
 %}
