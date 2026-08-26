@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.client.user;
 
+import com.growmighty.lectures.firstday.common.response.ApiResponse;
 import com.growmighty.lectures.firstday.settlement.application.port.user.CreatorInformation;
 import com.growmighty.lectures.firstday.settlement.application.port.user.CreatorInformationException;
 import com.growmighty.lectures.firstday.settlement.application.port.user.CreatorInformationException.FailureType;
@@ -9,6 +10,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -43,11 +45,14 @@ public final class UserCreatorInformationHttpReader implements CreatorInformatio
 
     private CreatorInformation request(Long creatorId) {
         try {
-            UserResponse response = restClient.get().uri(CREATOR_INFORMATION_PATH, creatorId).retrieve().body(UserResponse.class);
-            if (response == null || !creatorId.equals(response.id()) || !"CREATOR".equals(response.role())) {
+            ApiResponse<UserResponse> response = restClient.get().uri(CREATOR_INFORMATION_PATH, creatorId).retrieve()
+                    .body(new ParameterizedTypeReference<>() {
+                    });
+            if (response == null || !response.success() || response.data() == null || response.error() != null
+                    || !creatorId.equals(response.data().id()) || !"CREATOR".equals(response.data().role())) {
                 throw contractFailure("User 창작자 정보 응답이 올바르지 않습니다.", null);
             }
-            return new CreatorInformation(response.email(), response.name(), response.phoneNumber());
+            return new CreatorInformation(response.data().email(), response.data().name(), response.data().phoneNumber());
         } catch (RestClientResponseException exception) {
             throw responseFailure(exception);
         } catch (ResourceAccessException exception) {
