@@ -1,39 +1,21 @@
 ### 654-new-service-auto-registration.http — 신규 서비스 기동 시 Eureka 자동 등록
 ### https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/654
 ###
-### ⚠️ 사전 준비(수동): order-service를 기동되지 않은 상태로 두고 1번을 먼저 실행해 등록되어
-### 있지 않음을 확인한 뒤, order-service를 기동하고 30~40초(Eureka 기본 heartbeat 주기) 기다렸다가
-### 2번을 실행할 것. discovery-server는 게이트웨이를 거치지 않고 자기 자신의 포트(로컬 :8761)로
-### 직접 호출한다 — 운영에서는 discovery-server 포트가 외부에 노출되어 있지 않을 수 있으므로,
-### 그 경우 SSH 터널 등으로 접근하거나 이 case는 로컬에서만 실행할 것.
+### ⚠️ Eureka 등록 현황(discovery-server :8761) 조회는 HTTP로 자동 테스트 불가: docker-compose는
+### gateway(:8000)/config-server(:8888) 외 포트를 호스트에 열지 않는다 (discovery-server 블록의
+### `# ports: - "8761:8761"` 주석 — "Eureka 대시보드를 브라우저로 직접 볼 때만 주석 해제"도 이와
+### 같은 이유). IDE HTTP Client든 ijhttp든 호스트에서 실행하는 한 :8761 직접 호출은 항상 connection
+### refused다. 아래 순서로 수동 확인할 것:
+###   1) order-service를 기동되지 않은 상태로 두고
+###      docker run --rm --network infrastructure_default curlimages/curl:latest \
+###        http://discovery-server:8761/eureka/apps/ORDER-SERVICE
+###      → 404 (등록 안 됨)이어야 함
+###   2) order-service를 기동하고 30~40초(Eureka 기본 heartbeat 주기) 기다린 뒤 같은 커맨드 재실행
+###      → 200 + 모든 instance가 UP이어야 함
 ###
 ### baseUrl은 http-client.env.json의 값이 아니라 discovery-server 전용 주소를 이 파일 안에서 직접 쓴다.
 
-### 1. (order-service 기동 전) Eureka 등록 현황 조회 — order-service가 없어야 함
-GET http://localhost:8761/eureka/apps/ORDER-SERVICE
-Accept: application/json
-
-> {%
-    client.test("기동 전에는 ORDER-SERVICE가 등록되어 있지 않음(404)", function() {
-        client.assert(response.status === 404, "expected 404 (not registered yet), got " + response.status + " — order-service가 이미 떠 있는 상태에서 실행한 것은 아닌지 확인");
-    });
-%}
-
-### 2. (order-service 기동 + 30~40초 대기 후) 다시 조회 — UP으로 등록되어 있어야 함
-GET http://localhost:8761/eureka/apps/ORDER-SERVICE
-Accept: application/json
-
-> {%
-    client.test("기동 후에는 ORDER-SERVICE가 UP으로 등록됨", function() {
-        client.assert(response.status === 200, "expected 200, got " + response.status + " — 아직 heartbeat 주기가 지나지 않았을 수 있음, 잠시 후 재시도");
-        const app = response.body.application;
-        client.assert(app && app.instance && app.instance.length > 0, "no instances found for ORDER-SERVICE");
-        const allUp = app.instance.every(i => i.status === "UP");
-        client.assert(allUp, "some instances are not UP: " + JSON.stringify(app.instance.map(i => i.status)));
-    });
-%}
-
-### 3. 회원가입 + 로그인 (게이트웨이 라우팅 확인용 토큰 확보)
+### 1. 회원가입 + 로그인 (게이트웨이 라우팅 확인용 토큰 확보)
 < {%
     client.global.set("userEmail", "uc654-" + Date.now() + "@earlybird.co.kr");
 %}
@@ -53,7 +35,7 @@ Content-Type: application/json
     });
 %}
 
-### 4. 로그인
+### 2. 로그인
 POST {{baseUrl}}/api/v1/users/login
 Content-Type: application/json
 
@@ -69,7 +51,7 @@ Content-Type: application/json
     client.global.set("accessToken", response.body.data.accessToken);
 %}
 
-### 5. 게이트웨이를 통해 실제로 라우팅되는지 확인 (별도 재기동 없이 바로 되어야 함)
+### 3. 게이트웨이를 통해 실제로 라우팅되는지 확인 (별도 재기동 없이 바로 되어야 함)
 GET {{baseUrl}}/api/v1/orders/me
 Authorization: Bearer {{accessToken}}
 
