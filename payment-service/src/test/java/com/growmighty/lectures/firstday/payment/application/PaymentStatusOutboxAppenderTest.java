@@ -1,9 +1,6 @@
 package com.growmighty.lectures.firstday.payment.application;
 
-import com.growmighty.lectures.firstday.payment.domain.Payment;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatus;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
-import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
+import com.growmighty.lectures.firstday.payment.domain.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -25,6 +22,9 @@ class PaymentStatusOutboxAppenderTest {
     private static final Long ORDER_ID = 2L;
 
     @Mock
+    private PaymentRepository paymentRepository;
+
+    @Mock
     private PaymentStatusOutboxRepository paymentStatusOutboxRepository;
 
     @Mock
@@ -37,13 +37,15 @@ class PaymentStatusOutboxAppenderTest {
     @Test
     void 존재하지_않는_결제_상태_Outbox를_저장하고_발행한다() {
         Payment payment = paidPayment();
+        when(paymentRepository.save(payment)).thenReturn(payment); // <-- 저장된 Payment를 Outbox 생성에 사용
         when(paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(PAYMENT_ID, PaymentStatus.PAID))
             .thenReturn(false);
         when(paymentStatusOutboxRepository.save(any(PaymentStatusOutbox.class)))
             .thenAnswer(invocation -> invocation.getArgument(0));
 
-        paymentStatusOutboxAppender.appendIfAbsent(payment);
+        paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
 
+        verify(paymentRepository).save(payment); // <-- Payment 상태 저장 검증
         ArgumentCaptor<PaymentStatusOutbox> captor = ArgumentCaptor.forClass(PaymentStatusOutbox.class);
         verify(paymentStatusOutboxRepository).save(captor.capture());
         PaymentStatusOutbox outbox = captor.getValue();
@@ -57,11 +59,13 @@ class PaymentStatusOutboxAppenderTest {
     @Test
     void 이미_존재하는_결제_상태_Outbox는_저장하거나_발행하지_않는다() {
         Payment payment = paidPayment();
+        when(paymentRepository.save(payment)).thenReturn(payment); // <-- Payment 저장은 항상 수행
         when(paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(PAYMENT_ID, PaymentStatus.PAID))
             .thenReturn(true);
 
-        paymentStatusOutboxAppender.appendIfAbsent(payment);
+        paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
 
+        verify(paymentRepository).save(payment); // <-- Payment 상태 저장 검증
         verify(paymentStatusOutboxRepository, never()).save(any());
         verifyNoInteractions(applicationEventPublisher);
     }

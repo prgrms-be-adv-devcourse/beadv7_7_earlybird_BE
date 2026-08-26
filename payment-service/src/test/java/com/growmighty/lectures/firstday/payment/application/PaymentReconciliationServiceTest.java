@@ -44,8 +44,7 @@ class PaymentReconciliationServiceTest {
         paymentReconciliationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.COMPLETED));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
-        verify(paymentRepository).save(payment);
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment);
+        verify(paymentStatusOutboxAppender).savePaymentAndAppendOutbox(payment);
     }
 
     @Test
@@ -69,8 +68,7 @@ class PaymentReconciliationServiceTest {
         paymentReconciliationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.CANCELLED));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
-        verify(paymentRepository).save(payment);
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment);
+        verify(paymentStatusOutboxAppender).savePaymentAndAppendOutbox(payment);
     }
 
     @Test
@@ -82,8 +80,7 @@ class PaymentReconciliationServiceTest {
         paymentReconciliationService.reconcile(pgPayment(payment, PaymentGateway.PgPaymentStatus.PENDING));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
-        verify(paymentRepository).save(payment);
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment);
+        verify(paymentStatusOutboxAppender).savePaymentAndAppendOutbox(payment);
     }
 
     private Payment confirmingPayment() {

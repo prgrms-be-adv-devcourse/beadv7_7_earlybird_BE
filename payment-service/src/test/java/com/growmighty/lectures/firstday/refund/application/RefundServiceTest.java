@@ -115,8 +115,7 @@ class RefundServiceTest {
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.COMPLETED);
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
         verify(refundRepository).save(refund);
-        verify(paymentRepository).save(payment);
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment); // <-- Outbox 생성 책임 위임 검증
+        verify(paymentStatusOutboxAppender).savePaymentAndAppendOutbox(payment); // <-- Payment 저장과 Outbox 생성 책임 위임 검증
     }
 
     // 변경 : 일괄 취소 결과 Outbox를 상태별 중복 무시 insert로 저장
@@ -133,7 +132,7 @@ class RefundServiceTest {
 
         refundService.completeRefund(REFUND_ID);
 
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment); // <-- Outbox 생성 책임 위임 검증
+        verify(paymentStatusOutboxAppender).savePaymentAndAppendOutbox(payment); // <-- Payment 저장과 Outbox 생성 책임 위임 검증
         verify(bulkRefundResultOutboxRepository).insertIfAbsent(
             REFUND_REQUEST_ID,
             BulkRefundResultStatus.COMPLETED

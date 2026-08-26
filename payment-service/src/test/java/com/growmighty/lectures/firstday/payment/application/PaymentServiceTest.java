@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.payment.application;
 
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
@@ -40,6 +41,7 @@ class PaymentServiceTest {
         paymentGateway = new RecordingPaymentGateway();
         ApplicationEventPublisher applicationEventPublisher = event -> { };
         PaymentStatusOutboxAppender paymentStatusOutboxAppender = new PaymentStatusOutboxAppender(
+            paymentRepository,
             paymentStatusOutboxRepository,
             applicationEventPublisher
         );
@@ -125,8 +127,8 @@ class PaymentServiceTest {
         paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
 
         assertThatThrownBy(() -> paymentService.prepare(999L, ORDER_ID, AMOUNT))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("주문 소유자가 일치하지 않습니다.");
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("결제 소유자가 일치하지 않습니다.");
     }
 
     @Test
@@ -244,7 +246,7 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> paymentService.confirm(
             999L, "payment-key-1", prepared.pgOrderId(), AMOUNT
-        )).isInstanceOf(IllegalStateException.class)
+        )).isInstanceOf(BusinessException.class)
             .hasMessage("결제 소유자가 일치하지 않습니다.");
 
         assertThat(paymentGateway.approvalCalls).isZero();
@@ -256,7 +258,7 @@ class PaymentServiceTest {
         PaymentPreparationInfo prepared = paymentService.prepare(USER_ID, ORDER_ID, AMOUNT);
 
         assertThatThrownBy(() -> paymentService.getPayment(prepared.paymentId(), 999L))
-            .isInstanceOf(IllegalStateException.class)
+            .isInstanceOf(BusinessException.class)
             .hasMessage("결제 소유자가 일치하지 않습니다.");
     }
 

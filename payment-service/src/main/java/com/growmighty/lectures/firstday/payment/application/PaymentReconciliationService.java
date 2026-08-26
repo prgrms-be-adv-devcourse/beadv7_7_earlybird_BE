@@ -39,7 +39,7 @@ public class PaymentReconciliationService {
                 );
 
                 if (payment.reconcileConfirmed(pgPayment.paymentKey())) {
-                    savePaymentAndAppendOutbox(payment);
+                    paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
                 }
 
                 return Optional.of(PaymentInfo.from(payment));
@@ -47,7 +47,7 @@ public class PaymentReconciliationService {
 
             case FAILED, EXPIRED, CANCELLED -> {
                 if (payment.reconcileFailed()) {
-                    savePaymentAndAppendOutbox(payment);
+                    paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
                 }
             }
 
@@ -56,16 +56,11 @@ public class PaymentReconciliationService {
                     LocalDateTime.now(),
                     paymentRecoveryProperties.maximumConfirmingDuration()
                 )) {
-                    savePaymentAndAppendOutbox(payment);
+                    paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
                 }
             }
         }
 
         return Optional.empty();
-    }
-
-    private void savePaymentAndAppendOutbox(Payment payment) {
-        paymentRepository.save(payment);
-        paymentStatusOutboxAppender.appendIfAbsent(payment);
     }
 }

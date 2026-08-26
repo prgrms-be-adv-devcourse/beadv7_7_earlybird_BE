@@ -91,8 +91,7 @@ public class RefundService {
         payment.cancel();
 
         refundRepository.save(refund);
-        paymentRepository.save(payment);
-        paymentStatusOutboxAppender.appendIfAbsent(payment);
+        paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
 
         recordBulkRefundResultIfCompleted(refund.getRefundRequestId());
     }

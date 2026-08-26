@@ -114,8 +114,7 @@ class PaymentRecoveryServiceTest {
         paymentRecoveryService.expireReadyPayment(PAYMENT_ID);
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
-        verify(paymentRepository).save(payment);
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment);
+        verify(paymentStatusOutboxAppender).savePaymentAndAppendOutbox(payment);
     }
 
     // 추가 : PG 조회 대상인 CONFIRMING 결제를 만든다.
