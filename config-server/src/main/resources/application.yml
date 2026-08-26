@@ -1,6 +1,11 @@
 spring:
   application:
     name: config-server
+  # config-server 자신은 config-server를 import하지 않으므로 (자기 자신에게 요청할 수 없다),
+  # 공유 config repo에 이 값을 넣어도 적용되지 않는다 — 여기 로컬에 직접 정의한다 (#69).
+  threads:
+    virtual:
+      enabled: true
   cloud:
     config:
       server:
