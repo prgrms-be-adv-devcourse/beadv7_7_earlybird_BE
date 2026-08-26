@@ -7,7 +7,6 @@ import com.growmighty.lectures.firstday.project.category.presentation.dto.reques
 import com.growmighty.lectures.firstday.project.category.presentation.dto.request.ProjectCategoryUpdateRequest;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryTreeResponse;
-import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,12 +26,11 @@ class ProjectCategoryServiceImplTest {
 
     private final ProjectCategoryRepository projectCategoryRepository = mock(ProjectCategoryRepository.class);
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
-    private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectCategoryService> selfProvider = mock(ObjectProvider.class);
 
     private final ProjectCategoryServiceImpl service =
-            new ProjectCategoryServiceImpl(projectCategoryRepository, projectRepository, searchPort, selfProvider);
+            new ProjectCategoryServiceImpl(projectCategoryRepository, projectRepository, selfProvider);
 
     @Test
     @DisplayName("상위 카테고리 없이(루트) 생성할 수 있다")
