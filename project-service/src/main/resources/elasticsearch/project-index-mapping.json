@@ -1,11 +1,11 @@
 {
   "properties": {
     "projectId": { "type": "long" },
-    "title": { "type": "text", "analyzer": "korean" },
-    "summary": { "type": "text", "analyzer": "korean" },
-    "description": { "type": "text", "analyzer": "korean" },
-    "categoryName": { "type": "text", "analyzer": "korean" },
-    "rewardNames": { "type": "text", "analyzer": "korean" },
+    "title": { "type": "text", "analyzer": "korean", "search_analyzer": "korean_search" },
+    "summary": { "type": "text", "analyzer": "korean", "search_analyzer": "korean_search" },
+    "description": { "type": "text", "analyzer": "korean", "search_analyzer": "korean_search" },
+    "categoryId": { "type": "long" },
+    "rewardNames": { "type": "text", "analyzer": "korean", "search_analyzer": "korean_search" },
     "embedding": {
       "type": "dense_vector",
       "dims": 1536,

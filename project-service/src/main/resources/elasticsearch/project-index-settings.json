@@ -8,16 +8,28 @@
         }
       },
       "filter": {
-        "korean_synonym": {
-          "type": "synonym",
+        "korean_synonym_graph": {
+          "type": "synonym_graph",
           "synonyms_path": "analysis/synonym.txt"
+        },
+        "korean_pos_stop": {
+          "type": "nori_part_of_speech"
+        },
+        "korean_counter_stop": {
+          "type": "nori_part_of_speech",
+          "stoptags": ["NNBC"]
         }
       },
       "analyzer": {
         "korean": {
           "type": "custom",
           "tokenizer": "nori_user_dict",
-          "filter": ["lowercase", "korean_synonym"]
+          "filter": ["lowercase", "korean_pos_stop", "korean_counter_stop"]
+        },
+        "korean_search": {
+          "type": "custom",
+          "tokenizer": "nori_user_dict",
+          "filter": ["lowercase", "korean_synonym_graph"]
         }
       }
     }

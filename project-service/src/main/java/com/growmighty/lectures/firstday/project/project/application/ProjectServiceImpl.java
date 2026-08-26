@@ -14,7 +14,9 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCloseExpiredResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectReindexResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
@@ -364,17 +366,22 @@ public class ProjectServiceImpl implements ProjectService {
      */
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void closeExpiredProjects() {
+    public ProjectCloseExpiredResponse closeExpiredProjects() {
         List<Project> expired = projectRepository.findByStatusAndEndAtLessThan(ProjectStatus.IN_PROGRESS, LocalDate.now(clock));
         ProjectService self = selfProvider.getObject();
+        List<Long> closed = new ArrayList<>();
+        List<Long> failed = new ArrayList<>();
         for (Project project : expired) {
             try {
                 self.closeProjectByDeadline(project.getProjectId());
+                closed.add(project.getProjectId());
             } catch (RuntimeException e) {
                 // 한 프로젝트 처리 실패가 같은 배치 실행의 나머지 프로젝트까지 롤백시키지 않도록 격리.
                 log.warn("프로젝트 마감 처리 실패. projectId={}", project.getProjectId(), e);
+                failed.add(project.getProjectId());
             }
         }
+        return new ProjectCloseExpiredResponse(closed.size(), closed, failed);
     }
 
     /**
@@ -458,16 +465,19 @@ public class ProjectServiceImpl implements ProjectService {
      */
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void reindexAllProjects() {
+    public ProjectReindexResponse reindexAllProjects() {
         Pageable pageable = PageRequest.of(0, REINDEX_PAGE_SIZE);
         Page<Project> page;
+        int totalIndexed = 0;
         do {
             page = projectRepository.findAll(pageable);
             if (!page.isEmpty()) {
                 searchPort.bulkIndex(page.getContent());
+                totalIndexed += page.getNumberOfElements();
             }
             pageable = pageable.next();
         } while (page.hasNext());
+        return new ProjectReindexResponse(totalIndexed);
     }
 
     /**

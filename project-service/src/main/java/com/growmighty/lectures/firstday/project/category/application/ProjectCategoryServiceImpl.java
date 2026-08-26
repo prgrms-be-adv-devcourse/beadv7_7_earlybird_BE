@@ -7,7 +7,6 @@ import com.growmighty.lectures.firstday.project.category.presentation.dto.reques
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryResponse;
 import com.growmighty.lectures.firstday.project.category.presentation.dto.response.ProjectCategoryTreeResponse;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
-import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -27,7 +26,6 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
 
     private final ProjectCategoryRepository projectCategoryRepository;
     private final ProjectRepository projectRepository;
-    private final ProjectSearchPort searchPort;
     private final ObjectProvider<ProjectCategoryService> selfProvider;
 
     /**
@@ -103,13 +101,9 @@ public class ProjectCategoryServiceImpl implements ProjectCategoryService {
             validateNotSelfOrDescendant(projectCategoryId, request.parentProjectCategoryId());
             projectCategory.changeParent(request.parentProjectCategoryId());
         }
-        boolean nameChanged = !Objects.equals(projectCategory.getName(), request.name());
+        // ES 색인은 categoryName이 아니라 categoryId를 저장하므로(ProjectDocument 참고), 이름만
+        // 바뀌는 개명은 소속 프로젝트를 재색인할 필요가 없다 — id는 그대로다.
         projectCategory.rename(request.name());
-        if (nameChanged) {
-            // ES 색인의 categoryName은 소속 프로젝트 색인 시점에 다시 조회해 채운다 — 이름이
-            // 바뀌면 그 카테고리를 쓰는 모든 프로젝트를 재색인해야 검색에 반영된다.
-            projectRepository.findByCategoryId(projectCategoryId).forEach(searchPort::index);
-        }
         return ProjectCategoryResponse.from(projectCategory);
     }
 
