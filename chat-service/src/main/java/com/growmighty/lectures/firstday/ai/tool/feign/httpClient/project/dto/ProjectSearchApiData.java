@@ -12,6 +12,7 @@ public record ProjectSearchApiData(
     String status,
     BigDecimal goalAmount,
     BigDecimal fundedAmount,
-    LocalDate endAt
+    LocalDate endAt,
+    Long thumbnailId
 ) {
 }
