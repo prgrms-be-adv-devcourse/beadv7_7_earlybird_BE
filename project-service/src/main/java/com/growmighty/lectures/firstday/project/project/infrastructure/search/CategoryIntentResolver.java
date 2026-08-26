@@ -92,13 +92,13 @@ public class CategoryIntentResolver {
 
         if (top1.similarity() >= threshold && gap >= minGap) {
             List<Long> scopedCategoryIds = withDescendants(List.of(top1.categoryId()), allCategories);
-            log.info("[CategoryIntent] 명확한 카테고리 의도 감지: '{}' (유사도={:.4f}, 타 루트군과 gap={:.4f}) -> Scoped categoryIds={}",
-                    top1.categoryName(), top1.similarity(), gap, scopedCategoryIds);
+            log.info("[CategoryIntent] 명확한 카테고리 의도 감지: '{}' (유사도={}, 타 루트군과 gap={}) -> Scoped categoryIds={}",
+                    top1.categoryName(), String.format("%.4f", top1.similarity()), String.format("%.4f", gap), scopedCategoryIds);
             return scopedCategoryIds;
         }
 
-        log.debug("[CategoryIntent] 카테고리 의도 모호/임계값 미달 (Top1: '{}' sim={:.4f}, 타 루트군 gap={:.4f}) -> 전체 검색 폴백",
-                top1.categoryName(), top1.similarity(), gap);
+        log.debug("[CategoryIntent] 카테고리 의도 모호/임계값 미달 (Top1: '{}' sim={}, 타 루트군 gap={}) -> 전체 검색 폴백",
+                top1.categoryName(), String.format("%.4f", top1.similarity()), String.format("%.4f", gap));
         return List.of();
     }
 
