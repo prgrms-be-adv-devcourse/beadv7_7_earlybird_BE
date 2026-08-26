@@ -48,3 +48,6 @@ infrastructure/.env
 logs/
 
 *.log
+
+### HTTP Client CLI (ijhttp) ###
+/reports/
