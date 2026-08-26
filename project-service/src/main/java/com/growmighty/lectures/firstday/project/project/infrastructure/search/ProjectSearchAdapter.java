@@ -187,10 +187,13 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 ? categoryIntentResolver.resolveCategoryIntent(queryVector)
                 : List.of();
 
-        // kNN Scoping 대상 카테고리 (정확 매칭 우선, 없으면 Intent 적용)
-        List<Long> knnScopeCategoryIds = !exactCategoryIds.isEmpty() ? exactCategoryIds : intentCategoryIds;
-        if (!knnScopeCategoryIds.isEmpty()) {
-            log.info("[ProjectSearch] 키워드='{}' -> kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, knnScopeCategoryIds);
+        // kNN 하드 스코프는 정확한 카테고리명 매칭일 때만 적용한다.
+        // Intent 추론은 임베딩 유사도 기반 추정이라 오탐 시(예: "간식"->"상의") 하드 필터로 걸면
+        // 진짜 정답이 후보군에서 완전히 사라져 복구 불가능하므로, 소프트 부스트로만 반영한다.
+        if (!exactCategoryIds.isEmpty()) {
+            log.info("[ProjectSearch] 키워드='{}' -> 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
+        } else if (!intentCategoryIds.isEmpty()) {
+            log.info("[ProjectSearch] 키워드='{}' -> 카테고리 의도 소프트 부스트 적용: categoryIds={}", trimmedKeyword, intentCategoryIds);
         } else {
             log.info("[ProjectSearch] 키워드='{}' -> 카테고리 스코프 미적용 (전체 검색)", trimmedKeyword);
         }
@@ -229,14 +232,21 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         }
 
         // 4. 5개 필드 kNN 검색 (Cosine 점수 보존 및 ES score -> raw cosine 역변환)
-        List<ScoredDocument> rewardScored = searchFieldKnnScored("rewardVector", vectorList, 20, 50, knnScopeCategoryIds);
-        List<ScoredDocument> titleScored = searchFieldKnnScored("titleVector", vectorList, 20, 50, knnScopeCategoryIds);
-        List<ScoredDocument> categoryVectorScored = searchFieldKnnScored("categoryVector", vectorList, 20, 50, knnScopeCategoryIds);
-        List<ScoredDocument> summaryScored = searchFieldKnnScored("summaryVector", vectorList, 20, 50, knnScopeCategoryIds);
-        List<ScoredDocument> descScored = searchFieldKnnScored("descriptionVector", vectorList, 20, 50, knnScopeCategoryIds);
+        List<ScoredDocument> rewardScored = searchFieldKnnScored("rewardVector", vectorList, 20, 50, exactCategoryIds);
+        List<ScoredDocument> titleScored = searchFieldKnnScored("titleVector", vectorList, 20, 50, exactCategoryIds);
+        List<ScoredDocument> categoryVectorScored = searchFieldKnnScored("categoryVector", vectorList, 20, 50, exactCategoryIds);
+        List<ScoredDocument> summaryScored = searchFieldKnnScored("summaryVector", vectorList, 20, 50, exactCategoryIds);
+        List<ScoredDocument> descScored = searchFieldKnnScored("descriptionVector", vectorList, 20, 50, exactCategoryIds);
+
+        // Category Intent(오탐 가능한 임베딩 추정치)는 후보군을 배제하지 않고, 이미 후보에 오른
+        // 문서 중 해당 카테고리에 속한 것만 소프트 부스트한다.
+        Set<Long> categoryIntentBoostProjectIds = intentCategoryIds.isEmpty()
+                ? Set.of()
+                : resolveCategoryMemberProjectIds(intentCategoryIds);
 
         // 5. Score-aware Hybrid Ranking
-        return fuseByScore(keywordScored, rewardScored, titleScored, categoryVectorScored, summaryScored, descScored);
+        return fuseByScore(keywordScored, rewardScored, titleScored, categoryVectorScored, summaryScored, descScored,
+                categoryIntentBoostProjectIds);
     }
 
     private List<Long> resolveExactCategoryIds(String keyword) {
@@ -272,6 +282,18 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             toVisit.addAll(childIdsByParentId.getOrDefault(categoryId, List.of()));
         }
         return categoryIds;
+    }
+
+    /** 주어진 카테고리(들)에 속한 프로젝트 ID 집합을 조회한다. Category Intent 소프트 부스트 대상 판별용. */
+    private Set<Long> resolveCategoryMemberProjectIds(List<Long> categoryIds) {
+        Query query = Query.of(q -> q.terms(t -> t.field("categoryId")
+                .terms(ts -> ts.value(categoryIds.stream().map(FieldValue::of).toList()))));
+        NativeQuery nativeQuery = NativeQuery.builder().withQuery(query).withMaxResults(MAX_RESULTS).build();
+        SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
+        return hits.stream()
+                .map(hit -> hit.getContent() != null ? hit.getContent().projectId() : null)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
     }
 
     private List<ScoredDocument> searchKeywordScored(Query keywordQuery) {
@@ -338,12 +360,15 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
     /** BM25 Saturation 상수 (단일 토큰 어휘 일치의 급격한 포화 방지) */
     private static final double BM25_SATURATION_K = 5.0;
+    /** Category Intent(오탐 가능) 소프트 부스트 가중치 — 이미 후보에 오른 문서만 대상으로 가산 */
+    private static final double CATEGORY_INTENT_BOOST_WEIGHT = 0.10;
 
     /**
      * Score-aware Hybrid Ranking:
      * 1) BM25 점수는 포화 함수 score / (score + K)로 정규화하여 극단적인 점수 증폭 방지
      * 2) 5개 Vector 필드의 Cosine 점수는 Min-Max 왜곡 없이 Raw Cosine [0.0, 1.0]을 직접 보존
-     * 3) 가중합 계산 후 동적 컷오프로 노이즈 제거
+     * 3) Category Intent가 지목한 카테고리에 속한 후보는 소프트 부스트 가산(신규 후보 생성 아님)
+     * 4) 가중합 계산 후 동적 컷오프로 노이즈 제거
      */
     private List<Long> fuseByScore(
             List<ScoredDocument> keywordDocs,
@@ -351,7 +376,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             List<ScoredDocument> titleDocs,
             List<ScoredDocument> categoryDocs,
             List<ScoredDocument> summaryDocs,
-            List<ScoredDocument> descDocs) {
+            List<ScoredDocument> descDocs,
+            Set<Long> categoryIntentBoostProjectIds) {
 
         List<ScoredDocument> normKeyword = ScoredDocument.normalizeBm25(keywordDocs, BM25_SATURATION_K);
         List<ScoredDocument> normTitle = ScoredDocument.asDirectVectorScores(titleDocs);
@@ -369,6 +395,16 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         accumulateScores(finalScores, breakdown, normCat, CATEGORY_VECTOR_WEIGHT, "category");
         accumulateScores(finalScores, breakdown, normSummary, SUMMARY_VECTOR_WEIGHT, "summary");
         accumulateScores(finalScores, breakdown, normDesc, DESCRIPTION_VECTOR_WEIGHT, "desc");
+
+        // Category Intent 소프트 부스트: 이미 후보에 오른 문서 중 지목된 카테고리 소속만 가산.
+        // 오탐이어도 없던 후보를 새로 만들지 않고, 정답 후보를 배제하지도 않는다.
+        for (Long projectId : categoryIntentBoostProjectIds) {
+            if (finalScores.containsKey(projectId)) {
+                finalScores.merge(projectId, CATEGORY_INTENT_BOOST_WEIGHT, Double::sum);
+                breakdown.computeIfAbsent(projectId, k -> new HashMap<>())
+                        .put("categoryIntentBoost", CATEGORY_INTENT_BOOST_WEIGHT);
+            }
+        }
 
         if (finalScores.isEmpty()) {
             return List.of();

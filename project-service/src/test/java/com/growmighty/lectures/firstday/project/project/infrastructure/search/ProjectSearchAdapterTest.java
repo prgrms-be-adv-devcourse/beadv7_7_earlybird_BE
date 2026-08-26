@@ -3,14 +3,17 @@ package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 import java.util.UUID;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
+import co.elastic.clients.util.ObjectBuilder;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
@@ -32,10 +35,12 @@ import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -236,6 +241,77 @@ class ProjectSearchAdapterTest {
         List<Long> result = adapter.search("keyword");
 
         assertThat(result).containsExactly(1L);
+    }
+
+    @Test
+    @DisplayName("CategoryIntent가 오탐이어도(threshold를 근소하게 통과) kNN 검색에 하드 필터를 걸지 않는다")
+    @SuppressWarnings("unchecked")
+    void search_categoryIntentOnly_doesNotHardFilterKnn() throws Exception {
+        when(embeddingService.generateEmbedding("간식")).thenReturn(new float[1536]);
+        // "간식"이 실제로는 "상의"(categoryId=3)로 오판정된 상황을 재현
+        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of(3L));
+
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.empty());
+        SearchHits<ProjectDocument> membershipHits = mock(SearchHits.class);
+        when(membershipHits.stream()).thenReturn(java.util.stream.Stream.empty());
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits, membershipHits);
+
+        SearchResponse<ProjectDocument> emptyResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> emptyHits = mock(HitsMetadata.class);
+        when(emptyHits.hits()).thenReturn(List.of());
+        when(emptyResponse.hits()).thenReturn(emptyHits);
+        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
+                .thenReturn(emptyResponse);
+
+        adapter.search("간식");
+
+        ArgumentCaptor<Function<SearchRequest.Builder, ObjectBuilder<SearchRequest>>> captor = forClass(Function.class);
+        verify(elasticsearchClient, times(5)).search(captor.capture(), eq(ProjectDocument.class));
+        for (Function<SearchRequest.Builder, ObjectBuilder<SearchRequest>> fn : captor.getAllValues()) {
+            SearchRequest request = SearchRequest.of(fn);
+            assertThat(request.knn()).hasSize(1);
+            assertThat(request.knn().get(0).filter())
+                    .as("Category Intent(추정치)만으로는 kNN에 categoryId 하드 필터가 걸리면 안 된다")
+                    .isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("CategoryIntent가 지목한 카테고리에 속한 후보는 소프트 부스트로 동점자 중 우선 랭크된다")
+    @SuppressWarnings("unchecked")
+    void search_categoryIntentMatch_boostsCandidateScore() throws Exception {
+        when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
+        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of(3L));
+
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> hitA = mock(SearchHit.class);
+        when(hitA.getContent()).thenReturn(sampleDocument(10L, "a"));
+        when(hitA.getScore()).thenReturn(1.0f);
+        SearchHit<ProjectDocument> hitB = mock(SearchHit.class);
+        when(hitB.getContent()).thenReturn(sampleDocument(20L, "b"));
+        when(hitB.getScore()).thenReturn(1.0f);
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(hitA, hitB));
+
+        SearchHits<ProjectDocument> membershipHits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> memberHit = mock(SearchHit.class);
+        when(memberHit.getContent()).thenReturn(sampleDocument(10L, "a"));
+        when(membershipHits.stream()).thenReturn(java.util.stream.Stream.of(memberHit));
+
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits, membershipHits);
+
+        SearchResponse<ProjectDocument> emptyResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> emptyHits = mock(HitsMetadata.class);
+        when(emptyHits.hits()).thenReturn(List.of());
+        when(emptyResponse.hits()).thenReturn(emptyHits);
+        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
+                .thenReturn(emptyResponse);
+
+        List<Long> result = adapter.search("keyword");
+
+        assertThat(result).containsExactly(10L, 20L);
     }
 
     @Test
