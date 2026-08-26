@@ -4,7 +4,6 @@ import java.util.UUID;
 
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
-import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
@@ -41,7 +40,6 @@ class ProjectServiceImplAutocompleteTest {
     private final OrderPort orderPort = mock(OrderPort.class);
     private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-    private final FilePort filePort = mock(FilePort.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
@@ -54,7 +52,7 @@ class ProjectServiceImplAutocompleteTest {
     void setUp() {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
-                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, filePort, Clock.systemDefaultZone());
+                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, Clock.systemDefaultZone());
     }
 
     /** Project.register()는 항상 PENDING_REVIEW(비공개)로 시작한다 — approve() 호출 시 IN_PROGRESS(공개)로 전환. */

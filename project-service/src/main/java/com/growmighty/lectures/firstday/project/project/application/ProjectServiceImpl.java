@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.project.project.application;
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
-import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
@@ -19,6 +18,7 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.respons
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
 import com.growmighty.lectures.firstday.project.project.infrastructure.kafka.ProjectClosedEvent;
+import com.growmighty.lectures.firstday.project.project.infrastructure.kafka.ProjectFilesDeletionRequestedEvent;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -71,7 +71,6 @@ public class ProjectServiceImpl implements ProjectService {
     private final OrderPort orderPort;
     private final ProjectSearchPort searchPort;
     private final ApplicationEventPublisher eventPublisher;
-    private final FilePort filePort;
     private final Clock clock;
 
     /**
@@ -242,7 +241,7 @@ public class ProjectServiceImpl implements ProjectService {
         rewardServiceProvider.getObject().deleteAllByProject(projectId);
         projectRepository.delete(project);
         searchPort.remove(projectId);
-        filePort.deleteProjectFiles(projectId);
+        eventPublisher.publishEvent(new ProjectFilesDeletionRequestedEvent(projectId));
     }
     @Override
     @Retryable(retryFor = ObjectOptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 50))
