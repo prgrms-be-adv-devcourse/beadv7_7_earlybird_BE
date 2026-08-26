@@ -1,6 +1,5 @@
 package com.growmighty.lectures.firstday.ai.chat.application;
 
-import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ChatStreamMetadata;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
@@ -9,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @RequiredArgsConstructor
@@ -21,7 +19,6 @@ public class ChatOrchestrationService {
     public SseEmitter sendMessage(String conversationId, String message) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
         ToolInvocationRecorder recorder = new ToolInvocationRecorder(emitter, conversationId);
-        AtomicBoolean metadataSent = new AtomicBoolean(false);
 
         chatClient.prompt()
             .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
@@ -30,7 +27,7 @@ public class ChatOrchestrationService {
             .stream()
             .content()
             .subscribe(
-                chunk -> emitChunk(recorder, metadataSent, chunk),
+                chunk -> emitChunk(recorder, chunk),
                 emitter::completeWithError,
                 emitter::complete
             );
@@ -38,12 +35,8 @@ public class ChatOrchestrationService {
         return emitter;
     }
 
-    private void emitChunk(ToolInvocationRecorder recorder, AtomicBoolean metadataSent, String chunk) {
-        if (metadataSent.compareAndSet(false, true)) {
-            recorder.send(SseEmitter.event()
-                .name("metadata")
-                .data(ChatStreamMetadata.of(recorder.toolsUsed(), recorder.policyReferences(), recorder.projects())));
-        }
+    private void emitChunk(ToolInvocationRecorder recorder, String chunk) {
+        recorder.ensureMetadataSent();
         recorder.send(SseEmitter.event().name("chunk").data(chunk));
     }
 }

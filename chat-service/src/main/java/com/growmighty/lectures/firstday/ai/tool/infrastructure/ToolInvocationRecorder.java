@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.ai.tool.infrastructure;
 
+import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ChatStreamMetadata;
 import com.growmighty.lectures.firstday.ai.chat.presentation.dto.ToolStartEvent;
 import com.growmighty.lectures.firstday.ai.policy.infrastructure.search.PolicyChunkResult;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
@@ -29,6 +30,38 @@ public class ToolInvocationRecorder {
     private final SseEmitter emitter;
     private final AtomicInteger toolSequence = new AtomicInteger(0);
 
+    private final Object metadataLock = new Object();
+    private boolean metadataSent = false;
+
+    /**
+     * 첫 content chunk가 나가기 직전, ChatOrchestrationService가 정확히 호출해야 하는 진입점.
+     * 이 시점에 tool 호출이 아직 안 끝나 있었다면(모델이 tool 호출 전에 안내 텍스트부터 냈다면)
+     * 이 최초 metadata는 비어있을 수 있는데, 이후 recordXxx가 resendMetadataIfAlreadySent()로
+     * 갱신본을 다시 보낸다.
+     */
+    public void ensureMetadataSent() {
+        synchronized (metadataLock) {
+            if (!metadataSent) {
+                metadataSent = true;
+                sendMetadataEvent();
+            }
+        }
+    }
+
+    private void resendMetadataIfAlreadySent() {
+        synchronized (metadataLock) {
+            if (metadataSent) {
+                sendMetadataEvent();
+            }
+        }
+    }
+
+    private void sendMetadataEvent() {
+        send(SseEmitter.event()
+            .name("metadata")
+            .data(ChatStreamMetadata.of(toolsUsed(), policyReferences(), projects())));
+    }
+
     public ToolInvocationRecorder(SseEmitter emitter, String conversationId) {
         this.emitter = emitter;
         this.conversationId = conversationId;
@@ -49,6 +82,7 @@ public class ToolInvocationRecorder {
                 ToolProgressMessages.messageFor(toolName),
                 ToolProgressMessages.completedMessageFor(toolName)
             )));
+        resendMetadataIfAlreadySent();
     }
 
     public synchronized void send(SseEmitter.SseEventBuilder event) {
@@ -61,10 +95,12 @@ public class ToolInvocationRecorder {
 
     public void recordProjects(List<ProjectSearchResult> results) {
         projects.addAll(results);
+        resendMetadataIfAlreadySent();
     }
 
     public void recordProjectDetail(ProjectSearchResult results) {
         detailProjects.add(results);
+        resendMetadataIfAlreadySent();
     }
 
     public List<ProjectSearchResult> projects() {
@@ -73,6 +109,7 @@ public class ToolInvocationRecorder {
 
     public void recordPolicyReferences(List<PolicyChunkResult> references) {
         policyReferences.addAll(references);
+        resendMetadataIfAlreadySent();
     }
 
     public List<String> toolsUsed() {
