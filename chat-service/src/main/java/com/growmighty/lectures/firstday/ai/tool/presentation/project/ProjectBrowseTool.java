@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.ai.tool.presentation.project;
 import com.growmighty.lectures.firstday.ai.conversation.infrastructure.ShownProjectStore;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectSearchPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchOutcome;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
@@ -44,10 +43,7 @@ public class ProjectBrowseTool {
             sort != null ? sort.name() : null,
             alreadyShown
         );
-        shownProjectStore.addShown(
-            recorder.conversationId(),
-            outcome.projects().stream().map(ProjectSearchResult::projectId).toList()
-        );
+        recorder.recordBrowseCandidates(outcome.projects());
         recorder.recordProjects(outcome.projects());
         return outcome;
     }

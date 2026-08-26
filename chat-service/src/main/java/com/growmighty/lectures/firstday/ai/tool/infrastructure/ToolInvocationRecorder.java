@@ -25,6 +25,7 @@ public class ToolInvocationRecorder {
 
     private final Set<String> toolsUsed = new LinkedHashSet<>();
     private final List<ProjectSearchResult> projects = new ArrayList<>();
+    private final List<ProjectSearchResult> browseCandidates = new ArrayList<>();
     private final List<ProjectSearchResult> detailProjects = new ArrayList<>();
     private final List<PolicyChunkResult> policyReferences = new ArrayList<>();
     private final SseEmitter emitter;
@@ -98,6 +99,10 @@ public class ToolInvocationRecorder {
         resendMetadataIfAlreadySent();
     }
 
+    public void recordBrowseCandidates(List<ProjectSearchResult> results) {
+        browseCandidates.addAll(results);
+    }
+
     public void recordProjectDetail(ProjectSearchResult results) {
         detailProjects.add(results);
         resendMetadataIfAlreadySent();
@@ -105,6 +110,14 @@ public class ToolInvocationRecorder {
 
     public List<ProjectSearchResult> projects() {
         return detailProjects.isEmpty() ? List.copyOf(projects) : List.copyOf(detailProjects);
+    }
+
+    public List<Long> narratedBrowseCandidateIds(String fullText) {
+        return browseCandidates.stream()
+            .filter(p -> fullText.contains(p.title()))
+            .map(ProjectSearchResult::projectId)
+            .distinct()
+            .toList();
     }
 
     public void recordPolicyReferences(List<PolicyChunkResult> references) {
