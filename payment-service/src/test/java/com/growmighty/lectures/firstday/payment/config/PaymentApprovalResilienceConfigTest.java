@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class PaymentApprovalResilienceConfigTest {
+class 러PaymentApprovalResilienceConfigTest {
 
     private Retry paymentApprovalRetry;
     private CircuitBreaker paymentApprovalCircuitBreaker;
