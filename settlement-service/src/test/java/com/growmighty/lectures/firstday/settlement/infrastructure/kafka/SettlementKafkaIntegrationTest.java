@@ -396,7 +396,7 @@ class SettlementKafkaIntegrationTest extends MySqlIntegrationTestSupport {
     private static ProjectRefundRequested request(long projectId, long orderId, String pgOrderId) {
         Instant occurredAt = Instant.parse("2026-08-01T00:00:00Z");
         return ProjectRefundRequested.request(
-                92_000_000L + projectId,
+                null,
                 ProjectOutcomeFact.of(projectId, "프로젝트 " + projectId, 703L, ProjectOutcomeFact.Outcome.FAILED, occurredAt),
                 List.of(OrderPaymentFact.completed(
                         orderId,

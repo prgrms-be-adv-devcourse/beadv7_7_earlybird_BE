@@ -9,6 +9,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
@@ -38,6 +40,7 @@ public class ProjectRefundRequested extends BaseEntity {
     public static final int SCHEMA_VERSION = 1;
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "event_id", nullable = false, updatable = false)
     private Long refundRequestId;
 
@@ -241,7 +244,7 @@ public class ProjectRefundRequested extends BaseEntity {
 
     @PostLoad
     private void validateState() {
-        if (refundRequestId == null || refundRequestId <= 0) {
+        if (refundRequestId != null && refundRequestId <= 0) {
             throw new IllegalArgumentException("환불 요청 식별자는 양수여야 합니다.");
         }
         if (projectId == null || projectId <= 0) {
