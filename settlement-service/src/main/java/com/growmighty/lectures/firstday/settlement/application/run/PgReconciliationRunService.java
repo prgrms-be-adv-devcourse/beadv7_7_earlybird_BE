@@ -14,6 +14,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliation
 import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliationPolicy;
 import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliationPolicy.PgSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliationPolicy.RecoveredPayment;
+import com.growmighty.lectures.firstday.settlement.domain.model.PgReconciliationPolicy.SettlementComparison;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PgReconciliationRunRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.SettlementRunInputRepository;
 import java.time.Clock;
@@ -23,7 +24,9 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,21 +72,39 @@ public class PgReconciliationRunService {
             List<OrderPaymentFact> payments,
             YearMonth settlementMonth
     ) {
-        boolean recoveredPaymentsMatch = false;
+        SettlementComparison recoveryComparison = null;
         try {
             OrderPaymentRecovery recovery = orderPaymentRecoveryReader.recover(
                     payments.stream().map(OrderPaymentFact::projectId).collect(java.util.stream.Collectors.toSet()),
                     settlementMonth
             );
-            recoveredPaymentsMatch = matchesRecoveredPayments(payments, recovery);
+            recoveryComparison = classifyRecoveredPayments(payments, recovery);
         } catch (IllegalArgumentException exception) {
             // 계약 오류는 재시도로 해소되지 않으므로 운영 검토 대상으로 남긴다.
         }
         List<TossSettlement> recheckedSettlements = findTossSettlements(settlementMonth);
-        if (recoveredPaymentsMatch && matchesToss(payments, recheckedSettlements)) {
+        if (recoveryComparison == null) {
+            return requireReview(run, payments, Set.of());
+        }
+        SettlementComparison tossComparison = classifyTossSettlements(payments, recheckedSettlements);
+        if (!recoveryComparison.requiresReview() && !tossComparison.requiresReview()) {
             return complete(run, payments);
         }
-        payments.forEach(OrderPaymentFact::requireReview);
+        return requireReview(run, payments, confirmedByBoth(recoveryComparison, tossComparison));
+    }
+
+    private PgReconciliationRunResult requireReview(
+            PgReconciliationRun run,
+            List<OrderPaymentFact> payments,
+            Set<Long> confirmedOrderIds
+    ) {
+        payments.forEach(payment -> {
+            if (confirmedOrderIds.contains(payment.orderId())) {
+                payment.confirmReconciliation();
+            } else {
+                payment.requireReview();
+            }
+        });
         run.requireReview(LocalDateTime.now(clock));
         return resultOf(runRepository.save(run), List.of());
     }
@@ -138,11 +159,11 @@ public class PgReconciliationRunService {
         }
     }
 
-    private static boolean matchesRecoveredPayments(
+    private static SettlementComparison classifyRecoveredPayments(
             List<OrderPaymentFact> payments,
             OrderPaymentRecovery recovery
     ) {
-        return PgReconciliationPolicy.matchesRecoveredPayments(
+        return PgReconciliationPolicy.classifyRecoveredPayments(
                 payments,
                 recovery.projects().stream()
                         .flatMap(project -> project.orders().stream().map(order -> new RecoveredPayment(
@@ -156,8 +177,24 @@ public class PgReconciliationRunService {
         );
     }
 
+    private static Set<Long> confirmedByBoth(
+            SettlementComparison recoveryComparison,
+            SettlementComparison tossComparison
+    ) {
+        Set<Long> confirmedOrderIds = new HashSet<>(recoveryComparison.confirmedOrderIds());
+        confirmedOrderIds.retainAll(tossComparison.confirmedOrderIds());
+        return Set.copyOf(confirmedOrderIds);
+    }
+
     private static boolean matchesToss(List<OrderPaymentFact> payments, List<TossSettlement> settlements) {
-        return PgReconciliationPolicy.matchesSettlements(
+        return !classifyTossSettlements(payments, settlements).requiresReview();
+    }
+
+    private static SettlementComparison classifyTossSettlements(
+            List<OrderPaymentFact> payments,
+            List<TossSettlement> settlements
+    ) {
+        return PgReconciliationPolicy.classifySettlements(
                 payments,
                 settlements.stream().map(settlement -> new PgSettlement(
                         settlement.orderId(), settlement.amount()
