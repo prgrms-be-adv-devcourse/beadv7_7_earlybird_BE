@@ -6,6 +6,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 
 import java.util.Map;
 
@@ -20,7 +21,7 @@ public class ChatOrchestrationService {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
         ToolInvocationRecorder recorder = new ToolInvocationRecorder(emitter, conversationId);
 
-        chatClient.prompt()
+        Disposable subscription = chatClient.prompt()
             .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
             .toolContext(Map.of(ToolInvocationRecorder.TOOL_CONTEXT_KEY, recorder))
             .user(message)
@@ -31,6 +32,10 @@ public class ChatOrchestrationService {
                 emitter::completeWithError,
                 emitter::complete
             );
+
+        emitter.onCompletion(subscription::dispose);
+        emitter.onTimeout(subscription::dispose);
+        emitter.onError(e -> subscription.dispose());
 
         return emitter;
     }
