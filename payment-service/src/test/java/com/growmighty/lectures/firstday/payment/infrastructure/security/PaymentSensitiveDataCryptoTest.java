@@ -3,6 +3,8 @@ package com.growmighty.lectures.firstday.payment.infrastructure.security;
 import com.growmighty.lectures.firstday.payment.config.PaymentSecurityProperties;
 import org.junit.jupiter.api.Test;
 
+import java.util.Base64;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -44,5 +46,29 @@ class PaymentSensitiveDataCryptoTest {
 
         assertThatThrownBy(() -> crypto.decrypt(tampered))
             .isInstanceOf(IllegalStateException.class);
+    }
+
+    // 추가 : 잘못된 암호화 키 설정은 개발 키 폴백 없이 초기화를 실패시키는지 검증
+    @Test
+    void constructor_throwsWhenEncryptionKeyIsInvalid() {
+        assertThatThrownBy(() -> new PaymentSensitiveDataCrypto(
+            new PaymentSecurityProperties(" ")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("AES-256");
+
+        assertThatThrownBy(() -> new PaymentSensitiveDataCrypto(
+            new PaymentSecurityProperties("not-base64")
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Base64");
+
+        String aes128Key = Base64.getEncoder().encodeToString(new byte[16]);
+
+        assertThatThrownBy(() -> new PaymentSensitiveDataCrypto(
+            new PaymentSecurityProperties(aes128Key)
+        ))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("32바이트");
     }
 }

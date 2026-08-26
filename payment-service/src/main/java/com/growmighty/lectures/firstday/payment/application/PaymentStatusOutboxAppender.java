@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.payment.application;
 
 
 import com.growmighty.lectures.firstday.payment.domain.Payment;
+import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutbox;
 import com.growmighty.lectures.firstday.payment.domain.PaymentStatusOutboxRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,10 +12,16 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class PaymentStatusOutboxAppender {
+    private final PaymentRepository paymentRepository;
     private final PaymentStatusOutboxRepository paymentStatusOutboxRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
 
-    public void appendIfAbsent(Payment payment) {
+    public void savePaymentAndAppendOutbox(Payment payment) {
+        Payment savedPayment = paymentRepository.save(payment);
+        appendIfAbsent(savedPayment);
+    }
+
+    private void appendIfAbsent(Payment payment) {
         if (paymentStatusOutboxRepository.existsByPaymentIdAndPaymentStatus(payment.getPaymentId(), payment.getStatus())) {
             return;
         }

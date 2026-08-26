@@ -1,5 +1,6 @@
 package com.growmighty.lectures.firstday.payment.application;
 
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentInfo;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
@@ -8,6 +9,7 @@ import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,7 +61,7 @@ public class PaymentService {
 
     private static void validateRequesterByPayment(Long requesterId, Payment payment) {
         if (!payment.isOwnedBy(requesterId)) {
-            throw new IllegalStateException("결제 소유자가 일치하지 않습니다.");
+            throw new BusinessException(HttpStatus.FORBIDDEN, "결제 소유자가 일치하지 않습니다.");
         }
     }
 

@@ -1,11 +1,13 @@
 package com.growmighty.lectures.firstday.payment.application;
 
+import com.growmighty.lectures.firstday.common.exception.BusinessException;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.payment.application.dto.PaymentPreparationInfo;
 import com.growmighty.lectures.firstday.payment.application.exception.PaymentConfirmationInProgressException;
 import com.growmighty.lectures.firstday.payment.domain.Payment;
 import com.growmighty.lectures.firstday.payment.domain.PaymentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,7 +53,7 @@ public class PaymentPreparationService {
         BigDecimal amount
     ) {
         if (!userId.equals(payment.getUserId())) {
-            throw new IllegalStateException("주문 소유자가 일치하지 않습니다. userId=" + userId);
+            throw new BusinessException(HttpStatus.FORBIDDEN, "결제 소유자가 일치하지 않습니다.");
         }
 
         if (payment.getAmount().compareTo(amount) != 0) {
@@ -60,28 +62,12 @@ public class PaymentPreparationService {
             );
         }
 
-        if (payment.isReady()) {
-            return PaymentPreparationInfo.from(payment);
-        }
-
-        if (payment.isConfirming()) {
-            throw new PaymentConfirmationInProgressException(payment.getPgOrderId());
-        }
-
-        if (payment.isPaid()) {
-            throw new IllegalStateException("이미 결제가 완료된 주문입니다. orderId=" + orderId);
-        }
-
-        if (payment.isFailed()) {
-            throw new IllegalStateException(
-                "실패한 결제입니다. 재결제 처리가 필요합니다. orderId=" + orderId
-            );
-        }
-
-        if (payment.isCancelled()) {
-            throw new IllegalStateException("취소된 결제입니다. orderId=" + orderId);
-        }
-
-        throw new IllegalStateException("지원하지 않는 결제 상태입니다. status=" + payment.getStatus());
+        return switch (payment.getStatus()) {
+            case READY -> PaymentPreparationInfo.from(payment);
+            case CONFIRMING -> throw new PaymentConfirmationInProgressException(payment.getPgOrderId());
+            case PAID -> throw new IllegalStateException("이미 결제가 완료된 주문입니다. orderId=" + orderId);
+            case FAILED -> throw new IllegalStateException("실패한 결제입니다. 재결제 처리가 필요합니다. orderId=" + orderId);
+            case CANCELLED -> throw new IllegalStateException("취소된 결제입니다. orderId=" + orderId);
+        };
     }
 }

@@ -35,8 +35,7 @@ public class PaymentRecoveryService {
             LocalDateTime.now(),
             paymentRecoveryProperties.readyTimeOut()
         )) {
-            paymentRepository.save(payment);
-            paymentStatusOutboxAppender.appendIfAbsent(payment);
+            paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
         }
     }
 

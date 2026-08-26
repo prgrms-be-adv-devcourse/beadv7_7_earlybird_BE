@@ -40,8 +40,7 @@ class PaymentConfirmationServiceReconcileTest {
         paymentConfirmationService.failConfirmation(payment.getPaymentId());
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
-        verify(paymentRepository).save(payment);
-        verify(paymentStatusOutboxAppender).appendIfAbsent(payment);
+        verify(paymentStatusOutboxAppender).savePaymentAndAppendOutbox(payment);
     }
 
     @Test

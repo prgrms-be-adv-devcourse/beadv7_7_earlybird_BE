@@ -57,6 +57,7 @@ class TossPaymentGatewayTest {
             "payment-key", "order-id", BigDecimal.valueOf(10_000), "idempotency-key"
         ))
             .isInstanceOf(PaymentGatewayException.class)
+            .hasMessage("토스 결제 승인 요청 한도를 초과했습니다. 잠시 후 재시도합니다.") // <-- 승인 전용 메시지 검증
             .extracting(exception -> ((PaymentGatewayException) exception).getFailureType())
             .isEqualTo(PaymentGatewayFailureType.UNCERTAIN);
 
@@ -70,6 +71,7 @@ class TossPaymentGatewayTest {
 
         assertThatThrownBy(() -> tossPaymentGateway.getPayment("payment-key"))
             .isInstanceOf(PaymentGatewayException.class)
+            .hasMessage("토스 결제 조회 요청 한도를 초과했습니다. 잠시 후 재시도합니다.") // <-- 조회 전용 메시지 검증
             .extracting(exception -> ((PaymentGatewayException) exception).getFailureType())
             .isEqualTo(PaymentGatewayFailureType.UNCERTAIN);
 

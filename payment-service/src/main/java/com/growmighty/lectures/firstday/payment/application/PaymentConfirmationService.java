@@ -75,7 +75,7 @@ public class PaymentConfirmationService {
         );
 
         payment.confirm(approval.paymentKey());
-        savePaymentAndAppendOutbox(payment);
+        paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
         return PaymentInfo.from(payment);
     }
 
@@ -87,7 +87,7 @@ public class PaymentConfirmationService {
         Payment payment = findPayment(paymentId);
 
         if (payment.reconcileFailed()) {
-            savePaymentAndAppendOutbox(payment);
+            paymentStatusOutboxAppender.savePaymentAndAppendOutbox(payment);
         }
     }
 
@@ -108,10 +108,5 @@ public class PaymentConfirmationService {
     private Payment findPayment(Long paymentId) {
         return paymentRepository.findById(paymentId)
             .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 결제입니다. paymentId = " + paymentId));
-    }
-
-    private void savePaymentAndAppendOutbox(Payment payment) {
-        paymentRepository.save(payment);
-        paymentStatusOutboxAppender.appendIfAbsent(payment);
     }
 }
