@@ -4,6 +4,7 @@
       "tokenizer": {
         "nori_user_dict": {
           "type": "nori_tokenizer",
+          "decompound_mode": "none",
           "user_dictionary": "analysis/userdict_ko.txt"
         }
       },

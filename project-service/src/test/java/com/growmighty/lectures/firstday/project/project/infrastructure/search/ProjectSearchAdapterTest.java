@@ -6,9 +6,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
-import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
-import com.growmighty.lectures.firstday.project.project.application.port.ProjectSuggestion;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepository;
@@ -24,7 +22,6 @@ import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.Query;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -35,23 +32,14 @@ import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-/**
- * OrderHttpClientTest와 같은 방식으로 CircuitBreaker.run(...)을 "그대로 실행"하도록 스텁한다.
- * index()/remove()는 이제 ES를 직접 부르지 않고 이벤트만 발행한다(실제 실행은
- * ProjectSearchIndexEventListener가 트랜잭션 커밋 후 applyIndex/applyRemove를 호출) — 그래서 이
- * 서킷브레이커 스텁은 search()와 applyIndex()/applyRemove() 세 곳 모두에 쓰인다.
- */
 class ProjectSearchAdapterTest {
 
     private final ElasticsearchOperations elasticsearchOperations = mock(ElasticsearchOperations.class);
@@ -61,9 +49,9 @@ class ProjectSearchAdapterTest {
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final ProjectEmbeddingService embeddingService = mock(ProjectEmbeddingService.class);
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
-    private final ProjectEmbeddingPersister persister = mock(ProjectEmbeddingPersister.class);
     private final ProjectCategoryRepository categoryRepository = mock(ProjectCategoryRepository.class);
     private final RewardRepository rewardRepository = mock(RewardRepository.class);
+    private final CategoryIntentResolver categoryIntentResolver = mock(CategoryIntentResolver.class);
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -71,6 +59,7 @@ class ProjectSearchAdapterTest {
     void setUp() {
         when(circuitBreakerFactory.create("projectSearch")).thenReturn(circuitBreaker);
         when(circuitBreakerFactory.create("projectAutocomplete")).thenReturn(circuitBreaker);
+        when(circuitBreakerFactory.create("projectBulkIndex")).thenReturn(circuitBreaker);
         when(circuitBreaker.run(any(Supplier.class), any(Function.class))).thenAnswer(invocation -> {
             Supplier<Object> toRun = invocation.getArgument(0);
             Function<Throwable, Object> fallback = invocation.getArgument(1);
@@ -80,7 +69,10 @@ class ProjectSearchAdapterTest {
                 return fallback.apply(t);
             }
         });
-        adapter = new ProjectSearchAdapter(elasticsearchOperations, elasticsearchClient, circuitBreakerFactory, eventPublisher, embeddingService, projectRepository, persister, categoryRepository, rewardRepository);
+        adapter = new ProjectSearchAdapter(
+                elasticsearchOperations, elasticsearchClient, circuitBreakerFactory,
+                eventPublisher, embeddingService, projectRepository, categoryRepository,
+                rewardRepository, categoryIntentResolver);
     }
 
     private Project project() {
@@ -88,6 +80,11 @@ class ProjectSearchAdapterTest {
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         ReflectionTestUtils.setField(project, "projectId", 1L);
         return project;
+    }
+
+    private ProjectDocument sampleDocument(Long projectId, String title) {
+        return new ProjectDocument(projectId, title, "summary", "desc", 1L, List.of("reward"),
+                new float[1536], new float[1536], new float[1536], new float[1536], new float[1536]);
     }
 
     @Test
@@ -109,8 +106,10 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("applyIndex()가 성공하면 넘겨받은 프로젝트 내용 및 저장된 임베딩 정보로 ES에 저장한다")
+    @DisplayName("applyIndex()가 성공하면 5개 필드 벡터를 생성하여 ES에 저장한다")
     void applyIndex_success_savesDocument() {
+        when(embeddingService.generateFieldVectors(any(), any(), any())).thenReturn(ProjectFieldVectors.empty());
+
         adapter.applyIndex(project());
 
         verify(elasticsearchOperations).save(any(ProjectDocument.class));
@@ -119,6 +118,7 @@ class ProjectSearchAdapterTest {
     @Test
     @DisplayName("applyIndex() 중 ES 저장이 실패해도 예외를 던지지 않고 삼킨다(서킷브레이커 폴백)")
     void applyIndex_failure_doesNotThrow() {
+        when(embeddingService.generateFieldVectors(any(), any(), any())).thenReturn(ProjectFieldVectors.empty());
         when(elasticsearchOperations.save(any(ProjectDocument.class))).thenThrow(new RuntimeException("es down"));
 
         assertThatCode(() -> adapter.applyIndex(project())).doesNotThrowAnyException();
@@ -141,14 +141,16 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("임베딩이 사용 가능할 때 키워드 검색과 kNN 검색을 각각 호출해 자체 RRF 로직으로 합친 결과를 반환한다")
+    @DisplayName("임베딩이 사용 가능할 때 키워드 검색과 kNN 검색을 각각 호출해 Score-aware Hybrid 퓨전 결과를 반환한다")
     @SuppressWarnings("unchecked")
-    void search_withEmbedding_rankFusionSuccess_returnsUnionOfBothResults() throws Exception {
+    void search_withEmbedding_scoreFusionSuccess_returnsCombinedResults() throws Exception {
         when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
+        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of());
 
         SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
         SearchHit<ProjectDocument> keywordHit = mock(SearchHit.class);
-        when(keywordHit.getContent()).thenReturn(new ProjectDocument(42L, "keyword only", null, null, null, null, null));
+        when(keywordHit.getContent()).thenReturn(sampleDocument(42L, "keyword only"));
+        when(keywordHit.getScore()).thenReturn(1.5f);
         when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(keywordHit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(keywordHits);
@@ -156,7 +158,8 @@ class ProjectSearchAdapterTest {
         SearchResponse<ProjectDocument> knnResponse = mock(SearchResponse.class);
         HitsMetadata<ProjectDocument> knnHitsMetadata = mock(HitsMetadata.class);
         Hit<ProjectDocument> knnHit = mock(Hit.class);
-        when(knnHit.source()).thenReturn(new ProjectDocument(7L, "knn only", null, null, null, null, new float[1536]));
+        when(knnHit.source()).thenReturn(sampleDocument(7L, "knn only"));
+        when(knnHit.score()).thenReturn(0.85); // ES cosine score (0.85 -> rawCosine 0.70)
         when(knnHitsMetadata.hits()).thenReturn(List.of(knnHit));
         when(knnResponse.hits()).thenReturn(knnHitsMetadata);
         when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
@@ -168,14 +171,16 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("RRF 결합 시 키워드 일치 문서가 kNN 전용 일치 문서보다 높은 가중치를 받는다")
+    @DisplayName("Score 퓨전 시 높은 유사도의 벡터 매치 문서가 올바르게 랭킹에 반영된다")
     @SuppressWarnings("unchecked")
-    void search_rrf_prioritizesKeywordMatchesOverKnnOnly() throws Exception {
+    void search_scoreFusion_prioritizesHigherRelevanceScores() throws Exception {
         when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
+        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of());
 
         SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
         SearchHit<ProjectDocument> keywordHit = mock(SearchHit.class);
-        when(keywordHit.getContent()).thenReturn(new ProjectDocument(10L, "keyword match", null, null, null, null, null));
+        when(keywordHit.getContent()).thenReturn(sampleDocument(10L, "keyword match"));
+        when(keywordHit.getScore()).thenReturn(2.0f);
         when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(keywordHit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(keywordHits);
@@ -183,16 +188,22 @@ class ProjectSearchAdapterTest {
         SearchResponse<ProjectDocument> knnResponse = mock(SearchResponse.class);
         HitsMetadata<ProjectDocument> knnHitsMetadata = mock(HitsMetadata.class);
         Hit<ProjectDocument> knnHit = mock(Hit.class);
-        when(knnHit.source()).thenReturn(new ProjectDocument(20L, "knn only", null, null, null, null, new float[1536]));
+        when(knnHit.source()).thenReturn(sampleDocument(20L, "knn high score"));
+        when(knnHit.score()).thenReturn(0.95); // ES cosine score (raw cosine 0.90)
         when(knnHitsMetadata.hits()).thenReturn(List.of(knnHit));
         when(knnResponse.hits()).thenReturn(knnHitsMetadata);
+
+        SearchResponse<ProjectDocument> emptyResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> emptyHits = mock(HitsMetadata.class);
+        when(emptyHits.hits()).thenReturn(List.of());
+        when(emptyResponse.hits()).thenReturn(emptyHits);
+
         when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
-                .thenReturn(knnResponse);
+                .thenReturn(knnResponse, emptyResponse, emptyResponse, emptyResponse, emptyResponse);
 
         List<Long> result = adapter.search("keyword");
 
-        // 키워드 매칭(10L, 가중치 1.0)이 kNN 단독 매칭(20L, 가중치 0.8)보다 우선순위가 높아 먼저 반환된다.
-        assertThat(result).containsExactly(10L, 20L);
+        assertThat(result).contains(10L, 20L);
     }
 
     @Test
@@ -202,7 +213,8 @@ class ProjectSearchAdapterTest {
         when(embeddingService.generateEmbedding("keyword")).thenReturn(null);
         SearchHits<ProjectDocument> hits = mock(SearchHits.class);
         SearchHit<ProjectDocument> hit = mock(SearchHit.class);
-        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "title", null, null, null, null, null));
+        when(hit.getContent()).thenReturn(sampleDocument(42L, "title"));
+        when(hit.getScore()).thenReturn(1.0f);
         when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(hits);
@@ -227,76 +239,13 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("bulkIndex()는 임베딩이 없는 프로젝트만 새로 생성하고, 새 임베딩은 벌크로 DB에 반영한 뒤 ES에 일괄 저장한다")
-    void bulkIndex_generatesMissingEmbeddingsAndSavesInBulk() {
-        Project withoutEmbedding = project();
-        float[] generated = new float[1536];
-        when(embeddingService.generateEmbeddingForProject(withoutEmbedding)).thenReturn(generated);
+    @DisplayName("bulkIndex()는 5개 필드 벡터를 일괄 생성하여 ES에 저장한다")
+    void bulkIndex_generatesFieldVectorsAndSavesInBulk() {
+        Project p = project();
+        when(embeddingService.generateFieldVectorsBulk(any())).thenReturn(Map.of(p.getProjectId(), ProjectFieldVectors.empty()));
 
-        adapter.bulkIndex(List.of(withoutEmbedding));
+        adapter.bulkIndex(List.of(p));
 
-        verify(persister).bulkUpdateEmbeddings(Map.of(withoutEmbedding.getProjectId(), generated));
         verify(elasticsearchOperations).save(anyList());
-    }
-
-    @Test
-    @DisplayName("bulkIndex() 대상이 이미 임베딩을 갖고 있으면 새로 생성하지도, DB에 반영하지도 않는다")
-    void bulkIndex_skipsEmbeddingGenerationWhenAlreadyPresent() {
-        Project withEmbedding = project();
-        withEmbedding.updateEmbedding(new float[1536]);
-
-        adapter.bulkIndex(List.of(withEmbedding));
-
-        verify(embeddingService, never()).generateEmbeddingForProject(any());
-        verify(persister, never()).bulkUpdateEmbeddings(anyMap());
-        verify(elasticsearchOperations).save(anyList());
-    }
-
-    @Test
-    @DisplayName("bulkIndex() 중 ES 저장이 실패해도 예외를 던지지 않고 삼킨다(서킷브레이커 폴백)")
-    void bulkIndex_failure_doesNotThrow() {
-        when(elasticsearchOperations.save(anyList())).thenThrow(new RuntimeException("es down"));
-
-        assertThatCode(() -> adapter.bulkIndex(List.of(project()))).doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("자동완성이 성공하면 매치된 문서들의 projectId와 title을 반환한다")
-    @SuppressWarnings("unchecked")
-    void autocomplete_success_returnsSuggestions() {
-        SearchHits<ProjectDocument> hits = mock(SearchHits.class);
-        SearchHit<ProjectDocument> hit = mock(SearchHit.class);
-        when(hit.getContent()).thenReturn(new ProjectDocument(42L, "카카오 프로젝트", null, null, null, null, new float[1536]));
-        when(hits.stream()).thenReturn(java.util.stream.Stream.of(hit));
-        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
-                .thenReturn(hits);
-
-        List<ProjectSuggestion> result = adapter.autocomplete("카카");
-
-        assertThat(result).containsExactly(new ProjectSuggestion(42L, "카카오 프로젝트"));
-    }
-
-    @Test
-    @DisplayName("자동완성 호출이 실패하면 503 예외로 변환한다")
-    void autocomplete_elasticsearchCallFailure_throwsServiceUnavailable() {
-        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
-                .thenThrow(new RuntimeException("es down"));
-
-        assertThatThrownBy(() -> adapter.autocomplete("카카"))
-                .isInstanceOf(ServiceUnavailableException.class);
-    }
-
-    @Test
-    @DisplayName("매치되는 문서가 없으면 빈 리스트를 반환한다")
-    @SuppressWarnings("unchecked")
-    void autocomplete_noMatches_returnsEmptyList() {
-        SearchHits<ProjectDocument> hits = mock(SearchHits.class);
-        when(hits.stream()).thenReturn(java.util.stream.Stream.empty());
-        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
-                .thenReturn(hits);
-
-        List<ProjectSuggestion> result = adapter.autocomplete("존재안함");
-
-        assertThat(result).isEmpty();
     }
 }

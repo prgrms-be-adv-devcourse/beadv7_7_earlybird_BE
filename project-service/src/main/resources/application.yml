@@ -2,6 +2,9 @@
 spring:
   application:
     name: project-service          # config-server 에서 내 설정 파일(project-service.yml)을 찾는 열쇠
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
   cloud:
     config:
       # optional: 을 쓰지 않는다 — fetch 실패를 조용히 무시하고 스프링 기본값(엉뚱한 포트 등)으로

@@ -6,7 +6,31 @@
     "description": { "type": "text", "analyzer": "korean", "search_analyzer": "korean_search" },
     "categoryId": { "type": "long" },
     "rewardNames": { "type": "text", "analyzer": "korean", "search_analyzer": "korean_search" },
-    "embedding": {
+    "titleVector": {
+      "type": "dense_vector",
+      "dims": 1536,
+      "index": true,
+      "similarity": "cosine"
+    },
+    "summaryVector": {
+      "type": "dense_vector",
+      "dims": 1536,
+      "index": true,
+      "similarity": "cosine"
+    },
+    "descriptionVector": {
+      "type": "dense_vector",
+      "dims": 1536,
+      "index": true,
+      "similarity": "cosine"
+    },
+    "categoryVector": {
+      "type": "dense_vector",
+      "dims": 1536,
+      "index": true,
+      "similarity": "cosine"
+    },
+    "rewardVector": {
       "type": "dense_vector",
       "dims": 1536,
       "index": true,
