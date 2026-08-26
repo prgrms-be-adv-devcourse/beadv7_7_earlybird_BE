@@ -8,6 +8,7 @@ import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import co.elastic.clients.util.ObjectBuilder;
+import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
@@ -243,6 +244,46 @@ class ProjectSearchAdapterTest {
         assertThat(result).containsExactly(1L);
     }
 
+    private ProjectCategory category(Long id, String name) {
+        ProjectCategory category = ProjectCategory.create(null, name);
+        ReflectionTestUtils.setField(category, "id", id);
+        return category;
+    }
+
+    @Test
+    @DisplayName("카테고리명으로 시작하는 복합 검색어(\"반려동물 음식\")는 Exact Category Match가 아니다")
+    @SuppressWarnings("unchecked")
+    void search_categoryNamePrefixCompoundKeyword_isNotExactCategoryMatch() throws Exception {
+        when(embeddingService.generateEmbedding("반려동물 음식")).thenReturn(new float[1536]);
+        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of());
+        // "반려동물" 카테고리가 실제로 존재하는 상황 — 검색어가 이 이름으로 "시작"할 뿐, 전체가
+        // 같지는 않다("반려동물 음식" != "반려동물"). 예전 startsWith() 로직이면 여기서 매칭됐다.
+        when(categoryRepository.findAll()).thenReturn(List.of(category(13L, "반려동물")));
+
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.empty());
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits);
+
+        SearchResponse<ProjectDocument> emptyResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> emptyHits = mock(HitsMetadata.class);
+        when(emptyHits.hits()).thenReturn(List.of());
+        when(emptyResponse.hits()).thenReturn(emptyHits);
+        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
+                .thenReturn(emptyResponse);
+
+        adapter.search("반려동물 음식");
+
+        ArgumentCaptor<Function<SearchRequest.Builder, ObjectBuilder<SearchRequest>>> captor = forClass(Function.class);
+        verify(elasticsearchClient, times(5)).search(captor.capture(), eq(ProjectDocument.class));
+        for (Function<SearchRequest.Builder, ObjectBuilder<SearchRequest>> fn : captor.getAllValues()) {
+            SearchRequest request = SearchRequest.of(fn);
+            assertThat(request.knn().get(0).filter())
+                    .as("카테고리명으로 시작하는 복합어만으로는 kNN에 categoryId 하드 필터가 걸리면 안 된다")
+                    .isEmpty();
+        }
+    }
+
     @Test
     @DisplayName("CategoryIntent가 오탐이어도(threshold를 근소하게 통과) kNN 검색에 하드 필터를 걸지 않는다")
     @SuppressWarnings("unchecked")
@@ -312,6 +353,57 @@ class ProjectSearchAdapterTest {
         List<Long> result = adapter.search("keyword");
 
         assertThat(result).containsExactly(10L, 20L);
+    }
+
+    @Test
+    @DisplayName("카테고리 부스트만으로는 컷오프를 넘을 수 없다 — 실질 관련도가 낮은 후보(\"캣타워\" 격)는 제외된다")
+    @SuppressWarnings("unchecked")
+    void search_weakCandidateWithOnlyCategoryBoost_isExcludedByCutoff() throws Exception {
+        when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
+        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of(3L));
+
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.empty());
+
+        SearchHits<ProjectDocument> membershipHits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> memberHit = mock(SearchHit.class);
+        when(memberHit.getContent()).thenReturn(sampleDocument(99L, "카테고리만 맞는 무관 상품"));
+        when(membershipHits.stream()).thenReturn(java.util.stream.Stream.of(memberHit));
+
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits, membershipHits);
+
+        // rewardVector: 강한 후보(50L, raw cosine 0.90 -> *0.20 = 0.18)
+        SearchResponse<ProjectDocument> strongKnnResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> strongHits = mock(HitsMetadata.class);
+        Hit<ProjectDocument> strongHit = mock(Hit.class);
+        when(strongHit.source()).thenReturn(sampleDocument(50L, "진짜 관련 상품"));
+        when(strongHit.score()).thenReturn(0.95);
+        when(strongHits.hits()).thenReturn(List.of(strongHit));
+        when(strongKnnResponse.hits()).thenReturn(strongHits);
+
+        // summaryVector: 약한 후보(99L, raw cosine 0.10 -> *0.12 = 0.012) — 카테고리 부스트 대상이기도 함
+        SearchResponse<ProjectDocument> weakKnnResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> weakHits = mock(HitsMetadata.class);
+        Hit<ProjectDocument> weakHit = mock(Hit.class);
+        when(weakHit.source()).thenReturn(sampleDocument(99L, "카테고리만 맞는 무관 상품"));
+        when(weakHit.score()).thenReturn(0.55);
+        when(weakHits.hits()).thenReturn(List.of(weakHit));
+        when(weakKnnResponse.hits()).thenReturn(weakHits);
+
+        SearchResponse<ProjectDocument> emptyResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> emptyHits = mock(HitsMetadata.class);
+        when(emptyHits.hits()).thenReturn(List.of());
+        when(emptyResponse.hits()).thenReturn(emptyHits);
+
+        // doSearch() 순서: rewardVector, titleVector, categoryVector, summaryVector, descriptionVector
+        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
+                .thenReturn(strongKnnResponse, emptyResponse, emptyResponse, weakKnnResponse, emptyResponse);
+
+        List<Long> result = adapter.search("keyword");
+
+        assertThat(result).contains(50L);
+        assertThat(result).doesNotContain(99L);
     }
 
     @Test

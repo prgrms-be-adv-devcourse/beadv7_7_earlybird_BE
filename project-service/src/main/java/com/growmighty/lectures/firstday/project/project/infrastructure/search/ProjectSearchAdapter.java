@@ -249,19 +249,18 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 categoryIntentBoostProjectIds);
     }
 
+    /**
+     * Exact Category Match는 "검색어 전체가 카테고리명과 완전히 같을 때"만 성립한다 — 즉 사용자가
+     * 카테고리를 직접 선택한 것과 동일하게 볼 수 있는 경우다. "반려동물 음식"처럼 카테고리명 뒤에
+     * 다른 말이 붙은 복합 검색어는 여기 해당하지 않고(카테고리+검색의도), CategoryIntentResolver의
+     * 소프트 부스트 경로로만 반영된다. 접두어 매칭은 하드 스코프의 오탐 위험이 커서 쓰지 않는다.
+     */
     private List<Long> resolveExactCategoryIds(String keyword) {
         String trimmed = keyword.trim();
         if (trimmed.isEmpty()) {
             return List.of();
         }
         List<ProjectCategory> matched = categoryRepository.findByNameIgnoreCase(trimmed);
-        if (matched.isEmpty()) {
-            matched = categoryRepository.findAll().stream()
-                    .filter(c -> c.getName().equalsIgnoreCase(trimmed)
-                            || c.getName().startsWith(trimmed)
-                            || trimmed.startsWith(c.getName()))
-                    .toList();
-        }
         if (matched.isEmpty()) {
             return List.of();
         }
@@ -396,20 +395,13 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         accumulateScores(finalScores, breakdown, normSummary, SUMMARY_VECTOR_WEIGHT, "summary");
         accumulateScores(finalScores, breakdown, normDesc, DESCRIPTION_VECTOR_WEIGHT, "desc");
 
-        // Category Intent 소프트 부스트: 이미 후보에 오른 문서 중 지목된 카테고리 소속만 가산.
-        // 오탐이어도 없던 후보를 새로 만들지 않고, 정답 후보를 배제하지도 않는다.
-        for (Long projectId : categoryIntentBoostProjectIds) {
-            if (finalScores.containsKey(projectId)) {
-                finalScores.merge(projectId, CATEGORY_INTENT_BOOST_WEIGHT, Double::sum);
-                breakdown.computeIfAbsent(projectId, k -> new HashMap<>())
-                        .put("categoryIntentBoost", CATEGORY_INTENT_BOOST_WEIGHT);
-            }
-        }
-
         if (finalScores.isEmpty()) {
             return List.of();
         }
 
+        // 컷오프는 카테고리 부스트를 더하기 전, 순수 텍스트/의미 관련도 점수만으로 판단한다.
+        // 부스트를 먼저 더해버리면 "카테고리만 맞고 내용은 무관한" 후보(예: '반려동물 음식'
+        // 검색에 캣타워·산책줄)도 부스트값만으로 컷오프를 넘어 결과에 섞여 들어간다.
         double maxScore = finalScores.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double dynamicCutoff = Math.max(MIN_FINAL_SCORE, maxScore * RELATIVE_SCORE_CUTOFF_RATIO);
 
@@ -418,11 +410,27 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             explicitKeywordSet.add(d.projectId());
         }
 
+        Set<Long> survivors = finalScores.entrySet().stream()
+                .filter(entry -> explicitKeywordSet.contains(entry.getKey()) || entry.getValue() >= dynamicCutoff)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+
+        // Category Intent 소프트 부스트: 컷오프를 이미 통과한 후보의 재랭킹에만 사용한다.
+        // 컷오프를 못 넘은 후보를 부스트만으로 되살리지 않는다(오탐 카테고리로 무관한 상품이
+        // 결과에 끼어드는 것을 방지).
+        for (Long projectId : categoryIntentBoostProjectIds) {
+            if (survivors.contains(projectId)) {
+                finalScores.merge(projectId, CATEGORY_INTENT_BOOST_WEIGHT, Double::sum);
+                breakdown.computeIfAbsent(projectId, k -> new HashMap<>())
+                        .put("categoryIntentBoost", CATEGORY_INTENT_BOOST_WEIGHT);
+            }
+        }
+
         Comparator<Map.Entry<Long, Double>> comparator = Map.Entry.<Long, Double>comparingByValue().reversed()
                 .thenComparing(Map.Entry.<Long, Double>comparingByKey().reversed());
 
         List<Map.Entry<Long, Double>> ranked = finalScores.entrySet().stream()
-                .filter(entry -> explicitKeywordSet.contains(entry.getKey()) || entry.getValue() >= dynamicCutoff)
+                .filter(entry -> survivors.contains(entry.getKey()))
                 .sorted(comparator)
                 .limit(MAX_RESULTS)
                 .toList();
