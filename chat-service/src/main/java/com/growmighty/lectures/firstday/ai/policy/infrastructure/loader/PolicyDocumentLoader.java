@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.ai.policy.infrastructure.loader;
 
 import com.growmighty.lectures.firstday.ai.policy.domain.PolicyCategory;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class PolicyDocumentLoader {
@@ -28,7 +30,11 @@ public class PolicyDocumentLoader {
     public List<PolicyChunk> loadAll() {
         List<PolicyChunk> chunks = new ArrayList<>();
         for (Resource resource : resolvePolicyResources()) {
-            chunks.addAll(loadFile(resource));
+            try {
+                chunks.addAll(loadFile(resource));
+            } catch (RuntimeException e) {
+                log.warn("정책 문서 로드 실패, 건너뛴 문서: {}", resource.getFilename(), e);
+            }
         }
         return chunks;
     }
@@ -72,7 +78,7 @@ public class PolicyDocumentLoader {
             int start = headingStarts.get(i);
             int end = (i + 1 < headingStarts.size()) ? headingStarts.get(i + 1) : body.length();
             String section = body.substring(start, end).trim();
-            chunks.add(new PolicyChunk(fileSlug + "-" + i, category, topic, section));
+            chunks.add(new PolicyChunk(fileSlug + "-" + i, fileSlug, category, topic, section));
         }
         return chunks;
     }
