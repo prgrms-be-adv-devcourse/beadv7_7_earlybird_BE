@@ -323,6 +323,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # 검색 리랭킹용 — cohere.rerank.enabled=true 일 때만 실제로 읽힌다(없으면 서킷브레이커가 fusion 순서로 완주).
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
     mem_limit: 704m
     # gateway 를 거치지 않고 이 서비스만 직접 curl/swagger 로 찔러볼 때만 주석 해제.
     # ports:
