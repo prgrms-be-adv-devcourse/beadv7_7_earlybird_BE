@@ -3,7 +3,6 @@ package com.growmighty.lectures.firstday.ai.tool.presentation.project;
 import com.growmighty.lectures.firstday.ai.conversation.infrastructure.ShownProjectStore;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectSearchPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchOutcome;
-import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectSearchResult;
 import com.growmighty.lectures.firstday.ai.tool.infrastructure.ToolInvocationRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
@@ -29,7 +28,10 @@ public class ProjectBrowseTool {
         Long categoryId,
         @ToolParam(description = "project-service ProjectStatus 중 비로그인/BACKER 조회에 노출되는 값만", required = false)
         ProjectSearchStatus status,
-        @ToolParam(description = "정렬 기준", required = false)
+        @ToolParam(description = "정렬 기준. 사용자가 '최신순'/'마감임박순'/'펀딩 많이 된 순'처럼 " +
+            "명시적으로 정렬을 요청했을 때만 지정하고, 그 외에는 반드시 비워둘 것 - " +
+            "지정하는 순간 keyword 관련도 순위가 완전히 무시되고 이 기준으로만 정렬된다. " +
+            "특히 이전 대화에서 언급된 프로젝트를 이번 턴에 재확인하는 검색에는 절대 쓰지 말 것.", required = false)
         ProjectSearchSort sort,
         ToolContext toolContext
     ) {
@@ -44,10 +46,7 @@ public class ProjectBrowseTool {
             sort != null ? sort.name() : null,
             alreadyShown
         );
-        shownProjectStore.addShown(
-            recorder.conversationId(),
-            outcome.projects().stream().map(ProjectSearchResult::projectId).toList()
-        );
+        recorder.recordBrowseCandidates(outcome.projects());
         recorder.recordProjects(outcome.projects());
         return outcome;
     }
