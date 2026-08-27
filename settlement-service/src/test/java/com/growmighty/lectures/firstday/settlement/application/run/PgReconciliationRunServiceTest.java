@@ -96,6 +96,36 @@ class PgReconciliationRunServiceTest {
     }
 
     @Test
+    @DisplayName("재확인 뒤 한 결제만 불일치하면 일치 결제는 확정하고 불일치 결제만 검토 대상으로 저장한다")
+    void confirmsOnlyPaymentsMatchingRecheckedTossSettlement() {
+        List<OrderPaymentFact> payments = List.of(completedPayment(1), completedPayment(2));
+        InMemoryRunRepository runs = new InMemoryRunRepository();
+
+        PgReconciliationRunResult result = new PgReconciliationRunService(
+                (startInclusive, endExclusive) -> payments,
+                (projectIds, settlementMonth) -> recoveryOf(payments, OrderPayment.Status.PAID),
+                query -> List.of(
+                        toSettlement(payments.get(0)),
+                        new TossSettlement(
+                                payments.get(1).pgOrderId(),
+                                "KRW",
+                                Money.wons(2),
+                                payments.get(1).completedAt().atOffset(ZoneOffset.UTC),
+                                payments.get(1).completedAt().atOffset(ZoneOffset.UTC).toLocalDate()
+                        )
+                ),
+                runs,
+                CLOCK
+        ).run(YearMonth.of(2026, 7));
+
+        assertThat(result.status()).isEqualTo(PgReconciliationRun.Status.REVIEW_REQUIRED);
+        assertThat(payments).extracting(OrderPaymentFact::reconciliationStatus).containsExactly(
+                OrderPaymentFact.ReconciliationStatus.CONFIRMED,
+                OrderPaymentFact.ReconciliationStatus.REVIEW_REQUIRED
+        );
+    }
+
+    @Test
     @DisplayName("재확인한 Order와 Toss가 일치하면 결제와 실행을 완료한다")
     void completesRunWhenRecoveryResolvesMismatch() {
         List<OrderPaymentFact> payments = List.of(completedPayment(1));
