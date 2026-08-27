@@ -410,6 +410,28 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
+    @DisplayName("QueryIntent/Vector Branch가 실패해도 BM25 결과만으로 안전하게 정상 검색된다 (Graceful Degradation)")
+    @SuppressWarnings("unchecked")
+    void search_whenVectorBranchFails_returnsBm25ResultsGracefully() {
+        // QueryIntent/Embedding 실패 시뮬레이션
+        when(queryIntentAnalyzer.analyze("강아지")).thenThrow(new RuntimeException("LLM Timeout"));
+        when(embeddingService.generateEmbedding(any())).thenThrow(new RuntimeException("OpenAI API Down"));
+
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> hit1 = mock(SearchHit.class);
+        when(hit1.getContent()).thenReturn(sampleDocument(100L, "강아지 수제 사료"));
+        when(hit1.getScore()).thenReturn(10.0f);
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(hit1));
+
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits);
+
+        List<Long> result = adapter.search("강아지");
+
+        assertThat(result).containsExactly(100L);
+    }
+
+    @Test
     @DisplayName("bulkIndex()는 5개 필드 벡터를 일괄 생성하여 ES에 저장한다")
     void bulkIndex_generatesFieldVectorsAndSavesInBulk() {
         Project p = project();

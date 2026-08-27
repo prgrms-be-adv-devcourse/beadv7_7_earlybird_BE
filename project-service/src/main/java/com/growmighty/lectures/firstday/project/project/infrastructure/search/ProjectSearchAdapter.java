@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -177,98 +178,184 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     }
 
     private List<Long> doSearch(String keyword) {
+        long totalStart = System.currentTimeMillis();
         String trimmedKeyword = keyword.trim();
 
-        // ── 1. Query Intent 분석 ───────────────────────────────────────────────
-        // LLM이 자연어를 구조화하여 enrichedQuery를 생성한다.
-        // LLM 미설정·짧은 키워드·호출 실패 시 QueryIntent.passThrough(trimmedKeyword)가 반환되어
-        // enrichedQuery == trimmedKeyword가 되므로 기존 동작과 완전히 동일하게 작동한다.
-        QueryIntent intent = queryIntentAnalyzer.analyze(trimmedKeyword);
-
-        // ── 2. 임베딩 ─────────────────────────────────────────────────────────
-        // BM25: 원본 쿼리(trimmedKeyword) 사용 — 어휘 일치 기반 검색은 원문 보존이 중요
-        // Vector Search: enrichedQuery 사용 — 구조화된 의미 표현으로 kNN 유사도 정밀화
-        String queryForEmbedding = intent.enrichedQuery();
-        float[] queryVector = embeddingService.generateEmbedding(queryForEmbedding);
-
-        if (intent.hasStructuredIntent()) {
-            log.info("[ProjectSearch] Query Intent 적용: query='{}' → enrichedQuery='{}' "
-                            + "(productType={}, season={}, purpose={}, targetUser={}, material={}, hardConstraints={})",
-                    trimmedKeyword, queryForEmbedding,
-                    intent.productType(), intent.season(), intent.purpose(),
-                    intent.targetUser(), intent.material(), intent.hardConstraints());
-        }
-
-        // ── 3. 정확한 카테고리명 매칭 확인 ───────────────────────────────────
+        // ── 1. 공통 전처리: 정확한 카테고리명 및 슬랭 동의어 (초고속 인메모리, < 1ms) ───
         List<Long> exactCategoryIds = resolveExactCategoryIds(trimmedKeyword);
-
-        // ── 4. 카테고리 의도(Category Intent) 추론 ────────────────────────────
-        // 정확 매칭이 없을 때만 쿼리 벡터와 카테고리 임베딩을 직접 비교한다.
-        // 여기서도 enrichedQuery 벡터를 사용하여 카테고리 의도 추론 정밀도를 높인다.
-        List<Long> intentCategoryIds = exactCategoryIds.isEmpty() && queryVector != null
-                ? categoryIntentResolver.resolveCategoryIntent(queryVector)
-                : List.of();
-
-        // kNN 하드 스코프는 정확한 카테고리명 매칭일 때만 적용한다.
-        // Intent 추론은 임베딩 유사도 기반 추정이라 오탐 시 하드 필터로 걸면
-        // 진짜 정답이 후보군에서 완전히 사라져 복구 불가능하므로, 소프트 부스트로만 반영한다.
-        if (!exactCategoryIds.isEmpty()) {
-            log.info("[ProjectSearch] 키워드='{}' → 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
-        } else if (!intentCategoryIds.isEmpty()) {
-            log.info("[ProjectSearch] 키워드='{}' → 카테고리 의도 소프트 부스트 적용: categoryIds={}", trimmedKeyword, intentCategoryIds);
-        } else {
-            log.info("[ProjectSearch] 키워드='{}' → 카테고리 스코프 미적용 (전체 검색)", trimmedKeyword);
-        }
-
         List<String> slangSynonyms = resolveSlangSynonyms(trimmedKeyword);
 
-        // ── 5. BM25 키워드 쿼리 (원본 쿼리 사용, 정확 매칭 시에만 categoryId filter 적용) ──
-        Query keywordQuery = Query.of(q -> q.bool(b -> {
-            b.should(s -> s.match(m -> m.field("title").query(trimmedKeyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                    .should(s -> s.match(m -> m.field("summary").query(trimmedKeyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                    .should(s -> s.match(m -> m.field("description").query(trimmedKeyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                    .should(s -> s.match(m -> m.field("rewardNames").query(trimmedKeyword).boost(1.5f)));
+        if (!exactCategoryIds.isEmpty()) {
+            log.info("[ProjectSearch] 키워드='{}' → 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
+        }
 
-            if (!slangSynonyms.isEmpty()) {
-                String slangQuery = String.join(" ", slangSynonyms);
-                b.should(s -> s.match(m -> m.field("title").query(slangQuery).boost(0.4f)))
-                        .should(s -> s.match(m -> m.field("rewardNames").query(slangQuery).boost(0.4f)));
+        // ── 2. [Branch 1: Fast BM25 (비동기 병렬 실행)] ─────────────────────────────
+        // BM25는 항상 원본 쿼리를 사용하므로 QueryIntent LLM/임베딩을 기다리지 않고 즉시 격발한다.
+        CompletableFuture<List<ScoredDocument>> bm25Future = CompletableFuture.supplyAsync(() -> {
+            long bm25Start = System.currentTimeMillis();
+            Query keywordQuery = Query.of(q -> q.bool(b -> {
+                b.should(s -> s.match(m -> m.field("title").query(trimmedKeyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("summary").query(trimmedKeyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("description").query(trimmedKeyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("rewardNames").query(trimmedKeyword).boost(1.5f)));
+
+                if (!slangSynonyms.isEmpty()) {
+                    String slangQuery = String.join(" ", slangSynonyms);
+                    b.should(s -> s.match(m -> m.field("title").query(slangQuery).boost(0.4f)))
+                            .should(s -> s.match(m -> m.field("rewardNames").query(slangQuery).boost(0.4f)));
+                }
+
+                if (!exactCategoryIds.isEmpty()) {
+                    b.should(s -> s.matchAll(m -> m));
+                    b.filter(f -> f.terms(t -> t.field("categoryId")
+                            .terms(ts -> ts.value(exactCategoryIds.stream().map(FieldValue::of).toList()))));
+                }
+                return b.minimumShouldMatch("1");
+            }));
+
+            List<ScoredDocument> docs = searchKeywordScored(keywordQuery);
+            long bm25Elapsed = System.currentTimeMillis() - bm25Start;
+            log.debug("[ProjectSearch Latency] BM25 검색: {}ms, 매칭 {}건", bm25Elapsed, docs.size());
+            return docs;
+        });
+
+        // ── 3. [Branch 2: QueryIntent → Embedding → kNN (비동기 병렬 실행)] ──────────
+        record VectorBranchResult(
+                List<ScoredDocument> rewardScored,
+                List<ScoredDocument> titleScored,
+                List<ScoredDocument> categoryVectorScored,
+                List<ScoredDocument> summaryScored,
+                List<ScoredDocument> descScored,
+                Set<Long> categoryIntentBoostProjectIds,
+                long llmElapsed,
+                long embeddingElapsed,
+                long knnElapsed
+        ) {}
+
+        CompletableFuture<VectorBranchResult> vectorFuture = CompletableFuture.supplyAsync(() -> {
+            // (1) QueryIntent 분석 (LLM 또는 캐시 또는 passThrough)
+            long llmStart = System.currentTimeMillis();
+            QueryIntent intent;
+            try {
+                intent = queryIntentAnalyzer.analyze(trimmedKeyword);
+            } catch (Exception e) {
+                log.warn("[ProjectSearch] QueryIntent 분석 중 예외 발생, passThrough 폴백: {}", e.getMessage());
+                intent = QueryIntent.passThrough(trimmedKeyword);
+            }
+            long llmElapsed = System.currentTimeMillis() - llmStart;
+
+            String queryForEmbedding = intent.enrichedQuery();
+            if (intent.hasStructuredIntent()) {
+                log.info("[ProjectSearch] Query Intent 적용: query='{}' → enrichedQuery='{}' "
+                                + "(productType={}, season={}, purpose={}, targetUser={}, material={}, hardConstraints={})",
+                        trimmedKeyword, queryForEmbedding,
+                        intent.productType(), intent.season(), intent.purpose(),
+                        intent.targetUser(), intent.material(), intent.hardConstraints());
             }
 
-            if (!exactCategoryIds.isEmpty()) {
-                b.should(s -> s.matchAll(m -> m));
-                b.filter(f -> f.terms(t -> t.field("categoryId")
-                        .terms(ts -> ts.value(exactCategoryIds.stream().map(FieldValue::of).toList()))));
+            // (2) 임베딩 생성 (OpenAI Embedding API)
+            long embStart = System.currentTimeMillis();
+            float[] queryVector = null;
+            try {
+                queryVector = embeddingService.generateEmbedding(queryForEmbedding);
+            } catch (Exception e) {
+                log.warn("[ProjectSearch] 임베딩 생성 실패: {}", e.getMessage());
             }
-            return b.minimumShouldMatch("1");
-        }));
+            long embeddingElapsed = System.currentTimeMillis() - embStart;
 
-        List<ScoredDocument> keywordScored = searchKeywordScored(keywordQuery);
-        if (queryVector == null || queryVector.length == 0) {
+            if (queryVector == null || queryVector.length == 0) {
+                return new VectorBranchResult(
+                        List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(),
+                        llmElapsed, embeddingElapsed, 0);
+            }
+
+            // (3) Category Intent 추론
+            List<Long> intentCategoryIds = exactCategoryIds.isEmpty()
+                    ? categoryIntentResolver.resolveCategoryIntent(queryVector)
+                    : List.of();
+
+            if (exactCategoryIds.isEmpty()) {
+                if (!intentCategoryIds.isEmpty()) {
+                    log.info("[ProjectSearch] 키워드='{}' → 카테고리 의도 소프트 부스트 적용: categoryIds={}", trimmedKeyword, intentCategoryIds);
+                } else {
+                    log.info("[ProjectSearch] 키워드='{}' → 카테고리 스코프 미적용 (전체 검색)", trimmedKeyword);
+                }
+            }
+
+            List<Float> vectorList = new ArrayList<>(queryVector.length);
+            for (float f : queryVector) {
+                vectorList.add(f);
+            }
+
+            // (4) 5개 필드 kNN 검색 병렬 격발
+            long knnStart = System.currentTimeMillis();
+            CompletableFuture<List<ScoredDocument>> rewardFuture = CompletableFuture.supplyAsync(
+                    () -> searchFieldKnnScored("rewardVector", vectorList, 20, 50, exactCategoryIds));
+            CompletableFuture<List<ScoredDocument>> titleFuture = CompletableFuture.supplyAsync(
+                    () -> searchFieldKnnScored("titleVector", vectorList, 20, 50, exactCategoryIds));
+            CompletableFuture<List<ScoredDocument>> catVecFuture = CompletableFuture.supplyAsync(
+                    () -> searchFieldKnnScored("categoryVector", vectorList, 20, 50, exactCategoryIds));
+            CompletableFuture<List<ScoredDocument>> summaryFuture = CompletableFuture.supplyAsync(
+                    () -> searchFieldKnnScored("summaryVector", vectorList, 20, 50, exactCategoryIds));
+            CompletableFuture<List<ScoredDocument>> descFuture = CompletableFuture.supplyAsync(
+                    () -> searchFieldKnnScored("descriptionVector", vectorList, 20, 50, exactCategoryIds));
+
+            CompletableFuture.allOf(rewardFuture, titleFuture, catVecFuture, summaryFuture, descFuture).join();
+
+            List<ScoredDocument> rewardScored = rewardFuture.join();
+            List<ScoredDocument> titleScored = titleFuture.join();
+            List<ScoredDocument> categoryVectorScored = catVecFuture.join();
+            List<ScoredDocument> summaryScored = summaryFuture.join();
+            List<ScoredDocument> descScored = descFuture.join();
+            long knnElapsed = System.currentTimeMillis() - knnStart;
+
+            Set<Long> categoryIntentBoostProjectIds = intentCategoryIds.isEmpty()
+                    ? Set.of()
+                    : resolveCategoryMemberProjectIds(intentCategoryIds);
+
+            return new VectorBranchResult(
+                    rewardScored, titleScored, categoryVectorScored, summaryScored, descScored,
+                    categoryIntentBoostProjectIds, llmElapsed, embeddingElapsed, knnElapsed
+            );
+        }).exceptionally(ex -> {
+            log.warn("[ProjectSearch] Vector Branch 실행 중 예외 발생, BM25 단독 폴백: {}", ex.getMessage());
+            return new VectorBranchResult(List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(), 0, 0, 0);
+        });
+
+        // ── 4. 두 Branch 결과 대기 및 결합 (Graceful Degradation) ─────────────────────
+        CompletableFuture.allOf(bm25Future, vectorFuture).join();
+
+        List<ScoredDocument> keywordScored = bm25Future.join();
+        VectorBranchResult vectorRes = vectorFuture.join();
+
+        // Vector 결과가 전혀 없는 경우 (임베딩 실패, 모델 미설정 등) BM25 단독 반환
+        if (vectorRes.rewardScored.isEmpty() && vectorRes.titleScored.isEmpty()
+                && vectorRes.categoryVectorScored.isEmpty() && vectorRes.summaryScored.isEmpty()
+                && vectorRes.descScored.isEmpty()) {
+            long totalElapsed = System.currentTimeMillis() - totalStart;
+            log.info("[ProjectSearch Latency Summary] 키워드='{}' (BM25 단독) | Total: {}ms",
+                    trimmedKeyword, totalElapsed);
             return keywordScored.stream().map(ScoredDocument::projectId).toList();
         }
 
-        List<Float> vectorList = new ArrayList<>(queryVector.length);
-        for (float f : queryVector) {
-            vectorList.add(f);
-        }
+        // ── 5. Score-aware Hybrid Ranking ──────────────────────────────────────
+        long fusionStart = System.currentTimeMillis();
+        List<Long> rankedProjectIds = fuseByScore(
+                keywordScored,
+                vectorRes.rewardScored,
+                vectorRes.titleScored,
+                vectorRes.categoryVectorScored,
+                vectorRes.summaryScored,
+                vectorRes.descScored,
+                vectorRes.categoryIntentBoostProjectIds
+        );
+        long fusionElapsed = System.currentTimeMillis() - fusionStart;
+        long totalElapsed = System.currentTimeMillis() - totalStart;
 
-        // ── 6. 5개 필드 kNN 검색 (enrichedQuery 벡터로 코사인 유사도 계산) ───
-        List<ScoredDocument> rewardScored = searchFieldKnnScored("rewardVector", vectorList, 20, 50, exactCategoryIds);
-        List<ScoredDocument> titleScored = searchFieldKnnScored("titleVector", vectorList, 20, 50, exactCategoryIds);
-        List<ScoredDocument> categoryVectorScored = searchFieldKnnScored("categoryVector", vectorList, 20, 50, exactCategoryIds);
-        List<ScoredDocument> summaryScored = searchFieldKnnScored("summaryVector", vectorList, 20, 50, exactCategoryIds);
-        List<ScoredDocument> descScored = searchFieldKnnScored("descriptionVector", vectorList, 20, 50, exactCategoryIds);
+        log.info("[ProjectSearch Latency Summary] 키워드='{}' | Total: {}ms | LLM: {}ms, Embedding: {}ms, kNN(5개병렬): {}ms, Fusion: {}ms | 결과: {}건",
+                trimmedKeyword, totalElapsed, vectorRes.llmElapsed, vectorRes.embeddingElapsed, vectorRes.knnElapsed, fusionElapsed, rankedProjectIds.size());
 
-        // Category Intent(오탐 가능한 임베딩 추정치)는 후보군을 배제하지 않고, 이미 후보에 오른
-        // 문서 중 해당 카테고리에 속한 것만 소프트 부스트한다.
-        Set<Long> categoryIntentBoostProjectIds = intentCategoryIds.isEmpty()
-                ? Set.of()
-                : resolveCategoryMemberProjectIds(intentCategoryIds);
-
-        // ── 7. Score-aware Hybrid Ranking ──────────────────────────────────────
-        return fuseByScore(keywordScored, rewardScored, titleScored, categoryVectorScored, summaryScored, descScored,
-                categoryIntentBoostProjectIds);
+        return rankedProjectIds;
     }
 
     /**
