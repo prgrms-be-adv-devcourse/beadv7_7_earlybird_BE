@@ -9,7 +9,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * 프로젝트 검색 파이프라인(BM25, QueryIntent/Embedding, 5개 kNN 필드 병렬 조회) 전용 Executor 설정.
+ * 프로젝트 검색 파이프라인(BM25, Embedding, 5개 kNN 필드 병렬 조회) 전용 Executor 설정.
  *
  * <p>Spring Boot의 {@code spring.threads.virtual.enabled: true} 설정에 맞춰 Virtual Thread 기반
  * Executor를 구성하여, Blocking I/O(OpenAI, Elasticsearch) 및 중첩 CompletableFuture 환경에서
