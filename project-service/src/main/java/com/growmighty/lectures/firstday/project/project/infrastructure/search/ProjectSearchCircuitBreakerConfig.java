@@ -21,6 +21,8 @@ public class ProjectSearchCircuitBreakerConfig {
     static final String PROJECT_EMBEDDING_ID = "projectEmbedding";
     /** 벌크 재색인 전용 서킷브레이커 id (페이지당 최대 50개 프로젝트 임베딩 일괄 생성이므로 180초로 넉넉하게 설정) */
     static final String PROJECT_BULK_INDEX_ID = "projectBulkIndex";
+    /** Query Intent LLM 분석 전용 서킷브레이커 id. 타임아웃 15초: LLM 호출은 임베딩과 유사한 지연 프로파일. */
+    static final String PROJECT_QUERY_INTENT_ID = "projectQueryIntent";
 
     private final TimeLimiterRegistry timeLimiterRegistry;
 
@@ -38,6 +40,9 @@ public class ProjectSearchCircuitBreakerConfig {
         timeLimiterRegistry.addConfiguration(PROJECT_BULK_INDEX_ID, TimeLimiterConfig.custom()
                 .timeoutDuration(Duration.ofSeconds(180))
                 .build());
+        timeLimiterRegistry.addConfiguration(PROJECT_QUERY_INTENT_ID, TimeLimiterConfig.custom()
+                .timeoutDuration(Duration.ofSeconds(15))
+                .build());
     }
 
     @Bean
@@ -50,6 +55,7 @@ public class ProjectSearchCircuitBreakerConfig {
                     .waitDurationInOpenState(Duration.ofSeconds(10))
                     .permittedNumberOfCallsInHalfOpenState(2)
                     .build()),
-                PROJECT_SEARCH_ID, PROJECT_AUTOCOMPLETE_ID, PROJECT_EMBEDDING_ID, PROJECT_BULK_INDEX_ID);
+                PROJECT_SEARCH_ID, PROJECT_AUTOCOMPLETE_ID, PROJECT_EMBEDDING_ID, PROJECT_BULK_INDEX_ID,
+                        PROJECT_QUERY_INTENT_ID);
     }
 }

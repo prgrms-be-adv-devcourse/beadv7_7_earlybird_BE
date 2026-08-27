@@ -58,6 +58,7 @@ class ProjectSearchAdapterTest {
     private final ProjectCategoryRepository categoryRepository = mock(ProjectCategoryRepository.class);
     private final RewardRepository rewardRepository = mock(RewardRepository.class);
     private final CategoryIntentResolver categoryIntentResolver = mock(CategoryIntentResolver.class);
+    private final QueryIntentAnalyzer queryIntentAnalyzer = mock(QueryIntentAnalyzer.class);
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -66,6 +67,8 @@ class ProjectSearchAdapterTest {
         when(circuitBreakerFactory.create("projectSearch")).thenReturn(circuitBreaker);
         when(circuitBreakerFactory.create("projectAutocomplete")).thenReturn(circuitBreaker);
         when(circuitBreakerFactory.create("projectBulkIndex")).thenReturn(circuitBreaker);
+        // QueryIntentAnalyzer는 기본적으로 passThrough를 반환 — 기존 테스트 동작 유지
+        when(queryIntentAnalyzer.analyze(any())).thenAnswer(inv -> QueryIntent.passThrough(inv.getArgument(0)));
         when(circuitBreaker.run(any(Supplier.class), any(Function.class))).thenAnswer(invocation -> {
             Supplier<Object> toRun = invocation.getArgument(0);
             Function<Throwable, Object> fallback = invocation.getArgument(1);
@@ -78,7 +81,7 @@ class ProjectSearchAdapterTest {
         adapter = new ProjectSearchAdapter(
                 elasticsearchOperations, elasticsearchClient, circuitBreakerFactory,
                 eventPublisher, embeddingService, projectRepository, categoryRepository,
-                rewardRepository, categoryIntentResolver);
+                rewardRepository, categoryIntentResolver, queryIntentAnalyzer);
     }
 
     private Project project() {

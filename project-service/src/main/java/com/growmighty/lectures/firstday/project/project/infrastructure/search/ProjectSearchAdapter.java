@@ -78,6 +78,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final ProjectCategoryRepository categoryRepository;
     private final RewardRepository rewardRepository;
     private final CategoryIntentResolver categoryIntentResolver;
+    private final QueryIntentAnalyzer queryIntentAnalyzer;
 
     @Override
     public void index(Project project) {
@@ -177,30 +178,51 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
     private List<Long> doSearch(String keyword) {
         String trimmedKeyword = keyword.trim();
-        float[] queryVector = embeddingService.generateEmbedding(trimmedKeyword);
-        
-        // 1. 정확한 카테고리명 매칭 확인
+
+        // ── 1. Query Intent 분석 ───────────────────────────────────────────────
+        // LLM이 자연어를 구조화하여 enrichedQuery를 생성한다.
+        // LLM 미설정·짧은 키워드·호출 실패 시 QueryIntent.passThrough(trimmedKeyword)가 반환되어
+        // enrichedQuery == trimmedKeyword가 되므로 기존 동작과 완전히 동일하게 작동한다.
+        QueryIntent intent = queryIntentAnalyzer.analyze(trimmedKeyword);
+
+        // ── 2. 임베딩 ─────────────────────────────────────────────────────────
+        // BM25: 원본 쿼리(trimmedKeyword) 사용 — 어휘 일치 기반 검색은 원문 보존이 중요
+        // Vector Search: enrichedQuery 사용 — 구조화된 의미 표현으로 kNN 유사도 정밀화
+        String queryForEmbedding = intent.enrichedQuery();
+        float[] queryVector = embeddingService.generateEmbedding(queryForEmbedding);
+
+        if (intent.hasStructuredIntent()) {
+            log.info("[ProjectSearch] Query Intent 적용: query='{}' → enrichedQuery='{}' "
+                            + "(productType={}, season={}, purpose={}, targetUser={}, material={}, hardConstraints={})",
+                    trimmedKeyword, queryForEmbedding,
+                    intent.productType(), intent.season(), intent.purpose(),
+                    intent.targetUser(), intent.material(), intent.hardConstraints());
+        }
+
+        // ── 3. 정확한 카테고리명 매칭 확인 ───────────────────────────────────
         List<Long> exactCategoryIds = resolveExactCategoryIds(trimmedKeyword);
-        
-        // 2. 카테고리 의도(Category Intent) 추론 (정확 매칭이 없을 때만 질의 벡터와 카테고리 임베딩 직접 비교)
+
+        // ── 4. 카테고리 의도(Category Intent) 추론 ────────────────────────────
+        // 정확 매칭이 없을 때만 쿼리 벡터와 카테고리 임베딩을 직접 비교한다.
+        // 여기서도 enrichedQuery 벡터를 사용하여 카테고리 의도 추론 정밀도를 높인다.
         List<Long> intentCategoryIds = exactCategoryIds.isEmpty() && queryVector != null
                 ? categoryIntentResolver.resolveCategoryIntent(queryVector)
                 : List.of();
 
         // kNN 하드 스코프는 정확한 카테고리명 매칭일 때만 적용한다.
-        // Intent 추론은 임베딩 유사도 기반 추정이라 오탐 시(예: "간식"->"상의") 하드 필터로 걸면
+        // Intent 추론은 임베딩 유사도 기반 추정이라 오탐 시 하드 필터로 걸면
         // 진짜 정답이 후보군에서 완전히 사라져 복구 불가능하므로, 소프트 부스트로만 반영한다.
         if (!exactCategoryIds.isEmpty()) {
-            log.info("[ProjectSearch] 키워드='{}' -> 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
+            log.info("[ProjectSearch] 키워드='{}' → 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
         } else if (!intentCategoryIds.isEmpty()) {
-            log.info("[ProjectSearch] 키워드='{}' -> 카테고리 의도 소프트 부스트 적용: categoryIds={}", trimmedKeyword, intentCategoryIds);
+            log.info("[ProjectSearch] 키워드='{}' → 카테고리 의도 소프트 부스트 적용: categoryIds={}", trimmedKeyword, intentCategoryIds);
         } else {
-            log.info("[ProjectSearch] 키워드='{}' -> 카테고리 스코프 미적용 (전체 검색)", trimmedKeyword);
+            log.info("[ProjectSearch] 키워드='{}' → 카테고리 스코프 미적용 (전체 검색)", trimmedKeyword);
         }
 
         List<String> slangSynonyms = resolveSlangSynonyms(trimmedKeyword);
 
-        // 3. BM25 키워드 쿼리 (정확 매칭 시에만 BM25 categoryId filter 적용)
+        // ── 5. BM25 키워드 쿼리 (원본 쿼리 사용, 정확 매칭 시에만 categoryId filter 적용) ──
         Query keywordQuery = Query.of(q -> q.bool(b -> {
             b.should(s -> s.match(m -> m.field("title").query(trimmedKeyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
                     .should(s -> s.match(m -> m.field("summary").query(trimmedKeyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
@@ -231,7 +253,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             vectorList.add(f);
         }
 
-        // 4. 5개 필드 kNN 검색 (Cosine 점수 보존 및 ES score -> raw cosine 역변환)
+        // ── 6. 5개 필드 kNN 검색 (enrichedQuery 벡터로 코사인 유사도 계산) ───
         List<ScoredDocument> rewardScored = searchFieldKnnScored("rewardVector", vectorList, 20, 50, exactCategoryIds);
         List<ScoredDocument> titleScored = searchFieldKnnScored("titleVector", vectorList, 20, 50, exactCategoryIds);
         List<ScoredDocument> categoryVectorScored = searchFieldKnnScored("categoryVector", vectorList, 20, 50, exactCategoryIds);
@@ -244,7 +266,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 ? Set.of()
                 : resolveCategoryMemberProjectIds(intentCategoryIds);
 
-        // 5. Score-aware Hybrid Ranking
+        // ── 7. Score-aware Hybrid Ranking ──────────────────────────────────────
         return fuseByScore(keywordScored, rewardScored, titleScored, categoryVectorScored, summaryScored, descScored,
                 categoryIntentBoostProjectIds);
     }

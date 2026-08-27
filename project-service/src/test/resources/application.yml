@@ -34,7 +34,7 @@ spring:
         max.block.ms: 3000
   ai:
     openai:
-      api-key: test-key-not-a-real-key
+      api-key: ${OPENAI_API_KEY:}
     # Spring AI EmbeddingModel(OpenAiEmbeddingModel)의 내부 RetryTemplate 기본값은
     # max-attempts=10, backoff.initial-interval=2s, multiplier=5, max-interval=180s다 — 최악의 경우
     # 재시도만으로 서킷브레이커 타임아웃(ProjectSearchCircuitBreakerConfig의 10초)을 훨씬 초과할 수
