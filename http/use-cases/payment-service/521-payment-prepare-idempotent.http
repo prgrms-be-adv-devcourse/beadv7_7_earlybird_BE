@@ -9,7 +9,7 @@
 ### 1. 첫 번째 준비 요청
 < {%
     client.global.set("payment521UserId", 9002);
-    client.global.set("payment521OrderId", Date.now());
+    client.global.set("payment521OrderId", Date.now().toString());
     client.global.set("payment521Amount", 20000);
 %}
 POST http://localhost:8082/internal/v1/payments/prepare

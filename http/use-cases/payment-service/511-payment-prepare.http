@@ -12,7 +12,7 @@
 ### 1. 결제 준비 요청 생성
 < {%
     client.global.set("payment511UserId", 9001);
-    client.global.set("payment511OrderId", Date.now());
+    client.global.set("payment511OrderId", Date.now().toString());
     client.global.set("payment511Amount", 10000);
 %}
 POST http://localhost:8082/internal/v1/payments/prepare

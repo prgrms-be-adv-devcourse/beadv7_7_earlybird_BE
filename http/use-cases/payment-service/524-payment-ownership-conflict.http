@@ -75,7 +75,7 @@ Content-Type: application/json
 
 ### 5. A 소유의 결제 준비 (payment-service 직접 호출, 로컬 전용)
 < {%
-    client.global.set("payment524OrderId", Date.now());
+    client.global.set("payment524OrderId", Date.now().toString());
 %}
 POST http://localhost:8082/internal/v1/payments/prepare
 Content-Type: application/json
