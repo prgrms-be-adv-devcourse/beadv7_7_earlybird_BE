@@ -2,25 +2,29 @@ package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * AI 임베딩 모델(Spring AI EmbeddingModel) 추상화 서비스.
- * OpenAI 등 외부 임베딩 API 호출을 담당하며, API 키 누락이나 장애 발생 시 예외를 던지지 않고
- * null을 반환하여 인덱싱 및 키워드 검색의 연속성을 보장한다. 실제 호출은 전용 서킷브레이커
- * (projectEmbedding)로 감싼다 — 재색인 한 페이지당 최대 50번 호출되는데, 감싸지 않으면 OpenAI
- * 장애 시에도 매번 풀타임아웃을 기다린 뒤에야 null로 강등되기 때문이다(ProjectSearchCircuitBreakerConfig
- * .PROJECT_EMBEDDING_ID 설명 참고). 서킷이 열리면 CallNotPermittedException도 그대로 여기서
- * 삼켜 null을 반환하므로, 이 메서드가 예외를 던지지 않는다는 계약 자체는 바뀌지 않는다.
+ * 프로젝트 색인 시 5개 핵심 필드(title, summary, description, category, reward)를
+ * 프로젝트당 1회의 배치 임베딩 요청(List&lt;String&gt;)으로 묶어 5개 독립 벡터를 동시 생성한다.
  */
 @Slf4j
 @Service
 public class ProjectEmbeddingService {
 
-    private static final int MAX_TEXT_LENGTH = 2000;
+    private static final int MAX_DESCRIPTION_LENGTH = 4000;
+    private static final int MAX_QUERY_LENGTH = 1000;
 
     private final EmbeddingModel embeddingModel;
     private final CircuitBreakerFactory circuitBreakerFactory;
@@ -32,20 +36,112 @@ public class ProjectEmbeddingService {
     }
 
     /**
-     * 프로젝트 본문(title + summary + description) 조합 텍스트의 1536차원 임베딩 생성.
+     * 프로젝트의 5개 핵심 필드(title, summary, description, category, rewards)에 대해
+     * 프로젝트당 1회의 배치 임베딩 요청으로 5개의 독립 벡터를 일괄 생성한다.
      */
-    public float[] generateEmbeddingForProject(Project project) {
-        if (project == null) {
-            return null;
+    public ProjectFieldVectors generateFieldVectors(Project project, String categoryHierarchy, List<String> rewardNames) {
+        if (project == null || embeddingModel == null) {
+            return ProjectFieldVectors.empty();
         }
-        String textToEmbed = buildTextToEmbed(project);
-        return generateEmbedding(textToEmbed);
+
+        String titleText = safeText(project.getTitle(), "");
+        if (titleText.isBlank()) {
+            return ProjectFieldVectors.empty();
+        }
+        String summaryText = safeText(project.getSummary(), "");
+        String descText = safeDescriptionText(project.getDescription(), summaryText);
+        String categoryText = safeText(categoryHierarchy, "기타");
+        String rewardText = safeText(rewardNames != null && !rewardNames.isEmpty() ? String.join(", ", rewardNames) : "", "");
+
+        // Index-time Search Context: 카테고리, 상품명, 특징, 리워드를 자동 결합하여 임베딩 의미 밀도 극대화
+        String enrichedTitle = (categoryText + " " + titleText + " " + summaryText).trim();
+        String enrichedSummary = (categoryText + " " + summaryText + " " + descText).trim();
+        String enrichedDesc = (categoryText + " " + descText).trim();
+        String enrichedCategory = categoryText;
+        String enrichedReward = (categoryText + " " + titleText + " " + rewardText).trim();
+
+        List<String> textsToEmbed = List.of(enrichedTitle, enrichedSummary, enrichedDesc, enrichedCategory, enrichedReward);
+
+        List<float[]> vectors = circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_EMBEDDING_ID).run(
+                () -> embedBatch(textsToEmbed),
+                cause -> {
+                    log.warn("프로젝트 필드별 AI 임베딩 일괄 생성 실패. projectId={}", project.getProjectId(), cause);
+                    return null;
+                });
+
+        if (vectors == null || vectors.size() < 5) {
+            return ProjectFieldVectors.empty();
+        }
+
+        return new ProjectFieldVectors(vectors.get(0), vectors.get(1), vectors.get(2), vectors.get(3), vectors.get(4));
     }
 
+    public record ProjectEmbeddingTarget(Project project, String categoryHierarchy, List<String> rewardNames) {}
+
     /**
-     * 검색 키워드 또는 텍스트의 1536차원 임베딩 생성.
-     * 텍스트 길이가 너무 긴 경우 토큰 초과 방지를 위해 MAX_TEXT_LENGTH(2000자)로 절단한다.
+     * N개 프로젝트의 모든 필드 텍스트(N * 5개)를 단 1회의 OpenAI Batch API 요청으로 일괄 전송하여
+     * 프로젝트별 5개 벡터 셋을 생성한다. (네트워크 라운드트립 N회 -> 1회 단축)
      */
+    public Map<Long, ProjectFieldVectors> generateFieldVectorsBulk(List<ProjectEmbeddingTarget> targets) {
+        if (targets == null || targets.isEmpty() || embeddingModel == null) {
+            return Map.of();
+        }
+
+        List<String> allTextsToEmbed = new ArrayList<>();
+        List<Long> projectOrder = new ArrayList<>();
+
+        for (ProjectEmbeddingTarget target : targets) {
+            Project project = target.project();
+            if (project == null) continue;
+
+            String titleText = safeText(project.getTitle(), "");
+            if (titleText.isBlank()) continue;
+
+            String summaryText = safeText(project.getSummary(), "");
+            String descText = safeDescriptionText(project.getDescription(), summaryText);
+            String categoryText = safeText(target.categoryHierarchy(), "기타");
+            String rewardText = safeText(target.rewardNames() != null && !target.rewardNames().isEmpty() ? String.join(", ", target.rewardNames()) : "", "");
+
+            String enrichedTitle = (categoryText + " " + titleText + " " + summaryText).trim();
+            String enrichedSummary = (categoryText + " " + summaryText + " " + descText).trim();
+            String enrichedDesc = (categoryText + " " + descText).trim();
+            String enrichedCategory = categoryText;
+            String enrichedReward = (categoryText + " " + titleText + " " + rewardText).trim();
+
+            allTextsToEmbed.addAll(List.of(enrichedTitle, enrichedSummary, enrichedDesc, enrichedCategory, enrichedReward));
+            projectOrder.add(project.getProjectId());
+        }
+
+        if (allTextsToEmbed.isEmpty()) {
+            return Map.of();
+        }
+
+        List<float[]> allVectors = circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_BULK_INDEX_ID).run(
+                () -> embedBatch(allTextsToEmbed),
+                cause -> {
+                    log.warn("프로젝트 N건 AI 임베딩 단일 배치 일괄 생성 실패. 대상 수={}, 원인: {}", targets.size(), cause);
+                    return null;
+                });
+
+        if (allVectors == null || allVectors.size() < projectOrder.size() * 5) {
+            return Map.of();
+        }
+
+        Map<Long, ProjectFieldVectors> result = new HashMap<>();
+        for (int i = 0; i < projectOrder.size(); i++) {
+            Long projectId = projectOrder.get(i);
+            int baseIdx = i * 5;
+            result.put(projectId, new ProjectFieldVectors(
+                    allVectors.get(baseIdx),
+                    allVectors.get(baseIdx + 1),
+                    allVectors.get(baseIdx + 2),
+                    allVectors.get(baseIdx + 3),
+                    allVectors.get(baseIdx + 4)
+            ));
+        }
+
+        return result;
+    }
     public float[] generateEmbedding(String text) {
         if (embeddingModel == null) {
             log.debug("EmbeddingModel 빈이 설정되지 않아 임베딩 생성을 건너뜁니다.");
@@ -55,14 +151,14 @@ public class ProjectEmbeddingService {
             return null;
         }
         String targetText = text.trim();
-        if (targetText.length() > MAX_TEXT_LENGTH) {
-            targetText = targetText.substring(0, MAX_TEXT_LENGTH);
+        if (targetText.length() > MAX_QUERY_LENGTH) {
+            targetText = targetText.substring(0, MAX_QUERY_LENGTH);
         }
         String finalTargetText = targetText;
         return circuitBreakerFactory.create(ProjectSearchCircuitBreakerConfig.PROJECT_EMBEDDING_ID).run(
                 () -> embeddingModel.embed(finalTargetText),
                 cause -> {
-                    log.warn("AI 임베딩 생성 실패. text_length={}, 원인: {}", finalTargetText.length(), cause.getMessage());
+                    log.warn("AI 쿼리 임베딩 생성 실패. text_length={}, 원인: {}", finalTargetText.length(), cause.getMessage());
                     return null;
                 });
     }
@@ -71,17 +167,31 @@ public class ProjectEmbeddingService {
         return embeddingModel != null;
     }
 
-    private String buildTextToEmbed(Project project) {
-        StringBuilder sb = new StringBuilder();
-        if (project.getTitle() != null && !project.getTitle().isBlank()) {
-            sb.append(project.getTitle()).append(" ");
+    private List<float[]> embedBatch(List<String> texts) {
+        EmbeddingResponse response = embeddingModel.embedForResponse(texts);
+        if (response == null || response.getResults() == null) {
+            return List.of();
         }
-        if (project.getSummary() != null && !project.getSummary().isBlank()) {
-            sb.append(project.getSummary()).append(" ");
+        return response.getResults().stream()
+                .map(Embedding::getOutput)
+                .toList();
+    }
+
+    private String safeText(String text, String fallback) {
+        if (text == null || text.isBlank()) {
+            return fallback;
         }
-        if (project.getDescription() != null && !project.getDescription().isBlank()) {
-            sb.append(project.getDescription());
+        return text.trim();
+    }
+
+    private String safeDescriptionText(String text, String fallback) {
+        if (text == null || text.isBlank()) {
+            return fallback;
         }
-        return sb.toString().trim();
+        String trimmed = text.trim();
+        if (trimmed.length() > MAX_DESCRIPTION_LENGTH) {
+            return trimmed.substring(0, MAX_DESCRIPTION_LENGTH);
+        }
+        return trimmed;
     }
 }

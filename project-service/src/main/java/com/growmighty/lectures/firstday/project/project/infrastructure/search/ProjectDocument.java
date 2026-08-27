@@ -27,6 +27,10 @@ public record ProjectDocument(
         String description,
         Long categoryId,
         List<String> rewardNames,
-        float[] embedding
+        float[] titleVector,
+        float[] summaryVector,
+        float[] descriptionVector,
+        float[] categoryVector,
+        float[] rewardVector
 ) {
 }

@@ -1,0 +1,867 @@
+project-service 기술적 고민 정리 — 동시성 / Elasticsearch·임베딩 검색 / file-service 연동
+작성일: 2026-08-20
+담당: 강대혁 (project-service)
+출처: docs/superpowers/specs/ 아래 설계 문서 전체 + 실제 구현 코드(RewardServiceImpl, ProjectSearchAdapter,
+      FileHttpClient 등) 기준으로 재구성. 각 절 끝에 원본 문서 경로를 표기.
+
+================================================================================
+1. 동시성 제어 — Reward(리워드) 재고 차감/복구
+================================================================================
+
+1.0 문제의 배경
+--------------------------------------------------------------------------------
+- 시스템 구조: MSA. project-service(재고/리워드 관리)와 order-service(주문/결제 처리)가
+  서로 다른 DB를 쓰는 별도 서비스라, 단일 DB 트랜잭션으로 주문-재고-결제를 묶을 수 없다.
+- 도메인 특성: 수량형 리워드(하나의 자원에 N개의 수량)에 대해 여러 사용자가 동시에
+  "선착순"으로 차감을 시도한다(플래시 세일 시나리오). 결제 실패 시에는 반대로 재고를
+  복구(Restore)해야 한다 — 이건 Saga 패턴의 보상 트랜잭션(Compensating Transaction)이다.
+- 추가로 네트워크 타임아웃 등으로 order-service가 같은 요청을 중복으로 보낼 위험이 있다.
+  이건 "동시 요청끼리의 경합" 문제와는 완전히 별개의 문제(멱등성)다.
+
+1.1 1단계 — 낙관적 락(Optimistic Locking) + @Retryable 구현
+--------------------------------------------------------------------------------
+가장 먼저 구현한 방식:
+- Reward 엔티티에 @Version 컬럼 추가.
+- decreaseStock/restoreStock을 @Retryable(retryFor = ObjectOptimisticLockingFailureException.class,
+  maxAttempts = 3, backoff = @Backoff(delay = 50))로 감쌈.
+- 충돌 시 @Recover 메서드가 ConcurrentUpdateFailedException(project-service 로컬
+  IllegalStateException 서브클래스, common 모듈 수정 없이 기존 handleIllegalState로
+  409에 매핑)으로 변환.
+- ProjectServiceApplication에 @EnableRetry(order = Ordered.LOWEST_PRECEDENCE - 1) 필요
+  — 이 순서를 명시하지 않으면 retry advisor가 @Transactional "안쪽"에 들어가서, 재시도마다
+  이미 실패가 확정된 트랜잭션을 재사용하게 되어 버린다(각 재시도가 엔티티의 최신 @Version을
+  다시 읽지 못함).
+
+구현 중 발견한 Spring Retry의 비직관적 함정 두 가지:
+(a) @Recover가 하나라도 있으면, @Retryable 메서드가 던지는 "retryFor로 지정 안 한" 다른
+    예외(예: 재고 부족 IllegalStateException)까지도 "재시도 소진 시 복구 경로" 탐색 대상이
+    되어버린다. 매칭되는 @Recover 시그니처가 없으면 ExhaustedRetryException으로 원래
+    예외를 삼켜버리고 500으로 나가버린다(원래는 409여야 할 게 500이 됨).
+    → 해결: catch-all @Recover(RuntimeException e, ...) { throw e; }를 추가해서, 특정
+      복구 메서드가 못 잡는 예외는 그대로 재전파하도록 함.
+(b) @Recover는 "어느 @Retryable 메서드가 던졌는지"나 "파라미터 이름"이 아니라 순수하게
+    "예외 타입 + 파라미터 타입 시그니처"만으로 매칭된다. decreaseStock(Long, int)와
+    restoreStock(Long, int)에 각각 다른 이름의 파라미터로 별도 @Recover를 만들어도,
+    시그니처가 같으면 먼저 선언된 것 하나만 항상 호출되고 나머지는 죽은 코드가 된다.
+    → 해결: 파라미터 타입을 억지로 다르게 만드는 건 "메시지 하나 다르게 하자고" 하는
+      과한 워크어라운드로 보고 기각. 대신 "재고 변경(차감/복원) 중 동시 수정 충돌이
+      반복되어 실패했습니다."처럼 양방향 모두 정직하게 커버하는 메시지 하나로 통합.
+
+1.2 k6 부하테스트 설계 및 최초 결과 — 낙관적 락 단독 측정 (설계 2026-07-31 / 결과 2026-08-03)
+--------------------------------------------------------------------------------
+비교 실험(1.3절) 이전에, 먼저 develop 브랜치(낙관적 락)만 단독으로 실제 HTTP 트래픽으로
+부하를 걸어 처리량·지연시간·정합성을 재는 첫 번째 k6 테스트를 별도로 설계/실행했다.
+
+[설계 배경]
+project-service엔 이미 낙관적 락(@Version) 경합을 검증하는 JUnit 통합테스트
+(RewardConcurrencyIntegrationTest 등)가 있었지만, 이건 JVM 내부에서 스레드 몇 개로
+"데이터가 안 깨지는지"만 확인할 뿐 실제 HTTP를 통한 처리량(TPS)·지연시간은 재지 않는다.
+
+project-service 안에서 동시성이 걸린 지점은 4곳으로 파악됨:
+  1. Reward 재고 차감(decreaseStock) — 실제 후원 트래픽 패턴, 진짜 핫패스
+  2. Project 마감 확정(closeProjectByDeadline) — 저빈도 배치/관리자 작업
+  3. Project 삭제 vs Reward 재고차감 — 데드락 방지 검증(처리량과 무관)
+  4. Category 부모변경/삭제 — JVM 락, 저빈도 관리자 작업
+이 중 TPS라는 지표가 의미 있는 곳은 1번뿐이라 판단, 나머지 세 곳은 이미 JUnit으로
+정합성이 커버되어 있고 저빈도 관리자 작업이라 k6로 부하를 걸어도 얻는 정보가 적다고
+보고 범위에서 제외 — 이번 설계는 1번(Reward 재고 차감) 하나에 집중.
+
+[목표]
+한정 수량 리워드에 다수의 후원자가 동시에 구매를 시도하는 "플래시세일" 패턴을 실제
+HTTP 요청으로 재현해 TPS·지연시간·성공/실패율을 측정하고, 테스트 종료 후 남은 재고가
+실제 성공 건수와 정확히 일치하는지 확인해 lost update가 없었음을 JUnit과는 별개로
+실측 트래픽으로도 재확인한다.
+
+[대상 & 실행 환경]
+- 대상: POST /internal/v1/rewards/{rewardId}/decrease-stock
+- project-service를 로컬 :8081에 직접 띄우고 호출. /internal/**은 설계상 게이트웨이
+  라우트가 없으므로(직접 Eureka-to-Eureka 호출 전용) 이 경로가 맞음.
+- 실행 순서: config-server → discovery-server → project-service. gateway-server는
+  필요 없음.
+- project-service는 X-User-Id/X-User-Role 헤더를 자체적으로 신뢰하고 JWT를 검증하지
+  않으므로(게이트웨이가 검증을 대신함), k6가 이 헤더를 직접 세팅해 프로젝트 등록/승인/
+  리워드 등록에 사용. /internal/**(decrease-stock 본체)은 이 헤더가 필요 없음.
+- 도구: k6. 스크립트 위치: project-service/k6/reward-stock-load-test.js
+- order-service는 의도적으로 우회: 실제 운영에서는 order-service가 후원(주문) 생성
+  시 RewardFeignClient를 통해 이 내부 API를 호출하지만, order-service까지 태우면
+  주문 생성 → 결제(payment-service, 당시 스텁 구현) → reward 차감까지 체인이 늘어나서
+  "재고 차감 자체의 처리량"이 아니라 체인 전체의 병목(특히 스텁 payment 지연)이 섞여
+  순수 TPS를 재기 어려워지고, order-service는 애초에 project-service 스코프 밖이라
+  k6가 그 호출자 역할을 대신해 decrease-stock을 직접 두드리는 방식을 택함.
+
+[테스트 데이터 준비 (setup())]
+  1. POST /api/v1/projects (X-User-Id: 1, X-User-Role: CREATOR) — categoryId=1
+     (시드 카테고리), endAt은 충분히 미래로 설정
+  2. POST /api/v1/projects/{id}/approve (X-User-Role: ADMIN) — decreaseStock이
+     "진행중(open) 프로젝트"만 허용하므로 승인 필수
+  3. POST /api/v1/projects/{id}/rewards (X-User-Role: CREATOR) — totalQuantity =
+     STOCK(환경변수, 기본 300)
+  4. 이후 부하 단계에서 쓸 rewardId를 반환
+
+[부하 프로파일] 환경변수로 조정 가능, 기본값: STOCK=300, VUS=100, DURATION=20s,
+BASE_URL=http://localhost:8081. k6 constant-vus executor로 VUS개 VU가 DURATION 동안
+쉬지 않고 decrease-stock(quantity=1)을 반복 호출. 총 요청 수는 재고보다 훨씬 많아지도록
+설계해, 테스트 내내 "성공"과 "재고소진/락경합 실패"가 섞여서 발생하게 함 — 실제
+한정수량 캠페인의 경합 패턴과 동일.
+
+[측정 지표] TPS/지연시간은 k6 기본 제공 지표(http_reqs rate = TPS,
+http_req_duration p95/p99) 그대로 사용. 커스텀 카운터로 성공(200) / 재고부족·락재시도
+소진(둘 다 IllegalStateException → 409로 응답 상태코드는 동일하므로 응답 메시지
+텍스트로 구분) / 그 외 예상 못한 상태코드(버그 의심)를 분리 집계.
+
+[정합성 검증 방법] teardown()에서 GET /api/v1/rewards/{rewardId}를 한 번 호출해 최종
+remainingQuantity를 콘솔에 출력. STOCK - remainingQuantity는 부하 단계에서 집계된
+성공 카운터와 정확히 같아야 한다(다르면 lost update 버그). k6는 커스텀 메트릭의
+누적값을 스크립트 코드에서 직접 읽어올 방법이 없어(쓰기 전용 API), handleSummary()
+안에서 이 둘을 자동 비교해 pass/fail을 만드는 건 k6 실행 모델과 맞지 않는 억지
+구조라고 판단 — 대신 성공 카운터 값과 teardown의 remainingQuantity를 실행 후 로그로
+나란히 출력하고, 실행한 사람이 눈으로 대조하는 방식 채택(기존 JUnit assertThat 역할을
+리포트 비교로 대체).
+
+[설계 스코프 밖으로 명시한 것] 2~4번 동시성 지점(Project 마감확정, Project삭제 vs
+Reward재고차감, Category 락)은 이 스크립트에 포함 안 함(이미 JUnit으로 정합성 검증됨,
+저빈도라 TPS 지표 자체가 무의미). 배포된 실제 환경(EC2 등) 대상 실행도 범위 밖 —
+로컬 서버만 대상.
+
+[실행 결과 (decreaseStock, STOCK=300 VUS=100 DURATION=20s, 2회 실행)]
+
+  지표                        값
+  TPS (http_reqs rate)        1243~1336 req/s (2회 실행, 오차 범위)
+  지연시간 p90 / p95           약 126ms / 160ms
+  성공(200)                    300
+  재고부족(409)                24,750 ~ 26,542
+  락경합 재시도소진(409)       46 ~ 54
+  예상 못한 응답                0
+
+정합성: teardown()에서 조회한 remainingQuantity는 두 번 모두 0. STOCK(300) - 0 = 300이
+성공 카운터(300)와 정확히 일치 — 100 VU 동시경합에서도 lost update 없이 낙관적 락
+(@Version + @Retryable)이 정상 동작함을 실측 트래픽으로 재확인.
+
+[DB 레벨 지표 — 같은 실행(2회차)에서 docker stats + SHOW GLOBAL STATUS 델타 병행 수집]
+
+  컨테이너 리소스(20초 구간): CPU는 부하 시작 직후 15% → 90~110%로 포화(코어 1개
+  수준), 종료와 함께 하락. 메모리는 ~502MB로 안정, 변화 거의 없음. Network I/O는
+  요청량에 비례해 꾸준히 증가, 특이사항 없음.
+
+  SHOW GLOBAL STATUS 델타:
+    Com_commit                          +304
+    Com_rollback                        +53,312
+    Innodb_row_lock_waits               +166
+    Innodb_row_lock_time(누적, ms)       +277
+    Innodb_row_lock_time_max            52ms (변화 없음)
+    Innodb_row_lock_current_waits       0 (테스트 후 잔류 락 없음)
+
+  해석: Commit 304는 성공 300건 + setup 단계(프로젝트 등록/승인/리워드 등록)와 대략
+  일치 — 성공한 트랜잭션만 커밋되고 실패는 전부 롤백되는 설계대로 동작. InnoDB row
+  lock 대기는 166건, 최대 대기 52ms로 안정적이라 DB 레벨에서 락 때문에 응답이
+  지연되거나 데드락이 발생한 흔적은 없음. 이 수준의 부하(100 VU, 재고 300개 경합)
+  에서 DB는 CPU가 한 코어 수준으로 바빠졌을 뿐, 락 대기·커넥션·메모리 어느 쪽도
+  뚜렷한 병목 신호는 없었음.
+
+  주의: 이 MySQL 컨테이너는 프로젝트 전체 9개 서비스 스키마를 한 인스턴스로 공유한다.
+  테스트 시점에 project-service·discovery-server만 기동 중이었으므로 다른 서비스발
+  노이즈는 없었다고 보지만, 위 GLOBAL STATUS 수치는 project-service 스키마 전용이
+  아니라 인스턴스 전체 값이라는 점은 감안해야 함.
+
+[흥미로운 발견 — Com_rollback이 실패 건수의 약 2배로 나온 이유]
+실패 건수(재고부족 + 락경합 ≈ 26,588)보다 Com_rollback 델타(53,312)가 약 2배 많게
+나와, mysql.general_log를 켜고 요청을 단건으로 재현해 실제 SQL 시퀀스를 확인했다.
+
+재고부족(409) 요청 1건(decreaseStock, @Transactional readOnly=false)의 실제 SQL:
+    SET autocommit=0
+    SELECT ... FROM rewards WHERE reward_id=?
+    SELECT ... FROM projects WHERE project_id=? FOR SHARE
+    ROLLBACK                          -- ① 실제 비즈니스 트랜잭션 롤백
+    SET autocommit=1
+    SET SESSION TRANSACTION READ ONLY
+    SET autocommit=0
+    ROLLBACK                          -- ② 쿼리 없는 빈 롤백
+    SET autocommit=1
+    SET SESSION TRANSACTION READ WRITE
+
+비교로 순수 조회 GET /api/v1/rewards/{id}(@Transactional(readOnly=true), 클래스
+기본값 그대로)를 같은 방식으로 떠보면:
+    SET SESSION TRANSACTION READ ONLY
+    SET autocommit=0
+    SELECT ... FROM rewards WHERE reward_id=?
+    COMMIT
+    SET autocommit=1
+    SET SESSION TRANSACTION READ WRITE
+→ 커밋 1번뿐, 배가 되지 않는다. 즉 이 배가 현상은 모든 HTTP 요청에 붙는 보편적인 게
+아니라 decreaseStock 경로에서만 나타난다.
+
+원인: project-service 기동 로그에 "spring.jpa.open-in-view is enabled by default"
+경고가 있다(Spring Boot 기본값, 끄지 않음). RewardServiceImpl은 클래스 레벨이
+@Transactional(readOnly=true)인데 decreaseStock()만 @Transactional(readOnly=false)로
+오버라이드한다. 이 read-write 트랜잭션이 롤백된 직후, OSIV가 요청 전체에 걸쳐 붙들고
+있는 Hibernate 세션의 커넥션 정리 과정에서 읽기전용 모드로 전환했다 되돌리는 쿼리
+없는 빈 트랜잭션이 한 번 더 열렸다 닫히며, 그 빈 트랜잭션도 시작 시점에 커밋할 게
+없어 ROLLBACK으로 끝난다. 결과적으로 실패 1건당 "진짜 롤백" 1번 + "OSIV 커넥션 정리용
+빈 롤백" 1번, 총 2번이 찍힌다.
+
+수치 검증: 재고부족 26,542건 × 2 ≈ 53,084. 나머지 228은 락경합 46건(재시도 최대 3회,
+매 시도가 같은 이중 롤백 패턴)에서 나온 것으로 설명되며, 합산하면 실측치 53,312와
+거의 일치한다.
+
+결론: 애플리케이션이 트랜잭션을 실수로 두 번 여는 버그가 아니라, OSIV
+(open-in-view=true) + 클래스 기본 readOnly 값과 메서드별 오버라이드 조합에서 나오는
+프레임워크 차원의 부수 효과다. 빈 트랜잭션이라 실제 행(row)을 건드리지 않고 락도 잡지
+않으므로 데이터 정합성·성능에 실질적 영향은 없다. open-in-view=false로 끄면 없어질
+가능성이 높지만, 이는 project-service 전역 설정 변경이라 이번 조사 범위 밖으로 두고
+실제 수정은 하지 않았다 — 필요하면 별도 논의 후 진행.
+
+[restoreStock(배치 환불) 결과 — 같은 조건 STOCK=300 VUS=100 DURATION=20s]
+설계 문서 작성 당시엔 restoreStock을 저빈도로 판단해 스코프에서 뺐지만, 정산
+(settlement-service)이 실패한 프로젝트를 일괄 환불할 때 같은 리워드에 여러 건의
+restoreStock이 동시에 몰릴 수 있다는 지적이 있어 같은 방식으로 추가 테스트했다
+(스크립트: reward-restore-stock-load-test.js). setup()에서 리워드를 만든 뒤
+decreaseStock(quantity=STOCK) 한 번으로 "전량 판매 완료"(remainingQuantity=0) 상태를
+만들고, 100 VU가 동시에 restoreStock(quantity=1)을 반복 호출해 정산 배치 환불 상황을
+재현했다. restoreStock은 decreaseStock과 달리 프로젝트가 진행중인지 확인하지 않는다
+(환불은 프로젝트가 이미 실패/취소로 닫힌 뒤에도 일어나야 하므로).
+
+  지표                        값
+  TPS                          1350 req/s
+  지연시간 p90 / p95           119ms / 151ms
+  성공(200)                    300
+  이미 꽉 참(409, 총수량 초과)  26,810
+  락경합 재시도소진(409)        31
+  예상 못한 응답                 0
+
+정합성: teardown()의 remainingQuantity=300이 totalQuantity(300), 성공 카운터(300)와
+정확히 일치 — 100 VU가 동시에 같은 리워드를 환불해도 lost update 없이 정상 복원됨을
+확인. decreaseStock(1243~1336 TPS, p95 ~160ms)과 성능 특성이 거의 동일 — 예상대로
+같은 @Version + @Retryable 메커니즘이라 결과도 같은 패턴을 보임.
+
+주의: restoreStock에는 DB 리소스(docker stats/SHOW GLOBAL STATUS) 계측과
+Com_rollback 원인 분석을 별도로 반복하지 않았다. 코드 경로가 decreaseStock과 동일한
+구조라 위 "Com_rollback 2배" 원인이 그대로 적용될 가능성이 높지만, 이건 추론이고
+실측으로 재확인하지는 않았다.
+
+[이 실험의 스코프 밖으로 명시한 것] Project 마감 확정, Project 삭제 vs Reward
+재고차감, Category 락 등 나머지 동시성 지점(설계 문서와 동일). open-in-view=false
+전환 실험(전역 설정 변경, 별도 논의 필요). restoreStock의 DB 레벨 지표(위 주의 참고).
+
+--------------------------------------------------------------------------------
+1.3 비교 실측 — develop(낙관적 락) vs 원자적 UPDATE, k6 부하테스트 (2026-08-13)
+--------------------------------------------------------------------------------
+1.2절의 낙관적 락 단독 측정 이후, 원자적 UPDATE 방식을 별도 브랜치
+(강대혁/project/reward-stock-load-test)에 구현하고 develop과 동일 조건으로 재실행해
+직접 비교했다.
+
+문제의식: 낙관적 락 방식에서는 재고가 실제로 남아있어도, 설정된 재시도 횟수 동안 쓰기
+경합에서 계속 밀리면 구매가 거부된다. 이게 실제로 얼마나 발생하는지, 응답 시간에 어떤
+영향을 주는지 직접 측정해보기로 함.
+
+테스트 환경:
+- 도구: Grafana k6
+- 조건: STOCK = 300, VUS(동시 가상 유저) = 100, DURATION = 20초
+- 비교 대상: develop 브랜치(낙관적 락) vs 강대혁/project/reward-stock-load-test 브랜치
+  (원자적 UPDATE) — 두 워크트리를 번갈아 같은 포트(:8081)로 기동시켜 비교. 동일한
+  로컬 MySQL/Eureka/Config Server 환경 공유.
+- 측정 방법: 응답을 success(성공) / 진짜 실패(재고부족 out_of_stock·overflow) /
+  가짜 실패(락 충돌 lock_conflict) 3가지로 분리해서 각각 지연시간 분포를 따로 수집.
+
+[테스트 1] 재고 차감(Decrease, Flash Sale 시나리오) 실측 결과:
+
+  지표                          develop(낙관적 락)   원자적 UPDATE   해석
+  가짜 실패(lock_conflict)      52건 (0.34%)         0건 (0.00%)     가짜 실패 구조적 소멸
+  진짜 품절(out_of_stock)       15,074건              15,606건        정상적인 품절 처리
+  차감 성공 건수(success)       300/300건             300/300건       두 방식 모두 정합성 100%
+  성공 요청 평균 응답시간       323.84ms              278.01ms        약 14.1%(45.8ms) 단축
+  성공 요청 p95 지연시간        475.72ms              458.41ms        Tail Latency 소폭 개선
+  진짜 실패(품절) p95 지연시간  280.96ms              197.47ms        원자적 쪽이 더 빠름
+  가짜 실패 p95 지연시간        554.91ms              N/A(0건)        낙관적 락의 최악 지연 경로
+  전체 처리량(Throughput)       764.89 req/s          779.13 req/s    소폭 향상
+
+주의(수치 불일치, 정직하게 기록): 1.2절의 낙관적 락 단독 측정에서는 같은
+STOCK=300/VUS=100/DURATION=20s 조건인데도 TPS가 1243~1336 req/s로 나왔는데, 이
+비교 실험의 develop(낙관적 락) 처리량은 764.89 req/s로 절반 수준이다. 두 실험이
+서로 다른 시점(2026-08-03 vs 2026-08-13)에 별도로 실행됐고, 스크립트 버전·측정
+방식(이 비교 실험은 성공/진짜실패/가짜실패 3분류 Trend 메트릭을 추가로 수집)이 다를
+가능성이 있다 — 원본 문서들 어디에도 이 차이를 직접 설명하는 내용은 없어서, 여기서
+임의로 원인을 단정하지 않고 불일치 자체만 기록해 둔다. 두 실험 내부에서의
+"develop vs 원자적 UPDATE" 상대 비교(같은 실험 내 좌우 비교)는 유효하지만, 1.2절과
+1.3절 수치를 서로 다른 실험 간에 절대값으로 직접 비교하면 안 된다.
+
+[테스트 2] 재고 복구(Restore, Batch Refund 시나리오 — 전량 판매 완료 상태에서 시작):
+
+  지표                          develop(낙관적 락)   원자적 UPDATE   해석
+  복구 락 충돌(lock_conflict)   37건                  0건             가짜 실패 구조적 소멸
+  복구 성공 건수(success)       300/300건             300/300건       정합성 100%
+  진짜 실패(초과) p95 지연시간  199.32ms              218.91ms        여기선 원자적 쪽이 더 느림
+  가짜 실패 p95 지연시간        411.12ms              N/A(0건)        백오프 대기로 인한 지연
+
+정교한 원인 분석:
+① "가짜 실패"의 실체: RewardServiceImpl/Reward.java 코드 분석 결과 실패 경로는 두 가지로
+   명확히 구분된다.
+   - 진짜 실패: 도메인 내부 remainingQuantity < quantity 검증 실패 → DB에 쓰기 시도조차
+     안 함(엔티티가 안 바뀌므로 Hibernate가 flush할 게 없음).
+   - 가짜 실패: @Retryable(maxAttempts=3, backoff=50ms) 안에서 3회 연속 @Version 쓰기
+     경합에 패배 → ConcurrentUpdateFailedException. 재고 상태와 무관하게 순전히 타이밍
+     때문에 실패.
+   decrease 기준 lock_conflict의 p95 지연시간(554.91ms)은 진짜 품절 응답(280.96ms)의
+   약 1.98배 — 50ms 백오프를 최대 3번 반복하다 튕겨나가기 때문.
+
+② "UPDATE 실패 시 사유 확인용 재조회(SELECT)가 추가로 붙으니 더 무거워야 한다"는
+   가설을 검증했는데, 실측 결과는 일관되지 않았다.
+   - decrease: 원자적 UPDATE의 진짜 실패 p95(197.47ms)가 낙관적 락(280.96ms)보다 오히려
+     빠름.
+   - restore: 반대로 원자적 UPDATE(218.91ms)가 낙관적 락(199.32ms)보다 느림(가설과 같은
+     방향이지만 차이는 ~10%).
+   해석: PK 인덱스를 통한 단건 SELECT는 버퍼풀 메모리 레벨에서 1ms 미만인 반면, Spring/
+   Tomcat/HTTP 처리 기본 오버헤드는 100ms 이상이라, 추가 DB 왕복 1회의 비용이 이 정도
+   규모의 지연시간 안에서는 뚜렷한 신호로 드러나지 않는다. 즉 "UPDATE+재조회 2왕복이 항상
+   더 무겁다"는 가설은 이번 실측으로 확인도 반증도 되지 않았다.
+
+③ 원자적 UPDATE의 실제 우위는 "진짜 실패 처리가 항상 더 빠르기 때문"이 아니다(②에서
+   보였듯 방향이 엇갈린다). 우위의 본질은 maxAttempts=3, backoff=50ms 재시도 연쇄로
+   p95 지연시간을 411~555ms까지 끌어올리던 "가짜 실패"라는 최악의 지연 경로(worst-case
+   tail latency) 자체를 구조적으로 없앴다는 데 있다.
+
+테스트 방법론의 한계(정직하게 기록):
+- 모든 수치는 조건당 1회 실행 결과다. 반복 측정·평균 없이 단일 실행값을 비교했다.
+  decrease/restore의 진짜 실패 지연시간 방향이 정반대로 나온 것 자체가, 10~20% 이내의
+  차이는 반복 실행 없이는 구조적 차이인지 런투런 노이즈인지 구분하기 어렵다는 방증이다.
+- 로컬 MySQL 컨테이너 하나를 9개 서비스 스키마가 공유한다 — 테스트 시점에 다른 서비스가
+  유휴 상태였다고 가정했을 뿐 별도 격리 검증은 안 함.
+- 비관적 락은 이번 실측 비교에 포함되지 않았다(아래 1.3 참고).
+- 신뢰도를 높이려면 조건당 3~5회 반복 후 중앙값/분산 비교, 락 대기 타임아웃 근처까지
+  VUS를 올린 극단 시나리오 추가 측정을 권장.
+
+1.4 원자적 UPDATE(Atomic Update) — 최종 채택안
+--------------------------------------------------------------------------------
+동작 원리: DB 엔진 고유의 원자적 연산으로 조건 검증과 수량 차감을 단 1줄의 SQL로 처리.
+
+    UPDATE reward
+       SET remaining_quantity = remaining_quantity - :quantity
+     WHERE id = :rewardId AND remaining_quantity >= :quantity;
+
+장점:
+1. 마이크로초 단위로만 락을 점유하고 즉시 해제 — 처리량이 높음.
+2. 가짜 실패 100% 제거: DB 레벨에서 조건 충족 여부만 판가름하므로 재시도 루프 자체가
+   없어 락 타이밍으로 인한 억울한 실패가 발생하지 않음.
+3. 애플리케이션 레벨 @Retryable 복잡성 제거.
+
+단점 및 보완책:
+- Affected Rows가 0일 때 "재고 부족"인지 "판매 종료"인지 원인 구분이 안 됨.
+  → 보완: Affected Rows 0인 경우에만 PK 기반으로 재조회해서 명확한 에러 메시지 생성.
+    이 추가 왕복의 실제 비용은 1.2절 ②에서 실측했고, 결과는 방향이 엇갈려 뚜렷한
+    구조적 비용으로 확인되지는 않았다.
+
+비관적 락(Pessimistic Locking) — 이론적 검토만, 이 저장소에서 구현·실측하지 않음:
+- SELECT ... FOR UPDATE로 읽는 시점부터 Row Lock(X-Lock) 점유.
+- 장점: 데이터 일관성 100% 보장, 락 획득 후 복잡한 비즈니스 로직 안전 수행 가능.
+- 일반적으로 알려진 단점: 수량이 몇 개든 DB 입장에선 단일 Row 락이라 재고가 충분해도
+  사용자들이 줄서서 대기해야 함. 결제(PG) 같은 외부 API 호출이 트랜잭션에 포함되면
+  DB 커넥션이 오래 안 풀려서 전체 시스템 마비 위험.
+- 필요하면 별도 브랜치로 구현 후 1.2절과 동일 조건으로 재측정해야 한다(미착수).
+
+1.5 소거법에 의한 최종 결론
+--------------------------------------------------------------------------------
+- 낙관적 락: 고동시성 상황에서 재시도 폭주로 인한 가짜 실패(decrease 52건·restore 37건)가
+  실측으로 확인되어 탈락.
+- 비관적 락: Row Lock 대기 병목 + DB 커넥션 고갈 위험이라는 일반론에 근거해 배제 —
+  이 저장소에서 구현·실측하지는 않음.
+- 원자적 업데이트: 가짜 실패를 구조적으로 제거하고 decrease 평균 응답시간을 14.1%
+  단축시켜 최선의 선택으로 확정.
+- 100% 정합성 검증: 300개 수량 차감/복구 테스트에서 단 1개의 오차도 없이 두 방식 모두
+  정합성 달성.
+- 단, "진짜 실패(품절) 처리 자체가 원자적 UPDATE에서 항상 더 빠르다"고는 결론지을 수
+  없음 — decrease/restore 결과가 엇갈렸고 이는 단발 실행이라는 방법론적 한계 안에서
+  해석해야 함.
+- Saga 보상 트랜잭션(restoreStock)과 아래 1.5의 멱등키 메커니즘을 결합해서 원자적
+  UPDATE가 갖는 "분산 환경에서의 한계"(중복 요청 문제)를 별도로 보완했다.
+
+1.6 멱등성(Idempotency) 설계 — 동시성 제어와는 별개의 문제
+--------------------------------------------------------------------------------
+배경(GitHub #195): RewardInternalController의 decrease-stock/restore-stock은 단순
+증감만 하고, 같은 요청이 두 번 도착했는지 판별할 방법이 없었다. 낙관적 락이든 원자적
+UPDATE든 "동시에 여러 요청이 충돌"하는 문제(lost update)는 막지만, "같은 논리적 요청이
+네트워크 타임아웃 등으로 중복 도착"하는 문제와는 완전히 별개이고, 둘 다 이 문제를 막지
+못한다. 호출측인 order-service의 RewardFeignClient는 Feign 인터페이스 default 메서드로
+바로 포트를 구현하고 있어(별도 CircuitBreaker 래핑 없음), Feign 기본 Retryer가
+IOException(연결 실패·타임아웃)에 자동 재시도한다 — 응답이 클라이언트에 도달하기 전에
+끊기기만 해도 project-service는 이미 처리를 마쳤는데 order-service는 실패로 착각해
+같은 요청을 재전송할 수 있다.
+
+목표: decrease-stock/restore-stock에 멱등성을 보장해서, 같은 논리적 요청이 여러 번
+도착해도 재고 변경은 정확히 한 번만 반영되도록 한다.
+
+멱등키 설계: (orderId, rewardId, operation) 3개 조합.
+- orderId + rewardId만으로는 부족 — 같은 조합이 "정상적으로" 두 번 발생할 수 있다
+  (주문 시 차감 → 이후 취소 시 복원은 같은 orderId+rewardId에 대한 별개의 정당한
+  이벤트).
+- operation(DECREASE/RESTORE)까지 포함해야 차감 로그와 복원 로그가 서로 충돌 안 함.
+
+스코프 결정: orderId를 캐치(호출자가 보내는 상관관계 식별자) 없이 멱등성을 보장하는 건
+원천적으로 불가능하다. rewardId+quantity만으로 중복을 판별하려 하면, 서로 다른 두 주문이
+우연히 같은 리워드를 같은 수량으로 주문한 정상 케이스(인기 리워드일수록 흔함)를 중복으로
+오인해서 재고를 누락 차감하는 실제 버그가 된다. 그래서 StockChangeRequest.orderId는
+필수(@NotNull)로 설계 — nullable로 하위 호환 경로를 남기지 않음.
+
+이건 계약을 깨는 변경이다: order-service의 RewardFeignClient.sendDecreaseStock/
+sendRestoreStock은 아직 orderId를 안 보낸다(담당자가 다른 서비스라 이번 스코프 밖).
+project-service의 이 변경이 먼저 배포되면, order-service가 따라오기 전까지 모든
+decrease-stock/restore-stock 호출이 orderId 누락으로 400 검증 실패 — 실제 주문/취소
+흐름이 깨진다. 그래서 이 설계와 함께 order-service 쪽에 orderId를 실어 보내달라는
+GitHub 이슈를 같이 등록해서, 두 변경이 순차적으로(또는 최대한 가깝게) 배포되도록
+조율하기로 함(board-service가 getCreator 계약을 project-service 구현 전에 미리 넣어둔
+것과 반대 방향의, 우리가 먼저 계약을 요구하는 크로스 서비스 조율).
+
+핵심 컴포넌트:
+- StockChangeLog 엔티티(신규, project-service 자기 스키마): orderId(단순 Long 컬럼,
+  order-service의 orders 테이블 FK 아님 — "ID로만 참조"하는 기존 관례를 그대로 따름),
+  rewardId, operation(DECREASE/RESTORE enum). 유니크 제약: (order_id, reward_id,
+  operation).
+- StockChangeOperation enum(DECREASE, RESTORE).
+- StockChangeRequest DTO에 orderId(@NotNull) 추가.
+
+데이터 흐름("선-INSERT 후 예외 포착" 패턴):
+  1. StockChangeLog INSERT 시도(같은 트랜잭션 안)
+  2. 유니크 제약 위반 시 DataIntegrityViolationException 발생 → catch → 즉시 return
+     (이미 처리된 요청, 200 no-op)
+  3. 예외 없음 → 최초 요청 → Reward.decreaseStock/restoreStock 진행
+  4. 커밋 시 로그 INSERT + 재고 변경이 원자적으로 함께 반영. 낙관적 락 충돌 시(당시
+     기준) 트랜잭션 전체(로그 포함)가 롤백되고 @Retryable이 재시도 — 재시도마다 로그
+     INSERT부터 다시 하므로 일관성 안 깨짐.
+
+왜 이 방식인가(검토했다가 기각한 대안):
+- "조회 후 분기(existsBy 먼저 SELECT)": 두 중복 요청이 동시에 도착하면 둘 다 "존재
+  안 함"을 보고 통과하는 TOCTOU 레이스가 있어, 결국 DB 유니크 제약을 백스톱으로 또
+  둬야 한다 — 불필요한 사전 조회만 얹는 셈이라 기각.
+- "멱등키 기록을 별도 트랜잭션(REQUIRES_NEW)으로 먼저 커밋": 로그 커밋과 재고 변경의
+  원자성이 깨진다. 재고 변경이 "진짜" 사유(재고 부족 등)로 실패해도 로그는 이미
+  커밋돼버려서, 이후 정당한 재시도가 와도 "이미 처리됨"으로 잘못 응답하게 된다 — 기각.
+
+범위 밖으로 명시적으로 남긴 것:
+- order-service가 orderId를 실제로 실어 보내도록 고치는 작업 — 별도 이슈로 분리.
+- Feign 기본 Retryer 정책 자체를 손보는 것(CircuitBreakerFactory로 감싸는 리팩토링)
+  — order-service 담당 영역.
+- StockChangeLog 테이블의 보관 기간/정리(retention) 정책 — 의도적으로 트레이드오프로
+  남김. 로그는 실제 성공한 재고 변경 건수만큼만 쌓이고(실패·재시도는 롤백으로 로그도
+  같이 사라짐), 유니크 제약 인덱스 조회는 행이 늘어나도 O(log n)으로 스케일해서 지금
+  규모(데모/평가용)에선 문제가 안 됨. 지금 정리 정책까지 설계하면 "언제 지워도 안전한가"
+  판단 로직과 배치 스케줄러가 추가로 필요해져 복잡도만 늘어난다고 판단, 실제로 용량/
+  성능 문제가 관측되면 그때 별도 설계하기로 함.
+
+원본 문서: docs/superpowers/specs/2026-07-31-reward-stock-k6-load-test-design.md,
+           docs/superpowers/specs/2026-08-03-reward-stock-k6-load-test-results.md,
+           docs/superpowers/specs/2026-08-06-reward-stock-idempotency-design.md,
+           docs/superpowers/specs/2026-08-13-reward-stock-optimistic-vs-atomic-comparison.md
+
+
+================================================================================
+2. Elasticsearch + 임베딩(벡터) 하이브리드 검색
+================================================================================
+
+2.0 문제의 배경
+--------------------------------------------------------------------------------
+findAll(keyword, categoryId, status, sort, requesterRole)의 키워드 검색이 원래는
+MySQL JPA Specification으로 title/summary에 LIKE '%keyword%'만 거는 임시 스텁 수준
+이었다(ES 도입 전 만들어둔 것, 2026-08-06 사용자가 "버려도 된다"고 확인 — LIKE 경로를
+폴백으로 유지할 필요 없이 ES로 완전히 대체하기로 함). 인프라(docker-compose.yml,
+infrastructure/elasticsearch/Dockerfile)에는 nori 형태소분석기가 설치된 Elasticsearch
+9.0.3 컨테이너가 이미 떠 있었지만, project-service 코드에는 전혀 연결되어 있지 않은
+상태에서 시작.
+
+요구사항:
+- findAll의 기존 시그니처와 응답 형태(List<ProjectResponse>) 유지 — 컨트롤러/클라이언트
+  계약 변경 없음.
+- keyword가 있을 때: nori 키워드 매치 + OpenAI 임베딩 kNN 벡터 검색을 함께 실행하는
+  하이브리드 검색으로 후보 프로젝트를 찾는다.
+- keyword가 없을 때: 기존 JPA Specification 경로 그대로 유지(ES 관여 없음).
+- 기존 role 기반 가시성 규칙(ADMIN 아니면 PENDING_REVIEW/REJECTED 항상 제외)과
+  categoryId/status 필터, ProjectSort(LATEST/DEADLINE/FUNDED_AMOUNT) 정렬은 키워드
+  검색 결과에도 동일하게 적용 — ES가 새로운 "관련도순" 정렬을 API에 추가하지는 않음
+  (당시 스코프).
+- ES가 다운/느리면 키워드 검색은 명시적으로 실패(ServiceUnavailableException → 503)
+  — 다른 포트 어댑터들과 동일한 fail-closed 패턴, LIKE 폴백 같은 강등 경로는 안 둠
+  (임시 스텁이었으므로).
+- ES 인덱스가 MySQL과 어긋났을 때(장애 복구, 최초 도입) 전체를 다시 채워 넣을 수 있는
+  관리자용 재색인 경로 필요.
+
+2.1 아키텍처 — MySQL은 계속 source of truth, ES는 순수 검색 인덱스
+--------------------------------------------------------------------------------
+    keyword 없음 → 기존 JPA Specification(변경 없음)
+
+    keyword 있음 → ES 하이브리드 쿼리(nori match ∪ kNN)로 candidateProjectIds 조회
+                 → candidateProjectIds를 기존 Specification(categoryId/status/role
+                   필터)의 in-절 조건으로 추가해 MySQL에서 최종 필터링 + ProjectSort 정렬
+                 → ProjectResponse 조립
+
+핵심 결정: ES 문서에는 categoryId/status를 넣지 않는다. 그 필터링은 지금처럼 MySQL
+쪽에서 candidateProjectIds에 대해 그대로 수행하므로, ES 쪽에서 이 필드들을 중복 저장/
+동기화할 이유가 없다(YAGNI). 이 덕분에 ES 재색인이 필요한 시점도 "검색 가능한 텍스트
+(title/summary/description)가 바뀔 때"로 좁혀진다 — approve/reject/cancel/
+closeEarlyAsSucceeded/closeByDeadline/extendDeadline 같은 상태·마감일 변경 메서드는
+ES 재색인을 안 해도 된다.
+
+임베딩은 Spring AI(spring-ai-starter-model-openai)의 EmbeddingModel 추상화를 사용
+— 직접 OpenAI HTTP 클라이언트를 새로 작성하지 않음(프레임워크 default 우선 원칙).
+ES 연동도 spring-boot-starter-data-elasticsearch(Spring Data Elasticsearch)의
+@Document/ElasticsearchOperations를 사용.
+
+2.2 일관성 패턴 — 기존에 확립해둔 "DB→ES 동기화 원칙"을 그대로 적용
+--------------------------------------------------------------------------------
+(이 패턴은 원래 사용자가 부트캠프 강의에서 배운 것으로, 다른 DB→ES 동기화 작업에도
+계속 적용하기로 한 원칙이다.)
+
+핵심 원칙: ES는 절대 source of truth가 아니다. DB(트랜잭셔널, 일관적)가 항상 진실.
+ES는 파생된, near-realtime, eventually-consistent한 읽기 인덱스일 뿐이다.
+
+네 가지 구체적 실패 모드와 대응:
+1. ES 다운이 DB 쓰기를 막는 문제 → ES 색인 호출을 try-catch로 감싸서 ES 실패가 DB
+   트랜잭션 밖으로 절대 전파되지 않게 함. DB 커밋은 ES와 무관하게 독립적으로 성공.
+2. ES에 DB엔 없는 "유령" 레코드가 생기는 문제(ES 쓰기는 성공했는데 DB 쓰기가 나중에
+   실패/롤백) → ES 색인 이벤트를 AFTER_COMMIT 시점에만 트리거(@TransactionalEventListener
+   (phase = AFTER_COMMIT)), DB 트랜잭션이 확실히 커밋된 후에만 발행.
+3. #1 적용 후에도 ES 쓰기가 조용히 실패하는 문제(로그만 남고 삼켜짐, 인덱스에 그냥
+   없음) → 이걸 알려진 갭으로 받아들이고, 수동 "전체 재색인" API를 복구 수단으로 제공
+   — 동기화 경로 자체를 무결하게 만들려 하지 않음.
+4. 네트워크 전달 순서가 보장 안 되어 이벤트가 뒤섞여 도착하는 문제(오래된 데이터가
+   최신 데이터를 덮어씀) → 이벤트에 전체 엔티티 페이로드를 담지 않고 ID만 담는다.
+   ES 색인 컨슈머는 이벤트를 처리할 때 그 시점의 "현재" 상태를 DB에서 다시 조회해서
+   색인한다. 이러면 몇 번, 어떤 순서로 이벤트가 도착하든 결과가 항상 DB의 현재 상태로
+   수렴한다(멱등적/순서 무관).
+
+실제 적용: 색인 자체는 ProjectSearchAdapter.index()/remove()가 아니라 이벤트만
+발행하고(ProjectIndexRequestedEvent/ProjectRemovedFromIndexEvent), 실제 색인 실행은
+ProjectSearchIndexEventListener가 AFTER_COMMIT 시점에 DB에서 프로젝트를 재조회한 뒤
+수행한다.
+
+2.3 컴포넌트 상세
+--------------------------------------------------------------------------------
+- ProjectDocument (@Document(indexName = "projects")): projectId(@Id), title/
+  summary/description(nori 커스텀 분석기), embedding(dense_vector, 1536차원,
+  similarity=cosine).
+- ProjectEmbeddingService: EmbeddingModel을 @Autowired(required = false)로 주입받아
+  API 키 미설정 시에도 기동 장애를 방지. generateEmbedding(text) 처리 순서:
+    ① embeddingModel == null이면 즉시 null 반환(NPE 방지, 키 미설정 상황)
+    ② 텍스트 null/blank면 null 반환
+    ③ OpenAI 토큰 초과 방지를 위해 입력 텍스트를 2000자로 절단
+    ④ embeddingModel.embed(...) 호출을 try-catch로 감싸서 rate limit·네트워크 장애
+      등 어떤 예외가 나도 WARN 로그만 남기고 null 반환
+  이 4단계 순서 덕분에 "모델이 아예 없는 경우"와 "모델은 있는데 호출이 실패한 경우"가
+  모두 예외 없이 안전하게 null로 수렴하고, 호출부(색인/검색 양쪽)는 항상 "성공(벡터)
+  또는 실패(null, 키워드 전용)" 두 가지만 신경 쓰면 된다.
+- Project 엔티티: 사전 계산된 embedding(float[]) 필드 + updateEmbedding(float[]).
+  한 번 생성한 벡터는 재사용하고 다시 계산하지 않는다. title/summary/description이
+  수정될 때(updateBeforePublish/updateAfterPublish)만 embedding을 null로 되돌려서
+  "다시 만들어야 한다"는 신호로 씀. 즉 임베딩 생성은 프로젝트당 "최초 생성 시 1번" +
+  "내용이 바뀔 때마다 1번"만 일어나고, 그 사이엔 저장된 값을 그대로 재사용한다.
+- EmbeddingConverter: JPA AttributeConverter<float[], String>. float[] ↔ JSON
+  문자열로 변환해 MySQL projects.embedding(LONGTEXT) 컬럼에 저장/복원. ObjectMapper의
+  체크 예외(JsonProcessingException)는 try-catch로 감싸 로그만 남기고 null 반환
+  (컨버터 인터페이스가 체크 예외를 선언하지 않으므로 필수).
+- ProjectSearchPort(인터페이스, 기존 OrderPort 같은 포트 패턴): index(Project),
+  remove(Long projectId), search(String keyword) → List<Long>, autocomplete(String
+  prefix) → List<ProjectSuggestion>.
+- ProjectSearchAdapter(구현체): search는 검색어의 임베딩 벡터를 추출할 수 있으면
+  Nori 형태소 BM25 키워드 매칭(title^2.0, summary^1.2, description, categoryName^1.3,
+  rewardNames)과 kNN 벡터 코사인 유사도 쿼리를 RRF(Reciprocal Rank Fusion) retriever로
+  결합해서 실행한다(초기 설계 당시엔 boost=10.0f로 점수 스케일을 맞추는 방식이었으나,
+  실제 구현/이후 수정에서 RRF 방식으로 정착 — 2.5절 참고). 임베딩 불가능 시 Nori
+  키워드 매칭 전용 쿼리로 동작. ES 쿼리 실패/타임아웃 시 ServiceUnavailableException을
+  던짐 — CircuitBreakerFactory fallback도 같은 예외를 던지는 용도로만 씀(다른 검색
+  경로로 강등하지 않음, OrderHttpClient 등 기존 어댑터들의 fail-closed 패턴과 동일).
+- ProjectServiceImpl 변경: 생성자에 ProjectSearchPort 주입. create/update/delete에서
+  각각 저장/수정/삭제 성공 직후 searchPort.index(project)/searchPort.remove(projectId)
+  호출(색인 자체가 실패해도 원본 트랜잭션·응답엔 영향 없음). findAll은 keyword가 있으면
+  CircuitBreakerFactory로 감싼 searchPort.search(keyword) 호출 → 결과
+  candidateProjectIds를 buildSpecification에 projectId IN (...) 조건으로 추가. ES가
+  죽어 있으면 ServiceUnavailableException이 그대로 컨트롤러까지 전파(503, 강등 경로
+  없음). candidateProjectIds가 빈 리스트면(매치 없음) 그 즉시 빈 List<ProjectResponse>
+  반환(불필요한 MySQL 쿼리 생략). 기존 buildSpecification의 keyword LIKE 분기는 삭제.
+- 관리자 재색인 엔드포인트: ProjectService.reindexAllProjects() — 전체 프로젝트를
+  순회하며 searchPort.index(project) 재호출(백필/복구용, 기존
+  reconcileFundedAmounts()류 배치 메서드와 같은 성격). ProjectInternalController
+  (내부 전용, /internal/**는 게이트웨이 라우트 없음)에 POST
+  /internal/v1/projects/reindex 추가 — Eureka 직통 호출 또는 로컬 admin 트리거로만
+  실행.
+
+2.4 에러 처리 철학 — 색인은 관대하게, 검색은 엄격하게
+--------------------------------------------------------------------------------
+- 색인(index/remove) 실패(OpenAI 임베딩 API 에러, ES 다운 등): ProjectSearchAdapter가
+  예외를 잡아 WARN 로그(projectId, 원인)만 남기고 삼킨다. create/update/delete의
+  MySQL 트랜잭션·API 응답은 그대로 성공 처리 — 검색 인덱스는 최종 일관성(eventual
+  consistency)으로 취급하고, 어긋난 상태는 reindexAllProjects()로 복구.
+- 검색(search) 실패: findAll에서 ServiceUnavailableException을 그대로 전파(503) —
+  LIKE 기반 폴백 경로는 두지 않음(그 코드는 임시 스텁이었으므로 함께 제거됨).
+- OpenAI 키/설정 누락: 애플리케이션 기동은 막지 않음. 색인 시점에 발생하면 "색인 실패"
+  경로(로그 후 흡수)로, 검색 시점에 발생하면 "검색 실패" 경로(ServiceUnavailableException
+  전파)로 자연스럽게 처리됨 — 별도 분기 필요 없이 이미 정의된 에러 경로를 그대로 탐.
+
+2.5 설정 누락의 위험성 — "에러가 없다고 정상이라고 믿으면 안 됨"
+--------------------------------------------------------------------------------
+spring.elasticsearch.uris를 beadv7_7_earlybird_config의 project-service.yml에
+OpenAI 키와 같은 방식으로 추가해야 한다. 로컬 application.yml에는 spring.application.name
+과 config-server import만 있고 실제 URI는 config repo가 공급하는 구조라(CLAUDE.md
+참고), 이 값이 빠지면 Spring Boot의 ES 클라이언트가 기본값 http://localhost:9200으로
+조용히 폴백한다 — docker-compose/실제 배포 환경에서는 이게 틀린 주소다(예:
+docker-compose 내부에서는 http://elasticsearch:9200).
+
+이 설정 누락은 기동을 막지 않고 티도 안 난다: ProjectSearchIndexInitializer는 인덱스
+생성 실패를 WARN 로그로 흡수하고, ProjectSearchAdapter.index()/remove()도 실패를 WARN
+로그로 흡수한다 — 눈에 보이는 유일한 증상은 키워드 검색이 원인 불명의 503(circuit
+breaker fallback)을 내거나, 그것도 아니면 그냥 빈 결과/이상한 결과를 조용히 돌려주는
+것뿐이다. 배포 담당자는 에러가 없다고 정상 동작을 신뢰하지 말고, 이 값이 실제로
+설정됐는지 명시적으로 확인해야 한다.
+
+2.6 구현 중 발견한 위험한 함정 — 가짜 임베딩 벡터
+--------------------------------------------------------------------------------
+구현 과정에서 한 차례, embedding이 null일 때 실제 AI 모델을 부르는 대신
+new Random(text.hashCode())로 만든 의사난수 벡터를 임시로 채워 넣는 코드가 잠깐
+들어간 적이 있다. 텍스트 내용과 전혀 무관한 랜덤 값인데, 배열 길이가 항상 1536이라
+"임베딩이 비어있는지" 체크하는 로직을 그냥 통과해버리고 진짜 벡터처럼 ES에 색인된다는
+게 문제였다. 이 상태로 두면 나중에 진짜 모델을 붙일 때 "WHERE embedding IS NOT NULL"
+같은 조건으로 "이미 벡터가 있는 행은 건너뛰기"를 하는 순간, 가짜 랜덤 벡터를 진짜인
+줄 알고 영구적으로 놓치는 조용한 데이터 오염이 생긴다.
+
+발견 즉시 제거했고, 지금은 실제 모델 호출이 실패하면 그냥 null을 유지한다(2.3절
+ProjectEmbeddingService 참고). 교훈: 앞으로 비슷한 "임시로 그럴듯한 값 채워두기" 식의
+스텁이 필요해지더라도, null과 구분이 안 되는 값으로 채우면 안 된다 — 차라리 명시적으로
+null로 남겨두는 편이 안전하다.
+
+2.7 relevance(관련도) 버그 — 2026-08-19, 가장 최근 발견/수정
+--------------------------------------------------------------------------------
+문제: ProjectSearchAdapter.doSearch()는 title match(boost 2.0)/summary match(boost
+1.2)/description match/kNN을 전부 should로만 묶고 must는 하나도 없다. ES bool 쿼리는
+should만 있으면 기본 minimum_should_match=1이라 네 조건 중 아무거나 하나만 걸려도
+매치된다. match 쿼리는 기본 연산자가 OR라 검색어가 여러 단어면 그중 한 단어만 겹쳐도
+그 clause가 통과한다. min_score 설정도 없어서 약하게 매치된 문서도 그대로 후보에
+포함됐다.
+
+실측(2026-08-19, 로컬 docker 환경, OPENAI_API_KEY 연결 후): "고양이 자동 급식기
+프로젝트"(projectId 47)와 완전히 무관한 통제군 "전자책 자가출판 플랫폼"(projectId 48)을
+만들고 "냥이"로 검색한 결과, 47/48뿐 아니라 기존의 전혀 무관한 프로젝트(수제 가죽
+노트커버, 강대혁의 시리즈 모음집, 얼리버드 로고 등 10개 이상)가 전부 함께 매치됐다.
+
+원인 확인(_analyze API): "냥이"를 korean analyzer(nori)로 분석하면 tokens: ["냥", "이"]
+로 쪼개진다. nori 사전에 "냥이"가 표준 명사로 없어서(속어라 미등재) 미등록 단어(OOV)
+처리 로직이 음절 단위로 쪼갠다. "이"는 한국어 조사/음절로 거의 모든 문장에 등장하므로,
+match(기본 OR)가 "이" 하나만으로도 통과된다.
+
+키워드 clause만으로 직접 돌려본 실제 점수(_search):
+  5.485  수제 가죽 노트커버          ← 완전 무관, 1위
+  2.789  강대혁의 시리즈 모음집       ← 완전 무관, 2위
+  1.057  고양이 자동 급식기 프로젝트  ← 진짜 타겟, 3위
+  1.035  전자책 자가출판 플랫폼       ← 무관 통제군, 4위(타겟과 0.02 차이, 사실상 동률)
+무관한 문서가 진짜 타겟보다 5배 높은 점수로 1위를 차지했다. 이건 동의어/임베딩 문제
+이전에 "미등록 속어가 흔한 조사 한 글자로 분해되는 nori 특성"과 "minimum_should_match
+없는 OR 매치"가 겹쳐 생기는 훨씬 노골적인 결함이었다.
+
+부수 문제(2번): search()는 ES가 계산한 relevance score를 버리고 projectId 리스트만
+반환한다. ProjectServiceImpl.findAll()은 이 candidateProjectIds를 JPA Specification의
+IN 조건으로만 쓰고, 최종 정렬은 ProjectSort(LATEST/DEADLINE/FUNDED_AMOUNT, 기본값
+LATEST)로 한다 — "관련도순" 정렬 옵션 자체가 ProjectSort enum에 없었다. 그 결과 ES가
+약한 점수로 겨우 매치시킨 문서가 최신순 정렬 때문에 1페이지 맨 위로 올라오고, 정작
+강하게 매치된 문서가 뒤 페이지로 밀릴 수 있었다.
+
+수정 내용(2026-08-19, 커밋 38e729d8):
+- ProjectSearchAdapter: title/summary/description(+categoryName/rewardNames) match에
+  minimum_should_match "2<70%" 적용 — 토큰 2개 이하는 전부, 3개 이상은 70% 일치를
+  요구. nori가 미등록 속어를 음절/형태소 단위로 쪼갤 때(예: "자동차"→"자동"+"차")
+  그중 흔한 한 조각만 겹쳐도 매치되는 것을 막는다. synonym filter가 같은 position에
+  만드는 동의어들은 ES가 하나의 clause로 묶어 처리하므로 이 값과 충돌하지 않는다
+  (동일 position 확장은 clause 수를 안 늘림).
+- ProjectServiceImpl: keyword 검색에 sort를 명시하지 않으면 최신순 대신 ES 관련도
+  순서(candidateProjectIds에 이미 담긴 순서)를 그대로 반환. sort를 명시하면 기존처럼
+  그 기준을 존중.
+- 실측한 시나리오를 그대로 재현하는 회귀 테스트 추가.
+
+같은 문서에서 검토했지만 대응 안 하기로 한 항목들:
+- (동의어 처리) infrastructure/elasticsearch/Dockerfile엔 nori 플러그인만 설치돼
+  있고 synonym filter/사전 파일은 코드베이스 어디에도 없다. "냥이"→"고양이"류의
+  동의어/속어 매핑은 사전 기반으로는 전혀 처리 안 되고, kNN 의미 검색 하나에만
+  의존한다. 이게 사전처럼 결정적이지 않고 확률적이라는 게 문제(임베딩 모델이 그
+  속어를 실제로 학습해뒀는지, 코사인 유사도가 하필 문턱을 넘는지에 결과가 좌우됨).
+  로컬 개발 환경은 .env.example에 OPENAI_API_KEY 항목조차 없어서(docker-compose.yml
+  기본값 빈 문자열) 로컬에서는 kNN 경로 자체가 조용히 비활성화돼 있을 가능성이 높다
+  — 즉 로컬에서 속어 검색은 키워드도 벡터도 안 걸려 아무것도 안 나올 수 있다.
+  → 결정(2026-08-19): 별도 동의어 사전 안 만듦. OpenAI 임베딩(kNN 의미 검색)으로
+    계속 대응.
+- (테스트 커버리지 공백) 기존 통합 테스트는 검색어와 겹치는 단어가 하나도 없는 두
+  프로젝트만으로 "무관한 문서는 안 나온다"를 검증했을 뿐, "단어 하나만 겹치는(하지만
+  주제는 무관한) 프로젝트가 뜨는가"는 어떤 테스트도 다루지 않았다 — 이게 위 결함이
+  CI로 안 걸러진 이유. → 회귀 테스트 추가로 해소(위 수정 내용 참고).
+- (임베딩 생성 실패 시 영구 null) Project.embedding이 null이면
+  ProjectSearchIndexEventListener.onIndexRequested()가 OpenAI를 호출해 채우는데,
+  이 호출이 실패하면(레이트리밋, 일시 장애, 키 누락 등) DB 저장을 건너뛰고 embedding
+  없는 상태 그대로 ES에 색인된다 — 이후 그 프로젝트는 키워드 매치로만 검색되고 의미
+  검색 대상에서 영구히 빠진다. 다시 채워주는 유일한 경로는 doBulkIndex(관리자 수동
+  재색인)뿐이고, project-service의 @Scheduled 잡은
+  FundedAmountReconciliationScheduler/ProjectDeadlineScheduler 둘뿐이라 임베딩 실패를
+  자동 재시도해주는 경로가 없다. → 결정(2026-08-19): 대응 안 함. 수동 벌크 재색인
+  경로가 이미 있고 발생 빈도도 낮아 자동 재시도 스케줄러까지는 우선순위 낮다고 판단.
+
+2.8 자동완성(Autocomplete) — 별도 기능으로 분리 설계 (2026-08-11)
+--------------------------------------------------------------------------------
+배경: 검색창에 타이핑할 때마다 후보 제목을 보여주는 자동완성을 추가하고 싶은데, 기존
+GET /api/v1/projects?keyword=는 키워드+AI임베딩을 같이 쓰는 무거운 검색이라 한 글자
+칠 때마다 부르기엔 느리고 응답도 무겁다(프로젝트 전체 정보가 다 들어있음). 그래서
+"제목만 빠르게 몇 개 보여주는" 가벼운 기능을 따로 만들었다.
+
+동작 방식:
+- 검색 대상은 제목(title)만 — 요약/설명까지 뒤지지 않음.
+- title은 nori로 토큰 단위로 쪼개져 색인된다. 검색어도 공백 기준으로 단어를 나눠서,
+  각 단어가 제목의 어떤 토큰이든 하나를 prefix로 매치하면 그 프로젝트가 후보에
+  포함된다(토큰 안에서의 위치는 안 봄). 예: "밥"을 치면 "고양이 밥 주는 기계"가 나옴
+  ("밥"이라는 토큰이 있으므로). 여러 단어를 치면(예: "고양이 밥") 두 단어 모두 각자
+  어떤 토큰이든 prefix 매치해야 하므로 결과가 더 좁혀진다.
+- 한 글자만 쳐도 검색됨. 100자 초과 검색어는 막음(기존 검색창과 동일 규칙).
+- 결과는 최대 10개, 각 결과는 프로젝트 ID와 제목만.
+- 매치 없으면 빈 목록(에러 아님). ES 다운되면 503(대체 경로 없음, 기존 검색 기능과
+  동일 정책). 로그인 안 해도 사용 가능.
+
+URL을 따로 만든 이유: 같은 URL인데 파라미터 하나로 응답 내용이 완전히 달라지면
+(자동완성은 {ID, 제목}만, 기존 검색은 프로젝트 전체 정보) 헷갈린다. 이미 컨트롤러에
+/api/v1/projects/me("내 프로젝트만 보기")처럼 목적이 다르면 URL 자체를 나누는 방식을
+쓰고 있어서 그 방식을 그대로 따름.
+
+서킷브레이커를 새로 안 만들고 기존 검색 기능과 공유한 이유: 자동완성이든 기존
+검색이든 결국 같은 ES 서버에 의존하니, ES가 죽으면 둘 다 같이 막히는 게 자연스럽다.
+굳이 따로 만들 이유가 없다고 판단.
+
+코드 변경: ProjectSearchPort에 autocomplete(검색어) 메서드 추가, 결과 타입
+ProjectSuggestion({프로젝트ID, 제목}) 신규. ProjectSearchAdapter는 title 필드에
+prefix 쿼리 실행 후 최대 10개로 잘라 반환(대소문자 구분 없이 매치). ProjectController에
+GET /api/v1/projects/autocomplete 추가(검색어 1~100자 제한). 응답 전용 타입
+ProjectAutocompleteResponse 신규.
+
+최종 리뷰에서 원안 대비 수정된 것: 가시성 필터 누락, prefix 다중 단어 매치, 서킷브레이커
+공유 문제가 확인되어 반영됨(구현 완료 2026-08-11).
+
+이번엔 안 하기로 한 것: 제목 매칭 방식을 더 정교하게 바꾸는 것(별도 필드 추가 등),
+요약/설명까지 자동완성 대상에 넣는 것, 카테고리/상태로 결과 필터링하는 것, 자동완성
+전용 서킷브레이커를 새로 만드는 것.
+
+2.9 알려진 한계로 명시적으로 남긴 것들
+--------------------------------------------------------------------------------
+- 결과 절단(truncation)이 categoryId/status 필터링보다 먼저 일어난다.
+  ProjectSearchAdapter.MAX_RESULTS(200)는 ES 인덱스 전체(categoryId/status 없음)에서
+  관련도 상위 200개를 자른 뒤에야 MySQL로 넘어가고, MySQL이 그다음에 categoryId/
+  status/role 필터를 적용한다. 그래서 keyword+categoryId를 같이 쓰는 요청은,
+  category-5에 실제로 매치되는 프로젝트가 있어도 그게 ES 전체 인덱스 기준 keyword
+  상위 200위 안에 못 들면 결과가 0건일 수 있다. non-ADMIN 요청에서는
+  PENDING_REVIEW/REJECTED 문서도 그 200개 후보 슬롯을 소비하고 나서야 MySQL에서
+  걸러지므로 실효 결과 집합이 더 줄어들 수 있다. 이건 "ES 문서에 categoryId/status를
+  안 넣기로 한 설계"(2.1절, YAGNI)의 자연스러운 귀결이지 구현 버그는 아니지만, 기존
+  LIKE 검색 대비 실제로 체감되는 동작 차이라 기록해 둠. MAX_RESULTS를 올리면 빈도는
+  줄지만 근본적으로 없어지지는 않는다.
+- reindexAllProjects()는 추가(additive)만 하고 고아 문서를 지우지 않는다. MySQL에서
+  이미 삭제된 프로젝트의 ES 문서가 남아 있어도, 전체 재색인은 현재 프로젝트들을 다시
+  upsert할 뿐 ES에만 남은 고아 문서는 정리하지 않는다. 인지된 한계로 남겨둠(이번
+  범위에 포함 안 함).
+- 대량 재색인 시 OpenAI 동시 호출 제한이 없다. reindexAllProjects()가 임베딩 없는
+  프로젝트 전체에 대해 색인 이벤트를 한꺼번에 발행하면, @Async 리스너가 프로젝트마다
+  독립적으로 병렬 OpenAI 호출을 시도한다. 지금 시드 데이터 수준에서는 문제없지만,
+  실제 운영 데이터로 규모가 커지면 OpenAI rate limit(429)에 걸릴 수 있다. 평소
+  개별 생성/수정 흐름(프로젝트당 이벤트 1건)에서는 발생하지 않고, "전체 재색인"
+  버튼을 대량 데이터에 쓸 때만 해당. 후속 개선 방향으로 Spring Batch 청크 분할(예:
+  50건 단위) 또는 스레드풀 동시성 제한 + @Retryable 백오프를 제안만 해두고 미착수.
+
+범위 밖으로 명시한 것(설계 문서 기준): ES 문서에 categoryId/status를 넣어 ES 쪽에서
+직접 필터링하는 방식 채택 안 함(YAGNI). "관련도순" 정렬을 새 ProjectSort 옵션으로
+추가하는 것은 최초 설계 스코프에 포함 안 됨(이후 2.7절에서 실질적으로 관련도순이
+기본 동작이 되긴 함, 별도 enum 값 추가는 아님). 별도 전용 벡터DB(Pinecone/Milvus/
+pgvector) 도입은 안 함 — ES dense_vector로 충분하다고 브레인스토밍 단계에서 합의.
+reward/board 등 다른 도메인 검색 기능은 이번 설계 범위 밖.
+
+원본 문서: docs/superpowers/specs/2026-08-06-project-elasticsearch-vector-search-design.md,
+           docs/superpowers/specs/2026-08-11-project-search-autocomplete-design.md,
+           docs/superpowers/specs/2026-08-19-project-search-relevance-review.md
+
+
+================================================================================
+3. file-service 연동
+================================================================================
+
+3.0 결합 방식 — ID 참조만, 엔티티/코드 공유 없음
+--------------------------------------------------------------------------------
+project-service는 file-service의 클래스를 전혀 모른다(FilePort 인터페이스 주석에
+명시: "프로젝트가 소유한 파일(썸네일 등) 정리 계약(Port). project 는 file-service 의
+클래스를 알지 못한다."). Project 엔티티는 thumbnailId(Long)만 필드로 가지고 있고,
+실제 파일 메타데이터/스토리지 관리는 전부 file-service 책임이다. 이건 project-service
+전체에서 일관되게 지키는 "크로스 도메인 참조는 ID로만, 엔티티/JPA 관계 공유 금지"
+원칙을 file-service와의 경계에도 그대로 적용한 것이다.
+
+thumbnailId 사용처:
+- Project.thumbnailId 필드(private, register()/updateBeforePublish()/
+  updateAfterPublish()를 통해서만 변경).
+- ProjectCreateRequest/ProjectUpdateRequest에 thumbnailId 필드로 클라이언트가
+  전달.
+- 공개(발행) 후에는 summary/description/thumbnailId만 수정 가능(endAt은 창작자가
+  못 건드림 — 별도 관리자 전용 확장 API로 분리된 정책, 별개 문서 참고).
+- ProjectResponse에 thumbnailId 그대로 노출.
+
+3.1 삭제 시 정리 흐름 — FilePort / FileFeignClient / FileHttpClient
+--------------------------------------------------------------------------------
+구조: application/port/FilePort.java(인터페이스) →
+infrastructure/client/FileFeignClient.java(@FeignClient(name = "file-service")로
+실제 HTTP 호출 선언) → infrastructure/client/FileHttpClient.java(FilePort 구현체,
+CircuitBreakerFactory로 감싸서 실행).
+
+FileHttpClient.deleteProjectFiles(Long projectId):
+    circuitBreakerFactory.create("file").run(
+        () -> { fileFeignClient.deleteByOwner("PROJECT", projectId); return null; },
+        cause -> deleteProjectFilesFallback(projectId, cause));
+
+fallback(best-effort, 실패해도 삭제를 막지 않음):
+    private Void deleteProjectFilesFallback(Long projectId, Throwable cause) {
+        log.warn("프로젝트 파일 정리 실패 → 프로젝트 삭제는 계속 진행. ...");
+        return null;
+    }
+
+코드 주석에 남긴 설계 근거: "프로젝트는 이미 삭제가 확정된 상태 — file-service 장애로
+이 정리가 실패해도 삭제 자체를 막을 이유는 없다(검색 색인 정리와 동일하게
+best-effort). 고아로 남은 파일은 나중에 별도로 정리하면 된다."
+
+3.2 왜 이렇게 단순한가 — file-service는 project-service 스코프 밖
+--------------------------------------------------------------------------------
+file-service는 다른 팀원이 담당하는 별도 모듈이라(프로젝트 전체 규칙: 각자 자기
+서비스 모듈만 건드림), project-service 쪽에서는 file-service의 내부 구현을 깊게
+설계하거나 문서화하지 않았다. project-service가 신경 쓰는 건 딱 하나 — "file-service를
+호출하는 이 경계 지점이 실패해도 project-service 자신의 핵심 로직(프로젝트 삭제)이
+멈추면 안 된다"는 것뿐이다. 그래서 2장(ES)의 "색인 실패는 흡수, 검색 실패는 전파"
+철학과 비슷하지만, file-service 쪽은 아예 "삭제 흐름의 부수 효과"이기 때문에 실패
+시나리오가 하나뿐이고(정리 실패 → 로그만 남기고 계속 진행) ES처럼 "읽기 경로에서의
+엄격한 실패(503)"에 해당하는 대칭 케이스가 없다 — file-service에 대한 "조회" 성격의
+호출(프로젝트 상세조회에 파일 URL을 채워 넣는다든가)이 지금 스코프에 없기 때문이다.
+
+같은 회로차단기 패턴(CircuitBreakerFactory + fallback)을 order-service/settlement
+연동 등 project-service의 다른 모든 외부 서비스 호출에도 동일하게 사용 중 —
+file-service 연동은 이 반복되는 패턴의 가장 단순한 인스턴스 중 하나다.
+
+================================================================================
+4. 세 주제를 관통하는 공통 설계 원칙
+================================================================================
+
+1) 본 작업(핵심 트랜잭션)은 절대 흔들리지 않게 한다.
+   - 재고 차감: 원자적 UPDATE로 "실패든 성공이든 한 줄의 SQL로 결정".
+   - ES 색인: DB 커밋이 ES 상태와 무관하게 독립적으로 성공(AFTER_COMMIT 이벤트 +
+     색인 실패 흡수).
+   - 파일 정리: 프로젝트 삭제가 file-service 장애와 무관하게 성공.
+
+2) 부수 효과(side effect)의 실패는 흡수하고, 복구 수단을 별도로 마련한다.
+   - ES 색인 실패 → WARN 로그 + 수동 전체 재색인 API.
+   - 파일 정리 실패 → WARN 로그 + "고아 파일은 나중에 별도 정리".
+   - 임베딩 생성 실패 → null 유지 + 수동 벌크 재색인.
+
+3) 반대로 "정말 정합성이 필요한 지점"(재고, 멱등성)은 프레임워크 재시도에 기대지
+   않고 DB 레벨의 원자성(단일 UPDATE 조건문, 유니크 제약)으로 강하게 보장한다.
+
+4) 읽기 경로(검색)와 쓰기 경로(색인)의 실패 정책을 의도적으로 다르게 가져간다 —
+   쓰기(색인)는 관대하게 흡수, 읽기(검색)는 엄격하게 503으로 전파(사용자에게 "검색이
+   지금 안 된다"를 숨기지 않음, 대신 "이상하게 빈 결과"를 주지 않음).
+
+5) 모든 실측/설계 결정은 "왜 다른 대안을 기각했는지"를 같이 기록한다 — 비관적 락을
+   안 쓴 이유, 동의어 사전을 안 만든 이유, REQUIRES_NEW 분리 트랜잭션을 안 쓴 이유,
+   ES에 categoryId/status를 안 넣은 이유 등. 나중에 "왜 이렇게 안 했지?"를 재조사하지
+   않도록 각 설계 문서에 대안 비교를 남겨둠.
+
+6) 아직 안 끝난 것/일부러 미룬 것도 숨기지 않고 명시적으로 기록한다 — order-service의
+   orderId 배포 조율(미완), StockChangeLog retention 정책(미착수), ES 고아 문서 정리
+   (미착수), 대량 재색인 rate limit 보호(미착수), 비관적 락 실측 비교(미착수) 등.
+   "지금 우선순위가 낮아서 안 한다"와 "존재를 몰라서 안 한다"는 다르다는 걸 기록으로
+   구분해 둔다.

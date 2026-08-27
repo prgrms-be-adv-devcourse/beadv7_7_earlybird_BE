@@ -37,7 +37,14 @@ class ProjectSearchCircuitBreakerConfigTest {
                 .extracting(config -> config.getTimeoutDuration())
                 .isEqualTo(Duration.ofSeconds(10));
 
-        // 다른 id는 여전히 이름 붙은 설정이 없다 — 이 등록이 "projectSearch"에만 좁게 적용됨을 보여준다.
+        assertThat(timeLimiterRegistry.getConfiguration("projectBulkIndex"))
+                .as("projectBulkIndex 이름의 TimeLimiterConfig가 등록되어 있어야 한다")
+                .isPresent()
+                .get()
+                .extracting(config -> config.getTimeoutDuration())
+                .isEqualTo(Duration.ofSeconds(180));
+
+        // 다른 id는 여전히 이름 붙은 설정이 없다 — 이 등록이 지정된 id에만 좁게 적용됨을 보여준다.
         assertThat(timeLimiterRegistry.getConfiguration("order")).isNotPresent();
     }
 
