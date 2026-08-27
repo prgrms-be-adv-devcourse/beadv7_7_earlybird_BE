@@ -9,6 +9,34 @@
 ### SET status = 'CONFIRMING', confirming_At = NOW(), confirmed_At = NULL, canceled_At = NULL
 ### WHERE order_id = {{payment527OrderId}} AND status = 'PAID';
 
+### 해당 테스트를 로컬에서 진행하려면, paymentKey의 암호화되지 않은 평문을 필요로 한다.
+### 따라서 로컬에서 FE를 통해 성공한 결제건이 필요하다. 그에 따라 성공한 결제건에 대한 paymentKey를 가져와야 한다.
+### 해당 프로젝트 담당자가 아니라면 토스에서 요구하는 상점ID와 시크릿 키가 다르므로 문제가 발생할 수 있다.
+### 환경변수로 PAYMENT_SECURITY_ENCRYPTION_KEY 와 PAYMENT_GATEWAY=toss 로 설정해두어야 한다.
+### PAYMENT_SECURITY_ENCRYPTION_KEY는 담당자에게 요청하면 제공받을 수 있다.
+### http 테스트가 가능한 건 이지만 살짝 복잡하다. 아래는 테스트 방법이다.
+
+### Earlybird 프로젝트의 서비스가 Config, Gateway, Discovery, Project, Order, Payment, Cart, User 서비스가 켜져있어야 한다.
+### FE 디렉터리로 이동 후 npn run dev로 프론트를 작동 시킨 후 프로젝트(상품)에 결제를 시도하고 성공한 건이 있어야한다.
+### 성공한 건이 있으면, 해당 성공한 건에 대하여 db에서의 status 변경이 필요하다. status=PAID -> status=CONFIRMING
+### CONFIRMING 상태로 변경된 건에 대하여 PaymentKey의 평문을 필요로 한다.
+### 로컬에서 테스트 하더라도 Payment-service의 담당자에게 pgOrderId를 제공하면, toss에게서 평문으로된 paymentKey를 제공받을 수 있다.
+### 그에따라 제공받은 PaymentKey로 /api/v1/payments/webhook 를 호출하면 정합화 메서드가 정상 작동한다.
+### GET http://localhost:8082/internal/v1/payments?orderId={{payment527OrderId}} 를 통해 재조회하여 상태를 확인한다.
+
+### 아래는 http 실행을 위한 환경변수 파일 양식이다.
+
+### http-client.private.env.json
+###
+### {
+###   "local": {
+###     "payment527PaymentKey": "",
+###     "payment527OrderId": "",
+###     "payment527ExpectedStatus": "PAID"
+###  }
+### }
+
+
 ### 1. Toss 웹훅 payload 전송 (permitAll — 인증 불필요)
 POST {{baseUrl}}/api/v1/payments/webhook
 Content-Type: application/json
