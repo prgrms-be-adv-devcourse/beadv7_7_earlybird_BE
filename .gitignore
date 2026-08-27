@@ -51,3 +51,7 @@ logs/
 
 ### HTTP Client CLI (ijhttp) ###
 /reports/
+
+### OS / tooling junk ###
+.DS_Store
+.playwright-mcp/
