@@ -1,0 +1,81 @@
+### 709-reply-to-comment.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/709
+### 후원자가 남긴 댓글에 창작자(또는 다른 사용자)가 답글을 달면, 부모 댓글의 targetType/targetId를
+### 그대로 물려받아 저장된다 (Comment.reply)
+
+### 1. 원댓글 작성자(후원자) 회원가입
+< {% client.global.set("backerEmail", "board709a-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!", "name": "댓글709후원자", "phoneNumber": "010-7090-0001"}
+
+> {% client.test("후원자 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 후원자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{backerEmail}}", "password": "rawPassword1!"}
+
+> {% client.test("후원자 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("backerToken", response.body.data.accessToken); %}
+
+### 3. 답글 작성자(창작자 역) 회원가입
+< {% client.global.set("creatorEmail", "board709b-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "댓글709창작자응대", "phoneNumber": "010-7090-0002"}
+
+> {% client.test("창작자 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 4. 창작자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {% client.test("창작자 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("creatorToken", response.body.data.accessToken); %}
+
+### 5. 대상 프로젝트 확보
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{backerToken}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 6. 후원자가 원댓글 등록
+POST {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{backerToken}}
+Content-Type: application/json
+
+{"content": "배송은 언제 되나요?"}
+
+> {% client.test("원댓글 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("commentId", response.body.data.id); %}
+
+### 7. 창작자가 답글 등록
+POST {{baseUrl}}/api/v1/comments/{{commentId}}/replies
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{"content": "확인 후 조치하겠습니다"}
+
+> {%
+    client.test("답글 등록 성공, parentId 일치", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(String(response.body.data.parentId) === String(client.global.get("commentId")), "parentId mismatch");
+    });
+    client.global.set("replyId", response.body.data.id);
+%}
+
+### 8. 목록 조회 — 원댓글의 replies에 방금 등록한 답글 포함
+GET {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{backerToken}}
+
+> {%
+    client.test("원댓글 replies에 답글 포함", function() {
+        client.assert(response.status === 200, response.body);
+        const parent = response.body.data.find(c => String(c.id) === String(client.global.get("commentId")));
+        client.assert(parent != null, "parent comment not found");
+        const found = parent.replies.some(r => String(r.id) === String(client.global.get("replyId")));
+        client.assert(found, "reply not found under parent");
+    });
+%}

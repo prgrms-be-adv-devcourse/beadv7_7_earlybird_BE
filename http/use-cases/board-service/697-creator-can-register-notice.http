@@ -1,0 +1,95 @@
+### 697-creator-can-register-notice.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/697
+### CREATOR 역할의 사용자가 자신의 프로젝트에 새 공지를 등록하면 저장되고 목록/상세 조회에 노출된다
+###
+### 환경: http-client.env.json 의 local/production. 위에서부터 순서대로 실행.
+### board-service의 /api/v1/notices,/comments,/reviews 는 게이트웨이 board-route로 라우팅되고
+### JWT는 UserHeaderForwardingFilter가 X-User-Id/X-User-Role로 변환해 넘겨준다 — Authorization: Bearer면 충분.
+
+### 1. 회원가입
+< {% client.global.set("creatorEmail", "board697-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!", "name": "공지697창작자", "phoneNumber": "010-6970-0001"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인 (BACKER role 토큰)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{creatorEmail}}", "password": "rawPassword1!"}
+
+> {%
+    client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); });
+    client.global.set("accessToken", response.body.data.accessToken);
+    client.global.set("refreshToken", response.body.data.refreshToken);
+%}
+
+### 3. 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-697-000001", "accountHolder": "공지697창작자"}
+
+> {% client.test("창작자 전환 성공(CREATOR)", function() { client.assert(response.status === 200 && response.body.data.role === "CREATOR", response.body); }); %}
+
+### 4. access token 재발급 (role=CREATOR 반영)
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{refreshToken}}"}
+
+> {% client.test("재발급 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessToken", response.body.data.accessToken); %}
+
+### 5. 대상 프로젝트 확보 — 공지는 project-service 실존 검증을 하지 않으므로 임의 프로젝트 ID로도 되지만,
+### 실제 화면과 가까운 값으로 진행 대상 프로젝트 하나를 가져온다
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); });
+    client.global.set("projectId", response.body.data[0].projectId);
+%}
+
+### 6. 공지 등록
+POST {{baseUrl}}/api/v1/notices?projectId={{projectId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"title": "1차 정산 안내", "content": "정산이 완료되었습니다."}
+
+> {%
+    client.test("공지 등록 성공, authorName 일치", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.authorName === "공지697창작자", "authorName mismatch: " + response.body.data.authorName);
+        client.assert(response.body.data.viewCount === 0, "initial viewCount should be 0");
+    });
+    client.global.set("noticeId", response.body.data.id);
+%}
+
+### 7. 상세 재조회 — title/content 동일, viewCount는 조회로 1 증가
+GET {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("상세 조회 성공, viewCount 1 증가", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.title === "1차 정산 안내", "title mismatch");
+        client.assert(response.body.data.content === "정산이 완료되었습니다.", "content mismatch");
+        client.assert(response.body.data.viewCount === 1, "expected viewCount 1, got " + response.body.data.viewCount);
+    });
+%}
+
+### 8. 목록 조회 — 방금 등록한 공지 포함
+GET {{baseUrl}}/api/v1/notices?projectId={{projectId}}
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.test("목록에 방금 등록한 공지 포함", function() {
+        client.assert(response.status === 200, response.body);
+        const found = response.body.data.some(n => String(n.id) === String(client.global.get("noticeId")));
+        client.assert(found, "registered notice not found in list");
+    });
+%}

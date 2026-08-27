@@ -1,0 +1,84 @@
+### 701-notice-view-increments-viewcount.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/701
+### 공지 상세 조회를 반복하면 매번 viewCount가 증가하고, 그 증가가 제목/내용 수정용
+### 낙관적 락(@Version)과 경합하지 않는다 (@OptimisticLock(excluded = true))
+
+### 1. 작성자(창작자) 회원가입
+< {% client.global.set("authorEmail", "board701-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{authorEmail}}", "password": "rawPassword1!", "name": "공지701작성자", "phoneNumber": "010-7010-0001"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{authorEmail}}", "password": "rawPassword1!"}
+
+> {% client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("refreshToken", response.body.data.refreshToken); client.global.set("accessToken", response.body.data.accessToken); %}
+
+### 3. 창작자 전환 (뒤에서 PATCH까지 확인하므로 CREATOR로 미리 전환)
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-701-000001", "accountHolder": "공지701작성자"}
+
+> {% client.test("창작자 전환 성공", function() { client.assert(response.status === 200 && response.body.data.role === "CREATOR", response.body); }); %}
+
+### 4. 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{refreshToken}}"}
+
+> {% client.test("재발급 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessToken", response.body.data.accessToken); %}
+
+### 5. 대상 프로젝트 확보
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 6. 공지 등록 (등록 직후 viewCount=0)
+POST {{baseUrl}}/api/v1/notices?projectId={{projectId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"title": "조회수 테스트", "content": "조회수 테스트 내용"}
+
+> {% client.test("공지 등록 성공, viewCount 0", function() { client.assert(response.status === 200 && response.body.data.viewCount === 0, response.body); }); client.global.set("noticeId", response.body.data.id); %}
+
+### 7. 1차 상세 조회 — viewCount 0 → 1
+GET {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("viewCount 1", function() { client.assert(response.status === 200 && response.body.data.viewCount === 1, "expected 1, got " + response.body.data.viewCount); }); %}
+
+### 8. 2차 상세 조회 — viewCount 1 → 2
+GET {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("viewCount 2", function() { client.assert(response.status === 200 && response.body.data.viewCount === 2, "expected 2, got " + response.body.data.viewCount); }); %}
+
+### 9. 3차 상세 조회 — viewCount 2 → 3
+GET {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("viewCount 3", function() { client.assert(response.status === 200 && response.body.data.viewCount === 3, "expected 3, got " + response.body.data.viewCount); }); %}
+
+### 10. 조회 직후 제목/내용 수정 — viewCount 증가가 @Version 충돌을 일으키지 않고 정상 처리되어야 함
+PATCH {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"title": "수정된 제목", "content": "수정된 내용"}
+
+> {%
+    client.test("조회수 증가와 무관하게 수정 성공", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body);
+        client.assert(response.body.data.title === "수정된 제목", "title not updated");
+    });
+%}

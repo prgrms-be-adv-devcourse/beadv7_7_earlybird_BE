@@ -1,0 +1,71 @@
+### 711-comment-update-author-only.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/711
+### 댓글(또는 답글) 작성자가 아닌 사용자가 수정을 시도하면 ADMIN 여부와 무관하게 거부된다
+### (Comment.validateAuthorOnly — role 파라미터 없음, 리뷰 수정과 동일한 패턴)
+
+### 1. 작성자 A 회원가입
+< {% client.global.set("emailA", "board711a-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{emailA}}", "password": "rawPassword1!", "name": "댓글711작성자A", "phoneNumber": "010-7110-0001"}
+
+> {% client.test("A 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. A 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{emailA}}", "password": "rawPassword1!"}
+
+> {% client.test("A 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessTokenA", response.body.data.accessToken); %}
+
+### 3. 타인 B 회원가입 (ADMIN이어도 무방하다는 것을 보이기 위해 관리자 계정을 그대로 사용)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.test("관리자 로그인 성공", function() { client.assert(response.status === 200 && response.body.data.user.role === "ADMIN", response.body); }); client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+### 4. 대상 프로젝트 확보
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 5. A가 댓글 등록
+POST {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"content": "원본 댓글"}
+
+> {% client.test("댓글 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("commentId", response.body.data.id); %}
+
+### 6. ADMIN이 수정 시도 — role과 무관하게 400
+PATCH {{baseUrl}}/api/v1/comments/{{commentId}}
+Authorization: Bearer {{adminAccessToken}}
+Content-Type: application/json
+
+{"content": "타인이 수정 시도"}
+
+> {%
+    client.test("ADMIN이어도 400으로 거부", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message === "작성자만 수정할 수 있습니다.", "unexpected message: " + response.body.error.message);
+    });
+%}
+
+### 7. A(작성자 본인)가 수정 — 성공
+PATCH {{baseUrl}}/api/v1/comments/{{commentId}}
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"content": "본인이 수정한 댓글"}
+
+> {%
+    client.test("본인 수정은 성공", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.content === "본인이 수정한 댓글", "update not applied");
+    });
+%}

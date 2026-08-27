@@ -1,0 +1,117 @@
+### 698-only-author-can-update-notice.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/698
+### 작성자 본인이 아니면 공지를 수정할 수 없다 (ProjectNotice.validateOwnership)
+###
+### PATCH /api/v1/notices/* 는 게이트웨이 SecurityConfig에서 hasRole(CREATOR)로 이미 막혀 있어
+### (gateway-server.yml), 검증하려는 사람도 반드시 CREATOR 역할이어야 board-service 자신의
+### validateOwnership(작성자 본인 여부) 로직까지 도달한다 — 그래서 A/B 둘 다 창작자로 전환한다.
+
+### 1. 작성자 A 회원가입
+< {% client.global.set("emailA", "board698a-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{emailA}}", "password": "rawPassword1!", "name": "공지698작성자A", "phoneNumber": "010-6980-0001"}
+
+> {% client.test("A 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. A 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{emailA}}", "password": "rawPassword1!"}
+
+> {% client.test("A 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("refreshTokenA", response.body.data.refreshToken); client.global.set("accessTokenA", response.body.data.accessToken); %}
+
+### 3. A 창작자 전환
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-698-000001", "accountHolder": "공지698작성자A"}
+
+> {% client.test("A 창작자 전환 성공", function() { client.assert(response.status === 200 && response.body.data.role === "CREATOR", response.body); }); %}
+
+### 4. A 토큰 재발급 (CREATOR 반영)
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{refreshTokenA}}"}
+
+> {% client.test("A 재발급 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessTokenA", response.body.data.accessToken); %}
+
+### 5. 작성자가 아닌 B 회원가입
+< {% client.global.set("emailB", "board698b-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{emailB}}", "password": "rawPassword1!", "name": "공지698타인B", "phoneNumber": "010-6980-0002"}
+
+> {% client.test("B 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 6. B 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{emailB}}", "password": "rawPassword1!"}
+
+> {% client.test("B 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("refreshTokenB", response.body.data.refreshToken); client.global.set("accessTokenB", response.body.data.accessToken); %}
+
+### 7. B도 창작자로 전환 (게이트웨이 PATCH /notices/* hasRole(CREATOR) 통과용 — 소유권 검증은 그 다음)
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessTokenB}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-698-000002", "accountHolder": "공지698타인B"}
+
+> {% client.test("B 창작자 전환 성공", function() { client.assert(response.status === 200 && response.body.data.role === "CREATOR", response.body); }); %}
+
+### 8. B 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{refreshTokenB}}"}
+
+> {% client.test("B 재발급 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessTokenB", response.body.data.accessToken); %}
+
+### 9. 대상 프로젝트 확보
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 10. A가 공지 등록
+POST {{baseUrl}}/api/v1/notices?projectId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"title": "원본 제목", "content": "원본 내용"}
+
+> {% client.test("공지 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("noticeId", response.body.data.id); %}
+
+### 11. B가 수정 시도 — 권한 없음(400)
+PATCH {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessTokenB}}
+Content-Type: application/json
+
+{"title": "변경 시도", "content": "변경 시도 내용"}
+
+> {%
+    client.test("B의 수정 시도는 400으로 거부", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message === "권한이 없습니다.", "unexpected message: " + response.body.error.message);
+    });
+%}
+
+### 12. A(작성자 본인)가 재시도 — 성공
+PATCH {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"title": "변경됨", "content": "변경된 내용"}
+
+> {%
+    client.test("본인 수정은 성공", function() {
+        client.assert(response.status === 200, response.body);
+        client.assert(response.body.data.title === "변경됨" && response.body.data.content === "변경된 내용", "update not applied");
+    });
+%}

@@ -1,0 +1,77 @@
+### 708-comment-on-nonexistent-target-rejected.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/708
+### targetId가 실제로 존재하지 않는(또는 이미 삭제된) 공지/리뷰/프로젝트를 가리키면
+### EntityNotFoundException(404)으로 거부된다
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "board708-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "댓글708작성자", "phoneNumber": "010-7080-0001"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {% client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessToken", response.body.data.accessToken); %}
+
+### 3. 존재하지 않는 임의의 큰 값을 targetId로 사용 — 404
+POST {{baseUrl}}/api/v1/comments?targetType=PROJECT_NOTICE&targetId=999999999
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"content": "존재하지 않는 공지에 문의"}
+
+> {%
+    client.test("존재하지 않는 대상은 404로 거부", function() {
+        client.assert(response.status === 404, "expected 404, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message.indexOf("존재하지 않는 댓글 대상입니다") === 0, "unexpected message: " + response.body.error.message);
+    });
+%}
+
+### 4. 대상 프로젝트 확보 (삭제된 공지 준비용)
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 5. 공지 등록 후 바로 삭제 — existsVisibleById가 false를 반환해야 하는 케이스
+POST {{baseUrl}}/api/v1/notices?projectId={{projectId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"title": "삭제될 공지", "content": "삭제될 공지 내용"}
+
+> {% client.test("공지 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("noticeId", response.body.data.id); %}
+
+### 6. 공지 삭제 (DELETE /notices/*는 hasAnyRole(CREATOR,ADMIN) — 관리자 계정으로 대신 삭제)
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "admin@earlybird.co.kr", "password": "rawPassword3!"}
+
+> {% client.test("관리자 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("adminAccessToken", response.body.data.accessToken); %}
+
+### 7. 관리자가 삭제
+DELETE {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{adminAccessToken}}
+
+> {% client.test("삭제 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 8. 삭제된 noticeId로 댓글 등록 재시도 — 404
+POST {{baseUrl}}/api/v1/comments?targetType=PROJECT_NOTICE&targetId={{noticeId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"content": "삭제된 공지에 문의"}
+
+> {%
+    client.test("삭제된 대상도 404로 거부", function() {
+        client.assert(response.status === 404, "expected 404, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message.indexOf("존재하지 않는 댓글 대상입니다") === 0, "unexpected message: " + response.body.error.message);
+    });
+%}
