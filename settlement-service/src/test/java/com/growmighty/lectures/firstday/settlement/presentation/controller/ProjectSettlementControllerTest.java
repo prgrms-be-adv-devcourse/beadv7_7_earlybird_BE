@@ -23,7 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = "settlement.dummy-pg.fixture-location=classpath:/fixtures/pg/controller-success.json")
+@SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
 class ProjectSettlementControllerTest extends MySqlIntegrationTestSupport {
