@@ -1,7 +1,7 @@
 ---
 category: FILE
 topic: 이미지 업로드, 저장 및 삭제
-owner: 김하나한
+owner: 강대혁
 last_updated: 2026-08-27
 ---
 

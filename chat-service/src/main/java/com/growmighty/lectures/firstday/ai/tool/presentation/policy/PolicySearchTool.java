@@ -27,6 +27,7 @@ public class PolicySearchTool {
             "USER: 회원가입/로그인/계정 관리 등 유저 정책\n" +
             "PROJECT: 프로젝트 등록/운영 정책\n" +
             "BOARD: 리뷰/공지/문의 작성 및 운영 정책\n" +
+            "FILE: 프로젝트 썸네일/리워드/후기 이미지 업로드, 저장 및 삭제 정책\n" +
             "ORDER: 장바구니/주문/리워드 선택 절차 (order-service+cart-service)\n" +
             "PAYMENT: 결제 수단, 결제 실패/취소 처리\n" +
             "SETTLEMENT: 펀딩 성공 시 창작자 정산, 실패 시 백커 일괄환불\n" +

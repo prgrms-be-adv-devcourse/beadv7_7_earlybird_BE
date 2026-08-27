@@ -4,6 +4,7 @@ public enum PolicyCategory {
     USER,
     PROJECT,
     BOARD,
+    FILE,
     ORDER,
     PAYMENT,
     SETTLEMENT,
