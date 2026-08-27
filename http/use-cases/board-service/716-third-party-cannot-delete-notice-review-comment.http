@@ -1,0 +1,212 @@
+### 716-third-party-cannot-delete-notice-review-comment.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/716
+### notice/review/comment 세 도메인 모두 validateOwnership이 "ADMIN이거나 작성자 본인"만 삭제를
+### 허용하는 동일한 패턴인데, 제3자(비작성자·비ADMIN)의 삭제 거부가 세 도메인 모두에서 동일하게
+### 되는지 확인한다
+###
+### notice 쪽 제3자는 CREATOR 역할이어야 한다 — DELETE /api/v1/notices/*는 게이트웨이
+### SecurityConfig가 hasAnyRole(CREATOR,ADMIN)로 이미 막아 놓아서, BACKER로 시도하면 board-service의
+### validateOwnership(이 케이스가 검증하려는 로직)에 닿기도 전에 게이트웨이 403으로 끝나버린다.
+### review/comment는 게이트웨이에 별도 role 제한이 없어 원래 이슈 설명대로 BACKER 그대로 시도한다.
+
+### production은 실제 Toss PG를 쓰고 로컬은 fake 게이트웨이를 쓴다(backer-flow.http #149와 동일 caveat) —
+### 그래서 결제 승인(8번, 또는 이에 대응하는 단계) 이후로는 임의 paymentKey로 production에서 끝까지
+### 통과하지 못한다. 이 파일의 구매 확정 이후 단계(리뷰 등록 등)는 local 환경에서만 끝까지 검증 가능하다.
+###
+
+### 1. 작성자 A 회원가입
+< {% client.global.set("emailA", "board716a-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{emailA}}", "password": "rawPassword1!", "name": "716작성자A", "phoneNumber": "010-7160-0001"}
+
+> {% client.test("A 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. A 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{emailA}}", "password": "rawPassword1!"}
+
+> {% client.test("A 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessTokenA", response.body.data.accessToken); client.global.set("userIdA", response.body.data.user.id); %}
+
+### 3. 제3자 B(창작자 — notice 삭제 시도용) 회원가입
+< {% client.global.set("emailB", "board716b-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{emailB}}", "password": "rawPassword1!", "name": "716제3자B", "phoneNumber": "010-7160-0002"}
+
+> {% client.test("B 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 4. B 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{emailB}}", "password": "rawPassword1!"}
+
+> {% client.test("B 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("refreshTokenB", response.body.data.refreshToken); client.global.set("accessTokenB", response.body.data.accessToken); %}
+
+### 5. B 창작자 전환 (게이트웨이 DELETE /notices/* hasAnyRole(CREATOR,ADMIN) 통과용)
+POST {{baseUrl}}/api/v1/users/me/creator
+Authorization: Bearer {{accessTokenB}}
+Content-Type: application/json
+
+{"bankCode": "88", "accountNumber": "110-716-000002", "accountHolder": "716제3자B"}
+
+> {% client.test("B 창작자 전환 성공", function() { client.assert(response.status === 200 && response.body.data.role === "CREATOR", response.body); }); %}
+
+### 6. B 토큰 재발급
+POST {{baseUrl}}/api/v1/users/refresh
+Content-Type: application/json
+
+{"refreshToken": "{{refreshTokenB}}"}
+
+> {% client.test("B 재발급 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessTokenB", response.body.data.accessToken); %}
+
+### 7. 제3자 C(일반 후원자 — review/comment 삭제 시도용) 회원가입
+< {% client.global.set("emailC", "board716c-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{emailC}}", "password": "rawPassword1!", "name": "716제3자C", "phoneNumber": "010-7160-0003"}
+
+> {% client.test("C 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 8. C 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{emailC}}", "password": "rawPassword1!"}
+
+> {% client.test("C 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessTokenC", response.body.data.accessToken); %}
+
+### 9. 대상 프로젝트/리워드 확보
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 10. 리워드 조회
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("리워드 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("rewardId", response.body.data[0].rewardId); client.global.set("rewardPrice", response.body.data[0].price); %}
+
+### 11. A가 공지 등록
+POST {{baseUrl}}/api/v1/notices?projectId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"title": "716 공지", "content": "716 공지 내용"}
+
+> {% client.test("공지 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("noticeId", response.body.data.id); %}
+
+### 12. A가 댓글 등록
+POST {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"content": "716 댓글"}
+
+> {% client.test("댓글 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("commentId", response.body.data.id); %}
+
+### 13. A 장바구니 담기 (리뷰용 구매 확정 시작)
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}]}
+
+> {% client.test("장바구니 담기 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 14. A 후원(주문 생성)
+< {%
+    const price = Number(client.global.get("rewardPrice"));
+    const shippingFee = price >= 50000 ? 0 : 3000;
+    request.variables.set("expectedItemsAmount", price);
+    request.variables.set("expectedTotalAmount", price + shippingFee);
+    client.global.set("expectedTotalAmount", price + shippingFee);
+%}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"userId": {{userIdA}}, "requests": [{"rewardId": {{rewardId}}, "quantity": 1, "expectedUnitPrice": {{rewardPrice}}}], "receiverName": "716작성자A", "receiverPhone": "010-7160-0001", "shippingAddress": "서울시 강남구", "zipCode": "06236", "expectedItemsAmount": {{expectedItemsAmount}}, "expectedTotalAmount": {{expectedTotalAmount}}, "orderIdempotencyKey": "{{$uuid}}"}
+
+> {% client.test("후원 생성 성공(PAYMENT_PENDING)", function() { client.assert(response.status === 200 && response.body.data.status === "PAYMENT_PENDING", response.body); }); client.global.set("orderId", response.body.data.id); %}
+
+### 15. 결제 정보 조회
+GET {{baseUrl}}/api/v1/payments?orderId={{orderId}}
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("결제 정보 조회 성공(READY)", function() { client.assert(response.status === 200 && response.body.data.status === "READY", response.body); }); client.global.set("pgOrderId", response.body.data.pgOrderId); %}
+
+### 16. 결제 승인
+POST {{baseUrl}}/api/v1/payments/confirm
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"paymentKey": "{{$uuid}}", "pgOrderId": "{{pgOrderId}}", "amount": {{expectedTotalAmount}}}
+
+> {% client.test("결제 승인 성공(PAID)", function() { client.assert(response.status === 200 && response.body.data.status === "PAID", response.body); }); %}
+
+### 17. A가 리뷰 등록
+POST {{baseUrl}}/api/v1/reviews?projectId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+Content-Type: application/json
+
+{"rewardId": {{rewardId}}, "rating": 4, "content": "716 리뷰"}
+
+> {% client.test("리뷰 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("reviewId", response.body.data.id); %}
+
+### 18. B(창작자, 비작성자)가 공지 삭제 시도 — 400
+DELETE {{baseUrl}}/api/v1/notices/{{noticeId}}
+Authorization: Bearer {{accessTokenB}}
+
+> {%
+    client.test("공지: 제3자 삭제는 400으로 거부", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message === "권한이 없습니다.", "unexpected message: " + response.body.error.message);
+    });
+%}
+
+### 19. C(일반 후원자, 비작성자)가 리뷰 삭제 시도 — 400
+DELETE {{baseUrl}}/api/v1/reviews/{{reviewId}}
+Authorization: Bearer {{accessTokenC}}
+
+> {%
+    client.test("리뷰: 제3자 삭제는 400으로 거부", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message === "권한이 없습니다.", "unexpected message: " + response.body.error.message);
+    });
+%}
+
+### 20. C(일반 후원자, 비작성자)가 댓글 삭제 시도 — 400
+DELETE {{baseUrl}}/api/v1/comments/{{commentId}}
+Authorization: Bearer {{accessTokenC}}
+
+> {%
+    client.test("댓글: 제3자 삭제는 400으로 거부", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message === "권한이 없습니다.", "unexpected message: " + response.body.error.message);
+    });
+%}
+
+### 21. 세 리소스 모두 삭제되지 않고 그대로 노출되는지 확인
+GET {{baseUrl}}/api/v1/notices?projectId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("공지 그대로 노출", function() { const found = response.body.data.some(n => String(n.id) === String(client.global.get("noticeId"))); client.assert(found, "notice should still be visible"); }); %}
+
+### 22.
+GET {{baseUrl}}/api/v1/reviews?projectId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("리뷰 그대로 노출", function() { const found = response.body.data.some(r => String(r.id) === String(client.global.get("reviewId"))); client.assert(found, "review should still be visible"); }); %}
+
+### 23.
+GET {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{accessTokenA}}
+
+> {% client.test("댓글 그대로 노출", function() { const found = response.body.data.some(c => String(c.id) === String(client.global.get("commentId"))); client.assert(found, "comment should still be visible"); }); %}

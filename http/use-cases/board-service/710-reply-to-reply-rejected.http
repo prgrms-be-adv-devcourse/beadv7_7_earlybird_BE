@@ -1,0 +1,57 @@
+### 710-reply-to-reply-rejected.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/710
+### 답글(대댓글)에 다시 답글을 달려고 하면 구조적으로 1단까지만 허용되어 거부된다 (Comment.validateReplyable)
+
+### 1. 원댓글 작성자 회원가입
+< {% client.global.set("userEmail", "board710-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "댓글710작성자", "phoneNumber": "010-7100-0001"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {% client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessToken", response.body.data.accessToken); %}
+
+### 3. 대상 프로젝트 확보
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 4. 원댓글 등록
+POST {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"content": "원댓글"}
+
+> {% client.test("원댓글 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("commentId", response.body.data.id); %}
+
+### 5. 대댓글(1단) 등록
+POST {{baseUrl}}/api/v1/comments/{{commentId}}/replies
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"content": "1단 대댓글"}
+
+> {% client.test("1단 대댓글 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("replyId", response.body.data.id); %}
+
+### 6. 대댓글에 다시 답글 시도 — 400
+POST {{baseUrl}}/api/v1/comments/{{replyId}}/replies
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"content": "대댓글에 또 답글 시도"}
+
+> {%
+    client.test("2단 답글은 400으로 거부", function() {
+        client.assert(response.status === 400, "expected 400, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message === "대댓글에는 답글을 달 수 없습니다.", "unexpected message: " + response.body.error.message);
+    });
+%}

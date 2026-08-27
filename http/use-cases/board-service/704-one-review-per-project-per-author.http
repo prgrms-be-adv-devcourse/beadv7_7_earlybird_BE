@@ -1,0 +1,102 @@
+### 704-one-review-per-project-per-author.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/704
+### 이미 같은 프로젝트에 활성 리뷰가 있는 사용자가 같은 프로젝트에 리뷰를 한 번 더 등록하려 하면
+### DuplicateReviewException(409)으로 거부된다 (existsActiveByProjectIdAndAuthorId)
+###
+### 1~8번은 backer-flow.http와 동일한 구매 확정 시나리오.
+
+### production은 실제 Toss PG를 쓰고 로컬은 fake 게이트웨이를 쓴다(backer-flow.http #149와 동일 caveat) —
+### 그래서 결제 승인(8번, 또는 이에 대응하는 단계) 이후로는 임의 paymentKey로 production에서 끝까지
+### 통과하지 못한다. 이 파일의 구매 확정 이후 단계(리뷰 등록 등)는 local 환경에서만 끝까지 검증 가능하다.
+###
+
+### 1. 회원가입
+< {% client.global.set("userEmail", "board704-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!", "name": "리뷰704구매자", "phoneNumber": "010-7040-0001"}
+
+> {% client.test("회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{userEmail}}", "password": "rawPassword1!"}
+
+> {% client.test("로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("accessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
+
+### 3. 진행중인 프로젝트 조회
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 4. 리워드 조회
+GET {{baseUrl}}/api/v1/projects/{{projectId}}/rewards
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("리워드 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("rewardId", response.body.data[0].rewardId); client.global.set("rewardPrice", response.body.data[0].price); %}
+
+### 5. 장바구니 담기
+POST {{baseUrl}}/api/v1/carts/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"projectId": {{projectId}}, "items": [{"rewardId": {{rewardId}}, "quantity": 1}]}
+
+> {% client.test("장바구니 담기 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 6. 후원(주문 생성)
+< {%
+    const price = Number(client.global.get("rewardPrice"));
+    const shippingFee = price >= 50000 ? 0 : 3000;
+    request.variables.set("expectedItemsAmount", price);
+    request.variables.set("expectedTotalAmount", price + shippingFee);
+    client.global.set("expectedTotalAmount", price + shippingFee);
+%}
+POST {{baseUrl}}/api/v1/orders
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"userId": {{userId}}, "requests": [{"rewardId": {{rewardId}}, "quantity": 1, "expectedUnitPrice": {{rewardPrice}}}], "receiverName": "리뷰704구매자", "receiverPhone": "010-7040-0001", "shippingAddress": "서울시 강남구", "zipCode": "06236", "expectedItemsAmount": {{expectedItemsAmount}}, "expectedTotalAmount": {{expectedTotalAmount}}, "orderIdempotencyKey": "{{$uuid}}"}
+
+> {% client.test("후원 생성 성공(PAYMENT_PENDING)", function() { client.assert(response.status === 200 && response.body.data.status === "PAYMENT_PENDING", response.body); }); client.global.set("orderId", response.body.data.id); %}
+
+### 7. 결제 정보 조회
+GET {{baseUrl}}/api/v1/payments?orderId={{orderId}}
+Authorization: Bearer {{accessToken}}
+
+> {% client.test("결제 정보 조회 성공(READY)", function() { client.assert(response.status === 200 && response.body.data.status === "READY", response.body); }); client.global.set("pgOrderId", response.body.data.pgOrderId); %}
+
+### 8. 결제 승인
+POST {{baseUrl}}/api/v1/payments/confirm
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"paymentKey": "{{$uuid}}", "pgOrderId": "{{pgOrderId}}", "amount": {{expectedTotalAmount}}}
+
+> {% client.test("결제 승인 성공(PAID)", function() { client.assert(response.status === 200 && response.body.data.status === "PAID", response.body); }); %}
+
+### 9. 첫 리뷰 등록 — 성공
+POST {{baseUrl}}/api/v1/reviews?projectId={{projectId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"rewardId": {{rewardId}}, "rating": 4, "content": "첫 번째 리뷰"}
+
+> {% client.test("첫 리뷰 등록 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 10. 같은 프로젝트에 재등록 시도 — 409
+POST {{baseUrl}}/api/v1/reviews?projectId={{projectId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"rewardId": {{rewardId}}, "rating": 3, "content": "두 번째 리뷰 시도"}
+
+> {%
+    client.test("중복 리뷰는 409로 거부", function() {
+        client.assert(response.status === 409, "expected 409, got " + response.status + ": " + response.body);
+        client.assert(response.body.error.message.indexOf("이미 이 프로젝트에 리뷰를 작성했습니다") === 0, "unexpected message: " + response.body.error.message);
+    });
+%}

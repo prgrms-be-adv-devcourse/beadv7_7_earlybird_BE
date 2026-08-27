@@ -1,0 +1,105 @@
+### 715-multiple-replies-grouped-correctly.http — https://github.com/prgrms-be-adv-devcourse/beadv7_7_earlybird_BE/issues/715
+### 부모 댓글 하나에 답글이 2개 이상 달렸을 때, 목록 조회(getByTarget)의 그룹핑 로직이
+### 모든 답글을 부모 밑에 빠짐없이 묶어 반환한다 (지금까지는 답글 1개짜리 케이스만 검증됨)
+
+### 1. 원댓글 작성자 회원가입
+< {% client.global.set("authorEmail", "board715a-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{authorEmail}}", "password": "rawPassword1!", "name": "댓글715원작성자", "phoneNumber": "010-7150-0001"}
+
+> {% client.test("원작성자 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 2. 원댓글 작성자 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{authorEmail}}", "password": "rawPassword1!"}
+
+> {% client.test("원작성자 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("authorToken", response.body.data.accessToken); %}
+
+### 3. 답글 작성자 C1 회원가입
+< {% client.global.set("c1Email", "board715b-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{c1Email}}", "password": "rawPassword1!", "name": "댓글715C1", "phoneNumber": "010-7150-0002"}
+
+> {% client.test("C1 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 4. C1 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{c1Email}}", "password": "rawPassword1!"}
+
+> {% client.test("C1 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("c1Token", response.body.data.accessToken); %}
+
+### 5. 답글 작성자 C2 회원가입
+< {% client.global.set("c2Email", "board715c-" + Date.now() + "@earlybird.co.kr"); %}
+POST {{baseUrl}}/api/v1/users/signup
+Content-Type: application/json
+
+{"email": "{{c2Email}}", "password": "rawPassword1!", "name": "댓글715C2", "phoneNumber": "010-7150-0003"}
+
+> {% client.test("C2 회원가입 성공", function() { client.assert(response.status === 200, response.body); }); %}
+
+### 6. C2 로그인
+POST {{baseUrl}}/api/v1/users/login
+Content-Type: application/json
+
+{"email": "{{c2Email}}", "password": "rawPassword1!"}
+
+> {% client.test("C2 로그인 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("c2Token", response.body.data.accessToken); %}
+
+### 7. 대상 프로젝트 확보
+GET {{baseUrl}}/api/v1/projects?status=IN_PROGRESS
+Authorization: Bearer {{authorToken}}
+
+> {% client.test("프로젝트 조회 성공", function() { client.assert(response.status === 200 && response.body.data.length > 0, response.body); }); client.global.set("projectId", response.body.data[0].projectId); %}
+
+### 8. 원댓글(부모) 등록
+POST {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{authorToken}}
+Content-Type: application/json
+
+{"content": "부모 댓글"}
+
+> {% client.test("부모 댓글 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("commentId", response.body.data.id); %}
+
+### 9. C1의 답글
+POST {{baseUrl}}/api/v1/comments/{{commentId}}/replies
+Authorization: Bearer {{c1Token}}
+Content-Type: application/json
+
+{"content": "답글 1"}
+
+> {% client.test("답글 1 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("reply1Id", response.body.data.id); %}
+
+### 10. C2의 답글
+POST {{baseUrl}}/api/v1/comments/{{commentId}}/replies
+Authorization: Bearer {{c2Token}}
+Content-Type: application/json
+
+{"content": "답글 2"}
+
+> {% client.test("답글 2 등록 성공", function() { client.assert(response.status === 200, response.body); }); client.global.set("reply2Id", response.body.data.id); %}
+
+### 11. 목록 조회 — 부모 하나, replies 안에 답글 1·2 모두 포함(누락/별도 루트 분리 없이)
+GET {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId={{projectId}}
+Authorization: Bearer {{authorToken}}
+
+> {%
+    client.test("두 답글 모두 부모 밑에 그룹핑됨", function() {
+        client.assert(response.status === 200, response.body);
+        const parent = response.body.data.find(c => String(c.id) === String(client.global.get("commentId")));
+        client.assert(parent != null, "parent comment not found as root");
+        const replyIds = parent.replies.map(r => String(r.id));
+        client.assert(replyIds.includes(String(client.global.get("reply1Id"))), "reply1 missing");
+        client.assert(replyIds.includes(String(client.global.get("reply2Id"))), "reply2 missing");
+        client.assert(parent.replies.length === 2, "expected exactly 2 replies, got " + parent.replies.length);
+        const strayRoots = response.body.data.filter(c => c.id === client.global.get("reply1Id") || c.id === client.global.get("reply2Id"));
+        client.assert(strayRoots.length === 0, "replies should not appear as separate roots");
+    });
+%}
