@@ -67,11 +67,13 @@ public interface OrderJpaRepository extends JpaRepository<Order, Long> {
         where o.userId = :userId
           and oi.rewardId = :rewardId
           and o.status = :status
+        order by o.createdAt desc, o.id desc, oi.id desc
         """)
-    Optional<OrderItem> findPaidItem(
+    List<OrderItem> findPaidItems(
             @Param("userId") Long userId,
             @Param("rewardId") Long rewardId,
-            @Param("status") OrderStatus status);
+            @Param("status") OrderStatus status,
+            Pageable pageable);
 
     @Query("""
     select o from Order o

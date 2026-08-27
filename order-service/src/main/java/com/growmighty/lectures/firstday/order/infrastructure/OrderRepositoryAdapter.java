@@ -63,7 +63,8 @@ public class OrderRepositoryAdapter implements OrderRepository {
 
     @Override
     public Optional<OrderItem> findPaidItem(Long userId, Long rewardId) {
-        return jpaRepository.findPaidItem(userId, rewardId, OrderStatus.PAID);
+        return jpaRepository.findPaidItems(userId, rewardId, OrderStatus.PAID, PageRequest.of(0, 1)).stream()
+                .findFirst();
     }
 
     @Override
