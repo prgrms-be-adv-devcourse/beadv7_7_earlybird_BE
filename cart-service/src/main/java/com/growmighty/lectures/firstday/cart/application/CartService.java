@@ -45,7 +45,7 @@ public class CartService {
         Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(allRewardIds);
 
         validateRewards(command.projectId(), items, rewards);
-        retainProjectItems(cart, command.projectId(), rewards);
+        retainProjectItems(cart, command.projectId(), requestedRewardIds, rewards);
         validateDistinctItemsLimit(cart, items);
         validateFinalQuantities(cart, items, rewards, true);
 
@@ -67,7 +67,7 @@ public class CartService {
         Map<Long, RewardSnapshot> rewards = rewardPort.getRewards(allRewardIds);
 
         validateRewards(command.projectId(), items, rewards);
-        retainProjectItems(cart, command.projectId(), rewards);
+        retainProjectItems(cart, command.projectId(), requestedRewardIds, rewards);
         validateDistinctItemsLimit(cart, items);
         validateFinalQuantities(cart, items, rewards, false);
 
@@ -147,10 +147,10 @@ public class CartService {
             if (reward == null) {
                 throw new EntityNotFoundException("Reward not found. rewardId=" + item.rewardId());
             }
-            if (reward.projectId() == null) {
+            if (reward.projectId() == null && !reward.fallback()) {
                 throw new IllegalStateException("Reward project could not be resolved. rewardId=" + item.rewardId());
             }
-            if (!Objects.equals(projectId, reward.projectId())) {
+            if (reward.projectId() != null && !Objects.equals(projectId, reward.projectId())) {
                 throw new IllegalArgumentException("Reward does not belong to the project. projectId="
                         + projectId + ", rewardId=" + item.rewardId());
             }
@@ -160,13 +160,20 @@ public class CartService {
         }
     }
 
-    private void retainProjectItems(Cart cart, Long projectId, Map<Long, RewardSnapshot> rewards) {
+    private void retainProjectItems(Cart cart, Long projectId, Set<Long> requestedRewardIds,
+                                    Map<Long, RewardSnapshot> rewards) {
         Set<Long> rewardsFromOtherProjects = cart.getItems().stream()
                 .map(CartItem::getRewardId)
                 .filter(rewardId -> {
                     RewardSnapshot reward = rewards.get(rewardId);
-                    if (reward == null || reward.projectId() == null) {
+                    if (reward == null) {
                         throw new IllegalStateException("Cart reward project could not be resolved. rewardId=" + rewardId);
+                    }
+                    if (reward.projectId() == null && !reward.fallback()) {
+                        throw new IllegalStateException("Cart reward project could not be resolved. rewardId=" + rewardId);
+                    }
+                    if (reward.projectId() == null) {
+                        return !requestedRewardIds.contains(rewardId);
                     }
                     return !Objects.equals(projectId, reward.projectId());
                 })
