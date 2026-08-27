@@ -80,6 +80,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final RewardRepository rewardRepository;
     private final CategoryIntentResolver categoryIntentResolver;
     private final QueryIntentAnalyzer queryIntentAnalyzer;
+    private final java.util.concurrent.Executor searchTaskExecutor;
 
     @Override
     public void index(Project project) {
@@ -193,6 +194,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         // BM25는 항상 원본 쿼리를 사용하므로 QueryIntent LLM/임베딩을 기다리지 않고 즉시 격발한다.
         CompletableFuture<List<ScoredDocument>> bm25Future = CompletableFuture.supplyAsync(() -> {
             long bm25Start = System.currentTimeMillis();
+            log.debug("[ProjectSearch Diagnostic] BM25 START on thread: {}", Thread.currentThread().getName());
             Query keywordQuery = Query.of(q -> q.bool(b -> {
                 b.should(s -> s.match(m -> m.field("title").query(trimmedKeyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
                         .should(s -> s.match(m -> m.field("summary").query(trimmedKeyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
@@ -215,9 +217,9 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
             List<ScoredDocument> docs = searchKeywordScored(keywordQuery);
             long bm25Elapsed = System.currentTimeMillis() - bm25Start;
-            log.debug("[ProjectSearch Latency] BM25 검색: {}ms, 매칭 {}건", bm25Elapsed, docs.size());
+            log.debug("[ProjectSearch Latency] BM25 END: {}ms, 매칭 {}건 on thread: {}", bm25Elapsed, docs.size(), Thread.currentThread().getName());
             return docs;
-        });
+        }, searchTaskExecutor);
 
         // ── 3. [Branch 2: QueryIntent → Embedding → kNN (비동기 병렬 실행)] ──────────
         record VectorBranchResult(
@@ -233,6 +235,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         ) {}
 
         CompletableFuture<VectorBranchResult> vectorFuture = CompletableFuture.supplyAsync(() -> {
+            log.debug("[ProjectSearch Diagnostic] Vector Branch START on thread: {}", Thread.currentThread().getName());
             // (1) QueryIntent 분석 (LLM 또는 캐시 또는 passThrough)
             long llmStart = System.currentTimeMillis();
             QueryIntent intent;
@@ -255,6 +258,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
             // (2) 임베딩 생성 (OpenAI Embedding API)
             long embStart = System.currentTimeMillis();
+            log.debug("[ProjectSearch Diagnostic] Embedding START for query: '{}' on thread: {}", queryForEmbedding, Thread.currentThread().getName());
             float[] queryVector = null;
             try {
                 queryVector = embeddingService.generateEmbedding(queryForEmbedding);
@@ -262,6 +266,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 log.warn("[ProjectSearch] 임베딩 생성 실패: {}", e.getMessage());
             }
             long embeddingElapsed = System.currentTimeMillis() - embStart;
+            log.debug("[ProjectSearch Diagnostic] Embedding END: {}ms on thread: {}", embeddingElapsed, Thread.currentThread().getName());
 
             if (queryVector == null || queryVector.length == 0) {
                 return new VectorBranchResult(
@@ -289,18 +294,21 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
             // (4) 5개 필드 kNN 검색 병렬 격발
             long knnStart = System.currentTimeMillis();
+            log.debug("[ProjectSearch Diagnostic] kNN 5-field START on thread: {}", Thread.currentThread().getName());
             CompletableFuture<List<ScoredDocument>> rewardFuture = CompletableFuture.supplyAsync(
-                    () -> searchFieldKnnScored("rewardVector", vectorList, 20, 50, exactCategoryIds));
+                    () -> searchFieldKnnScored("rewardVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
             CompletableFuture<List<ScoredDocument>> titleFuture = CompletableFuture.supplyAsync(
-                    () -> searchFieldKnnScored("titleVector", vectorList, 20, 50, exactCategoryIds));
+                    () -> searchFieldKnnScored("titleVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
             CompletableFuture<List<ScoredDocument>> catVecFuture = CompletableFuture.supplyAsync(
-                    () -> searchFieldKnnScored("categoryVector", vectorList, 20, 50, exactCategoryIds));
+                    () -> searchFieldKnnScored("categoryVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
             CompletableFuture<List<ScoredDocument>> summaryFuture = CompletableFuture.supplyAsync(
-                    () -> searchFieldKnnScored("summaryVector", vectorList, 20, 50, exactCategoryIds));
+                    () -> searchFieldKnnScored("summaryVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
             CompletableFuture<List<ScoredDocument>> descFuture = CompletableFuture.supplyAsync(
-                    () -> searchFieldKnnScored("descriptionVector", vectorList, 20, 50, exactCategoryIds));
+                    () -> searchFieldKnnScored("descriptionVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
 
+            log.debug("[ProjectSearch Diagnostic] Vector outer task BEFORE JOIN for kNN 5-field on thread: {}", Thread.currentThread().getName());
             CompletableFuture.allOf(rewardFuture, titleFuture, catVecFuture, summaryFuture, descFuture).join();
+            log.debug("[ProjectSearch Diagnostic] Vector outer task AFTER JOIN for kNN 5-field on thread: {}", Thread.currentThread().getName());
 
             List<ScoredDocument> rewardScored = rewardFuture.join();
             List<ScoredDocument> titleScored = titleFuture.join();
@@ -317,13 +325,15 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                     rewardScored, titleScored, categoryVectorScored, summaryScored, descScored,
                     categoryIntentBoostProjectIds, llmElapsed, embeddingElapsed, knnElapsed
             );
-        }).exceptionally(ex -> {
+        }, searchTaskExecutor).exceptionally(ex -> {
             log.warn("[ProjectSearch] Vector Branch 실행 중 예외 발생, BM25 단독 폴백: {}", ex.getMessage());
             return new VectorBranchResult(List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(), 0, 0, 0);
         });
 
         // ── 4. 두 Branch 결과 대기 및 결합 (Graceful Degradation) ─────────────────────
+        log.debug("[ProjectSearch Diagnostic] Main thread BEFORE JOIN for BM25 and Vector Branch on thread: {}", Thread.currentThread().getName());
         CompletableFuture.allOf(bm25Future, vectorFuture).join();
+        log.debug("[ProjectSearch Diagnostic] Main thread AFTER JOIN for BM25 and Vector Branch on thread: {}", Thread.currentThread().getName());
 
         List<ScoredDocument> keywordScored = bm25Future.join();
         VectorBranchResult vectorRes = vectorFuture.join();

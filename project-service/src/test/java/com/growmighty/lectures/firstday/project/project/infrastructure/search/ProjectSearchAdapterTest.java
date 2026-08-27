@@ -81,7 +81,8 @@ class ProjectSearchAdapterTest {
         adapter = new ProjectSearchAdapter(
                 elasticsearchOperations, elasticsearchClient, circuitBreakerFactory,
                 eventPublisher, embeddingService, projectRepository, categoryRepository,
-                rewardRepository, categoryIntentResolver, queryIntentAnalyzer);
+                rewardRepository, categoryIntentResolver, queryIntentAnalyzer,
+                Runnable::run); // 단위 테스트에서는 Runnable::run 또는 VirtualThreadExecutor 사용
     }
 
     private Project project() {
