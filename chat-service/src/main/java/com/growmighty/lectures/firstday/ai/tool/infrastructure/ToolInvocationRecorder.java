@@ -9,6 +9,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Spring 빈이 아니라 매 요청마다 {@code ChatOrchestrationService}가 직접 생성해 {@code ToolContext}로 넘기는
@@ -19,6 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * tool 실행 스레드와 구독 콜백 스레드가 emitter에 동시에 쓰는걸 막는다.
  */
 public class ToolInvocationRecorder {
+
+    private static final Pattern PROJECT_HEADER_LINE = Pattern.compile("^\\*\\*(.+)\\*\\*$");
 
     public static final String TOOL_CONTEXT_KEY = "recorder";
     private final String conversationId;
@@ -113,8 +118,14 @@ public class ToolInvocationRecorder {
     }
 
     public List<Long> narratedBrowseCandidateIds(String fullText) {
+        Set<String> narratedTitles = fullText.lines()
+            .map(line -> PROJECT_HEADER_LINE.matcher(line.trim()))
+            .filter(Matcher::matches)
+            .map(m -> m.group(1).trim())
+            .collect(Collectors.toSet());
+
         return browseCandidates.stream()
-            .filter(p -> fullText.contains(p.title()))
+            .filter(p -> narratedTitles.contains(p.title()))
             .map(ProjectSearchResult::projectId)
             .distinct()
             .toList();
