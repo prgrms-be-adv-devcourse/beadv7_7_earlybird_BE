@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.ai.tool.feign.httpClient.project;
 
 import com.growmighty.lectures.firstday.ai.tool.feign.httpClient.project.dto.ProjectDetailApiData;
+import com.growmighty.lectures.firstday.ai.tool.feign.port.file.FileLookupPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.ProjectDetailPort;
 import com.growmighty.lectures.firstday.ai.tool.feign.port.project.dto.ProjectDetailResult;
 import com.growmighty.lectures.firstday.common.exception.ServiceUnavailableException;
@@ -17,6 +18,7 @@ public class ProjectDetailHttpClient implements ProjectDetailPort {
 
     private final ProjectDetailFeignClient projectDetailFeignClient;
     private final CircuitBreakerFactory circuitBreakerFactory;
+    private final FileLookupPort fileLookupPort;
 
     @Override
     public ProjectDetailResult findById(Long projectId) {
@@ -39,7 +41,8 @@ public class ProjectDetailHttpClient implements ProjectDetailPort {
             data.startAt(),
             data.endAt(),
             ProjectStatusDisplay.toKorean(data.status()),
-            data.closed()
+            data.closed(),
+            data.thumbnailId() != null ? fileLookupPort.findThumbnailUrl(data.projectId(), data.thumbnailId()) : null
         );
     }
 

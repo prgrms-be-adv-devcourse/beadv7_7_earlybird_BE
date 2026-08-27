@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.board.review.domain.ReviewStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record ReviewResult(
         Long id,
@@ -17,9 +18,14 @@ public record ReviewResult(
         String content,
         ReviewStatus status,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        List<String> photoUrls
 ) {
     public static ReviewResult from(Review review) {
+        return from(review, List.of());
+    }
+
+    public static ReviewResult from(Review review, List<String> photoUrls) {
         return new ReviewResult(
                 review.getId(),
                 review.getProjectId(),
@@ -31,6 +37,7 @@ public record ReviewResult(
                 review.getContent(),
                 review.getStatus(),
                 review.getCreatedAt(),
-                review.getUpdatedAt());
+                review.getUpdatedAt(),
+                photoUrls);
     }
 }

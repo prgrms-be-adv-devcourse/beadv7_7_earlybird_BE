@@ -11,6 +11,7 @@ public record ProjectSearchResult(
     String status,
     BigDecimal goalAmount,
     BigDecimal fundedAmount,
-    LocalDate endAt
+    LocalDate endAt,
+    String thumbnailUrl
 ) {
 }

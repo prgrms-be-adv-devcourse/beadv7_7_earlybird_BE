@@ -67,26 +67,14 @@ public class TossPaymentGateway implements PaymentGateway {
 
     @Override
     public PgApproval approve(String paymentKey, String pgOrderId, BigDecimal amount, String idempotencyKey) {
-        Supplier<PgApproval> approvalSupplier = () -> requestApproval(paymentKey, pgOrderId, amount, idempotencyKey);
-        Supplier<PgApproval> rateLimitedSupplier = RateLimiter.decorateSupplier(paymentApprovalRateLimiter, approvalSupplier);
-        Supplier<PgApproval> retrySupplier = Retry.decorateSupplier(paymentApprovalRetry, rateLimitedSupplier);
-        Supplier<PgApproval> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentApprovalCircuitBreaker, retrySupplier);
-
-        try {
-            return circuitBreakerSupplier.get();
-        } catch (RequestNotPermitted exception) {
-            throw new PaymentGatewayException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                PaymentGatewayFailureType.UNCERTAIN,
-                "토스 결제 승인 요청 한도를 초과했습니다. 잠시 후 재시도합니다."
-            );
-        } catch (CallNotPermittedException exception) {
-            throw new PaymentGatewayException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                PaymentGatewayFailureType.UNCERTAIN,
-                "토스 결제 승인 요청이 일시적으로 차단되었습니다."
-            );
-        }
+        return executeWithResilience( // <--
+            () -> requestApproval(paymentKey, pgOrderId, amount, idempotencyKey),
+            paymentApprovalRateLimiter,
+            paymentApprovalRetry,
+            paymentApprovalCircuitBreaker,
+            "토스 결제 승인 요청 한도를 초과했습니다. 잠시 후 재시도합니다.",
+            "토스 결제 승인 요청이 일시적으로 차단되었습니다."
+        );
     }
 
     private PgApproval requestApproval(
@@ -129,10 +117,38 @@ public class TossPaymentGateway implements PaymentGateway {
     }
     @Override
     public PgPayment getPayment(String paymentKey) {
-        Supplier<PgPayment> lookupSupplier = () -> requestPayment(paymentKey);
-        Supplier<PgPayment> rateLimitedSupplier = RateLimiter.decorateSupplier(paymentLookupRateLimiter, lookupSupplier);
-        Supplier<PgPayment> retrySupplier = Retry.decorateSupplier(paymentLookupRetry, rateLimitedSupplier);
-        Supplier<PgPayment> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(paymentLookupCircuitBreaker, retrySupplier);
+        return executeWithResilience( // <--
+            () -> requestPayment(paymentKey),
+            paymentLookupRateLimiter,
+            paymentLookupRetry,
+            paymentLookupCircuitBreaker,
+            "토스 결제 조회 요청 한도를 초과했습니다. 잠시 후 재시도합니다.",
+            "토스 결제 조회 요청이 일시적으로 차단되었습니다."
+        );
+    }
+
+
+    // Toss 호출의 Resilience4j 실행 순서와 예외 변환을 공통적으로 처리
+    private <T> T executeWithResilience(
+        Supplier<T> supplier,
+        RateLimiter rateLimiter,
+        Retry retry,
+        CircuitBreaker circuitBreaker,
+        String rateLimitMessage,
+        String circuitOpenMessage
+    ) {
+        Supplier<T> rateLimitedSupplier = RateLimiter.decorateSupplier(
+            rateLimiter,
+            supplier
+        );
+        Supplier<T> retrySupplier = Retry.decorateSupplier(
+            retry,
+            rateLimitedSupplier
+        );
+        Supplier<T> circuitBreakerSupplier = CircuitBreaker.decorateSupplier(
+            circuitBreaker,
+            retrySupplier
+        );
 
         try {
             return circuitBreakerSupplier.get();
@@ -140,13 +156,13 @@ public class TossPaymentGateway implements PaymentGateway {
             throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 PaymentGatewayFailureType.UNCERTAIN,
-                "토스 결제 조회 요청 한도를 초과했습니다. 잠시 후 재시도합니다."
+                rateLimitMessage
             );
         } catch (CallNotPermittedException exception) {
             throw new PaymentGatewayException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 PaymentGatewayFailureType.UNCERTAIN,
-                "토스 결제 조회 요청이 일시적으로 차단되었습니다."
+                circuitOpenMessage
             );
         }
     }

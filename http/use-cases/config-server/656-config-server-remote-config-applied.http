@@ -6,6 +6,14 @@
 ### 실제로 기동된 order-service의 상태(포트 등)를 비교해 config repo 값이 정말 적용되는지 확인한다.
 ### config-server는 게이트웨이를 거치지 않고 직접 포트(로컬 :8888)로 호출한다.
 
+### ⚠️ 2번은 HTTP로 테스트 불가: docker-compose는 gateway(:8000)/config-server(:8888) 외
+### 서비스 포트를 호스트에 열지 않으므로 (gateway를 유일한 외부 진입점으로 유지하기 위한 설계),
+### order-service:8080은 IDE HTTP Client든 ijhttp든 호스트에서 직접 호출할 수 없다.
+### 아래 1번(config-server가 내려준 설정값 자체)만 자동 검증하고, 2번은 docker network 안에서
+### 수동으로 확인할 것:
+###   docker run --rm --network infrastructure_default curlimages/curl:latest \
+###     http://order-service:8080/actuator/health
+
 ### 1. config-server에서 order-service에 내려줄 설정 직접 조회
 GET http://localhost:8888/order-service/default
 
@@ -14,7 +22,7 @@ GET http://localhost:8888/order-service/default
         client.assert(response.status === 200, "expected 200, got " + response.status);
         client.assert(response.body.propertySources && response.body.propertySources.length > 0, "no propertySources returned — config repo에서 못 읽어온 것일 수 있음");
     });
-    // propertySources 안에서 server.port 값을 찾아 전역 변수로 저장 (실제 기동 포트와 비교용)
+    // propertySources 안에서 server.port 값을 찾아 로그로 남김 (2번 수동 검증 시 참고용)
     const sources = response.body.propertySources || [];
     let port = null;
     for (const src of sources) {
@@ -26,18 +34,5 @@ GET http://localhost:8888/order-service/default
     client.test("server.port 값이 config repo에 정의되어 있음", function() {
         client.assert(port !== null, "server.port not found in any propertySource — order-service.yml에 있는지 확인");
     });
-    client.global.set("configuredPort", port);
-%}
-
-### 2. order-service가 실제로 그 포트로 기동되어 응답하는지 확인 (게이트웨이를 거치지 않고 직접 호출)
-< {%
-    request.variables.set("orderServicePort", client.global.get("configuredPort"));
-%}
-GET http://localhost:{{orderServicePort}}/actuator/health
-
-> {%
-    client.test("config repo가 내려준 포트로 order-service가 실제로 응답함", function() {
-        client.assert(response.status === 200, "order-service did not respond on the port config-server reported (" + client.global.get("configuredPort") + ") — got " + response.status);
-        client.assert(response.body.status === "UP", "unexpected health status: " + JSON.stringify(response.body));
-    });
+    client.log("configuredPort=" + port + " — 2번 수동 검증 시 이 포트로 확인");
 %}

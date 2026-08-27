@@ -541,7 +541,7 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
         );
         outcomeRepository.save(outcome);
         return ProjectRefundRequested.request(
-                93_000_000L + projectId,
+                null,
                 outcome,
                 List.of(OrderPaymentFact.completed(
                         orderId,

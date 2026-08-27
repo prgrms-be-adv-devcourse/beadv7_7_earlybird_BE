@@ -201,15 +201,15 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
     }
 
     @Test
-    @DisplayName("제목/요약/본문에 없어도 카테고리명으로 검색하면 찾아진다")
-    void search_matchesByCategoryName() {
-        ProjectCategory category = categoryRepository.save(ProjectCategory.create(null, "수제 액세서리"));
+    @DisplayName("제목/요약/본문에 없어도 검색어가 카테고리명과 정확히 일치하면 그 카테고리로 찾아진다")
+    void search_matchesByExactCategoryName() {
+        ProjectCategory category = categoryRepository.save(ProjectCategory.create(null, "액세서리"));
         Project matching = Project.register(1L, UUID.randomUUID(), null, "은은한 데일리룩", category.getId(), "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         Project saved = projectRepository.save(matching);
         savedProjectIds.add(saved.getProjectId());
         // savedProject()의 categoryId(=1L, 실존하지 않는 더미 참조)와 우연히 겹치지 않도록, 방금 만든
-        // category.getId() 바로 다음 값(역시 실존하지 않음)을 써서 other의 categoryName이 안 채워지게 한다.
+        // category.getId() 바로 다음 값(역시 실존하지 않음)을 써서 other의 categoryId가 안 겹치게 한다.
         Project other = projectRepository.save(Project.register(1L, UUID.randomUUID(), null, "완전히 다른 내용의 프로젝트",
                 category.getId() + 1, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30)));
@@ -222,6 +222,33 @@ class ProjectSearchAdapterIntegrationTest extends ElasticsearchIntegrationTestSu
             List<Long> result = adapter.search("액세서리");
             assertThat(result).contains(saved.getProjectId());
             assertThat(result).doesNotContain(other.getProjectId());
+        });
+    }
+
+    @Test
+    @DisplayName("카테고리명이 아닌 일반 단어로 검색하면 카테고리 필터가 걸리지 않아, 서로 다른 카테고리의 결과가 함께 나온다")
+    void search_nonCategoryKeyword_matchesAcrossDifferentCategories() {
+        ProjectCategory bookCategory = categoryRepository.save(ProjectCategory.create(null, "도서"));
+        ProjectCategory techCategory = categoryRepository.save(ProjectCategory.create(null, "전자기기"));
+        Project travelEssay = Project.register(1L, UUID.randomUUID(), null, "여행 에세이집", bookCategory.getId(),
+                "여행하며 쓴 글을 담은 에세이입니다.", "여행하며 쓴 글을 담은 에세이입니다.",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        Project travelProjector = Project.register(1L, UUID.randomUUID(), null, "여행용 빔프로젝터", techCategory.getId(),
+                "여행지에서도 쓸 수 있는 소형 빔프로젝터입니다.", "여행지에서도 쓸 수 있는 소형 빔프로젝터입니다.",
+                BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
+        Project savedEssay = projectRepository.save(travelEssay);
+        Project savedProjector = projectRepository.save(travelProjector);
+        savedProjectIds.add(savedEssay.getProjectId());
+        savedProjectIds.add(savedProjector.getProjectId());
+
+        adapter.index(savedEssay);
+        adapter.index(savedProjector);
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            // "여행"은 어떤 카테고리명과도 일치하지 않으므로 categoryId 필터가 안 걸리고,
+            // 도서/전자기기 두 카테고리에 걸친 결과가 텍스트 매치만으로 그대로 나온다.
+            List<Long> result = adapter.search("여행");
+            assertThat(result).contains(savedEssay.getProjectId(), savedProjector.getProjectId());
         });
     }
 

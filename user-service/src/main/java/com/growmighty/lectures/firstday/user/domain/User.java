@@ -50,10 +50,14 @@ public class User extends BaseEntity {
 
     /** 판매자(창작자) 등록 — role 전환. creator_profiles 생성은 애플리케이션 서비스에서 함께 처리한다. */
     public void becomeCreator() {
-        if (this.role == UserRole.CREATOR) {
+        if (isCreator()) {
             throw new IllegalStateException("이미 창작자로 등록되어 있습니다.");
         }
         this.role = UserRole.CREATOR;
+    }
+
+    public boolean isCreator() {
+        return this.role == UserRole.CREATOR;
     }
 
     /** 관리자 전환 — API로 노출하지 않는다(운영 절차/시드 데이터 전용, §범위 밖: 승격 엔드포인트 없음). */

@@ -168,14 +168,14 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("RRF 점수가 동일한 동점 문서들은 projectId 내림차순(최신순)으로 결정적 정렬된다")
+    @DisplayName("RRF 결합 시 키워드 일치 문서가 kNN 전용 일치 문서보다 높은 가중치를 받는다")
     @SuppressWarnings("unchecked")
-    void search_rrfTieBreaking_ordersByProjectIdDesc() throws Exception {
+    void search_rrf_prioritizesKeywordMatchesOverKnnOnly() throws Exception {
         when(embeddingService.generateEmbedding("keyword")).thenReturn(new float[1536]);
 
         SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
         SearchHit<ProjectDocument> keywordHit = mock(SearchHit.class);
-        when(keywordHit.getContent()).thenReturn(new ProjectDocument(10L, "first", null, null, null, null, null));
+        when(keywordHit.getContent()).thenReturn(new ProjectDocument(10L, "keyword match", null, null, null, null, null));
         when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(keywordHit));
         when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
                 .thenReturn(keywordHits);
@@ -183,7 +183,7 @@ class ProjectSearchAdapterTest {
         SearchResponse<ProjectDocument> knnResponse = mock(SearchResponse.class);
         HitsMetadata<ProjectDocument> knnHitsMetadata = mock(HitsMetadata.class);
         Hit<ProjectDocument> knnHit = mock(Hit.class);
-        when(knnHit.source()).thenReturn(new ProjectDocument(20L, "second", null, null, null, null, new float[1536]));
+        when(knnHit.source()).thenReturn(new ProjectDocument(20L, "knn only", null, null, null, null, new float[1536]));
         when(knnHitsMetadata.hits()).thenReturn(List.of(knnHit));
         when(knnResponse.hits()).thenReturn(knnHitsMetadata);
         when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
@@ -191,8 +191,8 @@ class ProjectSearchAdapterTest {
 
         List<Long> result = adapter.search("keyword");
 
-        // 10L과 20L 모두 1순위(동점: 1/61)이므로 ID가 더 큰 20L이 먼저 반환된다.
-        assertThat(result).containsExactly(20L, 10L);
+        // 키워드 매칭(10L, 가중치 1.0)이 kNN 단독 매칭(20L, 가중치 0.8)보다 우선순위가 높아 먼저 반환된다.
+        assertThat(result).containsExactly(10L, 20L);
     }
 
     @Test

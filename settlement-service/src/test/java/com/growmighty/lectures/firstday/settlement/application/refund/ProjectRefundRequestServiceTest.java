@@ -228,6 +228,38 @@ class ProjectRefundRequestServiceTest extends MySqlIntegrationTestSupport {
         assertThat(second).hasSize(1);
     }
 
+    @Test
+    @DisplayName("같은 실행에서 생성한 환불 Outbox에는 연속된 DB 식별자가 부여된다")
+    void assignsConsecutiveDatabaseGeneratedRefundRequestIds() {
+        Instant outcomeAt = Instant.parse("2026-08-08T09:00:00Z");
+        for (long projectId : List.of(6_301L, 6_302L)) {
+            outcomeRepository.save(ProjectOutcomeFact.of(
+                    projectId,
+                    "프로젝트 " + projectId,
+                    projectId,
+                    ProjectOutcomeFact.Outcome.FAILED,
+                    outcomeAt
+            ));
+            paymentRepository.save(OrderPaymentFact.completed(
+                    projectId * 10,
+                    "PG-" + projectId,
+                    projectId,
+                    Money.wons(10_000),
+                    outcomeAt.minusSeconds(1)
+            ));
+        }
+        outcomeRepository.flush();
+        paymentRepository.flush();
+
+        List<Long> refundRequestIds = service().createDueRequests().stream()
+                .map(ProjectRefundRequested::refundRequestId)
+                .sorted()
+                .toList();
+
+        assertThat(refundRequestIds).hasSize(2);
+        assertThat(refundRequestIds.get(1)).isEqualTo(refundRequestIds.get(0) + 1);
+    }
+
     private ProjectRefundRequestService service() {
         return new ProjectRefundRequestService(inputRepository, outboxRepository, CLOCK);
     }

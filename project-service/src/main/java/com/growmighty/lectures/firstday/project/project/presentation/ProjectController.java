@@ -9,6 +9,8 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectAutocompleteResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCloseExpiredResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectReindexResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import jakarta.validation.Valid;
@@ -146,10 +148,9 @@ public class ProjectController {
      * 테스트/운영 확인용으로 즉시 트리거하고 싶을 때 사용.
      */
     @PostMapping("/close-expired")
-    public Void closeExpiredProjects(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+    public ProjectCloseExpiredResponse closeExpiredProjects(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         requireAdmin(requesterRole);
-        projectService.closeExpiredProjects();
-        return null;
+        return projectService.closeExpiredProjects();
     }
 
     /** 목표 금액을 이미 달성한 진행중 프로젝트를 마감일 전에 관리자가 조기 종료(성공 확정)한다. */
@@ -167,10 +168,9 @@ public class ProjectController {
      * 작업(close-expired 등)과 같은 컨벤션으로 게이트웨이+ADMIN 역할 체크를 받는 이 경로에 둔다.
      */
     @PostMapping("/reindex")
-    public Void reindex(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
+    public ProjectReindexResponse reindex(@RequestHeader(JwtHeaders.USER_ROLE) UserRole requesterRole) {
         requireAdmin(requesterRole);
-        projectService.reindexAllProjects();
-        return null;
+        return projectService.reindexAllProjects();
     }
 
     private void requireCreatorOrAdmin(UserRole requesterRole) {

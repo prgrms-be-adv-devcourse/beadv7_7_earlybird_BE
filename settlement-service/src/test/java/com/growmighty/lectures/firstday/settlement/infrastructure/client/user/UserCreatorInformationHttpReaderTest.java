@@ -42,7 +42,7 @@ class UserCreatorInformationHttpReaderTest {
     @Test
     void readsCreatorInformationFromExistingInternalUserApi() {
         server.expect(once(), requestTo(BASE_URL + "/internal/v1/users/7")).andRespond(withSuccess("""
-                {"id":7,"email":"creator@example.com","name":"창작자","phoneNumber":"01012345678","role":"CREATOR"}
+                {"success":true,"data":{"id":7,"email":"creator@example.com","name":"창작자","phoneNumber":"01012345678","role":"CREATOR"},"error":null}
                 """, MediaType.APPLICATION_JSON));
         CreatorInformation information = reader.read(7L);
         assertThat(information.email()).isEqualTo("creator@example.com");
@@ -55,7 +55,17 @@ class UserCreatorInformationHttpReaderTest {
     @Test
     void rejectsNonCreatorOrInvalidResponse() {
         server.expect(once(), requestTo(BASE_URL + "/internal/v1/users/7")).andRespond(withSuccess("""
-                {"id":7,"email":"backer@example.com","name":"후원자","phoneNumber":"01012345678","role":"BACKER"}
+                {"success":true,"data":{"id":7,"email":"backer@example.com","name":"후원자","phoneNumber":"01012345678","role":"BACKER"},"error":null}
+                """, MediaType.APPLICATION_JSON));
+        assertThatThrownBy(() -> reader.read(7L)).isInstanceOfSatisfying(CreatorInformationException.class,
+                exception -> assertThat(exception.failureType()).isEqualTo(FailureType.CONTRACT));
+        server.verify();
+    }
+
+    @Test
+    void rejectsInvalidEnvelope() {
+        server.expect(once(), requestTo(BASE_URL + "/internal/v1/users/7")).andRespond(withSuccess("""
+                {"success":true,"data":null,"error":null}
                 """, MediaType.APPLICATION_JSON));
         assertThatThrownBy(() -> reader.read(7L)).isInstanceOfSatisfying(CreatorInformationException.class,
                 exception -> assertThat(exception.failureType()).isEqualTo(FailureType.CONTRACT));

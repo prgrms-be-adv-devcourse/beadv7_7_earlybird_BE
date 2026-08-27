@@ -70,3 +70,5 @@ Circuit Breaker → Retry → RateLimiter → Toss API
   - 구현은 단순하지만 확정 실패를 반복 호출하고, 이미 처리됐을 수 있는 요청의 상태 정합성도 보장하지 못합니다.
 - 기타 선택지 3 : Circuit Breaker 없이 Retry만 사용합니다.
   - 단기 장애는 완화할 수 있지만 PG가 장시간 장애일 때 요청마다 재시도를 반복해 요청 스레드와 PG 부하를 늘립니다.
+- 기타 선택지 4: Payment/Refund Gateway의 Resilience4j 실행·예외 변환 로직을 공통 컴포넌트(또는 상위 클래스)로 추출합니다.
+  - PaymentGatewayException/RefundGatewayException, 실패 타입 판정 조건(Toss 오류 코드)이 도메인마다 달라 공통 인터페이스로 묶으면 오히려 각 도메인 정책을 제네릭 타입 뒤로 숨기게 됩니다. Refund Gateway는 현재 실행 경로가 하나뿐이라 클래스 내부 중복도 없어, 추상화 비용 대비 이득이 낮다고 판단해 채택하지 않았습니다.

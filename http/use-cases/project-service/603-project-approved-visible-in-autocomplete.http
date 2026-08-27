@@ -56,14 +56,15 @@ GET {{baseUrl}}/api/v1/project-categories
     const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     request.variables.set("startAt", now.toISOString().slice(0, 19));
     request.variables.set("endAt", endAt.toISOString().slice(0, 10));
-    client.global.set("titlePrefix", "유즈케이스603자동완성" + Date.now());
+    client.global.set("fullTitle", "autocomp" + Date.now() + " 프로젝트");
+    client.global.set("titlePrefix", "autocomp");
 %}
 POST {{baseUrl}}/api/v1/projects
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "title": "{{titlePrefix}} 프로젝트",
+  "title": "{{fullTitle}}",
   "categoryId": {{categoryId}},
   "summary": "issue #603 검증용",
   "description": "issue #603",
