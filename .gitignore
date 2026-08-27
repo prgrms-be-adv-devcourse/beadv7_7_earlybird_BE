@@ -43,6 +43,7 @@ out/
 ### Docker ###
 .env
 infrastructure/.env
+http/http-client.private.env.json
 
 ### Logging ###
 logs/

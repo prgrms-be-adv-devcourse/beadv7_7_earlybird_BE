@@ -6,10 +6,18 @@
 ### /internal/v1/** 는 gateway에 라우트가 없다 — payment-service 포트(:8082)에 직접 요청한다.
 ### 로컬 실행 환경 전용.
 
+
+### (#511)과 마찬가지로, orderId는 Long 기반이지만, Date.now()가 HTTP Client 변수 치환 과정에서 과학 표기법(1.787...E12)으로 변환됐고,
+### 그에 따라 Spring이 Long으로 파싱하지 못하는 이슈가 발견되었다. 따라서 Date.now().toString() 통해
+### 문자열로 치환하여 해당 테스트를 진행함을 알린다.
+
+### (#521) 521-payment-prepare-idempotent 의 경우 멱등성을 확인하는 과정이기도 하고, PG 호출부가 따로 존재하지 않기에,
+### 로컬 또는 배포환경에서 정상 작동해야 함을 알린다.
+
 ### 1. 첫 번째 준비 요청
 < {%
     client.global.set("payment521UserId", 9002);
-    client.global.set("payment521OrderId", Date.now());
+    client.global.set("payment521OrderId", Date.now().toString());
     client.global.set("payment521Amount", 20000);
 %}
 POST http://localhost:8082/internal/v1/payments/prepare

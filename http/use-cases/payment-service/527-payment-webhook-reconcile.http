@@ -1,24 +1,43 @@
 ### 527-payment-webhook-reconcile.http — [usecase-test] 6. Toss 웹훅 수신 후 결제 상태 정합화 (#527)
 ###
-### ⚠️ 이 케이스는 현재 코드/설정 상태로는 local/production 어디서도 이슈가 적은 "기대 결과"대로
-### 재현되지 않는다 — 그대로 재현 여부를 확인하는 용도로 남겨둔다.
+### 실제 Toss COMPLETED 결제를 DB에서 CONFIRMING으로 되돌린 뒤 실행한다.
+### 대상 결제는 local private 환경의 payment527PaymentKey/payment527OrderId로 지정한다.
+### payment_key 컬럼의 암호문은 사용하지 않고, Toss에서 확보한 평문 paymentKey를 사용한다.
 ###
-### TossWebhookController#receive 는 paymentGateway.getPayment(paymentKey) 를 호출해 실제 PG에
-### 조회한 뒤 정합화하는데, payment.gateway 프로퍼티가 어느 config repo 프로필에도 설정돼 있지
-### 않아 FakePaymentGateway(matchIfMissing=true)가 항상 활성화된다. 그런데
-### FakePaymentGateway#getPayment 는 `throw new UnsupportedOperationException("Fake PG에서는
-### 결제 조회를 지원하지 않습니다.")` 로 구현돼 있다 — 즉 이 웹훅 엔드포인트는 지금 상태로는
-### 항상 500(Exception 계열 핸들러)로 떨어지고, PAID/FAILED 정합화까지 도달하지 못한다.
-### 실제로 이 케이스를 통과시키려면 payment.gateway=toss 로 전환 + 실제 Toss 샌드박스 연동이
-### 선행돼야 한다(현재 프로젝트에는 그 전환이 어디에도 설정돼 있지 않음).
-###
-### 아래 요청은 엔드포인트 계약(TossWebhookRequest 구조) 자체는 맞게 짜여 있으니, 위 전제가
-### 갖춰지면 그대로 쓸 수 있다.
+### DB 사전 준비 (로컬 Toss 테스트 DB만 사용)
+### UPDATE payments
+### SET status = 'CONFIRMING', confirming_At = NOW(), confirmed_At = NULL, canceled_At = NULL
+### WHERE order_id = {{payment527OrderId}} AND status = 'PAID';
 
-### 1. Toss 웹훅 payload 전송 (permitAll — 인증 불필요, PG사가 직접 호출하는 경로)
-< {%
-    client.global.set("payment527PaymentKey", "test-payment-key-not-real");
-%}
+### 해당 테스트를 로컬에서 진행하려면, paymentKey의 암호화되지 않은 평문을 필요로 한다.
+### 따라서 로컬에서 FE를 통해 성공한 결제건이 필요하다. 그에 따라 성공한 결제건에 대한 paymentKey를 가져와야 한다.
+### 해당 프로젝트 담당자가 아니라면 토스에서 요구하는 상점ID와 시크릿 키가 다르므로 문제가 발생할 수 있다.
+### 환경변수로 PAYMENT_SECURITY_ENCRYPTION_KEY 와 PAYMENT_GATEWAY=toss 로 설정해두어야 한다.
+### PAYMENT_SECURITY_ENCRYPTION_KEY는 담당자에게 요청하면 제공받을 수 있다.
+### http 테스트가 가능한 건 이지만 살짝 복잡하다. 아래는 테스트 방법이다.
+
+### Earlybird 프로젝트의 서비스가 Config, Gateway, Discovery, Project, Order, Payment, Cart, User 서비스가 켜져있어야 한다.
+### FE 디렉터리로 이동 후 npn run dev로 프론트를 작동 시킨 후 프로젝트(상품)에 결제를 시도하고 성공한 건이 있어야한다.
+### 성공한 건이 있으면, 해당 성공한 건에 대하여 db에서의 status 변경이 필요하다. status=PAID -> status=CONFIRMING
+### CONFIRMING 상태로 변경된 건에 대하여 PaymentKey의 평문을 필요로 한다.
+### 로컬에서 테스트 하더라도 Payment-service의 담당자에게 pgOrderId를 제공하면, toss에게서 평문으로된 paymentKey를 제공받을 수 있다.
+### 그에따라 제공받은 PaymentKey로 /api/v1/payments/webhook 를 호출하면 정합화 메서드가 정상 작동한다.
+### GET http://localhost:8082/internal/v1/payments?orderId={{payment527OrderId}} 를 통해 재조회하여 상태를 확인한다.
+
+### 아래는 http 실행을 위한 환경변수 파일 양식이다.
+
+### http-client.private.env.json
+###
+### {
+###   "local": {
+###     "payment527PaymentKey": "",
+###     "payment527OrderId": "",
+###     "payment527ExpectedStatus": "PAID"
+###  }
+### }
+
+
+### 1. Toss 웹훅 payload 전송 (permitAll — 인증 불필요)
 POST {{baseUrl}}/api/v1/payments/webhook
 Content-Type: application/json
 
@@ -30,11 +49,19 @@ Content-Type: application/json
 }
 
 > {%
-    client.test("현재 상태: FakePaymentGateway#getPayment 미지원 -> 500 (알려진 한계, 버그 아님)", function() {
-        client.assert(response.status === 500, "expected current known-limitation 500, got " + response.status + ": " + response.body);
+    client.test("웹훅 정합화 성공", function() {
+        client.assert(response.status === 200, "webhook failed: " + response.body);
     });
-    // payment.gateway=toss + 실제 Toss 샌드박스 연동이 이뤄지면 아래 기대 결과로 바뀌어야 한다:
-    //   - Toss 조회 결과 COMPLETED -> 결제 상태 PAID
-    //   - Toss 조회 결과 FAILED/EXPIRED/CANCELLED -> 결제 상태 FAILED
-    //   - 상태 변경 시 payment_status_outbox 생성 (DB에서 별도 확인)
 %}
+
+### 2. 내부 재조회 — Toss COMPLETED 결과가 PAID로 정합화됐는지 확인
+GET http://localhost:8082/internal/v1/payments?orderId={{payment527OrderId}}
+
+> {%
+    client.test("결제 상태가 PAID로 정합화됨", function() {
+        client.assert(response.status === 200, "get payment failed: " + response.body);
+        client.assert(response.body.data.status === "{{payment527ExpectedStatus}}", "unexpected status: " + response.body.data.status);
+    });
+%}
+
+### 3. payment_status_outbox에서 대상 payment의 PAID outbox가 새로 생성됐는지 DB로 확인한다.

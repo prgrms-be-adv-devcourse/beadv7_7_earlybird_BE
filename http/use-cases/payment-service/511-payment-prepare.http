@@ -9,10 +9,16 @@
 ### PaymentPreparationService#prepare 는 orderId 실존 여부를 order-service에 확인하지 않으므로
 ### (외래키 값일 뿐) 아무 orderId나 써도 된다 — 매번 새 값을 써서 재실행 가능하게 한다.
 
+### 결제 준비 요청 생성에 대해서는 현재 Fake PG 또는 Toss PG 둘 모두 정상 작동한다.
+### 다만, OrderId의 경우 Long 기반인데 Spring이 Date.now()를 통해
+### HTTP Client 변수 치환 과정에서 과학 표기법(1.787...E12)으로 변환됐고,
+### Spring이 Long으로 파싱하지 못하는 이슈가 발견되었다. 따라서 Date.now().toString() 통해
+### 문자열로 치환하여 해당 테스트를 진행함을 알린다.
+
 ### 1. 결제 준비 요청 생성
 < {%
     client.global.set("payment511UserId", 9001);
-    client.global.set("payment511OrderId", Date.now());
+    client.global.set("payment511OrderId", Date.now().toString());
     client.global.set("payment511Amount", 10000);
 %}
 POST http://localhost:8082/internal/v1/payments/prepare

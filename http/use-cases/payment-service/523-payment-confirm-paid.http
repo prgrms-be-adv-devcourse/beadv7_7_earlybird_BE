@@ -10,6 +10,13 @@
 ### 전체가 로컬 전용이라고 보면 된다. payment_status_outbox/Kafka 소비 로그 확인은 DB/Kafka 콘솔에서
 ### 수동으로 확인.
 
+### 로컬환경에서 확인 시, 환경변수에서 payment.gateway=fake 를 설정해주어야 한다. 그렇지 않으면 토스를 호출하려 시도함
+
+### 해당 테스트는 로컬환경 에서는 환경 변수로 PAYMENT_GATEWAY=fake 를 주입하면 정상 작동해야 한다.
+### 하지만 배포환경의 경우 직접적인 Toss PG 호출과 사용자의 결제가 필요함으로 배포환경에서의 http 테스트는 불가능함을 알린다.
+### 따라서 해당 테스트의 경우에는 서버에서 직접적으로 사용자가 결제를 시도해야 한다.
+
+
 ### 1. 로그인 (JWT 확보)
 < {%
     client.global.set("payment523Email", "payment523-" + Date.now() + "@earlybird.co.kr");
@@ -49,7 +56,7 @@ Content-Type: application/json
 
 ### 3. 결제 준비 (READY) — payment-service에 직접 요청, 로컬 전용
 < {%
-    client.global.set("payment523OrderId", Date.now());
+    client.global.set("payment523OrderId", Date.now().toString());
     client.global.set("payment523Amount", 15000);
 %}
 POST http://localhost:8082/internal/v1/payments/prepare

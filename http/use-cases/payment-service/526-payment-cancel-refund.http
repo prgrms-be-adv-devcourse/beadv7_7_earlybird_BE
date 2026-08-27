@@ -43,7 +43,7 @@ Content-Type: application/json
 
 ### 3. 결제 준비 (READY)
 < {%
-    client.global.set("payment526OrderId", Date.now());
+    client.global.set("payment526OrderId", Date.now().toString());
     client.global.set("payment526Amount", 18000);
 %}
 POST http://localhost:8082/internal/v1/payments/prepare
