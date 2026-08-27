@@ -59,6 +59,7 @@ class ProjectSearchAdapterTest {
     private final RewardRepository rewardRepository = mock(RewardRepository.class);
     private final CategoryIntentResolver categoryIntentResolver = mock(CategoryIntentResolver.class);
     private final QueryIntentAnalyzer queryIntentAnalyzer = mock(QueryIntentAnalyzer.class);
+    private final QueryProductCompatibilityEvaluator compatibilityEvaluator = new QueryProductCompatibilityEvaluator();
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -81,8 +82,8 @@ class ProjectSearchAdapterTest {
         adapter = new ProjectSearchAdapter(
                 elasticsearchOperations, elasticsearchClient, circuitBreakerFactory,
                 eventPublisher, embeddingService, projectRepository, categoryRepository,
-                rewardRepository, categoryIntentResolver, queryIntentAnalyzer,
-                Runnable::run); // 단위 테스트에서는 Runnable::run 또는 VirtualThreadExecutor 사용
+                rewardRepository, categoryIntentResolver, queryIntentAnalyzer, compatibilityEvaluator,
+                Runnable::run); // 단위 테스트에서는 Runnable::run 사용
     }
 
     private Project project() {
@@ -260,8 +261,6 @@ class ProjectSearchAdapterTest {
     void search_categoryNamePrefixCompoundKeyword_isNotExactCategoryMatch() throws Exception {
         when(embeddingService.generateEmbedding("반려동물 음식")).thenReturn(new float[1536]);
         when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of());
-        // "반려동물" 카테고리가 실제로 존재하는 상황 — 검색어가 이 이름으로 "시작"할 뿐, 전체가
-        // 같지는 않다("반려동물 음식" != "반려동물"). 예전 startsWith() 로직이면 여기서 매칭됐다.
         when(categoryRepository.findAll()).thenReturn(List.of(category(13L, "반려동물")));
 
         SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
@@ -293,7 +292,6 @@ class ProjectSearchAdapterTest {
     @SuppressWarnings("unchecked")
     void search_categoryIntentOnly_doesNotHardFilterKnn() throws Exception {
         when(embeddingService.generateEmbedding("간식")).thenReturn(new float[1536]);
-        // "간식"이 실제로는 "상의"(categoryId=3)로 오판정된 상황을 재현
         when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of(3L));
 
         SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
@@ -386,7 +384,7 @@ class ProjectSearchAdapterTest {
         when(strongHits.hits()).thenReturn(List.of(strongHit));
         when(strongKnnResponse.hits()).thenReturn(strongHits);
 
-        // summaryVector: 약한 후보(99L, raw cosine 0.10 -> *0.12 = 0.012) — 카테고리 부스트 대상이기도 함
+        // summaryVector: 약한 후보(99L, raw cosine 0.10 -> *0.12 = 0.012)
         SearchResponse<ProjectDocument> weakKnnResponse = mock(SearchResponse.class);
         HitsMetadata<ProjectDocument> weakHits = mock(HitsMetadata.class);
         Hit<ProjectDocument> weakHit = mock(Hit.class);
@@ -400,7 +398,6 @@ class ProjectSearchAdapterTest {
         when(emptyHits.hits()).thenReturn(List.of());
         when(emptyResponse.hits()).thenReturn(emptyHits);
 
-        // doSearch() 순서: rewardVector, titleVector, categoryVector, summaryVector, descriptionVector
         when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
                 .thenReturn(strongKnnResponse, emptyResponse, emptyResponse, weakKnnResponse, emptyResponse);
 
@@ -411,10 +408,55 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
+    @DisplayName("[핵심 검증] LLM Timeout 발생 시 passThrough로 이어져 BM25 + Vector + Fusion 정상 완주 (DB LIKE 폴백 미호출)")
+    @SuppressWarnings("unchecked")
+    void search_whenLlmTimesOut_proceedsWithPassThroughVectorAndBm25Fusion() throws Exception {
+        // 1. LLM은 Timeout으로 passThrough를 반환
+        when(queryIntentAnalyzer.analyze("여름용 옷")).thenReturn(QueryIntent.passThrough("여름용 옷"));
+        // 2. 임베딩은 정상 생성
+        when(embeddingService.generateEmbedding("여름용 옷")).thenReturn(new float[1536]);
+        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of());
+
+        // 3. BM25 검색 결과
+        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
+        SearchHit<ProjectDocument> keywordHit = mock(SearchHit.class);
+        when(keywordHit.getContent()).thenReturn(sampleDocument(101L, "여름 린넨 반팔 티셔츠"));
+        when(keywordHit.getScore()).thenReturn(2.5f);
+        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(keywordHit));
+        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
+                .thenReturn(keywordHits);
+
+        // 4. kNN 벡터 검색 결과
+        SearchResponse<ProjectDocument> knnResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> knnHitsMetadata = mock(HitsMetadata.class);
+        Hit<ProjectDocument> knnHit = mock(Hit.class);
+        when(knnHit.source()).thenReturn(sampleDocument(102L, "사계절 셔츠"));
+        when(knnHit.score()).thenReturn(0.90);
+        when(knnHitsMetadata.hits()).thenReturn(List.of(knnHit));
+        when(knnResponse.hits()).thenReturn(knnHitsMetadata);
+
+        SearchResponse<ProjectDocument> emptyResponse = mock(SearchResponse.class);
+        HitsMetadata<ProjectDocument> emptyHits = mock(HitsMetadata.class);
+        when(emptyHits.hits()).thenReturn(List.of());
+        when(emptyResponse.hits()).thenReturn(emptyHits);
+
+        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
+                .thenReturn(knnResponse, emptyResponse, emptyResponse, emptyResponse, emptyResponse);
+
+        long start = System.currentTimeMillis();
+        List<Long> result = adapter.search("여름용 옷");
+        long elapsed = System.currentTimeMillis() - start;
+
+        // DB LIKE 폴백이 호출되지 않고, BM25(101L) + Vector(102L)가 모두 포함되어 퓨전 반환됨
+        assertThat(result).contains(101L, 102L);
+        assertThat(elapsed).isLessThan(2500);
+        verifyNoInteractions(projectRepository);
+    }
+
+    @Test
     @DisplayName("QueryIntent/Vector Branch가 실패해도 BM25 결과만으로 안전하게 정상 검색된다 (Graceful Degradation)")
     @SuppressWarnings("unchecked")
     void search_whenVectorBranchFails_returnsBm25ResultsGracefully() {
-        // QueryIntent/Embedding 실패 시뮬레이션
         when(queryIntentAnalyzer.analyze("강아지")).thenThrow(new RuntimeException("LLM Timeout"));
         when(embeddingService.generateEmbedding(any())).thenThrow(new RuntimeException("OpenAI API Down"));
 

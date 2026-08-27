@@ -215,14 +215,28 @@ class QueryIntentAnalyzerTest {
     }
 
     @Test
-    @DisplayName("8자 미만 쿼리(공백 포함)는 LLM을 호출하지 않는다 — 타이핑 중간 상태 대응")
-    void analyze_shortQueryUnder8Chars_skipsLlm() {
-        // "여름 옷" = 5자 (여름=2, 공백=1, 옷=1, 총 4자 → 8자 미만)
-        QueryIntent intent = analyzer.analyze("여름 옷");
+    @DisplayName("짧아도 2어절 이상이면 복합 의도 쿼리로 보고 LLM을 호출한다 (가죽 백, 차 키 등)")
+    void analyze_shortButMultiWordQuery_callsLlm() {
+        givenLlmReturns("""
+                {
+                  "target": "가방",
+                  "requirements": [],
+                  "productType": "가방",
+                  "season": null,
+                  "color": null,
+                  "purpose": null,
+                  "targetUser": null,
+                  "material": "가죽",
+                  "hardConstraints": [],
+                  "softPreferences": [],
+                  "enrichedQuery": "가죽 가방 백"
+                }
+                """);
 
-        verifyNoInteractions(chatModel);
-        assertThat(intent.enrichedQuery()).isEqualTo("여름 옷");
-        assertThat(intent.hasStructuredIntent()).isFalse();
+        QueryIntent intent = analyzer.analyze("가죽 백");
+
+        verify(chatModel, times(1)).call(any(Prompt.class));
+        assertThat(intent.target()).isEqualTo("가방");
     }
 
     @Test

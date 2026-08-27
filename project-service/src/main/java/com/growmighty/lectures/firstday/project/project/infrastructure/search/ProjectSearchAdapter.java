@@ -41,7 +41,8 @@ import java.util.stream.Collectors;
 /**
  * Elasticsearch 검색 포트 구현체.
  * 5개 독립 벡터(title, summary, description, category, reward)의 코사인 점수 보존 kNN 검색과
- * Nori 형태소 분석기 기반 BM25 키워드 검색을 Score-aware Hybrid Fusion으로 결합하여 랭킹을 산출한다.
+ * Nori 형태소 분석기 기반 BM25 키워드 검색을 Score-aware Hybrid Fusion으로 결합하고,
+ * 2-Stage Query-Product Compatibility Layer를 통해 의미적 적합성 및 충돌 여부를 종합 평가하여 최종 순위를 산출한다.
  */
 @Slf4j
 @Component
@@ -69,6 +70,14 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final int AUTOCOMPLETE_CANDIDATE_LIMIT = 50;
     /** 형태소 어휘 레벨 최소 일치 조건 */
     private static final String MATCH_MINIMUM_SHOULD_MATCH = "2<70%";
+    /**
+     * BM25/kNN 완료 후 QueryIntent(LLM)를 Compatibility 평가(계절 충돌 상품 제거 등)에 합류시키기 위해
+     * 기다리는 예산(ms). 임베딩·kNN은 LLM을 전혀 기다리지 않고 원본 쿼리로 즉시 진행하므로(크리티컬 패스에서
+     * 제외), cold 검색의 실질 지연은 이 예산과 LLM 지연 중 큰 쪽에 수렴한다. 예산은
+     * projectQueryIntent TimeLimiter(4s)와 맞춰, LLM이 정상 응답하면(느린 날 포함) 계절 충돌 제거가
+     * 항상 동작하고, LLM 행업 시에만 4s 뒤 Compatibility 없이 완주한다(그 뒤 CB가 열려 후속 검색은 빠름).
+     */
+    private static final long INTENT_JOIN_BUDGET_MS = 4000;
 
     private final ElasticsearchOperations elasticsearchOperations;
     private final ElasticsearchClient elasticsearchClient;
@@ -80,6 +89,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final RewardRepository rewardRepository;
     private final CategoryIntentResolver categoryIntentResolver;
     private final QueryIntentAnalyzer queryIntentAnalyzer;
+    private final QueryProductCompatibilityEvaluator compatibilityEvaluator;
     private final java.util.concurrent.Executor searchTaskExecutor;
 
     @Override
@@ -190,8 +200,20 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             log.info("[ProjectSearch] 키워드='{}' → 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
         }
 
+        // ── QueryIntent(LLM) 분석: BM25/임베딩/kNN과 동시에 격발하고 어느 것도 이걸 기다리지 않는다.
+        //   · enrichedQuery 재작성: 임베딩 시점에 이미 끝나 있으면(캐시 히트) 조기 반영, 아니면 원본 쿼리 사용
+        //   · requirements 기반 Compatibility 평가(계절 충돌 제거 등): fusion 직전 INTENT_JOIN_BUDGET_MS 예산으로 합류
+        long llmStart = System.currentTimeMillis();
+        CompletableFuture<QueryIntent> intentFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                return queryIntentAnalyzer.analyze(trimmedKeyword);
+            } catch (Exception e) {
+                log.warn("[ProjectSearch] QueryIntent 분석 중 예외 발생, passThrough 폴백: {}", e.getMessage());
+                return QueryIntent.passThrough(trimmedKeyword);
+            }
+        }, searchTaskExecutor);
+
         // ── 2. [Branch 1: Fast BM25 (비동기 병렬 실행)] ─────────────────────────────
-        // BM25는 항상 원본 쿼리를 사용하므로 QueryIntent LLM/임베딩을 기다리지 않고 즉시 격발한다.
         CompletableFuture<List<ScoredDocument>> bm25Future = CompletableFuture.supplyAsync(() -> {
             long bm25Start = System.currentTimeMillis();
             log.debug("[ProjectSearch Diagnostic] BM25 START on thread: {}", Thread.currentThread().getName());
@@ -221,7 +243,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             return docs;
         }, searchTaskExecutor);
 
-        // ── 3. [Branch 2: QueryIntent → Embedding → kNN (비동기 병렬 실행)] ──────────
+        // ── 3. [Branch 2: Embedding → kNN (비동기 병렬 실행, LLM을 기다리지 않음)] ──────────
         record VectorBranchResult(
                 List<ScoredDocument> rewardScored,
                 List<ScoredDocument> titleScored,
@@ -229,31 +251,20 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 List<ScoredDocument> summaryScored,
                 List<ScoredDocument> descScored,
                 Set<Long> categoryIntentBoostProjectIds,
-                long llmElapsed,
                 long embeddingElapsed,
                 long knnElapsed
         ) {}
 
         CompletableFuture<VectorBranchResult> vectorFuture = CompletableFuture.supplyAsync(() -> {
             log.debug("[ProjectSearch Diagnostic] Vector Branch START on thread: {}", Thread.currentThread().getName());
-            // (1) QueryIntent 분석 (LLM 또는 캐시 또는 passThrough)
-            long llmStart = System.currentTimeMillis();
-            QueryIntent intent;
-            try {
-                intent = queryIntentAnalyzer.analyze(trimmedKeyword);
-            } catch (Exception e) {
-                log.warn("[ProjectSearch] QueryIntent 분석 중 예외 발생, passThrough 폴백: {}", e.getMessage());
-                intent = QueryIntent.passThrough(trimmedKeyword);
-            }
-            long llmElapsed = System.currentTimeMillis() - llmStart;
-
-            String queryForEmbedding = intent.enrichedQuery();
-            if (intent.hasStructuredIntent()) {
-                log.info("[ProjectSearch] Query Intent 적용: query='{}' → enrichedQuery='{}' "
-                                + "(productType={}, season={}, purpose={}, targetUser={}, material={}, hardConstraints={})",
-                        trimmedKeyword, queryForEmbedding,
-                        intent.productType(), intent.season(), intent.purpose(),
-                        intent.targetUser(), intent.material(), intent.hardConstraints());
+            // (1) LLM을 기다리지 않는다 — 이미 준비된 enrichedQuery(캐시 히트 등)만 조기 반영하고 아니면 원본 쿼리로 즉시 진행.
+            QueryIntent readyIntent = intentFuture.getNow(null);
+            boolean useEnriched = readyIntent != null && readyIntent.hasStructuredIntent()
+                    && readyIntent.enrichedQuery() != null && !readyIntent.enrichedQuery().isBlank();
+            String queryForEmbedding = useEnriched ? readyIntent.enrichedQuery() : trimmedKeyword;
+            if (useEnriched) {
+                log.info("[ProjectSearch] Query Intent 조기 반영: query='{}' → enrichedQuery='{}' (target={}, requirementsCount={})",
+                        trimmedKeyword, queryForEmbedding, readyIntent.target(), readyIntent.requirements().size());
             }
 
             // (2) 임베딩 생성 (OpenAI Embedding API)
@@ -271,7 +282,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             if (queryVector == null || queryVector.length == 0) {
                 return new VectorBranchResult(
                         List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(),
-                        llmElapsed, embeddingElapsed, 0);
+                        embeddingElapsed, 0);
             }
 
             // (3) Category Intent 추론
@@ -323,11 +334,11 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
             return new VectorBranchResult(
                     rewardScored, titleScored, categoryVectorScored, summaryScored, descScored,
-                    categoryIntentBoostProjectIds, llmElapsed, embeddingElapsed, knnElapsed
+                    categoryIntentBoostProjectIds, embeddingElapsed, knnElapsed
             );
         }, searchTaskExecutor).exceptionally(ex -> {
             log.warn("[ProjectSearch] Vector Branch 실행 중 예외 발생, BM25 단독 폴백: {}", ex.getMessage());
-            return new VectorBranchResult(List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(), 0, 0, 0);
+            return new VectorBranchResult(List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(), 0, 0);
         });
 
         // ── 4. 두 Branch 결과 대기 및 결합 (Graceful Degradation) ─────────────────────
@@ -337,6 +348,16 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
         List<ScoredDocument> keywordScored = bm25Future.join();
         VectorBranchResult vectorRes = vectorFuture.join();
+
+        // Compatibility 평가용 QueryIntent 합류: 예산 내 완료되면 계절 충돌 제거 등에 사용, 초과 시 없이 완주.
+        QueryIntent intent;
+        try {
+            intent = intentFuture.get(INTENT_JOIN_BUDGET_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.info("[ProjectSearch] QueryIntent가 예산({}ms) 내 미완료 → Compatibility 없이 진행. keyword='{}'", INTENT_JOIN_BUDGET_MS, trimmedKeyword);
+            intent = QueryIntent.passThrough(trimmedKeyword);
+        }
+        long llmElapsed = System.currentTimeMillis() - llmStart;
 
         // Vector 결과가 전혀 없는 경우 (임베딩 실패, 모델 미설정 등) BM25 단독 반환
         if (vectorRes.rewardScored.isEmpty() && vectorRes.titleScored.isEmpty()
@@ -348,7 +369,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             return keywordScored.stream().map(ScoredDocument::projectId).toList();
         }
 
-        // ── 5. Score-aware Hybrid Ranking ──────────────────────────────────────
+        // ── 5. Score-aware Hybrid Ranking + 2-Stage Compatibility Layer ─────────────
         long fusionStart = System.currentTimeMillis();
         List<Long> rankedProjectIds = fuseByScore(
                 keywordScored,
@@ -357,23 +378,18 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 vectorRes.categoryVectorScored,
                 vectorRes.summaryScored,
                 vectorRes.descScored,
-                vectorRes.categoryIntentBoostProjectIds
+                vectorRes.categoryIntentBoostProjectIds,
+                intent
         );
         long fusionElapsed = System.currentTimeMillis() - fusionStart;
         long totalElapsed = System.currentTimeMillis() - totalStart;
 
-        log.info("[ProjectSearch Latency Summary] 키워드='{}' | Total: {}ms | LLM: {}ms, Embedding: {}ms, kNN(5개병렬): {}ms, Fusion: {}ms | 결과: {}건",
-                trimmedKeyword, totalElapsed, vectorRes.llmElapsed, vectorRes.embeddingElapsed, vectorRes.knnElapsed, fusionElapsed, rankedProjectIds.size());
+        log.info("[ProjectSearch Latency Summary] 키워드='{}' | Total: {}ms | LLM(병렬): {}ms, Embedding: {}ms, kNN(5개병렬): {}ms, Fusion: {}ms | 결과: {}건",
+                trimmedKeyword, totalElapsed, llmElapsed, vectorRes.embeddingElapsed, vectorRes.knnElapsed, fusionElapsed, rankedProjectIds.size());
 
         return rankedProjectIds;
     }
 
-    /**
-     * Exact Category Match는 "검색어 전체가 카테고리명과 완전히 같을 때"만 성립한다 — 즉 사용자가
-     * 카테고리를 직접 선택한 것과 동일하게 볼 수 있는 경우다. "반려동물 음식"처럼 카테고리명 뒤에
-     * 다른 말이 붙은 복합 검색어는 여기 해당하지 않고(카테고리+검색의도), CategoryIntentResolver의
-     * 소프트 부스트 경로로만 반영된다. 접두어 매칭은 하드 스코프의 오탐 위험이 커서 쓰지 않는다.
-     */
     private List<Long> resolveExactCategoryIds(String keyword) {
         String trimmed = keyword.trim();
         if (trimmed.isEmpty()) {
@@ -402,7 +418,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         return categoryIds;
     }
 
-    /** 주어진 카테고리(들)에 속한 프로젝트 ID 집합을 조회한다. Category Intent 소프트 부스트 대상 판별용. */
     private Set<Long> resolveCategoryMemberProjectIds(List<Long> categoryIds) {
         Query query = Query.of(q -> q.terms(t -> t.field("categoryId")
                 .terms(ts -> ts.value(categoryIds.stream().map(FieldValue::of).toList()))));
@@ -428,11 +443,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 .toList();
     }
 
-    /**
-     * 특정 dense_vector 필드에 대한 단일 kNN 검색.
-     * Elasticsearch의 cosine similarity kNN 반환 score: _score = (1 + cosine) / 2
-     * 이를 raw cosine = max(0.0, 2 * _score - 1) 로 역변환하여 보존한다.
-     */
     private List<ScoredDocument> searchFieldKnnScored(String fieldName, List<Float> vectorList, int k, int numCandidates, List<Long> categoryIds) {
         SearchResponse<ProjectDocument> response;
         try {
@@ -465,7 +475,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         for (Hit<ProjectDocument> hit : response.hits().hits()) {
             if (hit.source() != null && hit.source().projectId() != null) {
                 double esScore = hit.score() != null ? hit.score() : 0.0;
-                // ES cosine _score = (1 + cosine) / 2 -> raw cosine 복원 (음수는 0으로 clamp)
                 double rawCosine = Math.max(0.0, 2.0 * esScore - 1.0);
                 bestScoreByProject.merge(hit.source().projectId(), rawCosine, Math::max);
             }
@@ -476,17 +485,14 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 .toList();
     }
 
-    /** BM25 Saturation 상수 (단일 토큰 어휘 일치의 급격한 포화 방지) */
     private static final double BM25_SATURATION_K = 5.0;
-    /** Category Intent(오탐 가능) 소프트 부스트 가중치 — 이미 후보에 오른 문서만 대상으로 가산 */
     private static final double CATEGORY_INTENT_BOOST_WEIGHT = 0.10;
 
     /**
-     * Score-aware Hybrid Ranking:
-     * 1) BM25 점수는 포화 함수 score / (score + K)로 정규화하여 극단적인 점수 증폭 방지
-     * 2) 5개 Vector 필드의 Cosine 점수는 Min-Max 왜곡 없이 Raw Cosine [0.0, 1.0]을 직접 보존
-     * 3) Category Intent가 지목한 카테고리에 속한 후보는 소프트 부스트 가산(신규 후보 생성 아님)
-     * 4) 가중합 계산 후 동적 컷오프로 노이즈 제거
+     * Score-aware Hybrid Ranking + 2-Stage Compatibility Layer:
+     * 1) BM25 정규화 + 5개 Vector 필드 Raw Cosine 가중합 계산
+     * 2) Candidate Set 대상 2-Stage Query-Product Compatibility 평가 (Requirements Relevance/Satisfaction/Conflict)
+     * 3) Dynamic Cutoff 적용하여 노이즈 제거 후 최종 정렬
      */
     private List<Long> fuseByScore(
             List<ScoredDocument> keywordDocs,
@@ -495,7 +501,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             List<ScoredDocument> categoryDocs,
             List<ScoredDocument> summaryDocs,
             List<ScoredDocument> descDocs,
-            Set<Long> categoryIntentBoostProjectIds) {
+            Set<Long> categoryIntentBoostProjectIds,
+            QueryIntent intent) {
 
         List<ScoredDocument> normKeyword = ScoredDocument.normalizeBm25(keywordDocs, BM25_SATURATION_K);
         List<ScoredDocument> normTitle = ScoredDocument.asDirectVectorScores(titleDocs);
@@ -518,9 +525,39 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             return List.of();
         }
 
-        // 컷오프는 카테고리 부스트를 더하기 전, 순수 텍스트/의미 관련도 점수만으로 판단한다.
-        // 부스트를 먼저 더해버리면 "카테고리만 맞고 내용은 무관한" 후보(예: '반려동물 음식'
-        // 검색에 캣타워·산책줄)도 부스트값만으로 컷오프를 넘어 결과에 섞여 들어간다.
+        // ── 2-Stage Compatibility Layer 평가 (후보군 사전 탈락 방지) ───
+        if (intent != null && intent.hasRequirements()) {
+            List<Long> candidateIds = new ArrayList<>(finalScores.keySet());
+            Map<Long, ProjectDocument> docMap = fetchDocumentsByIds(candidateIds);
+
+            for (Long pid : candidateIds) {
+                ProjectDocument doc = docMap.get(pid);
+                if (doc != null) {
+                    QueryProductCompatibilityEvaluator.CompatibilityResult comp = compatibilityEvaluator.evaluate(doc, intent);
+
+                    if (comp.isStrictConflict()) {
+                        log.info("[ProjectSearch] Strict Conflict로 후보 제외: projectId={}, title='{}', sat={}, conf={}, reason='{}'",
+                                pid, doc.title(), comp.satisfactionScore(), comp.conflictScore(), comp.reason());
+                        finalScores.remove(pid);
+                        breakdown.remove(pid);
+                        continue;
+                    }
+
+                    if (comp.totalAdjustment() != 0.0) {
+                        finalScores.merge(pid, comp.totalAdjustment(), Double::sum);
+                        breakdown.computeIfAbsent(pid, k -> new HashMap<>())
+                                .put("compatibilityAdj", comp.totalAdjustment());
+                    }
+                }
+            }
+        }
+
+        if (finalScores.isEmpty()) {
+            log.info("[ProjectSearch] Strict Requirement Conflict로 모든 후보가 제외되어 0건 반환 (정상 결과)");
+            return List.of();
+        }
+
+        // 동적 컷오프 계산 (최고 점수 대비 35% 미만 노이즈 차단)
         double maxScore = finalScores.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double dynamicCutoff = Math.max(MIN_FINAL_SCORE, maxScore * RELATIVE_SCORE_CUTOFF_RATIO);
 
@@ -534,9 +571,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toSet());
 
-        // Category Intent 소프트 부스트: 컷오프를 이미 통과한 후보의 재랭킹에만 사용한다.
-        // 컷오프를 못 넘은 후보를 부스트만으로 되살리지 않는다(오탐 카테고리로 무관한 상품이
-        // 결과에 끼어드는 것을 방지).
+        // Category Intent 소프트 부스트
         for (Long projectId : categoryIntentBoostProjectIds) {
             if (survivors.contains(projectId)) {
                 finalScores.merge(projectId, CATEGORY_INTENT_BOOST_WEIGHT, Double::sum);
@@ -559,6 +594,24 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         return ranked.stream()
                 .map(Map.Entry::getKey)
                 .toList();
+    }
+
+    private Map<Long, ProjectDocument> fetchDocumentsByIds(List<Long> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) {
+            return Map.of();
+        }
+        Query query = Query.of(q -> q.terms(t -> t.field("projectId")
+                .terms(ts -> ts.value(projectIds.stream().map(FieldValue::of).toList()))));
+        NativeQuery nativeQuery = NativeQuery.builder().withQuery(query).withMaxResults(projectIds.size()).build();
+        SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
+
+        Map<Long, ProjectDocument> map = new HashMap<>();
+        for (var hit : hits) {
+            if (hit.getContent() != null && hit.getContent().projectId() != null) {
+                map.put(hit.getContent().projectId(), hit.getContent());
+            }
+        }
+        return map;
     }
 
     private void accumulateScores(Map<Long, Double> finalScores, Map<Long, Map<String, Double>> breakdown,
@@ -629,7 +682,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             targets.add(new ProjectEmbeddingService.ProjectEmbeddingTarget(project, categoryHierarchy, rewards));
         }
 
-        // 50개 프로젝트의 250개 필드 벡터를 단 1회의 OpenAI Batch API 호출로 일괄 생성
         Map<Long, ProjectFieldVectors> vectorsByProject = embeddingService.generateFieldVectorsBulk(targets);
 
         List<ProjectDocument> documents = new ArrayList<>();

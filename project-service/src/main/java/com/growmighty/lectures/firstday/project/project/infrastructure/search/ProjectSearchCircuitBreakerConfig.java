@@ -41,7 +41,7 @@ public class ProjectSearchCircuitBreakerConfig {
                 .timeoutDuration(Duration.ofSeconds(180))
                 .build());
         timeLimiterRegistry.addConfiguration(PROJECT_QUERY_INTENT_ID, TimeLimiterConfig.custom()
-                .timeoutDuration(Duration.ofSeconds(15))
+                .timeoutDuration(Duration.ofSeconds(4))
                 .build());
     }
 

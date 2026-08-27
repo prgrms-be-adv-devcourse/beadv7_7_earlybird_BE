@@ -16,97 +16,43 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * LLM(ChatModel)을 사용해 사용자 검색어를 구조화된 {@link QueryIntent}로 분석한다.
- *
- * <h3>역할</h3>
- * <ul>
- *   <li>원본 검색어에서 상품 유형, 계절, 색상, 용도, 대상, 소재 등 검색에 영향을 주는 속성을 추출한다.</li>
- *   <li>자연어를 상품 설명에 가까운 {@code enrichedQuery}로 재구성하여 Vector Search의 의미 이해력을 높인다.</li>
- *   <li><b>BM25는 원본 쿼리를 그대로 사용</b>하므로 이 클래스는 Vector Search 임베딩 경로에만 영향을 준다.</li>
- *   <li><b>검색 결과를 LLM에게 보내 relevance를 평가하지 않는다.</b> LLM은 검색어 전처리 단계에서만 사용한다.</li>
- * </ul>
- *
- * <h3>Latency 최적화</h3>
- * <ul>
- *   <li><b>인메모리 캐시</b>: 동일 쿼리는 LLM 재호출 없이 즉시 반환한다. 실시간 입력 환경에서 반복 쿼리 비용 0.</li>
- *   <li><b>Skip 조건</b>: 공백 없는 단일 키워드 / 8자 미만 쿼리 / 의미 있는 단어 2개 미만인 쿼리는
- *       LLM 분석 없이 패스스루를 반환한다. 타이핑 중간 상태 쿼리에 LLM이 호출되지 않는다.</li>
- * </ul>
- *
- * <h3>Fallback</h3>
- * LLM 호출 실패(타임아웃, 파싱 오류, Circuit Breaker Open 등) 시
- * {@link QueryIntent#passThrough(String)}를 반환하여 기존 검색 동작이 그대로 유지된다.
+ * LLM(ChatModel)을 사용해 사용자 검색어를 Target + Requirements 구조의 {@link QueryIntent}로 분석한다.
  */
 @Slf4j
 @Component
 public class QueryIntentAnalyzer {
 
-    /**
-     * LLM 분석 대상 최소 쿼리 길이(글자 수).
-     * 8자 미만이면 타이핑 중간 상태로 간주하고 LLM 호출을 건너뛴다.
-     */
-    private static final int MIN_LLM_QUERY_LENGTH = 8;
-
-    /**
-     * LLM 분석을 활성화하기 위한 최소 의미 있는 단어 수(2자 이상 단어 기준).
-     * 복합 자연어 쿼리에서만 LLM이 의미 있는 구조화를 할 수 있다.
-     */
     private static final int MIN_MEANINGFUL_WORDS = 2;
-
-    /**
-     * QueryIntent 캐시 최대 항목 수.
-     * 사이즈 초과 시 신규 항목을 캐싱하지 않는다 — 단순 바운드 정책.
-     */
     private static final int CACHE_MAX_SIZE = 500;
 
+    /**
+     * 슬림 프롬프트: 파이프라인이 실제로 쓰는 3가지(target·requirements·enrichedQuery)만 뽑는다.
+     * 과거 스키마의 season/color/purpose/material/hardConstraints 등은 requirements로 일반화됐고,
+     * 파서가 누락 필드를 null/빈리스트로 안전 처리하므로 프롬프트에서 제거해 입출력 토큰을 줄인다
+     * (gpt-4o-mini + 이 프롬프트로 응답 지연 8~13초 → 1~2초).
+     */
     private static final String SYSTEM_PROMPT = """
-            당신은 온라인 크라우드펀딩 상품 검색 시스템의 쿼리 분석기입니다.
-            사용자의 검색어를 분석하여 JSON 형식으로만 응답합니다.
-            
-            [분석 규칙]
-            1. 검색어에 명확히 명시되거나 의미상 강하게 추론 가능한 정보만 채웁니다.
-            2. 불확실하거나 추측에 해당하는 정보는 null로 둡니다. 없는 정보를 만들어 내지 마세요.
-            3. hardConstraints: 검색어에 명확히 표현된 필수 조건만 포함합니다.
-               예) "여름에 입는 옷" → hardConstraints: ["여름용"]
-               예) "검은색 백팩" → hardConstraints: ["검정색", "백팩"]
-               예) "편한 신발" → hardConstraints: [] (편함은 정량적 필수 조건이 아니라 선호)
-            4. softPreferences: 선호/의도에 가까운 표현만 포함합니다.
-               예) "편한", "가벼운", "감성적인", "저렴한"
-            5. enrichedQuery: 원본 자연어를 상품 카탈로그 설명에 가까운 구체적 표현으로 재구성합니다.
-               - 상품명, 카테고리, 핵심 속성을 간결하게 나열하세요 (10단어 이내).
-               - 조사, 부사, 감탄사는 제거하세요.
-               - hardConstraints에 포함된 핵심 속성을 반드시 포함시키세요.
-               - 계절, 소재, 용도, 대상이 있으면 함께 포함하세요.
-               - 계절 조건(여름/겨울 등)이 있으면 enrichedQuery에 반드시 명시하세요.
-                 예) "여름에 입기 좋은 시원한 여성용 셔츠" → "여름 쿨링 여성 반팔 셔츠 의류"
-                 (겨울 롱코트처럼 계절이 충돌하는 상품과 코사인 거리가 멀어지도록)
-               예) "비 올 때 강아지 산책하면서 쓸 가방" → "강아지 산책용 방수 가방 백팩"
-               예) "집에서 영화볼 때 필요한 기계" → "홈시네마 빔프로젝터 영상 기기"
-               예) "카페 안 가고 집에서 커피 마시기" → "홈카페 커피머신 에스프레소 원두"
-            
-            [응답 형식] - JSON만 출력하며 다른 텍스트는 절대 포함하지 않습니다:
-            {
-              "productType": "string or null",
-              "season": "string or null (여름/겨울/봄/가을 중 하나 또는 null)",
-              "color": "string or null",
-              "purpose": "string or null",
-              "targetUser": "string or null",
-              "material": "string or null",
-              "hardConstraints": ["string", ...],
-              "softPreferences": ["string", ...],
-              "enrichedQuery": "string"
-            }
+            당신은 크라우드펀딩 상품 검색어 분석기입니다. 사용자의 자연어 검색어에서 아래 3가지를 뽑아 JSON만 출력합니다.
+
+            1. target: 찾는 핵심 품목 (예: "옷", "가방", "키보드", "카메라", "책상"). 불명확하면 null.
+            2. requirements: 검색어가 요구하는 조건 목록. 각 항목:
+               - text: 조건 (예: "여름용", "조용한", "초보자용", "원룸용", "휴대용")
+               - isStrict: 그 조건을 어기면 상품이 명백히 부적합해지는 필수 조건이면 true, 단순 선호면 false
+               - polarOpposites: 그 조건과 명백히 충돌하는 상품 설명 표현 목록
+                 예) "여름용" → ["겨울", "방한", "기모", "롱코트", "패딩"]
+                 예) "조용한" → ["시끄러운", "청축", "타건음이 큰"]
+                 예) "초보자용" → ["전문가용", "상급자", "하이엔드"]
+                 예) "가벼운"/"휴대용" → ["무거운", "헤비", "거치형", "대용량"]
+            3. enrichedQuery: 검색어를 상품 카탈로그 표현으로 재구성 (10단어 이내).
+               예) "여름에 입기 좋은 옷" → "여름용 시원한 통기성 반팔 의류"
+
+            JSON 외 다른 텍스트를 절대 포함하지 않습니다:
+            {"target": string|null, "requirements": [{"text": string, "isStrict": boolean, "polarOpposites": [string]}], "enrichedQuery": string}
             """;
 
     private final ChatModel chatModel;
     private final CircuitBreakerFactory circuitBreakerFactory;
     private final ObjectMapper objectMapper;
-
-    /**
-     * QueryIntent 인메모리 캐시.
-     * 실시간 입력 환경에서 동일 쿼리가 반복 입력될 때 LLM 재호출 없이 즉시 반환한다.
-     * 캐시 키: 원본 쿼리 문자열(trimmed).
-     */
     private final ConcurrentHashMap<String, QueryIntent> intentCache = new ConcurrentHashMap<>();
 
     public QueryIntentAnalyzer(
@@ -118,49 +64,28 @@ public class QueryIntentAnalyzer {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * 검색어를 분석하여 {@link QueryIntent}를 반환한다.
-     *
-     * <p>실시간 검색 환경을 고려한 처리 우선순위:
-     * <ol>
-     *   <li>캐시 히트 → 즉시 반환 (LLM 호출 없음)</li>
-     *   <li>Skip 조건 해당 → passThrough 반환 (LLM 호출 없음)</li>
-     *   <li>ChatModel 미설정 → passThrough 반환</li>
-     *   <li>LLM 호출 → 성공 시 캐시 저장 후 반환, 실패 시 passThrough 반환</li>
-     * </ol>
-     *
-     * <p>passThrough 반환 시 {@code enrichedQuery == 원본 쿼리}이므로
-     * 기존 Vector Search 동작과 완전히 동일하게 작동한다.
-     *
-     * @param query 사용자 원본 검색어
-     * @return 구조화된 QueryIntent (실패·스킵 시 passThrough)
-     */
     public QueryIntent analyze(String query) {
         if (query == null || query.isBlank()) {
             return QueryIntent.passThrough(query != null ? query : "");
         }
         String trimmed = query.trim();
 
-        // ① 캐시 히트: 동일 쿼리는 LLM 없이 즉시 반환
         QueryIntent cached = intentCache.get(trimmed);
         if (cached != null) {
             log.debug("[QueryIntent] 캐시 히트: '{}'", trimmed);
             return cached;
         }
 
-        // ② Skip 조건: 단일 키워드·짧은 쿼리·미완성 쿼리는 passThrough
         if (shouldSkipLlm(trimmed)) {
             log.debug("[QueryIntent] LLM 스킵 (단일키워드·짧은쿼리): '{}'", trimmed);
             return QueryIntent.passThrough(trimmed);
         }
 
-        // ③ ChatModel 미설정 환경 (테스트·ChatModel 비활성화)
         if (chatModel == null) {
             log.debug("[QueryIntent] ChatModel 미설정 → passThrough: '{}'", trimmed);
             return QueryIntent.passThrough(trimmed);
         }
 
-        // ④ LLM 호출 — 성공 시 캐시 저장
         return circuitBreakerFactory
                 .create(ProjectSearchCircuitBreakerConfig.PROJECT_QUERY_INTENT_ID)
                 .run(
@@ -176,38 +101,16 @@ public class QueryIntentAnalyzer {
                         });
     }
 
-    /**
-     * LLM 분석을 건너뛸 조건.
-     *
-     * <ul>
-     *   <li>공백이 없으면 단일 키워드 → 임베딩 모델 자체가 잘 처리하므로 LLM 불필요</li>
-     *   <li>총 길이 8자 미만 → 타이핑 중간 상태로 간주 (실시간 키 입력 대응)</li>
-     *   <li>2자 이상 단어가 2개 미만 → 의미 있는 복합 표현이 아직 완성되지 않은 상태</li>
-     * </ul>
-     *
-     * <p>예시:
-     * <ul>
-     *   <li>"강아지" → 공백 없음 → 스킵 ✓</li>
-     *   <li>"공기청정기" → 공백 없음 → 스킵 ✓</li>
-     *   <li>"여름 옷" → 5자, 8자 미만 → 스킵 ✓ (타이핑 중)</li>
-     *   <li>"여름에 시원한 옷" → 9자, 의미 단어 2개 → LLM 호출 ✓</li>
-     *   <li>"비 올 때 강아지 산책용 가방" → 15자, 의미 단어 4개 → LLM 호출 ✓</li>
-     * </ul>
-     */
     private boolean shouldSkipLlm(String query) {
-        // 단일 키워드(공백 없음): 임베딩 모델이 직접 처리 가능, LLM 불필요
+        // 단일 키워드(공백 없음)는 LLM 불필요 -> passThrough ("여름", "노트북", "키보드" 등 회귀 보장)
         if (!query.contains(" ")) {
             return true;
         }
-        // 타이핑 중간 상태: 아직 쿼리가 완성되지 않은 것으로 간주
-        if (query.length() < MIN_LLM_QUERY_LENGTH) {
-            return true;
-        }
-        // 의미 있는 단어(2자 이상)가 최소 2개여야 자연어 의도를 구조화할 수 있음
-        long meaningfulWordCount = Arrays.stream(query.split("\\s+"))
-                .filter(word -> word.length() >= 2)
+        // 공백으로 분리된 어절이 2개 이상이면 복합 의도 쿼리로 간주하여 LLM 호출 허용 ("여름용 옷", "가죽 백", "차 키" 등)
+        long wordCount = Arrays.stream(query.split("\\s+"))
+                .filter(word -> !word.isBlank())
                 .count();
-        return meaningfulWordCount < MIN_MEANINGFUL_WORDS;
+        return wordCount < MIN_MEANINGFUL_WORDS;
     }
 
     private void cacheIfRoom(String key, QueryIntent intent) {
@@ -228,10 +131,6 @@ public class QueryIntentAnalyzer {
         return parseResponse(response, query);
     }
 
-    /**
-     * LLM JSON 응답을 파싱하여 {@link QueryIntent}로 변환한다.
-     * 파싱 실패 시 passThrough를 반환한다.
-     */
     private QueryIntent parseResponse(String response, String originalQuery) {
         if (response == null || response.isBlank()) {
             log.warn("[QueryIntent] LLM 응답 비어있음 → passThrough. query='{}'", originalQuery);
@@ -242,7 +141,12 @@ public class QueryIntentAnalyzer {
         try {
             JsonNode node = objectMapper.readTree(jsonText);
 
+            String target = textOrNull(node, "target");
             String productType = textOrNull(node, "productType");
+            if (target == null && productType != null) {
+                target = productType;
+            }
+
             String season = textOrNull(node, "season");
             String color = textOrNull(node, "color");
             String purpose = textOrNull(node, "purpose");
@@ -252,20 +156,22 @@ public class QueryIntentAnalyzer {
             List<String> softPreferences = stringList(node, "softPreferences");
             String enrichedQuery = textOrNull(node, "enrichedQuery");
 
-            // enrichedQuery가 비거나 원본보다 지나치게 짧으면 원본을 그대로 사용
+            List<Requirement> requirements = parseRequirements(node);
+
             if (enrichedQuery == null || enrichedQuery.isBlank()
                     || enrichedQuery.length() < originalQuery.length() / 3) {
                 enrichedQuery = originalQuery;
             }
 
             QueryIntent intent = new QueryIntent(
-                    productType, season, color, purpose, targetUser, material,
+                    target,
+                    requirements,
+                    productType != null ? productType : target,
+                    season, color, purpose, targetUser, material,
                     hardConstraints, softPreferences, enrichedQuery);
 
-            log.info("[QueryIntent] 분석 완료: query='{}' | productType={}, season={}, purpose={}, "
-                            + "targetUser={}, material={}, hardConstraints={}, enrichedQuery='{}'",
-                    originalQuery, productType, season, purpose,
-                    targetUser, material, hardConstraints, enrichedQuery);
+            log.info("[QueryIntent] 분석 완료: query='{}' | target='{}', requirementsCount={}, enrichedQuery='{}'",
+                    originalQuery, target, requirements.size(), enrichedQuery);
 
             return intent;
 
@@ -276,9 +182,23 @@ public class QueryIntentAnalyzer {
         }
     }
 
-    /**
-     * LLM 응답에 마크다운 코드 펜스(```json ... ```)가 붙어 오는 경우를 처리한다.
-     */
+    private List<Requirement> parseRequirements(JsonNode node) {
+        JsonNode reqArray = node.get("requirements");
+        if (reqArray == null || !reqArray.isArray()) {
+            return List.of();
+        }
+        List<Requirement> list = new ArrayList<>();
+        for (JsonNode item : reqArray) {
+            String text = textOrNull(item, "text");
+            if (text == null || text.isBlank()) continue;
+            String type = textOrNull(item, "type");
+            boolean isStrict = item.has("isStrict") && item.get("isStrict").asBoolean();
+            List<String> polarOpposites = stringList(item, "polarOpposites");
+            list.add(new Requirement(text, type != null ? type : "general", isStrict, polarOpposites));
+        }
+        return List.copyOf(list);
+    }
+
     private String extractJson(String response) {
         String trimmed = response.trim();
         if (trimmed.startsWith("```")) {
