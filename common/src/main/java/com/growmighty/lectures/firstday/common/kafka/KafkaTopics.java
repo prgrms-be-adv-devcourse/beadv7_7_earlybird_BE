@@ -23,6 +23,11 @@ public final class KafkaTopics {
     /** {@link #PAYMENT_SINGLE_RESULT} 처리 실패 격리용 DLT. */
     public static final String PAYMENT_SINGLE_RESULT_DLT = PAYMENT_SINGLE_RESULT + ".DLT";
 
+    /** project-service → file-service : 프로젝트 삭제 시 연관 파일 정리 커맨드 */
+    public static final String PROJECT_DELETED = "project.deleted.v1";
+    /** {@link #PROJECT_DELETED} 처리 실패 격리용 DLT. */
+    public static final String PROJECT_DELETED_DLT = PROJECT_DELETED + ".DLT";
+
     /** settlement-service → payment-service : 결제 일괄 취소 요청 커맨드 */
     public static final String PAYMENT_BULK_CANCEL_COMMAND = "payment.bulk-cancel-command.v1";
     /** {@link #PAYMENT_BULK_CANCEL_COMMAND} 처리 실패 격리용 DLT. */

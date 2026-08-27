@@ -3,11 +3,11 @@ package com.growmighty.lectures.firstday.project.project.application;
 import java.util.UUID;
 
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
-import com.growmighty.lectures.firstday.project.project.application.port.FilePort;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.project.infrastructure.kafka.ProjectFilesDeletionRequestedEvent;
 import com.growmighty.lectures.firstday.project.reward.application.RewardService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +41,6 @@ class ProjectServiceImplDeleteTest {
     private final OrderPort orderPort = mock(OrderPort.class);
     private final ProjectSearchPort searchPort = mock(ProjectSearchPort.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
-    private final FilePort filePort = mock(FilePort.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProjectService> selfProvider = mock(ObjectProvider.class);
@@ -55,7 +54,7 @@ class ProjectServiceImplDeleteTest {
     void setUp() {
         when(rewardServiceProvider.getObject()).thenReturn(rewardService);
         projectService = new ProjectServiceImpl(
-                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, filePort, Clock.systemDefaultZone());
+                projectRepository, projectCategoryRepository, selfProvider, rewardServiceProvider, orderPort, searchPort, eventPublisher, Clock.systemDefaultZone());
         when(selfProvider.getObject()).thenReturn(projectService);
 
         project = Project.register(1L, UUID.randomUUID(), null, "title", 1L, "summary", "desc",
@@ -73,7 +72,7 @@ class ProjectServiceImplDeleteTest {
 
         verify(rewardService).deleteAllByProject(1L);
         verify(projectRepository).delete(project);
-        verify(filePort).deleteProjectFiles(1L);
+        verify(eventPublisher).publishEvent(new ProjectFilesDeletionRequestedEvent(1L));
     }
 
     @Test
@@ -86,7 +85,7 @@ class ProjectServiceImplDeleteTest {
 
         verify(rewardService, never()).deleteAllByProject(anyLong());
         verify(projectRepository, never()).delete(any(Project.class));
-        verify(filePort, never()).deleteProjectFiles(anyLong());
+        verify(eventPublisher, never()).publishEvent(any(ProjectFilesDeletionRequestedEvent.class));
     }
 
     @Test
@@ -101,6 +100,6 @@ class ProjectServiceImplDeleteTest {
 
         verify(rewardService, never()).deleteAllByProject(anyLong());
         verify(projectRepository, never()).delete(any(Project.class));
-        verify(filePort, never()).deleteProjectFiles(anyLong());
+        verify(eventPublisher, never()).publishEvent(any(ProjectFilesDeletionRequestedEvent.class));
     }
 }
