@@ -57,3 +57,6 @@ eureka:
 cohere:
   rerank:
     enabled: false
+    # 실 Cohere 품질 평가 테스트(CohereRerankerRealApiTest)만 env의 COHERE_API_KEY로 켠다.
+    # 없으면 assumeTrue로 skip → CI 정상.
+    api-key: ${COHERE_API_KEY:}
