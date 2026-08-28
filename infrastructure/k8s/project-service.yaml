@@ -39,6 +39,11 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PASSWORD
+            - name: COHERE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-cohere
+                  key: COHERE_API_KEY
             - name: JAVA_TOOL_OPTIONS
               value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
             - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
