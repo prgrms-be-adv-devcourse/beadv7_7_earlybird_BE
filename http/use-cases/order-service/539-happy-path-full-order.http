@@ -199,7 +199,7 @@ Content-Type: application/json
 
 ### 13. 주문 생성 — 이슈 본문 fixture와 동일한 금액 구조(상품합계 24000, 배송비 3000, 총액 27000)
 < {%
-    request.variables.set("orderIdempotencyKey", crypto.randomUUID());
+    request.variables.set("orderIdempotencyKey", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); }));
 %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}

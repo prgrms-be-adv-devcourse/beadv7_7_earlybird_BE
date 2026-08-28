@@ -123,7 +123,7 @@ Content-Type: application/json
 > {% client.assert(response.status === 200, "add to cart failed"); %}
 
 ### 15. 부분집합(Reward 101만) 주문 시도 -> 400
-< {% request.variables.set("k1", crypto.randomUUID()); %}
+< {% request.variables.set("k1", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json
@@ -144,7 +144,7 @@ Content-Type: application/json
 %}
 
 ### 16. 초집합(101,102,103) 주문 시도 -> 400
-< {% request.variables.set("k2", crypto.randomUUID()); %}
+< {% request.variables.set("k2", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json

@@ -109,7 +109,7 @@ Content-Type: application/json
 > {% client.assert(response.status === 200, "add to cart failed"); %}
 
 ### === 동시 요청 A — 이 요청과 바로 아래 B를, 새 탭 2개를 열어 거의 동시에 실행(Ctrl+Enter)한다 ===
-< {% client.global.set("raceKey", crypto.randomUUID()); %}
+< {% client.global.set("raceKey", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json

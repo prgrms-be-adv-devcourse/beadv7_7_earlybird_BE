@@ -78,7 +78,7 @@ Authorization: Bearer {{adminAccessToken}}
 > {% client.assert(response.body.data.status === "IN_PROGRESS", "approve failed"); %}
 
 ### 공용 멱등키 (두 사용자가 동일하게 사용)
-< {% client.global.set("sharedKey", crypto.randomUUID()); %}
+< {% client.global.set("sharedKey", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 GET {{baseUrl}}/api/v1/project-categories
 
 > {%%}

@@ -107,7 +107,7 @@ Content-Type: application/json
 ### 13. 요청 body에는 quantity=99를 넣지만 실제 주문 수량은 Cart 기준 2여야 한다
 ### expectedItemsAmount/TotalAmount도 Cart 수량(2) 기준인 24000/27000으로 보낸다 — 99 기준(1188000)으로
 ### 보내면 CASE-10(금액 불일치 400)에 걸려버려 이 케이스(수량 우선)를 검증할 수 없다.
-< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+< {% request.variables.set("orderIdempotencyKey", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json

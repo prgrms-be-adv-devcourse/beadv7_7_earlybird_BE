@@ -19,7 +19,7 @@ Content-Type: application/json
 > {% client.global.set("backerAccessToken", response.body.data.accessToken); client.global.set("userId", response.body.data.user.id); %}
 
 ### 3. Cart가 비어있는 상태에서 문법적으로 정상인 주문 요청 — 임의 rewardId(1)로 시도
-< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+< {% request.variables.set("orderIdempotencyKey", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json

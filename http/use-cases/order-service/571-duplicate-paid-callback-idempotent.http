@@ -112,7 +112,7 @@ Content-Type: application/json
 > {% client.assert(response.status === 200, "add to cart failed"); %}
 
 ### 정상 주문 -> 이미 PAID로 끝난다
-< {% request.variables.set("orderIdempotencyKey", crypto.randomUUID()); %}
+< {% request.variables.set("orderIdempotencyKey", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json
