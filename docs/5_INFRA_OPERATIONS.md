@@ -71,6 +71,15 @@ kubectl -n webapp scale deployment/<service> --replicas=0   # 매니페스트는
 
 전체 롤백 절차는 [`infrastructure/k8s/README.md`](../infrastructure/k8s/README.md) 참고.
 
+## 7. IntelliJ에서 클러스터 보기 (개인 IDE 설정)
+
+kubectl 없이 IntelliJ Kubernetes 플러그인으로 파드/로그를 바로 보고 싶으면:
+
+1. 데이터 박스(컨트롤 플레인)의 `/etc/rancher/k3s/k3s.yaml`을 그대로 복사
+2. `server: https://127.0.0.1:6443`을 `server: https://52.78.6.56:6443`으로만 바꿔서 로컬에 저장 — 인증서/키는 그 파일에 이미 들어 있어 나머지는 그대로 재사용
+3. IntelliJ → Kubernetes 플러그인에 이 kubeconfig 등록 (`.idea/kubernetes/`는 gitignore 대상이라 커밋되지 않음)
+4. 데이터 박스 보안그룹에 인바운드 TCP 6443 허용 규칙 추가 — 현재 `0.0.0.0/0`으로 열려 있음. client-cert 인증이 앞단에 있긴 하지만 API 서버 자체가 공개 인터넷에 노출되는 트레이드오프이니, 필요하면 팀원 IP만 허용하는 쪽으로 좁히는 것도 고려
+
 ## 관련 문서
 
 - [`infrastructure/k8s/README.md`](../infrastructure/k8s/README.md) — 매니페스트 적용/롤백
