@@ -36,7 +36,7 @@ x-business-depends-on: &business-depends-on
     mysql:
       condition: service_healthy
 
-# order/cart/payment/project/settlement 만 kafka를 쓴다 — 나머지 서비스(board/user/file/
+# order/cart/payment/project/settlement/file 만 kafka를 쓴다 — 나머지 서비스(board/user/
 # notification)까지 kafka-topics-init 완료를 기다리게 하면 불필요한 결합이 생기므로, 공통
 # x-business-depends-on 대신 kafka를 쓰는 서비스에만 이 anchor를 개별로 붙인다.
 x-business-depends-on-kafka: &business-depends-on-kafka
@@ -428,7 +428,7 @@ services:
     #   - "8086:8086"
 
   file-service:
-    <<: [*service-defaults, *business-depends-on]
+    <<: [*service-defaults, *business-depends-on-kafka]
     build:
       <<: *build-defaults
       args:

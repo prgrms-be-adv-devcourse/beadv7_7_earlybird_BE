@@ -9,12 +9,14 @@ BOOTSTRAP=kafka:29092
 PARTITIONS=3
 REPLICATION_FACTOR=1
 
-# 카프카 이벤트/커맨드 명세 기준 토픽 5개 + 각각의 DLT(Dead Letter Topic).
+# 카프카 이벤트/커맨드 명세 기준 토픽 6개 + 각각의 DLT(Dead Letter Topic).
 # DLT도 auto.create.topics.enable=false 아래에서는 명시적으로 만들어둬야 한다 —
 # 브로커는 DeadLetterPublishingRecoverer의 발행 요청과 일반 발행 요청을 구분하지 않는다.
 TOPICS="
 project.status-changed.v1
 project.status-changed.v1.DLT
+project.deleted.v1
+project.deleted.v1.DLT
 order.payment-status-changed.v1
 order.payment-status-changed.v1.DLT
 payment.single-result.v1
