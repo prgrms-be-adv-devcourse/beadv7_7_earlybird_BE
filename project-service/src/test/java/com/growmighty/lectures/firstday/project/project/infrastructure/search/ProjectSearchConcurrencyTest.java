@@ -8,7 +8,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -42,9 +41,6 @@ class ProjectSearchConcurrencyTest extends ElasticsearchIntegrationTestSupport {
     @Autowired
     private ProjectRepository projectRepository;
 
-    @MockitoBean
-    private QueryIntentAnalyzer queryIntentAnalyzer;
-
     private final List<Long> savedProjectIds = new ArrayList<>();
 
     @AfterEach
@@ -64,9 +60,6 @@ class ProjectSearchConcurrencyTest extends ElasticsearchIntegrationTestSupport {
         Project saved = projectRepository.save(laptop);
         savedProjectIds.add(saved.getProjectId());
         adapter.index(saved);
-
-        when(queryIntentAnalyzer.analyze(anyString()))
-                .thenAnswer(inv -> QueryIntent.passThrough(inv.getArgument(0)));
 
         // ES 색인 동기화 확인
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {

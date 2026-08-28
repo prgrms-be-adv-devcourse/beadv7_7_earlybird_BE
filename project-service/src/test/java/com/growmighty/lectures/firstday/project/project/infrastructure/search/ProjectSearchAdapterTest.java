@@ -58,8 +58,9 @@ class ProjectSearchAdapterTest {
     private final ProjectCategoryRepository categoryRepository = mock(ProjectCategoryRepository.class);
     private final RewardRepository rewardRepository = mock(RewardRepository.class);
     private final CategoryIntentResolver categoryIntentResolver = mock(CategoryIntentResolver.class);
-    private final QueryIntentAnalyzer queryIntentAnalyzer = mock(QueryIntentAnalyzer.class);
-    private final QueryProductCompatibilityEvaluator compatibilityEvaluator = new QueryProductCompatibilityEvaluator();
+    private final Reranker reranker = mock(Reranker.class);
+    private final QuerySynonymExpander synonymExpander = new QuerySynonymExpander();
+    private final SeasonalConflictFilter seasonalConflictFilter = new SeasonalConflictFilter();
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -68,8 +69,9 @@ class ProjectSearchAdapterTest {
         when(circuitBreakerFactory.create("projectSearch")).thenReturn(circuitBreaker);
         when(circuitBreakerFactory.create("projectAutocomplete")).thenReturn(circuitBreaker);
         when(circuitBreakerFactory.create("projectBulkIndex")).thenReturn(circuitBreaker);
-        // QueryIntentAnalyzer는 기본적으로 passThrough를 반환 — 기존 테스트 동작 유지
-        when(queryIntentAnalyzer.analyze(any())).thenAnswer(inv -> QueryIntent.passThrough(inv.getArgument(0)));
+        when(circuitBreakerFactory.create("projectRerank")).thenReturn(circuitBreaker);
+        // Reranker는 기본적으로 후보 순서(= fusion 순서)를 그대로 반환 — NoOp 동작. 개별 테스트에서 override.
+        when(reranker.rerank(any(), anyList(), any())).thenAnswer(inv -> inv.getArgument(1));
         when(circuitBreaker.run(any(Supplier.class), any(Function.class))).thenAnswer(invocation -> {
             Supplier<Object> toRun = invocation.getArgument(0);
             Function<Throwable, Object> fallback = invocation.getArgument(1);
@@ -82,7 +84,7 @@ class ProjectSearchAdapterTest {
         adapter = new ProjectSearchAdapter(
                 elasticsearchOperations, elasticsearchClient, circuitBreakerFactory,
                 eventPublisher, embeddingService, projectRepository, categoryRepository,
-                rewardRepository, categoryIntentResolver, queryIntentAnalyzer, compatibilityEvaluator,
+                rewardRepository, categoryIntentResolver, reranker, synonymExpander, seasonalConflictFilter,
                 Runnable::run); // 단위 테스트에서는 Runnable::run 사용
     }
 
@@ -408,56 +410,9 @@ class ProjectSearchAdapterTest {
     }
 
     @Test
-    @DisplayName("[핵심 검증] LLM Timeout 발생 시 passThrough로 이어져 BM25 + Vector + Fusion 정상 완주 (DB LIKE 폴백 미호출)")
-    @SuppressWarnings("unchecked")
-    void search_whenLlmTimesOut_proceedsWithPassThroughVectorAndBm25Fusion() throws Exception {
-        // 1. LLM은 Timeout으로 passThrough를 반환
-        when(queryIntentAnalyzer.analyze("여름용 옷")).thenReturn(QueryIntent.passThrough("여름용 옷"));
-        // 2. 임베딩은 정상 생성
-        when(embeddingService.generateEmbedding("여름용 옷")).thenReturn(new float[1536]);
-        when(categoryIntentResolver.resolveCategoryIntent(any())).thenReturn(List.of());
-
-        // 3. BM25 검색 결과
-        SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);
-        SearchHit<ProjectDocument> keywordHit = mock(SearchHit.class);
-        when(keywordHit.getContent()).thenReturn(sampleDocument(101L, "여름 린넨 반팔 티셔츠"));
-        when(keywordHit.getScore()).thenReturn(2.5f);
-        when(keywordHits.stream()).thenReturn(java.util.stream.Stream.of(keywordHit));
-        when(elasticsearchOperations.search(any(Query.class), eq(ProjectDocument.class)))
-                .thenReturn(keywordHits);
-
-        // 4. kNN 벡터 검색 결과
-        SearchResponse<ProjectDocument> knnResponse = mock(SearchResponse.class);
-        HitsMetadata<ProjectDocument> knnHitsMetadata = mock(HitsMetadata.class);
-        Hit<ProjectDocument> knnHit = mock(Hit.class);
-        when(knnHit.source()).thenReturn(sampleDocument(102L, "사계절 셔츠"));
-        when(knnHit.score()).thenReturn(0.90);
-        when(knnHitsMetadata.hits()).thenReturn(List.of(knnHit));
-        when(knnResponse.hits()).thenReturn(knnHitsMetadata);
-
-        SearchResponse<ProjectDocument> emptyResponse = mock(SearchResponse.class);
-        HitsMetadata<ProjectDocument> emptyHits = mock(HitsMetadata.class);
-        when(emptyHits.hits()).thenReturn(List.of());
-        when(emptyResponse.hits()).thenReturn(emptyHits);
-
-        when(elasticsearchClient.search(any(Function.class), eq(ProjectDocument.class)))
-                .thenReturn(knnResponse, emptyResponse, emptyResponse, emptyResponse, emptyResponse);
-
-        long start = System.currentTimeMillis();
-        List<Long> result = adapter.search("여름용 옷");
-        long elapsed = System.currentTimeMillis() - start;
-
-        // DB LIKE 폴백이 호출되지 않고, BM25(101L) + Vector(102L)가 모두 포함되어 퓨전 반환됨
-        assertThat(result).contains(101L, 102L);
-        assertThat(elapsed).isLessThan(2500);
-        verifyNoInteractions(projectRepository);
-    }
-
-    @Test
-    @DisplayName("QueryIntent/Vector Branch가 실패해도 BM25 결과만으로 안전하게 정상 검색된다 (Graceful Degradation)")
+    @DisplayName("Vector Branch(임베딩)가 실패해도 BM25 결과만으로 안전하게 정상 검색된다 (Graceful Degradation)")
     @SuppressWarnings("unchecked")
     void search_whenVectorBranchFails_returnsBm25ResultsGracefully() {
-        when(queryIntentAnalyzer.analyze("강아지")).thenThrow(new RuntimeException("LLM Timeout"));
         when(embeddingService.generateEmbedding(any())).thenThrow(new RuntimeException("OpenAI API Down"));
 
         SearchHits<ProjectDocument> keywordHits = mock(SearchHits.class);

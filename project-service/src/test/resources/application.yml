@@ -35,12 +35,6 @@ spring:
   ai:
     openai:
       api-key: ${OPENAI_API_KEY:}
-      # 운영 config-repo(project-service.yml)와 동일 — QueryIntent 추출은 gpt-4o-mini로 충분하고 빠르다.
-      chat:
-        options:
-          model: gpt-4o-mini
-          temperature: 0.0
-          max-tokens: 500
     # Spring AI EmbeddingModel(OpenAiEmbeddingModel)의 내부 RetryTemplate 기본값은
     # max-attempts=10, backoff.initial-interval=2s, multiplier=5, max-interval=180s다 — 최악의 경우
     # 재시도만으로 서킷브레이커 타임아웃(ProjectSearchCircuitBreakerConfig의 10초)을 훨씬 초과할 수
@@ -57,3 +51,12 @@ spring:
 eureka:
   client:
     enabled: false
+
+# 검색 리랭킹: 테스트는 NoOpReranker(재정렬 없음). enabled=false면 Cohere Bean도 COHERE_API_KEY도 불필요.
+# 실 Cohere 품질 평가 테스트만 로컬에서 -Dcohere.rerank.enabled=true 로 켠다.
+cohere:
+  rerank:
+    enabled: false
+    # 실 Cohere 품질 평가 테스트(CohereRerankerRealApiTest)만 env의 COHERE_API_KEY로 켠다.
+    # 없으면 assumeTrue로 skip → CI 정상.
+    api-key: ${COHERE_API_KEY:}

@@ -20,6 +20,7 @@ import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Component;
 
@@ -41,8 +42,12 @@ import java.util.stream.Collectors;
 /**
  * Elasticsearch 검색 포트 구현체.
  * 5개 독립 벡터(title, summary, description, category, reward)의 코사인 점수 보존 kNN 검색과
- * Nori 형태소 분석기 기반 BM25 키워드 검색을 Score-aware Hybrid Fusion으로 결합하고,
- * 2-Stage Query-Product Compatibility Layer를 통해 의미적 적합성 및 충돌 여부를 종합 평가하여 최종 순위를 산출한다.
+ * Nori 형태소 분석기 기반 BM25 키워드 검색을 Score-aware Hybrid Fusion으로 결합해 <b>후보 상위 40개</b>를
+ * 뽑고, 이를 {@link Reranker}(Cohere Rerank)로 최종 재정렬한다. 강한 계절 충돌 상품은
+ * {@link SeasonalConflictFilter}로 rerank 전에 하드 제외한다.
+ *
+ * <p>쿼리 이원화: BM25/임베딩 retrieval은 {@link QuerySynonymExpander}로 확장한 쿼리를 쓰고(recall),
+ * 리랭커에는 사용자 원본 쿼리를 넘긴다(판단).
  */
 @Slf4j
 @Component
@@ -70,14 +75,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final int AUTOCOMPLETE_CANDIDATE_LIMIT = 50;
     /** 형태소 어휘 레벨 최소 일치 조건 */
     private static final String MATCH_MINIMUM_SHOULD_MATCH = "2<70%";
-    /**
-     * BM25/kNN 완료 후 QueryIntent(LLM)를 Compatibility 평가(계절 충돌 상품 제거 등)에 합류시키기 위해
-     * 기다리는 예산(ms). 임베딩·kNN은 LLM을 전혀 기다리지 않고 원본 쿼리로 즉시 진행하므로(크리티컬 패스에서
-     * 제외), cold 검색의 실질 지연은 이 예산과 LLM 지연 중 큰 쪽에 수렴한다. 예산은
-     * projectQueryIntent TimeLimiter(4s)와 맞춰, LLM이 정상 응답하면(느린 날 포함) 계절 충돌 제거가
-     * 항상 동작하고, LLM 행업 시에만 4s 뒤 Compatibility 없이 완주한다(그 뒤 CB가 열려 후속 검색은 빠름).
-     */
-    private static final long INTENT_JOIN_BUDGET_MS = 4000;
+    /** fusion 후 리랭커에 넘길 상위 후보 수. */
+    private static final int RERANK_CANDIDATE_LIMIT = 40;
 
     private final ElasticsearchOperations elasticsearchOperations;
     private final ElasticsearchClient elasticsearchClient;
@@ -88,8 +87,9 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final ProjectCategoryRepository categoryRepository;
     private final RewardRepository rewardRepository;
     private final CategoryIntentResolver categoryIntentResolver;
-    private final QueryIntentAnalyzer queryIntentAnalyzer;
-    private final QueryProductCompatibilityEvaluator compatibilityEvaluator;
+    private final Reranker reranker;
+    private final QuerySynonymExpander synonymExpander;
+    private final SeasonalConflictFilter seasonalConflictFilter;
     private final java.util.concurrent.Executor searchTaskExecutor;
 
     @Override
@@ -167,67 +167,27 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 this::autocompleteFallback);
     }
 
-    private static final Map<String, List<String>> SLANG_SYNONYM_MAP = Map.of(
-            "냥이", List.of("고양이"),
-            "댕댕이", List.of("강아지"),
-            "공청기", List.of("공기청정기"),
-            "폰케이스", List.of("스마트폰 케이스")
-    );
-
-    private List<String> resolveSlangSynonyms(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return List.of();
-        }
-        String trimmed = keyword.trim();
-        List<String> synonyms = new ArrayList<>();
-        for (Map.Entry<String, List<String>> entry : SLANG_SYNONYM_MAP.entrySet()) {
-            if (trimmed.contains(entry.getKey())) {
-                synonyms.addAll(entry.getValue());
-            }
-        }
-        return synonyms;
-    }
-
     private List<Long> doSearch(String keyword) {
         long totalStart = System.currentTimeMillis();
         String trimmedKeyword = keyword.trim();
 
-        // ── 1. 공통 전처리: 정확한 카테고리명 및 슬랭 동의어 (초고속 인메모리, < 1ms) ───
+        // ── 1. 전처리 (초고속 인메모리) ─────────────────────────────────────────────
+        //   · 정확한 카테고리명 → kNN 하드 스코프
+        //   · 동의어 확장 → BM25/임베딩 retrieval 전용. 리랭커에는 원본을 넘긴다(설계 §3).
         List<Long> exactCategoryIds = resolveExactCategoryIds(trimmedKeyword);
-        List<String> slangSynonyms = resolveSlangSynonyms(trimmedKeyword);
+        String expanded = synonymExpander.expand(trimmedKeyword);
 
         if (!exactCategoryIds.isEmpty()) {
             log.info("[ProjectSearch] 키워드='{}' → 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
         }
 
-        // ── QueryIntent(LLM) 분석: BM25/임베딩/kNN과 동시에 격발하고 어느 것도 이걸 기다리지 않는다.
-        //   · enrichedQuery 재작성: 임베딩 시점에 이미 끝나 있으면(캐시 히트) 조기 반영, 아니면 원본 쿼리 사용
-        //   · requirements 기반 Compatibility 평가(계절 충돌 제거 등): fusion 직전 INTENT_JOIN_BUDGET_MS 예산으로 합류
-        long llmStart = System.currentTimeMillis();
-        CompletableFuture<QueryIntent> intentFuture = CompletableFuture.supplyAsync(() -> {
-            try {
-                return queryIntentAnalyzer.analyze(trimmedKeyword);
-            } catch (Exception e) {
-                log.warn("[ProjectSearch] QueryIntent 분석 중 예외 발생, passThrough 폴백: {}", e.getMessage());
-                return QueryIntent.passThrough(trimmedKeyword);
-            }
-        }, searchTaskExecutor);
-
-        // ── 2. [Branch 1: Fast BM25 (비동기 병렬 실행)] ─────────────────────────────
+        // ── 2. [Branch 1: BM25 (확장 쿼리)] ────────────────────────────────────────
         CompletableFuture<List<ScoredDocument>> bm25Future = CompletableFuture.supplyAsync(() -> {
-            long bm25Start = System.currentTimeMillis();
-            log.debug("[ProjectSearch Diagnostic] BM25 START on thread: {}", Thread.currentThread().getName());
             Query keywordQuery = Query.of(q -> q.bool(b -> {
-                b.should(s -> s.match(m -> m.field("title").query(trimmedKeyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                        .should(s -> s.match(m -> m.field("summary").query(trimmedKeyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                        .should(s -> s.match(m -> m.field("description").query(trimmedKeyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                        .should(s -> s.match(m -> m.field("rewardNames").query(trimmedKeyword).boost(1.5f)));
-
-                if (!slangSynonyms.isEmpty()) {
-                    String slangQuery = String.join(" ", slangSynonyms);
-                    b.should(s -> s.match(m -> m.field("title").query(slangQuery).boost(0.4f)))
-                            .should(s -> s.match(m -> m.field("rewardNames").query(slangQuery).boost(0.4f)));
-                }
+                b.should(s -> s.match(m -> m.field("title").query(expanded).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("summary").query(expanded).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("description").query(expanded).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("rewardNames").query(expanded).boost(1.5f)));
 
                 if (!exactCategoryIds.isEmpty()) {
                     b.should(s -> s.matchAll(m -> m));
@@ -236,66 +196,36 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 }
                 return b.minimumShouldMatch("1");
             }));
-
-            List<ScoredDocument> docs = searchKeywordScored(keywordQuery);
-            long bm25Elapsed = System.currentTimeMillis() - bm25Start;
-            log.debug("[ProjectSearch Latency] BM25 END: {}ms, 매칭 {}건 on thread: {}", bm25Elapsed, docs.size(), Thread.currentThread().getName());
-            return docs;
+            return searchKeywordScored(keywordQuery);
         }, searchTaskExecutor);
 
-        // ── 3. [Branch 2: Embedding → kNN (비동기 병렬 실행, LLM을 기다리지 않음)] ──────────
+        // ── 3. [Branch 2: Embedding(확장 쿼리) → 5개 필드 kNN 병렬] ──────────────────
         record VectorBranchResult(
                 List<ScoredDocument> rewardScored,
                 List<ScoredDocument> titleScored,
                 List<ScoredDocument> categoryVectorScored,
                 List<ScoredDocument> summaryScored,
                 List<ScoredDocument> descScored,
-                Set<Long> categoryIntentBoostProjectIds,
-                long embeddingElapsed,
-                long knnElapsed
+                Set<Long> categoryIntentBoostProjectIds
         ) {}
 
         CompletableFuture<VectorBranchResult> vectorFuture = CompletableFuture.supplyAsync(() -> {
-            log.debug("[ProjectSearch Diagnostic] Vector Branch START on thread: {}", Thread.currentThread().getName());
-            // (1) LLM을 기다리지 않는다 — 이미 준비된 enrichedQuery(캐시 히트 등)만 조기 반영하고 아니면 원본 쿼리로 즉시 진행.
-            QueryIntent readyIntent = intentFuture.getNow(null);
-            boolean useEnriched = readyIntent != null && readyIntent.hasStructuredIntent()
-                    && readyIntent.enrichedQuery() != null && !readyIntent.enrichedQuery().isBlank();
-            String queryForEmbedding = useEnriched ? readyIntent.enrichedQuery() : trimmedKeyword;
-            if (useEnriched) {
-                log.info("[ProjectSearch] Query Intent 조기 반영: query='{}' → enrichedQuery='{}' (target={}, requirementsCount={})",
-                        trimmedKeyword, queryForEmbedding, readyIntent.target(), readyIntent.requirements().size());
-            }
-
-            // (2) 임베딩 생성 (OpenAI Embedding API)
-            long embStart = System.currentTimeMillis();
-            log.debug("[ProjectSearch Diagnostic] Embedding START for query: '{}' on thread: {}", queryForEmbedding, Thread.currentThread().getName());
             float[] queryVector = null;
             try {
-                queryVector = embeddingService.generateEmbedding(queryForEmbedding);
+                queryVector = embeddingService.generateEmbedding(expanded);
             } catch (Exception e) {
                 log.warn("[ProjectSearch] 임베딩 생성 실패: {}", e.getMessage());
             }
-            long embeddingElapsed = System.currentTimeMillis() - embStart;
-            log.debug("[ProjectSearch Diagnostic] Embedding END: {}ms on thread: {}", embeddingElapsed, Thread.currentThread().getName());
-
             if (queryVector == null || queryVector.length == 0) {
-                return new VectorBranchResult(
-                        List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(),
-                        embeddingElapsed, 0);
+                return new VectorBranchResult(List.of(), List.of(), List.of(), List.of(), List.of(), Set.of());
             }
 
-            // (3) Category Intent 추론
             List<Long> intentCategoryIds = exactCategoryIds.isEmpty()
                     ? categoryIntentResolver.resolveCategoryIntent(queryVector)
                     : List.of();
-
             if (exactCategoryIds.isEmpty()) {
-                if (!intentCategoryIds.isEmpty()) {
-                    log.info("[ProjectSearch] 키워드='{}' → 카테고리 의도 소프트 부스트 적용: categoryIds={}", trimmedKeyword, intentCategoryIds);
-                } else {
-                    log.info("[ProjectSearch] 키워드='{}' → 카테고리 스코프 미적용 (전체 검색)", trimmedKeyword);
-                }
+                log.info("[ProjectSearch] 키워드='{}' → 카테고리 의도: {}", trimmedKeyword,
+                        intentCategoryIds.isEmpty() ? "미적용(전체 검색)" : "소프트 부스트 " + intentCategoryIds);
             }
 
             List<Float> vectorList = new ArrayList<>(queryVector.length);
@@ -303,9 +233,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 vectorList.add(f);
             }
 
-            // (4) 5개 필드 kNN 검색 병렬 격발
-            long knnStart = System.currentTimeMillis();
-            log.debug("[ProjectSearch Diagnostic] kNN 5-field START on thread: {}", Thread.currentThread().getName());
             CompletableFuture<List<ScoredDocument>> rewardFuture = CompletableFuture.supplyAsync(
                     () -> searchFieldKnnScored("rewardVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
             CompletableFuture<List<ScoredDocument>> titleFuture = CompletableFuture.supplyAsync(
@@ -316,78 +243,57 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                     () -> searchFieldKnnScored("summaryVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
             CompletableFuture<List<ScoredDocument>> descFuture = CompletableFuture.supplyAsync(
                     () -> searchFieldKnnScored("descriptionVector", vectorList, 20, 50, exactCategoryIds), searchTaskExecutor);
-
-            log.debug("[ProjectSearch Diagnostic] Vector outer task BEFORE JOIN for kNN 5-field on thread: {}", Thread.currentThread().getName());
             CompletableFuture.allOf(rewardFuture, titleFuture, catVecFuture, summaryFuture, descFuture).join();
-            log.debug("[ProjectSearch Diagnostic] Vector outer task AFTER JOIN for kNN 5-field on thread: {}", Thread.currentThread().getName());
-
-            List<ScoredDocument> rewardScored = rewardFuture.join();
-            List<ScoredDocument> titleScored = titleFuture.join();
-            List<ScoredDocument> categoryVectorScored = catVecFuture.join();
-            List<ScoredDocument> summaryScored = summaryFuture.join();
-            List<ScoredDocument> descScored = descFuture.join();
-            long knnElapsed = System.currentTimeMillis() - knnStart;
 
             Set<Long> categoryIntentBoostProjectIds = intentCategoryIds.isEmpty()
                     ? Set.of()
                     : resolveCategoryMemberProjectIds(intentCategoryIds);
 
             return new VectorBranchResult(
-                    rewardScored, titleScored, categoryVectorScored, summaryScored, descScored,
-                    categoryIntentBoostProjectIds, embeddingElapsed, knnElapsed
-            );
+                    rewardFuture.join(), titleFuture.join(), catVecFuture.join(),
+                    summaryFuture.join(), descFuture.join(), categoryIntentBoostProjectIds);
         }, searchTaskExecutor).exceptionally(ex -> {
-            log.warn("[ProjectSearch] Vector Branch 실행 중 예외 발생, BM25 단독 폴백: {}", ex.getMessage());
-            return new VectorBranchResult(List.of(), List.of(), List.of(), List.of(), List.of(), Set.of(), 0, 0);
+            log.warn("[ProjectSearch] Vector Branch 실행 중 예외, BM25 단독 폴백: {}", ex.getMessage());
+            return new VectorBranchResult(List.of(), List.of(), List.of(), List.of(), List.of(), Set.of());
         });
 
-        // ── 4. 두 Branch 결과 대기 및 결합 (Graceful Degradation) ─────────────────────
-        log.debug("[ProjectSearch Diagnostic] Main thread BEFORE JOIN for BM25 and Vector Branch on thread: {}", Thread.currentThread().getName());
         CompletableFuture.allOf(bm25Future, vectorFuture).join();
-        log.debug("[ProjectSearch Diagnostic] Main thread AFTER JOIN for BM25 and Vector Branch on thread: {}", Thread.currentThread().getName());
-
         List<ScoredDocument> keywordScored = bm25Future.join();
         VectorBranchResult vectorRes = vectorFuture.join();
 
-        // Compatibility 평가용 QueryIntent 합류: 예산 내 완료되면 계절 충돌 제거 등에 사용, 초과 시 없이 완주.
-        QueryIntent intent;
-        try {
-            intent = intentFuture.get(INTENT_JOIN_BUDGET_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
-        } catch (Exception e) {
-            log.info("[ProjectSearch] QueryIntent가 예산({}ms) 내 미완료 → Compatibility 없이 진행. keyword='{}'", INTENT_JOIN_BUDGET_MS, trimmedKeyword);
-            intent = QueryIntent.passThrough(trimmedKeyword);
-        }
-        long llmElapsed = System.currentTimeMillis() - llmStart;
-
-        // Vector 결과가 전혀 없는 경우 (임베딩 실패, 모델 미설정 등) BM25 단독 반환
+        // Vector 결과가 전혀 없으면 (임베딩 실패 등) BM25 단독 반환
         if (vectorRes.rewardScored.isEmpty() && vectorRes.titleScored.isEmpty()
                 && vectorRes.categoryVectorScored.isEmpty() && vectorRes.summaryScored.isEmpty()
                 && vectorRes.descScored.isEmpty()) {
-            long totalElapsed = System.currentTimeMillis() - totalStart;
-            log.info("[ProjectSearch Latency Summary] 키워드='{}' (BM25 단독) | Total: {}ms",
-                    trimmedKeyword, totalElapsed);
+            log.info("[ProjectSearch] 키워드='{}' (BM25 단독) | Total: {}ms",
+                    trimmedKeyword, System.currentTimeMillis() - totalStart);
             return keywordScored.stream().map(ScoredDocument::projectId).toList();
         }
 
-        // ── 5. Score-aware Hybrid Ranking + 2-Stage Compatibility Layer ─────────────
-        long fusionStart = System.currentTimeMillis();
-        List<Long> rankedProjectIds = fuseByScore(
+        // ── 4. fusion → 후보 상위 40 (candidate generation, 최종 순위 아님) ─────────
+        List<Long> candidates = fuseByScore(
                 keywordScored,
-                vectorRes.rewardScored,
-                vectorRes.titleScored,
-                vectorRes.categoryVectorScored,
-                vectorRes.summaryScored,
-                vectorRes.descScored,
-                vectorRes.categoryIntentBoostProjectIds,
-                intent
-        );
-        long fusionElapsed = System.currentTimeMillis() - fusionStart;
-        long totalElapsed = System.currentTimeMillis() - totalStart;
+                vectorRes.rewardScored, vectorRes.titleScored, vectorRes.categoryVectorScored,
+                vectorRes.summaryScored, vectorRes.descScored,
+                vectorRes.categoryIntentBoostProjectIds
+        ).stream().limit(RERANK_CANDIDATE_LIMIT).toList();
 
-        log.info("[ProjectSearch Latency Summary] 키워드='{}' | Total: {}ms | LLM(병렬): {}ms, Embedding: {}ms, kNN(5개병렬): {}ms, Fusion: {}ms | 결과: {}건",
-                trimmedKeyword, totalElapsed, llmElapsed, vectorRes.embeddingElapsed, vectorRes.knnElapsed, fusionElapsed, rankedProjectIds.size());
+        // ── 5. 계절 하드 제외 → 문서 텍스트 1회 조회 → 리랭커(원본 쿼리) ─────────────
+        //   이 단계가 실패해도 검색이 멈추면 안 된다 — fusion 순서(candidates)로 완주한다.
+        List<Long> finalIds = candidates;
+        int afterFilterSize = candidates.size();
+        try {
+            Map<Long, ProjectDocument> docs = fetchDocumentsByIds(candidates);
+            List<Long> afterFilter = seasonalConflictFilter.filter(trimmedKeyword, candidates, docs);
+            afterFilterSize = afterFilter.size();
+            finalIds = reranker.rerank(trimmedKeyword, afterFilter, docs);
+        } catch (Exception e) {
+            log.warn("[ProjectSearch] rerank 단계 실패 → fusion 순서로 완주. 원인: {}", e.toString());
+        }
 
-        return rankedProjectIds;
+        log.info("[ProjectSearch Latency Summary] 키워드='{}' | Total: {}ms | 후보: {}, 계절필터후: {}, 최종: {}",
+                trimmedKeyword, System.currentTimeMillis() - totalStart, candidates.size(), afterFilterSize, finalIds.size());
+        return finalIds;
     }
 
     private List<Long> resolveExactCategoryIds(String keyword) {
@@ -489,10 +395,10 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private static final double CATEGORY_INTENT_BOOST_WEIGHT = 0.10;
 
     /**
-     * Score-aware Hybrid Ranking + 2-Stage Compatibility Layer:
-     * 1) BM25 정규화 + 5개 Vector 필드 Raw Cosine 가중합 계산
-     * 2) Candidate Set 대상 2-Stage Query-Product Compatibility 평가 (Requirements Relevance/Satisfaction/Conflict)
-     * 3) Dynamic Cutoff 적용하여 노이즈 제거 후 최종 정렬
+     * Score-aware Hybrid Ranking — <b>후보 생성 전용</b>. 최종 순위는 {@link Reranker}가 낸다.
+     * 1) BM25 포화 정규화 + 5개 Vector 필드 Raw Cosine 가중합
+     * 2) 동적 컷오프(최고 점수 대비 35% 미만)로 노이즈 제거 + Category Intent 소프트 부스트
+     * 3) 스코어 내림차순 정렬한 projectId 목록 반환 (호출부에서 상위 N개만 취해 리랭커로)
      */
     private List<Long> fuseByScore(
             List<ScoredDocument> keywordDocs,
@@ -501,8 +407,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             List<ScoredDocument> categoryDocs,
             List<ScoredDocument> summaryDocs,
             List<ScoredDocument> descDocs,
-            Set<Long> categoryIntentBoostProjectIds,
-            QueryIntent intent) {
+            Set<Long> categoryIntentBoostProjectIds) {
 
         List<ScoredDocument> normKeyword = ScoredDocument.normalizeBm25(keywordDocs, BM25_SATURATION_K);
         List<ScoredDocument> normTitle = ScoredDocument.asDirectVectorScores(titleDocs);
@@ -522,38 +427,6 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         accumulateScores(finalScores, breakdown, normDesc, DESCRIPTION_VECTOR_WEIGHT, "desc");
 
         if (finalScores.isEmpty()) {
-            return List.of();
-        }
-
-        // ── 2-Stage Compatibility Layer 평가 (후보군 사전 탈락 방지) ───
-        if (intent != null && intent.hasRequirements()) {
-            List<Long> candidateIds = new ArrayList<>(finalScores.keySet());
-            Map<Long, ProjectDocument> docMap = fetchDocumentsByIds(candidateIds);
-
-            for (Long pid : candidateIds) {
-                ProjectDocument doc = docMap.get(pid);
-                if (doc != null) {
-                    QueryProductCompatibilityEvaluator.CompatibilityResult comp = compatibilityEvaluator.evaluate(doc, intent);
-
-                    if (comp.isStrictConflict()) {
-                        log.info("[ProjectSearch] Strict Conflict로 후보 제외: projectId={}, title='{}', sat={}, conf={}, reason='{}'",
-                                pid, doc.title(), comp.satisfactionScore(), comp.conflictScore(), comp.reason());
-                        finalScores.remove(pid);
-                        breakdown.remove(pid);
-                        continue;
-                    }
-
-                    if (comp.totalAdjustment() != 0.0) {
-                        finalScores.merge(pid, comp.totalAdjustment(), Double::sum);
-                        breakdown.computeIfAbsent(pid, k -> new HashMap<>())
-                                .put("compatibilityAdj", comp.totalAdjustment());
-                    }
-                }
-            }
-        }
-
-        if (finalScores.isEmpty()) {
-            log.info("[ProjectSearch] Strict Requirement Conflict로 모든 후보가 제외되어 0건 반환 (정상 결과)");
             return List.of();
         }
 
@@ -606,11 +479,10 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         SearchHits<ProjectDocument> hits = elasticsearchOperations.search(nativeQuery, ProjectDocument.class);
 
         Map<Long, ProjectDocument> map = new HashMap<>();
-        for (var hit : hits) {
-            if (hit.getContent() != null && hit.getContent().projectId() != null) {
-                map.put(hit.getContent().projectId(), hit.getContent());
-            }
-        }
+        hits.stream()
+                .map(SearchHit::getContent)
+                .filter(c -> c != null && c.projectId() != null)
+                .forEach(c -> map.put(c.projectId(), c));
         return map;
     }
 
