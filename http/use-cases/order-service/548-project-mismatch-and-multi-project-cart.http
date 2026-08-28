@@ -134,7 +134,7 @@ Content-Type: application/json
 > {% client.assert(response.status === 200, "add to cart failed"); %}
 
 ### 1단계: projectId를 B로 잘못 지정해 주문 -> 400 (Cart 내용은 A인데 요청 projectId는 B)
-< {% request.variables.set("k1", crypto.randomUUID()); %}
+< {% request.variables.set("k1", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json
@@ -164,7 +164,7 @@ Content-Type: application/json
 > {% client.assert(response.status === 200, "add to cart failed: " + response.body); %}
 
 ### 2단계: Cart의 두 Reward와 정확히 일치하는 요청을 보내되 projectId는 생략(null) -> 409 (Cart가 여러 프로젝트에 걸쳐있음)
-< {% request.variables.set("k2", crypto.randomUUID()); %}
+< {% request.variables.set("k2", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json

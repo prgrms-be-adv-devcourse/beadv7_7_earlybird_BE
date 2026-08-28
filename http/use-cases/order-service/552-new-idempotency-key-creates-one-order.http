@@ -104,7 +104,7 @@ Content-Type: application/json
 > {% client.assert(response.status === 200, "add to cart failed"); %}
 
 ### 새 UUID로 첫 요청 -> 정확히 하나의 Order 생성
-< {% client.global.set("newKey", crypto.randomUUID()); %}
+< {% client.global.set("newKey", "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16); })); %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{backerAccessToken}}
 Content-Type: application/json
