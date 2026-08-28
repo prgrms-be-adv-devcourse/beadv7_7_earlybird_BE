@@ -82,7 +82,7 @@ public class RewardServiceImpl implements RewardService {
 
     @Override
     public List<RewardResponse> getRewardsByProject(Long projectId) {
-        return rewardRepository.findByProjectId(projectId).stream()
+        return rewardRepository.findByProjectIdOrderByRewardIdAsc(projectId).stream()
             .map(RewardResponse::from)
             .toList();
     }
