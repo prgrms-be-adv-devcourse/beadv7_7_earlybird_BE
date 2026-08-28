@@ -24,7 +24,7 @@ public record PaymentRecoveryProperties(
     @DurationMin(seconds = 1)
     Duration maximumConfirmingDuration,
 
-    @DefaultValue("PT30M")
+    @DefaultValue("PT5M")
     @DurationMin(seconds = 1)
     Duration readyTimeOut
 
