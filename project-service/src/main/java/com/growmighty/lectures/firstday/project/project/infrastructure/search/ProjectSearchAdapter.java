@@ -6,6 +6,7 @@ import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.elasticsearch._types.KnnSearch;
+import com.growmighty.lectures.firstday.project.category.domain.CategoryHierarchy;
 import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
@@ -26,11 +27,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -305,23 +304,8 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         if (matched.isEmpty()) {
             return List.of();
         }
-        return withDescendants(matched);
-    }
-
-    private List<Long> withDescendants(List<ProjectCategory> matched) {
-        Map<Long, List<Long>> childIdsByParentId = categoryRepository.findAll().stream()
-                .filter(c -> c.getParentProjectCategoryId() != null)
-                .collect(Collectors.groupingBy(ProjectCategory::getParentProjectCategoryId,
-                        Collectors.mapping(ProjectCategory::getId, Collectors.toList())));
-
-        List<Long> categoryIds = new ArrayList<>();
-        Deque<Long> toVisit = new ArrayDeque<>(matched.stream().map(ProjectCategory::getId).toList());
-        while (!toVisit.isEmpty()) {
-            Long categoryId = toVisit.poll();
-            categoryIds.add(categoryId);
-            toVisit.addAll(childIdsByParentId.getOrDefault(categoryId, List.of()));
-        }
-        return categoryIds;
+        return CategoryHierarchy.of(categoryRepository.findAll())
+                .withDescendants(matched.stream().map(ProjectCategory::getId).toList());
     }
 
     private Set<Long> resolveCategoryMemberProjectIds(List<Long> categoryIds) {
@@ -544,13 +528,12 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         List<Long> projectIds = projects.stream().map(Project::getProjectId).toList();
         Map<Long, List<String>> rewardNamesByProject = rewardRepository.findByProjectIdIn(projectIds).stream()
                 .collect(Collectors.groupingBy(Reward::getProjectId, Collectors.mapping(Reward::getName, Collectors.toList())));
-        Map<Long, ProjectCategory> categoryMap = categoryRepository.findAll().stream()
-                .collect(Collectors.toMap(ProjectCategory::getId, c -> c, (a, b) -> a));
+        CategoryHierarchy categoryHierarchies = CategoryHierarchy.of(categoryRepository.findAll());
 
         List<ProjectEmbeddingService.ProjectEmbeddingTarget> targets = new ArrayList<>();
         for (Project project : projects) {
             List<String> rewards = rewardNamesByProject.getOrDefault(project.getProjectId(), List.of());
-            String categoryHierarchy = resolveCategoryHierarchy(project.getCategoryId(), categoryMap);
+            String categoryHierarchy = categoryHierarchies.path(project.getCategoryId());
             targets.add(new ProjectEmbeddingService.ProjectEmbeddingTarget(project, categoryHierarchy, rewards));
         }
 
@@ -566,30 +549,13 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         elasticsearchOperations.save(documents);
     }
 
+    /**
+     * categoryVector 임베딩용 계층 문자열. 루트까지 조상 전체를 붙인다 —
+     * 부모 1단계만 넣으면 리프 프로젝트가 상위 카테고리 의미를 잃는다(#765).
+     * query-side {@link CategoryIntentResolver}와 같은 표현을 써야 벡터가 맞물린다.
+     */
     private String resolveCategoryHierarchy(Long categoryId) {
-        if (categoryId == null) {
-            return "";
-        }
-        Map<Long, ProjectCategory> categoryMap = categoryRepository.findAll().stream()
-                .collect(Collectors.toMap(ProjectCategory::getId, c -> c, (a, b) -> a));
-        return resolveCategoryHierarchy(categoryId, categoryMap);
-    }
-
-    private String resolveCategoryHierarchy(Long categoryId, Map<Long, ProjectCategory> categoryMap) {
-        if (categoryId == null) {
-            return "";
-        }
-        ProjectCategory category = categoryMap.get(categoryId);
-        if (category == null) {
-            return "";
-        }
-        if (category.getParentProjectCategoryId() != null) {
-            ProjectCategory parent = categoryMap.get(category.getParentProjectCategoryId());
-            if (parent != null) {
-                return parent.getName() + " > " + category.getName();
-            }
-        }
-        return category.getName();
+        return CategoryHierarchy.of(categoryRepository.findAll()).path(categoryId);
     }
 
     private List<ProjectSuggestion> doAutocomplete(String prefix) {

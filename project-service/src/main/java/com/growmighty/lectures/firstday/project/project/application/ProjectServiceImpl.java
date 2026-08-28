@@ -2,6 +2,7 @@ package com.growmighty.lectures.firstday.project.project.application;
 
 import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
+import com.growmighty.lectures.firstday.project.category.domain.CategoryHierarchy;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
@@ -118,7 +119,8 @@ public class ProjectServiceImpl implements ProjectService {
                 return List.of();
             }
         }
-        Specification<Project> specification = buildSpecification(candidateProjectIds, categoryId, status, requesterRole);
+        Specification<Project> specification =
+                buildSpecification(candidateProjectIds, resolveCategoryIdsWithDescendants(categoryId), status, requesterRole);
         // 정렬을 명시적으로 고르지 않은 키워드 검색은 ES 관련도 순서(candidateProjectIds에 이미 담긴
         // 점수 내림차순)를 그대로 보여준다 — 검색창엔 최신순보다 관련도순이 기본값인 게 일반적인 UX다.
         // 정렬을 명시하면(예: 마감임박순) 그 선택을 그대로 존중해 기존 DB 정렬 경로를 탄다.
@@ -531,7 +533,19 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
-    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, Long categoryId, ProjectStatus status, UserRole requesterRole) {
+    /**
+     * 카테고리 필터는 하위 카테고리까지 포함한다 — 프로젝트는 리프 카테고리에 매달리므로
+     * 상위 카테고리로 필터하면 하위 프로젝트가 하나도 안 잡히기 때문이다(#761).
+     * 키워드 검색 경로(resolveExactCategoryIds, CategoryIntentResolver)와 같은 규칙.
+     */
+    private List<Long> resolveCategoryIdsWithDescendants(Long categoryId) {
+        if (categoryId == null) {
+            return null;
+        }
+        return CategoryHierarchy.of(projectCategoryRepository.findAll()).withDescendants(List.of(categoryId));
+    }
+
+    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, List<Long> categoryIds, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
@@ -545,8 +559,8 @@ public class ProjectServiceImpl implements ProjectService {
             if (candidateProjectIds != null) {
                 predicates.add(root.get("projectId").in(candidateProjectIds));
             }
-            if (categoryId != null) {
-                predicates.add(cb.equal(root.get("categoryId"), categoryId));
+            if (categoryIds != null) {
+                predicates.add(root.get("categoryId").in(categoryIds));
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
