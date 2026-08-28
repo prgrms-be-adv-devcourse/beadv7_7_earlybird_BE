@@ -1,11 +1,25 @@
 ### backer-flow.http — 실제 후원자 플로우 시뮬레이션 (이슈 #149)
 ###
 ### 회원가입 → 로그인 → 프로젝트/리워드 조회 → 장바구니 담기 → 후원(주문 생성) → 결제 정보 조회 →
-### 결제 승인 → 내 후원 내역 조회 → 후원 상세 조회 → 후원 취소 로 이어지는 시나리오를 순서대로 실행한다.
+### 내 후원 내역 조회 → 후원 상세 조회 로 이어지는 시나리오를 순서대로 실행한다.
 ###
 ### 주문 생성은 결제를 "준비"(prepare, 상태 READY)만 한다 — 실제 승인은 별도의
 ### POST /api/v1/payments/confirm 호출로 일어나고, 그게 성공해야 주문이 PAYMENT_PENDING →
 ### PAID 로 넘어간다(#580). 그래서 6번 응답은 PAID 가 아니라 PAYMENT_PENDING 이 정상이다.
+###
+### 결제 승인(구 8번)과 후원 취소(구 11번)는 이 파일에서 뺐다 — production은 실제 Toss PG를 쓰기
+### 때문에 fabricated paymentKey로는 승인 자체가 불가능하다(409 "결제 시간이 만료되어 결제 진행
+### 데이터가 존재하지 않습니다" — 실제 Toss 체크아웃 세션이 아니라서 거부됨). 후원 취소는 PAID 상태
+### 에서만 허용되므로(Order#validateCancellationAllowed) 승인 없이는 마찬가지로 항상 막힌다.
+### 두 단계 모두 검증하려면 local(fake 게이트웨이)에서 IntelliJ HTTP Client로 실행할 것 — 8번 요청은
+### git 이력(또는 이 코멘트 아래 예시)을 참고해 되살리면 된다.
+###
+### 8번(결제 승인) 예시 — local에서만 통과:
+###   POST {{baseUrl}}/api/v1/payments/confirm
+###   Authorization: Bearer {{accessToken}}
+###   Content-Type: application/json
+###
+###   {"paymentKey": "{{$uuid}}", "pgOrderId": "{{pgOrderId}}", "amount": {{expectedTotalAmount}}}
 ###
 ### 환경 전환: IntelliJ 우측 상단(또는 이 파일 우측 상단) 환경 드롭다운에서 `local` / `production` 선택
 ### — 두 환경의 baseUrl 은 같은 폴더의 http-client.env.json 에 정의돼 있다. 매 요청은 위에서부터
@@ -105,9 +119,6 @@ Content-Type: application/json
     // request.variables 는 이 요청 안에서만 쓰인다 — 8번(결제 승인)에서도 같은 금액이
     // 필요하므로 요청 간에 유지되는 client.global 에도 따로 저장해 둔다.
     client.global.set("expectedTotalAmount", price + shippingFee);
-    // 같은 (userId, orderIdempotencyKey) 재요청은 새 주문 대신 기존 주문을 그대로 반환한다
-    // (OrderApiService#placeOrder) - 매 실행마다 새 주문이 나오도록 매번 새로 발급.
-    request.variables.set("orderIdempotencyKey", crypto.randomUUID());
 %}
 POST {{baseUrl}}/api/v1/orders
 Authorization: Bearer {{accessToken}}
@@ -128,7 +139,7 @@ Content-Type: application/json
   "zipCode": "06236",
   "expectedItemsAmount": {{expectedItemsAmount}},
   "expectedTotalAmount": {{expectedTotalAmount}},
-  "orderIdempotencyKey": "{{orderIdempotencyKey}}"
+  "orderIdempotencyKey": "{{$uuid}}"
 }
 
 > {%
@@ -151,25 +162,6 @@ Authorization: Bearer {{accessToken}}
     client.global.set("pgOrderId", response.body.data.pgOrderId);
 %}
 
-### 8. 결제 승인 — 실제 PG(Toss) 체크아웃 완료 콜백을 흉내낸다. fake 게이트웨이 기준으로는
-### paymentKey 가 아무 값이어도 상관없다(운영처럼 실제 토스를 쓰는 환경에서는 이 스텝이 그대로는 안 통한다).
-POST {{baseUrl}}/api/v1/payments/confirm
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-{
-  "paymentKey": "{{$uuid}}",
-  "pgOrderId": "{{pgOrderId}}",
-  "amount": {{expectedTotalAmount}}
-}
-
-> {%
-    client.test("결제 승인 성공(PAID)", function() {
-        client.assert(response.status === 200, "confirm payment failed: " + response.body);
-        client.assert(response.body.data.status === "PAID", "unexpected payment status: " + response.body.data.status);
-    });
-%}
-
 ### 9. 내 후원 내역 조회
 GET {{baseUrl}}/api/v1/orders/me?userId={{userId}}
 Authorization: Bearer {{accessToken}}
@@ -181,25 +173,15 @@ Authorization: Bearer {{accessToken}}
     });
 %}
 
-### 10. 후원 상세 조회 — 결제 승인 후이므로 PAID 여야 한다
+### 10. 후원 상세 조회 — 8번(결제 승인)을 안 거쳤으므로 PAYMENT_PENDING 이 정상이다
+### (local에서 8번까지 실행한 뒤라면 PAID 를 기대해야 한다)
 GET {{baseUrl}}/api/v1/orders/{{orderId}}?userId={{userId}}
 Authorization: Bearer {{accessToken}}
 
 > {%
-    client.test("후원 상세 조회 성공, 결제 완료(PAID)", function() {
+    client.test("후원 상세 조회 성공, 결제 대기(PAYMENT_PENDING)", function() {
         client.assert(response.status === 200, "get order detail failed: " + response.body);
         client.assert(response.body.data.id === client.global.get("orderId"), "order id mismatch");
-        client.assert(response.body.data.status === "PAID", "unexpected order status: " + response.body.data.status);
-    });
-%}
-
-### 11. 후원 취소 (재고 복원 + 결제 환불(스텁) + 상태 전이)
-POST {{baseUrl}}/api/v1/orders/{{orderId}}/cancel?userId={{userId}}
-Authorization: Bearer {{accessToken}}
-
-> {%
-    client.test("후원 취소 성공(CANCELLED)", function() {
-        client.assert(response.status === 200, "cancel order failed: " + response.body);
-        client.assert(response.body.data.status === "CANCELLED", "unexpected order status: " + response.body.data.status);
+        client.assert(response.body.data.status === "PAYMENT_PENDING", "unexpected order status: " + response.body.data.status);
     });
 %}
