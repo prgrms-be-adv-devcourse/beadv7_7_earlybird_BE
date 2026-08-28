@@ -15,6 +15,7 @@ import com.growmighty.lectures.firstday.project.reward.infrastructure.RewardRepo
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -34,10 +35,13 @@ import java.util.UUID;
  * 재기동마다 매번 실행되지만, 카테고리는 (부모, 이름)으로, 프로젝트는 title 기반 결정론적
  * idempotencyKey로 기존 데이터를 찾아 재사용한다 — 이미 만들어진 항목은 건너뛰고 빠진 항목만
  * 새로 채워서, 실행할 때마다 중복 생성 없이 시드 목록(buckets)에 맞춰 데이터가 수렴한다.
+ *
+ * <p>기본 비활성 — 시드를 채우려면 {@code project.seed.enabled=true}로 켠다.
  */
 @Slf4j
 @Component
 @Profile("!test")
+@ConditionalOnProperty(prefix = "project.seed", name = "enabled", havingValue = "true")
 @RequiredArgsConstructor
 public class ProjectDataInitializer implements CommandLineRunner {
 
