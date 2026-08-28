@@ -44,6 +44,11 @@ spec:
                 secretKeyRef:
                   name: ai-cohere
                   key: COHERE_API_KEY
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-openai
+                  key: OPENAI_API_KEY
             - name: JAVA_TOOL_OPTIONS
               value: "-XX:InitialRAMPercentage=35 -XX:MaxRAMPercentage=70"
             - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
