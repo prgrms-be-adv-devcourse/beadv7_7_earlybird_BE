@@ -74,10 +74,7 @@ public class PgReconciliationRunService {
     ) {
         SettlementComparison recoveryComparison = null;
         try {
-            OrderPaymentRecovery recovery = orderPaymentRecoveryReader.recover(
-                    payments.stream().map(OrderPaymentFact::projectId).collect(java.util.stream.Collectors.toSet()),
-                    settlementMonth
-            );
+            OrderPaymentRecovery recovery = orderPaymentRecoveryReader.recover(settlementMonth);
             recoveryComparison = classifyRecoveredPayments(payments, recovery);
         } catch (IllegalArgumentException exception) {
             // 계약 오류는 재시도로 해소되지 않으므로 운영 검토 대상으로 남긴다.

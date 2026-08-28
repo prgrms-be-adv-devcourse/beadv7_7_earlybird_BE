@@ -75,7 +75,7 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> {
+                settlementMonth -> {
                     orderReads.incrementAndGet();
                     return recoveryOf(payments, OrderPayment.Status.CANCELLED);
                 },
@@ -103,7 +103,7 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> recoveryOf(payments, OrderPayment.Status.PAID),
+                settlementMonth -> recoveryOf(payments, OrderPayment.Status.PAID),
                 query -> List.of(
                         toSettlement(payments.get(0)),
                         new TossSettlement(
@@ -134,7 +134,7 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> recoveryOf(payments, OrderPayment.Status.PAID),
+                settlementMonth -> recoveryOf(payments, OrderPayment.Status.PAID),
                 query -> tossReads.incrementAndGet() == 1 ? List.of() : List.of(toSettlement(payments.get(0))),
                 runs,
                 CLOCK
@@ -155,7 +155,7 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> {
+                settlementMonth -> {
                     throw new IllegalArgumentException("invalid recovery response");
                 },
                 query -> tossReads.incrementAndGet() == 1 ? List.of() : List.of(toSettlement(payments.get(0))),
@@ -170,7 +170,7 @@ class PgReconciliationRunServiceTest {
     }
 
     private static OrderPaymentRecoveryReader noRecovery() {
-        return (projectIds, settlementMonth) -> {
+        return settlementMonth -> {
             throw new AssertionError("정상 대사에서는 Order 재확인을 호출하면 안 됩니다.");
         };
     }
