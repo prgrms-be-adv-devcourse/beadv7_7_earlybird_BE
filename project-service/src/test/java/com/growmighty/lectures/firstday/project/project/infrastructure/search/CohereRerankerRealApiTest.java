@@ -69,9 +69,10 @@ class CohereRerankerRealApiTest extends ElasticsearchIntegrationTestSupport {
         List<Long> reranked = reranker.rerank("강아지 음식", fusionOrder, docs);
         log.info("[CohereRerankerRealApiTest] fusion={} → reranked={}", fusionOrder, reranked);
 
-        assertThat(reranked).hasSize(4);
+        // 관련도 컷(#763) 이후로는 뒤로 밀리는 게 아니라 아예 빠진다 — 실측 점수 기준
+        // 강아지 간식 0.56 vs 빔프로젝터 0.017(1등 대비 3%)로 절대·상대 하한을 둘 다 못 넘는다.
+        assertThat(reranked).isNotEmpty();
         assertThat(reranked.get(0)).as("강아지 간식이 1위").isEqualTo(2L);
-        assertThat(reranked.get(3)).as("빔프로젝터가 꼴찌").isEqualTo(1L);
-        assertThat(reranked.indexOf(2L)).isLessThan(reranked.indexOf(1L));
+        assertThat(reranked).as("빔프로젝터는 관련도 컷으로 제외").doesNotContain(1L);
     }
 }

@@ -30,7 +30,7 @@ class CohereRerankClientTest {
                 .defaultHeader("Authorization", "Bearer test-key");
         server = MockRestServiceServer.bindTo(builder).build();
         CohereRerankProperties props =
-                new CohereRerankProperties(true, "https://api.cohere.com", "rerank-v3.5", 40, "test-key", 3000);
+                new CohereRerankProperties(true, "https://api.cohere.com", "rerank-v3.5", 40, "test-key", 3000, 0.08, 0.35);
         client = new CohereRerankClient(builder.build(), props);
     }
 

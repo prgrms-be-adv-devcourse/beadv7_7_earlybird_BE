@@ -13,7 +13,9 @@ public record CohereRerankProperties(
         String model,
         int topN,
         String apiKey,
-        long timeoutMs
+        long timeoutMs,
+        double minRelevanceScore,
+        double minRelativeRatio
 ) {
 
     public CohereRerankProperties {
@@ -28,6 +30,13 @@ public record CohereRerankProperties(
         }
         if (timeoutMs <= 0) {
             timeoutMs = 3000;
+        }
+        // 관련도 컷 기본값은 실측(2026-08-30, 시드 198건)에서 뽑았다 — 근거는 CohereReranker 주석 참고.
+        if (minRelevanceScore <= 0) {
+            minRelevanceScore = 0.08;
+        }
+        if (minRelativeRatio <= 0) {
+            minRelativeRatio = 0.35;
         }
     }
 }
