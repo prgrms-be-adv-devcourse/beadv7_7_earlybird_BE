@@ -20,10 +20,19 @@ public class ProjectDeletedKafkaListener {
 
     private final FileService fileService;
 
+    /**
+     * {@code spring.json.type.mapping}의 {@code projectDeleted} 별칭은 producer(project-service.yml의
+     * 같은 이름 별칭)와 정확히 일치해야 하는 서비스 간 계약이다 — 두 서비스가 이 이벤트를 각자 자기
+     * 패키지에 사본 record로 갖고 있어 FQCN이 다르기 때문이다. 별칭이 없으면 producer가 __TypeId__에
+     * 실어 보내는 project-service FQCN을 여기서 로드하려다 "failed to resolve class name"으로 전량
+     * DLT에 빠진다(ProjectDeletedEventDeserializationTest가 이 계약을 고정한다).
+     * {@code value.default.type}은 타입 헤더가 아예 없는 메시지를 위한 폴백으로 남겨둔다.
+     */
     @KafkaListener(
             topics = KafkaTopics.PROJECT_DELETED,
             groupId = "file-service",
             properties = {
+                    "spring.json.type.mapping=projectDeleted:com.growmighty.lectures.firstday.file.infrastructure.kafka.dto.ProjectDeletedEvent",
                     "spring.json.value.default.type=com.growmighty.lectures.firstday.file.infrastructure.kafka.dto.ProjectDeletedEvent",
                     "spring.json.trusted.packages=*"
             }
