@@ -5,11 +5,16 @@ import static com.growmighty.lectures.firstday.settlement.application.error.Sett
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
-import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
+import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectOutcomeFactRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectPayoutInputRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,6 +32,9 @@ public class CreatorProjectSettlementQueryService {
     private final ProjectSettlementRepository projectSettlementRepository;
     private final PayoutObligationRepository payoutObligationRepository;
     private final CreatorPayoutProfileRepository creatorPayoutProfileRepository;
+    private final ProjectOutcomeFactRepository outcomeRepository;
+    private final ProjectPayoutInputRepository payoutInputRepository;
+    private final ProjectRefundRequestedRepository refundRequestedRepository;
 
     @Transactional(readOnly = true)
     public List<CreatorProjectSettlementSummary> findAll(Long creatorId) {
@@ -35,8 +43,20 @@ public class CreatorProjectSettlementQueryService {
         CreatorPayoutProfile payoutProfile = obligations.size() == settlements.size()
                 ? null
                 : requiredPayoutProfile(creatorId);
-        return settlements.stream()
-                .map(settlement -> toSummary(settlement, payoutFor(obligations.get(settlement.id()), payoutProfile)))
+        Map<Long, ProjectSettlement> settlementsByProjectId = settlements.stream()
+                .collect(java.util.stream.Collectors.toMap(ProjectSettlement::projectId, Function.identity()));
+        List<ProjectOutcomeFact> outcomes = outcomeRepository.findAllByCreatorIdOrderByOccurredAtDescProjectIdDesc(creatorId);
+        Map<Long, ProjectRefundRequested> refundsByProjectId = refundRequestedRepository.findAllByProjectIdIn(
+                        outcomes.stream().map(ProjectOutcomeFact::projectId).toList()
+                ).stream()
+                .collect(java.util.stream.Collectors.toMap(ProjectRefundRequested::projectId, Function.identity()));
+        return java.util.stream.Stream.concat(
+                        settlements.stream()
+                                .map(settlement -> toSummary(settlement, payoutFor(obligations.get(settlement.id()), payoutProfile))),
+                        outcomes.stream()
+                                .filter(outcome -> !settlementsByProjectId.containsKey(outcome.projectId()))
+                                .map(outcome -> toSummary(outcome, refundsByProjectId.get(outcome.projectId())))
+                )
                 .toList();
     }
 
@@ -81,6 +101,24 @@ public class CreatorProjectSettlementQueryService {
         );
     }
 
+    private CreatorProjectSettlementSummary toSummary(
+            ProjectOutcomeFact outcome,
+            ProjectRefundRequested refundRequest
+    ) {
+        return new CreatorProjectSettlementSummary(
+                null,
+                outcome.projectId(),
+                null,
+                null,
+                outcome.requiresPayout()
+                        ? payoutStatus(outcome)
+                        : refundStatus(refundRequest),
+                null,
+                null,
+                null
+        );
+    }
+
     private Map<Long, PayoutObligation> obligationsBySettlementId(List<ProjectSettlement> settlements) {
         return payoutObligationRepository.findAllBySettlementIdIn(settlements.stream().map(ProjectSettlement::id).toList())
                 .stream()
@@ -100,10 +138,32 @@ public class CreatorProjectSettlementQueryService {
                     completedAt(payoutObligation)
             );
         }
-        if (payoutProfile != null && payoutProfile.status() == CreatorPayoutStatus.REGISTRATION_PENDING) {
-            return new CreatorPayout(CreatorSettlementStatus.REGISTRATION_PENDING, null, null);
+        if (payoutProfile != null) {
+            return new CreatorPayout(CreatorSettlementStatus.from(payoutProfile.status()), null, null);
         }
         throw new SettlementException(PROJECT_SETTLEMENT_NOT_FOUND);
+    }
+
+    private CreatorSettlementStatus payoutStatus(ProjectOutcomeFact outcome) {
+        return payoutInputRepository.findCompletedPaymentsByProjectId(outcome.projectId()).stream()
+                .anyMatch(payment -> payment.reconciliationStatus() == OrderPaymentFact.ReconciliationStatus.REVIEW_REQUIRED)
+                ? CreatorSettlementStatus.RECONCILIATION_REVIEW_REQUIRED
+                : CreatorSettlementStatus.SETTLEMENT_PENDING;
+    }
+
+    private CreatorSettlementStatus refundStatus(ProjectRefundRequested refundRequest) {
+        if (refundRequest == null) {
+            return CreatorSettlementStatus.REFUND_PENDING;
+        }
+        if (!refundRequest.published()) {
+            return CreatorSettlementStatus.REFUND_REQUESTED;
+        }
+        if (refundRequest.paymentResultStatus() == null) {
+            return CreatorSettlementStatus.REFUND_PROCESSING;
+        }
+        return "COMPLETED".equals(refundRequest.paymentResultStatus())
+                ? CreatorSettlementStatus.REFUND_COMPLETED
+                : CreatorSettlementStatus.REFUND_ACTION_REQUIRED;
     }
 
     private static LocalDateTime completedAt(PayoutObligation payoutObligation) {

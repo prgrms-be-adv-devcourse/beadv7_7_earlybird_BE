@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -13,6 +14,8 @@ public interface SpringDataProjectRefundRequestedRepository
 
     @EntityGraph(attributePaths = "payments")
     List<ProjectRefundRequested> findAllByOrderByOccurredAtDescProjectIdDesc();
+
+    List<ProjectRefundRequested> findAllByProjectIdIn(Collection<Long> projectIds);
 
     List<ProjectRefundRequested> findTop100ByPublishedAtIsNullOrderByOccurredAt();
 }

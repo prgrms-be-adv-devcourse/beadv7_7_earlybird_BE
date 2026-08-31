@@ -2,8 +2,10 @@
 package com.growmighty.lectures.firstday.settlement.presentation.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -17,12 +19,18 @@ import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutPro
 import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
+import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.SettlementKafkaInputRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,6 +59,12 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
 
     @Autowired
     private PayoutObligationRepository payoutObligationRepository;
+
+    @Autowired
+    private SettlementKafkaInputRepository kafkaInputRepository;
+
+    @Autowired
+    private ProjectRefundRequestedRepository refundRequestedRepository;
 
     @Test
     @DisplayName("Gateway 전달 사용자 식별자 없이 창작자 프로젝트 정산 조회를 요청하면 거부한다")
@@ -97,20 +111,64 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     }
 
     @Test
-    @DisplayName("등록 대기가 아닌 프로필의 지급 의무 누락은 등록 대기로 표시하지 않는다")
-    void doesNotClassifyMissingPayoutObligationAsRegistrationPending() throws Exception {
+    @DisplayName("지급 의무가 없는 실제 정산은 프로필 변경 뒤에도 목록과 상세에 남는다")
+    void keepsSettlementVisibleWhenPayoutProfileChangesBeforeObligationCreation() throws Exception {
         long creatorId = Long.parseLong(CREATOR_ID);
-        creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
-                creatorId,
-                "seller-approval-required",
-                CreatorPayoutStatus.APPROVAL_REQUIRED
-        ));
-        confirm(70_000_002L, creatorId, LocalDateTime.of(2026, 8, 31, 9, 0));
+        ConfirmedProjectSettlement confirmed = confirm(70_000_002L, creatorId, LocalDateTime.of(2026, 8, 31, 9, 0));
+        CreatorPayoutProfile profile = creatorPayoutProfileRepository.findByCreatorId(creatorId).orElseThrow();
+        profile.completeRegistration("seller-payout-ready", CreatorPayoutStatus.PAYOUT_READY);
+        creatorPayoutProfileRepository.save(profile);
 
         mockMvc.perform(get("/api/v1/settlements")
                         .header(JwtHeaders.USER_ID, CREATOR_ID))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.message").value("프로젝트 정산 내역을 찾을 수 없습니다."));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].settlementId").value(confirmed.settlementId()))
+                .andExpect(jsonPath("$.data[0].status").value("PAYOUT_PENDING"));
+
+        mockMvc.perform(get("/api/v1/settlements/{settlementId}", confirmed.settlementId())
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.payout.status").value("PAYOUT_PENDING"))
+                .andExpect(jsonPath("$.data.payout.scheduledDate").isEmpty());
+    }
+
+    @Test
+    @DisplayName("창작자는 자신의 종료 프로젝트를 정산·환불 레코드 전에도 상태별로 한 번씩 조회한다")
+    void returnsOwnedOutcomeOnlyProjectsWithoutFabricatedSettlementData() throws Exception {
+        long creatorId = Long.parseLong(CREATOR_ID);
+        ProjectOutcomeFact reviewRequired = outcome(75_000_001L, creatorId, ProjectOutcomeFact.Outcome.SUCCEEDED);
+        ProjectOutcomeFact settlementPending = outcome(75_000_002L, creatorId, ProjectOutcomeFact.Outcome.SUCCEEDED);
+        ProjectOutcomeFact refundPending = outcome(75_000_003L, creatorId, ProjectOutcomeFact.Outcome.FAILED);
+        ProjectOutcomeFact refundRequested = outcome(75_000_004L, creatorId, ProjectOutcomeFact.Outcome.CANCELLED);
+        ProjectOutcomeFact otherCreatorOutcome = outcome(75_000_005L, 70_000_002L, ProjectOutcomeFact.Outcome.SUCCEEDED);
+        OrderPaymentFact reviewPayment = payment(75_100_001L, reviewRequired.projectId());
+        reviewPayment.requireReview();
+        OrderPaymentFact refundPayment = payment(75_100_004L, refundRequested.projectId());
+        kafkaInputRepository.save(reviewRequired);
+        kafkaInputRepository.save(settlementPending);
+        kafkaInputRepository.save(refundPending);
+        kafkaInputRepository.save(refundRequested);
+        kafkaInputRepository.save(otherCreatorOutcome);
+        kafkaInputRepository.save(reviewPayment);
+        kafkaInputRepository.save(refundPayment);
+        refundRequestedRepository.save(ProjectRefundRequested.request(
+                null, refundRequested, List.of(refundPayment), Instant.parse("2026-08-31T01:00:00Z")
+        ));
+
+        mockMvc.perform(get("/api/v1/settlements")
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(4))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000001)].status").value("RECONCILIATION_REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000002)].status").value("SETTLEMENT_PENDING"))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000003)].status").value("REFUND_PENDING"))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000004)].status").value("REFUND_REQUESTED"))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000001)].settlementId").value(contains(nullValue())))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000001)].settlementBaseAmount").value(contains(nullValue())))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000001)].creatorPayoutAmount").value(contains(nullValue())))
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000005)]").doesNotExist())
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000001)].orderId").doesNotExist())
+                .andExpect(jsonPath("$.data[?(@.projectId == 75000001)].pgOrderId").doesNotExist());
     }
 
     @Test
@@ -294,6 +352,26 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
                 creatorId,
                 "seller-" + creatorId,
                 CreatorPayoutStatus.PAYOUT_READY
+        );
+    }
+
+    private ProjectOutcomeFact outcome(long projectId, long creatorId, ProjectOutcomeFact.Outcome outcome) {
+        return ProjectOutcomeFact.of(
+                projectId,
+                "프로젝트 " + projectId,
+                creatorId,
+                outcome,
+                Instant.parse("2026-08-31T00:00:00Z")
+        );
+    }
+
+    private OrderPaymentFact payment(long orderId, long projectId) {
+        return OrderPaymentFact.completed(
+                orderId,
+                "PG-" + orderId,
+                projectId,
+                Money.wons(10_000),
+                Instant.parse("2026-08-30T00:00:00Z")
         );
     }
 

@@ -7,4 +7,6 @@ import java.util.List;
 public interface ProjectOutcomeFactRepository {
 
     List<ProjectOutcomeFact> findAllByProjectIdIn(Collection<Long> projectIds);
+
+    List<ProjectOutcomeFact> findAllByCreatorIdOrderByOccurredAtDescProjectIdDesc(Long creatorId);
 }

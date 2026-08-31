@@ -3,6 +3,7 @@ package com.growmighty.lectures.firstday.settlement.infrastructure.persistence.a
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectRefundRequestedRepository;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,12 @@ public class ProjectRefundRequestedRepositoryAdapter
     @Transactional(readOnly = true)
     public List<ProjectRefundRequested> findAllByOrderByOccurredAtDescProjectIdDesc() {
         return repository.findAllByOrderByOccurredAtDescProjectIdDesc();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectRefundRequested> findAllByProjectIdIn(Collection<Long> projectIds) {
+        return repository.findAllByProjectIdIn(projectIds);
     }
 
     @Override
