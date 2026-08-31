@@ -72,3 +72,15 @@ dependencies {
     // 색인 후 ES refresh_interval(최대 1초) 지연을 기다리는 통합 테스트용.
     testImplementation 'org.awaitility:awaitility'
 }
+
+// 검색 통합 테스트의 ES 컨테이너는 ../infrastructure/elasticsearch/Dockerfile로 빌드되고,
+// 그 Dockerfile이 nori 사용자 사전(userdict_ko.txt)과 동의어 사전(synonym.txt)을 COPY한다.
+// 이 디렉터리는 Gradle이 자동으로 test 태스크의 입력으로 잡지 못해서, 사전만 고치면
+// UP-TO-DATE/FROM-CACHE로 스킵돼 '테스트를 한 번도 안 돌린 초록'이 나온다
+// (org.gradle.caching=true + CI의 gradle/actions/setup-gradle 캐시 복원 때문에 CI에서도 동일).
+// 사전이 검색 동작을 직접 바꾸는 만큼 입력으로 명시해 캐시 키에 포함시킨다.
+tasks.named('test') {
+    inputs.dir('../infrastructure/elasticsearch')
+            .withPropertyName('elasticsearchImageContext')
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+}
