@@ -75,7 +75,7 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> {
+                settlementMonth -> {
                     orderReads.incrementAndGet();
                     return recoveryOf(payments, OrderPayment.Status.CANCELLED);
                 },
@@ -103,8 +103,47 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> recoveryOf(payments, OrderPayment.Status.PAID),
+                settlementMonth -> recoveryOf(payments, OrderPayment.Status.PAID),
                 query -> List.of(
+                        toSettlement(payments.get(0)),
+                        new TossSettlement(
+                                payments.get(1).pgOrderId(),
+                                "KRW",
+                                Money.wons(2),
+                                payments.get(1).completedAt().atOffset(ZoneOffset.UTC),
+                                payments.get(1).completedAt().atOffset(ZoneOffset.UTC).toLocalDate()
+                        )
+                ),
+                runs,
+                CLOCK
+        ).run(YearMonth.of(2026, 7));
+
+        assertThat(result.status()).isEqualTo(PgReconciliationRun.Status.REVIEW_REQUIRED);
+        assertThat(payments).extracting(OrderPaymentFact::reconciliationStatus).containsExactly(
+                OrderPaymentFact.ReconciliationStatus.CONFIRMED,
+                OrderPaymentFact.ReconciliationStatus.REVIEW_REQUIRED
+        );
+    }
+
+    @Test
+    @DisplayName("다른 프로젝트의 취소 주문은 정상 완료 결제를 검토 대상으로 만들지 않는다")
+    void confirmsCompletedPaymentDespiteCancelledOrderFromAnotherProject() {
+        List<OrderPaymentFact> payments = List.of(completedPayment(1), completedPayment(2));
+        InMemoryRunRepository runs = new InMemoryRunRepository();
+        AtomicInteger tossReads = new AtomicInteger();
+        OrderPaymentRecovery recovery = new OrderPaymentRecovery(List.of(
+                new ProjectPayments(102L, payments.stream().map(payment -> new OrderPayment(
+                        payment.orderId(), payment.pgOrderId(), payment.paymentAmount(), OrderPayment.Status.PAID
+                )).toList()),
+                new ProjectPayments(202L, List.of(new OrderPayment(
+                        9_999L, "pg-cancelled", Money.wons(1), OrderPayment.Status.CANCELLED
+                )))
+        ));
+
+        PgReconciliationRunResult result = new PgReconciliationRunService(
+                (startInclusive, endExclusive) -> payments,
+                settlementMonth -> recovery,
+                query -> tossReads.incrementAndGet() == 1 ? List.of() : List.of(
                         toSettlement(payments.get(0)),
                         new TossSettlement(
                                 payments.get(1).pgOrderId(),
@@ -134,7 +173,7 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> recoveryOf(payments, OrderPayment.Status.PAID),
+                settlementMonth -> recoveryOf(payments, OrderPayment.Status.PAID),
                 query -> tossReads.incrementAndGet() == 1 ? List.of() : List.of(toSettlement(payments.get(0))),
                 runs,
                 CLOCK
@@ -155,7 +194,7 @@ class PgReconciliationRunServiceTest {
 
         PgReconciliationRunResult result = new PgReconciliationRunService(
                 (startInclusive, endExclusive) -> payments,
-                (projectIds, settlementMonth) -> {
+                settlementMonth -> {
                     throw new IllegalArgumentException("invalid recovery response");
                 },
                 query -> tossReads.incrementAndGet() == 1 ? List.of() : List.of(toSettlement(payments.get(0))),
@@ -170,7 +209,7 @@ class PgReconciliationRunServiceTest {
     }
 
     private static OrderPaymentRecoveryReader noRecovery() {
-        return (projectIds, settlementMonth) -> {
+        return settlementMonth -> {
             throw new AssertionError("정상 대사에서는 Order 재확인을 호출하면 안 됩니다.");
         };
     }

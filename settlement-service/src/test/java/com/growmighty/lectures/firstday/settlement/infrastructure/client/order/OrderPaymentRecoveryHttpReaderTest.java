@@ -18,7 +18,6 @@ import com.growmighty.lectures.firstday.settlement.application.port.order.OrderP
 import com.growmighty.lectures.firstday.settlement.domain.model.Money;
 import java.time.YearMonth;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -58,15 +57,21 @@ class OrderPaymentRecoveryHttpReaderTest {
                         {"success":true,"data":{"projects":[
                           {"projectId":101,"orders":[
                             {"orderId":1001,"pgOrderId":"PAY-1001","paymentAmount":50000,"orderStatus":"PAID"}
+                          ]},
+                          {"projectId":202,"orders":[
+                            {"orderId":2001,"pgOrderId":"PAY-2001","paymentAmount":30000,"orderStatus":"CANCELLED"}
                           ]}
                         ]},"error":null}
                         """, MediaType.APPLICATION_JSON));
 
-        OrderPaymentRecovery recovery = reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR, 7));
+        OrderPaymentRecovery recovery = reader.recover(YearMonth.of(CURRENT_YEAR, 7));
 
         assertThat(recovery.projects()).containsExactly(
                 new ProjectPayments(101L, List.of(new OrderPayment(
                         1001L, "PAY-1001", Money.wons(50_000), OrderPayment.Status.PAID
+                ))),
+                new ProjectPayments(202L, List.of(new OrderPayment(
+                        2001L, "PAY-2001", Money.wons(30_000), OrderPayment.Status.CANCELLED
                 )))
         );
         server.verify();
@@ -74,7 +79,6 @@ class OrderPaymentRecoveryHttpReaderTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "[]",
             "[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":0,\"orderStatus\":\"PAID\"}]}]",
             "[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"\",\"paymentAmount\":1,\"orderStatus\":\"PAID\"}]}]",
             "[{\"projectId\":101,\"orders\":[{\"orderId\":1,\"pgOrderId\":\"PAY-1\",\"paymentAmount\":1,\"orderStatus\":\"UNKNOWN\"}]}]",
@@ -85,7 +89,7 @@ class OrderPaymentRecoveryHttpReaderTest {
     void rejectsInvalidRecoveryResponse(String response) {
         expectSuccess(response);
 
-        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR, 7)))
+        assertThatThrownBy(() -> reader.recover(YearMonth.of(CURRENT_YEAR, 7)))
                 .isInstanceOf(IllegalArgumentException.class);
         server.verify();
     }
@@ -96,7 +100,7 @@ class OrderPaymentRecoveryHttpReaderTest {
         server.expect(once(), requestTo(BASE_URL + OrderPaymentRecoveryHttpReader.PROJECT_PAYMENTS_PATH))
                 .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
 
-        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR, 7)))
+        assertThatThrownBy(() -> reader.recover(YearMonth.of(CURRENT_YEAR, 7)))
                 .isInstanceOfSatisfying(SettlementException.class, exception ->
                         assertThat(exception.errorCode()).isEqualTo(
                                 SettlementErrorCode.ORDER_PAYMENT_INPUTS_UNAVAILABLE
@@ -105,13 +109,11 @@ class OrderPaymentRecoveryHttpReaderTest {
     }
 
     @Test
-    @DisplayName("유효하지 않은 프로젝트·월 요청은 호출 전에 거부한다")
+    @DisplayName("유효하지 않은 월 요청은 호출 전에 거부한다")
     void rejectsInvalidRequest() {
-        assertThatThrownBy(() -> reader.recover(Set.of(), YearMonth.of(2026, 7)))
+        assertThatThrownBy(() -> reader.recover(null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> reader.recover(Set.of(101L), null))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> reader.recover(Set.of(101L), YearMonth.of(CURRENT_YEAR - 1, 7)))
+        assertThatThrownBy(() -> reader.recover(YearMonth.of(CURRENT_YEAR - 1, 7)))
                 .isInstanceOf(IllegalArgumentException.class);
         server.verify();
     }
