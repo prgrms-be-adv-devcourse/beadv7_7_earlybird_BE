@@ -20,10 +20,7 @@ class OrderPaymentStatusOutboxWriter {
             throw new IllegalStateException("Payment status Outbox requires a successful final status. orderId="
                     + order.getId());
         }
-        if (outboxRepository.existsByOrderIdAndOrderStatus(order.getId(), status)) {
-            return;
-        }
-        outboxRepository.save(OrderPaymentStatusOutbox.pending(
+        outboxRepository.insertIfAbsent(OrderPaymentStatusOutbox.pending(
                 order.getId(),
                 order.getPgOrderId(),
                 order.getProjectId(),
