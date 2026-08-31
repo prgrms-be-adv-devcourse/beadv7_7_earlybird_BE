@@ -1,6 +1,7 @@
 package com.growmighty.lectures.firstday.settlement.domain.repository;
 
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,6 +14,8 @@ public interface ProjectRefundRequestedRepository {
     Optional<ProjectRefundRequested> findByRefundRequestId(Long refundRequestId);
 
     List<ProjectRefundRequested> findAllByOrderByOccurredAtDescProjectIdDesc();
+
+    List<ProjectRefundRequested> findAllByProjectIdIn(Collection<Long> projectIds);
 
     List<ProjectRefundRequested> findPending();
 }

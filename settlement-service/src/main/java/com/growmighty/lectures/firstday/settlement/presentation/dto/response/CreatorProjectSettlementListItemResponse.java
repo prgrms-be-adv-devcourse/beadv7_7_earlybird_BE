@@ -25,10 +25,10 @@ public record CreatorProjectSettlementListItemResponse(
         return new CreatorProjectSettlementListItemResponse(
                 summary.settlementId(),
                 summary.projectId(),
-                summary.settlementBaseAmount().amount(),
-                summary.creatorPayoutAmount().amount(),
+                summary.settlementBaseAmount() == null ? null : summary.settlementBaseAmount().amount(),
+                summary.creatorPayoutAmount() == null ? null : summary.creatorPayoutAmount().amount(),
                 summary.status(),
-                summary.confirmedAt().atZone(SEOUL).toOffsetDateTime(),
+                summary.confirmedAt() == null ? null : summary.confirmedAt().atZone(SEOUL).toOffsetDateTime(),
                 summary.scheduledDate(),
                 summary.completedAt() == null
                         ? null

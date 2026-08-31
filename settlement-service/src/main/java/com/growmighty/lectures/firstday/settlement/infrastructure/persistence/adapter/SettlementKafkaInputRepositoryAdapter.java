@@ -44,6 +44,11 @@ public class SettlementKafkaInputRepositoryAdapter implements SettlementKafkaInp
     }
 
     @Override
+    public List<ProjectOutcomeFact> findAllByCreatorIdOrderByOccurredAtDescProjectIdDesc(Long creatorId) {
+        return outcomeRepository.findAllByCreatorIdOrderByOccurredAtDescProjectIdDesc(creatorId);
+    }
+
+    @Override
     public void save(ProjectOutcomeFact outcome) {
         outcomeRepository.save(outcome);
     }
