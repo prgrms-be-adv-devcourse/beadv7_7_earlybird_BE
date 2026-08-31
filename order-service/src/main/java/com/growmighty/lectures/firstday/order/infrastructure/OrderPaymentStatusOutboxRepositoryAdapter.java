@@ -18,13 +18,17 @@ public class OrderPaymentStatusOutboxRepositoryAdapter implements OrderPaymentSt
     private final OrderPaymentStatusOutboxJpaRepository jpaRepository;
 
     @Override
-    public OrderPaymentStatusOutbox save(OrderPaymentStatusOutbox outbox) {
-        return jpaRepository.save(outbox);
-    }
-
-    @Override
-    public boolean existsByOrderIdAndOrderStatus(Long orderId, OrderStatus orderStatus) {
-        return jpaRepository.existsByOrderIdAndOrderStatus(orderId, orderStatus);
+    public void insertIfAbsent(OrderPaymentStatusOutbox outbox) {
+        jpaRepository.insertIfAbsent(
+                outbox.getEventId(),
+                outbox.getOccurredAt(),
+                outbox.getOrderId(),
+                outbox.getPgOrderId(),
+                outbox.getProjectId(),
+                outbox.getPaymentAmount(),
+                outbox.getOrderStatus().name(),
+                outbox.getStatus().name(),
+                outbox.getNextRetryAt());
     }
 
     @Override

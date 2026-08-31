@@ -5,9 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface OrderPaymentStatusOutboxRepository {
-    OrderPaymentStatusOutbox save(OrderPaymentStatusOutbox outbox);
-
-    boolean existsByOrderIdAndOrderStatus(Long orderId, OrderStatus orderStatus);
+    void insertIfAbsent(OrderPaymentStatusOutbox outbox);
 
     Optional<OrderPaymentStatusOutbox> findById(Long id);
 
