@@ -29,6 +29,7 @@ import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFa
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
+import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataOrderPaymentFactRepository;
 import com.growmighty.lectures.firstday.settlement.infrastructure.persistence.repository.SpringDataProjectOutcomeFactRepository;
 import com.growmighty.lectures.firstday.settlement.support.MySqlIntegrationTestSupport;
 import java.time.Instant;
@@ -67,6 +68,9 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
 
     @Autowired
     private SpringDataProjectOutcomeFactRepository outcomeRepository;
+
+    @Autowired
+    private SpringDataOrderPaymentFactRepository paymentRepository;
 
     @MockitoBean
     private CreatorInformationReader creatorInformationReader;
@@ -134,21 +138,6 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                 creatorId,
                 LocalDateTime.of(2026, 7, 1, 10, 0)
         );
-        outcomeRepository.save(ProjectOutcomeFact.of(
-                80_200_002L,
-                "실패 프로젝트",
-                80_100_002L,
-                ProjectOutcomeFact.Outcome.FAILED,
-                Instant.parse("2026-07-01T01:00:00Z")
-        ));
-        projectSettlementService.confirm(new ConfirmProjectSettlementCommand(
-                80_200_002L,
-                80_100_002L,
-                List.of(Money.wons(1_000_000)),
-                LocalDate.of(2026, 7, 7),
-                LocalDateTime.of(2026, 7, 1, 10, 0)
-        ));
-
         mockMvc.perform(get("/api/v1/settlements/all"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
@@ -166,6 +155,67 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
                         .value("2026-07-01T10:00:00+09:00"))
                 .andExpect(jsonPath("$.data[0].registrationPending.status").doesNotExist())
                 .andExpect(jsonPath("$.data[0].registrationPending.payoutObligationId").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("관리자는 정산 전 성공 프로젝트와 환불 요청 전 종료 프로젝트를 상태별로 조회한다")
+    void returnsOutcomePendingEntries() throws Exception {
+        saveOutcome(80_300_001L, "가 대사 검토", 80_400_001L, ProjectOutcomeFact.Outcome.SUCCEEDED);
+        OrderPaymentFact reviewPayment = OrderPaymentFact.completed(
+                80_500_001L,
+                "PG-80500001",
+                80_300_001L,
+                Money.wons(50_000),
+                Instant.parse("2026-07-31T00:00:00Z")
+        );
+        reviewPayment.requireReview();
+        paymentRepository.save(reviewPayment);
+        saveOutcome(80_300_002L, "나 정산 대기", 80_400_002L, ProjectOutcomeFact.Outcome.SUCCEEDED);
+        saveOutcome(80_300_003L, "다 환불 대기", 80_400_003L, ProjectOutcomeFact.Outcome.FAILED);
+        saveOutcome(80_300_004L, "라 취소 환불 대기", 80_400_004L, ProjectOutcomeFact.Outcome.CANCELLED);
+
+        mockMvc.perform(get("/api/v1/settlements/all").param("sort", "NAME"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(4))
+                .andExpect(jsonPath("$.data[0].type").value("RECONCILIATION_REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$.data[1].type").value("SETTLEMENT_PENDING"))
+                .andExpect(jsonPath("$.data[2].type").value("REFUND_PENDING"))
+                .andExpect(jsonPath("$.data[3].type").value("REFUND_PENDING"))
+                .andExpect(jsonPath("$.data[0].projectId").value(80_300_001L))
+                .andExpect(jsonPath("$.data[0].payout").isEmpty())
+                .andExpect(jsonPath("$.data[0].refund").isEmpty())
+                .andExpect(jsonPath("$.data[0].registrationPending").isEmpty())
+                .andExpect(jsonPath("$.data[0].pendingPayout").isEmpty());
+    }
+
+    @Test
+    @DisplayName("관리자는 지급 의무 없는 정산을 현재 지급 프로필 상태로 조회한다")
+    void returnsSettlementsWithoutPayoutObligationByProfileStatus() throws Exception {
+        ConfirmedProjectSettlement payoutPending = confirmWithoutObligation(
+                80_600_001L, "가 지급 실행 대기", 80_700_001L, CreatorPayoutStatus.PAYOUT_READY
+        );
+        confirmWithoutObligation(
+                80_600_002L, "나 승인 대기", 80_700_002L, CreatorPayoutStatus.APPROVAL_REQUIRED
+        );
+        confirmWithoutObligation(
+                80_600_003L, "다 KYC 대기", 80_700_003L, CreatorPayoutStatus.KYC_REQUIRED
+        );
+        confirmWithoutObligation(
+                80_600_004L, "라 지급 불가", 80_700_004L, CreatorPayoutStatus.PAYOUT_UNAVAILABLE
+        );
+
+        mockMvc.perform(get("/api/v1/settlements/all").param("sort", "NAME"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(4))
+                .andExpect(jsonPath("$.data[0].type").value("PAYOUT_PENDING"))
+                .andExpect(jsonPath("$.data[1].type").value("APPROVAL_REQUIRED"))
+                .andExpect(jsonPath("$.data[2].type").value("KYC_REQUIRED"))
+                .andExpect(jsonPath("$.data[3].type").value("PAYOUT_UNAVAILABLE"))
+                .andExpect(jsonPath("$.data[0].pendingPayout.settlementId").value(payoutPending.settlementId()))
+                .andExpect(jsonPath("$.data[0].pendingPayout.creatorId").value(80_700_001L))
+                .andExpect(jsonPath("$.data[0].pendingPayout.settlementBaseAmount").value(1_000_000))
+                .andExpect(jsonPath("$.data[0].pendingPayout.creatorPayoutAmount").value(912_000))
+                .andExpect(jsonPath("$.data[0].pendingPayout.confirmedAt").value("2026-07-01T10:00:00+09:00"));
     }
 
     @Test
@@ -447,6 +497,39 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
             LocalDateTime confirmedAt
     ) {
         return confirm(projectId, "프로젝트 " + projectId, creatorId, confirmedAt);
+    }
+
+    private ConfirmedProjectSettlement confirmWithoutObligation(
+            long projectId,
+            String projectName,
+            long creatorId,
+            CreatorPayoutStatus status
+    ) {
+        ConfirmedProjectSettlement confirmed = confirm(
+                projectId,
+                projectName,
+                creatorId,
+                LocalDateTime.of(2026, 7, 1, 10, 0)
+        );
+        CreatorPayoutProfile profile = creatorPayoutProfileRepository.findByCreatorId(creatorId).orElseThrow();
+        profile.completeRegistration("seller-" + creatorId, status);
+        creatorPayoutProfileRepository.save(profile);
+        return confirmed;
+    }
+
+    private void saveOutcome(
+            long projectId,
+            String projectName,
+            long creatorId,
+            ProjectOutcomeFact.Outcome outcome
+    ) {
+        outcomeRepository.save(ProjectOutcomeFact.of(
+                projectId,
+                projectName,
+                creatorId,
+                outcome,
+                Instant.parse("2026-08-01T00:00:00Z")
+        ));
     }
 
     private ConfirmedProjectSettlement confirm(
