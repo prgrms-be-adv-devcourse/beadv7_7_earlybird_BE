@@ -42,11 +42,12 @@ import java.util.stream.Collectors;
  * Elasticsearch 검색 포트 구현체.
  * 5개 독립 벡터(title, summary, description, category, reward)의 코사인 점수 보존 kNN 검색과
  * Nori 형태소 분석기 기반 BM25 키워드 검색을 Score-aware Hybrid Fusion으로 결합해 <b>후보 상위 40개</b>를
- * 뽑고, 이를 {@link Reranker}(Cohere Rerank)로 최종 재정렬한다. 강한 계절 충돌 상품은
- * {@link SeasonalConflictFilter}로 rerank 전에 하드 제외한다.
+ * 뽑고, 이를 {@link Reranker}(Cohere Rerank)로 최종 재정렬한다. 명백한 속성 충돌(계절·반려동물 종·성별) 상품은
+ * {@link AttributeConflictFilter}로 rerank 전에 하드 제외한다.
  *
- * <p>쿼리 이원화: BM25/임베딩 retrieval은 {@link QuerySynonymExpander}로 확장한 쿼리를 쓰고(recall),
- * 리랭커에는 사용자 원본 쿼리를 넘긴다(판단).
+ * <p>동의어 확장은 ES가 한다 — title/summary/description/rewardNames 넷 다 search_analyzer가
+ * {@code korean_search}이고, 그 안의 {@code korean_synonym_graph}가 synonym.txt를 읽어 검색 시점에
+ * 토큰을 확장한다(project-index-settings.json). 그래서 여기서는 사용자 원본 쿼리를 그대로 넘긴다.
  */
 @Slf4j
 @Component
@@ -87,8 +88,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
     private final RewardRepository rewardRepository;
     private final CategoryIntentResolver categoryIntentResolver;
     private final Reranker reranker;
-    private final QuerySynonymExpander synonymExpander;
-    private final SeasonalConflictFilter seasonalConflictFilter;
+    private final AttributeConflictFilter attributeConflictFilter;
     private final java.util.concurrent.Executor searchTaskExecutor;
 
     @Override
@@ -172,21 +172,20 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
 
         // ── 1. 전처리 (초고속 인메모리) ─────────────────────────────────────────────
         //   · 정확한 카테고리명 → kNN 하드 스코프
-        //   · 동의어 확장 → BM25/임베딩 retrieval 전용. 리랭커에는 원본을 넘긴다(설계 §3).
+        //   동의어 확장은 여기서 안 한다 — ES search_analyzer(korean_synonym_graph)가 검색 시점에 처리한다.
         List<Long> exactCategoryIds = resolveExactCategoryIds(trimmedKeyword);
-        String expanded = synonymExpander.expand(trimmedKeyword);
 
         if (!exactCategoryIds.isEmpty()) {
             log.info("[ProjectSearch] 키워드='{}' → 카테고리명 일치로 kNN 하드 스코프 적용: categoryIds={}", trimmedKeyword, exactCategoryIds);
         }
 
-        // ── 2. [Branch 1: BM25 (확장 쿼리)] ────────────────────────────────────────
+        // ── 2. [Branch 1: BM25] ────────────────────────────────────────
         CompletableFuture<List<ScoredDocument>> bm25Future = CompletableFuture.supplyAsync(() -> {
             Query keywordQuery = Query.of(q -> q.bool(b -> {
-                b.should(s -> s.match(m -> m.field("title").query(expanded).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                        .should(s -> s.match(m -> m.field("summary").query(expanded).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                        .should(s -> s.match(m -> m.field("description").query(expanded).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                        .should(s -> s.match(m -> m.field("rewardNames").query(expanded).boost(1.5f)));
+                b.should(s -> s.match(m -> m.field("title").query(trimmedKeyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("summary").query(trimmedKeyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("description").query(trimmedKeyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
+                        .should(s -> s.match(m -> m.field("rewardNames").query(trimmedKeyword).boost(1.5f)));
 
                 if (!exactCategoryIds.isEmpty()) {
                     b.should(s -> s.matchAll(m -> m));
@@ -198,7 +197,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
             return searchKeywordScored(keywordQuery);
         }, searchTaskExecutor);
 
-        // ── 3. [Branch 2: Embedding(확장 쿼리) → 5개 필드 kNN 병렬] ──────────────────
+        // ── 3. [Branch 2: Embedding → 5개 필드 kNN 병렬] ──────────────────
         record VectorBranchResult(
                 List<ScoredDocument> rewardScored,
                 List<ScoredDocument> titleScored,
@@ -211,7 +210,7 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
         CompletableFuture<VectorBranchResult> vectorFuture = CompletableFuture.supplyAsync(() -> {
             float[] queryVector = null;
             try {
-                queryVector = embeddingService.generateEmbedding(expanded);
+                queryVector = embeddingService.generateEmbedding(trimmedKeyword);
             } catch (Exception e) {
                 log.warn("[ProjectSearch] 임베딩 생성 실패: {}", e.getMessage());
             }
@@ -277,20 +276,20 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 vectorRes.categoryIntentBoostProjectIds
         ).stream().limit(RERANK_CANDIDATE_LIMIT).toList();
 
-        // ── 5. 계절 하드 제외 → 문서 텍스트 1회 조회 → 리랭커(원본 쿼리) ─────────────
+        // ── 5. 속성 충돌 하드 제외 → 문서 텍스트 1회 조회 → 리랭커(원본 쿼리) ─────────────
         //   이 단계가 실패해도 검색이 멈추면 안 된다 — fusion 순서(candidates)로 완주한다.
         List<Long> finalIds = candidates;
         int afterFilterSize = candidates.size();
         try {
             Map<Long, ProjectDocument> docs = fetchDocumentsByIds(candidates);
-            List<Long> afterFilter = seasonalConflictFilter.filter(trimmedKeyword, candidates, docs);
+            List<Long> afterFilter = attributeConflictFilter.filter(trimmedKeyword, candidates, docs);
             afterFilterSize = afterFilter.size();
             finalIds = reranker.rerank(trimmedKeyword, afterFilter, docs);
         } catch (Exception e) {
             log.warn("[ProjectSearch] rerank 단계 실패 → fusion 순서로 완주. 원인: {}", e.toString());
         }
 
-        log.info("[ProjectSearch Latency Summary] 키워드='{}' | Total: {}ms | 후보: {}, 계절필터후: {}, 최종: {}",
+        log.info("[ProjectSearch Latency Summary] 키워드='{}' | Total: {}ms | 후보: {}, 충돌필터후: {}, 최종: {}",
                 trimmedKeyword, System.currentTimeMillis() - totalStart, candidates.size(), afterFilterSize, finalIds.size());
         return finalIds;
     }

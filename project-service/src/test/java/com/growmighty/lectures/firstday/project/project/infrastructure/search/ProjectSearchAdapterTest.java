@@ -59,8 +59,7 @@ class ProjectSearchAdapterTest {
     private final RewardRepository rewardRepository = mock(RewardRepository.class);
     private final CategoryIntentResolver categoryIntentResolver = mock(CategoryIntentResolver.class);
     private final Reranker reranker = mock(Reranker.class);
-    private final QuerySynonymExpander synonymExpander = new QuerySynonymExpander();
-    private final SeasonalConflictFilter seasonalConflictFilter = new SeasonalConflictFilter();
+    private final AttributeConflictFilter attributeConflictFilter = new AttributeConflictFilter();
     private ProjectSearchAdapter adapter;
 
     @BeforeEach
@@ -84,7 +83,7 @@ class ProjectSearchAdapterTest {
         adapter = new ProjectSearchAdapter(
                 elasticsearchOperations, elasticsearchClient, circuitBreakerFactory,
                 eventPublisher, embeddingService, projectRepository, categoryRepository,
-                rewardRepository, categoryIntentResolver, reranker, synonymExpander, seasonalConflictFilter,
+                rewardRepository, categoryIntentResolver, reranker, attributeConflictFilter,
                 Runnable::run); // 단위 테스트에서는 Runnable::run 사용
     }
 
