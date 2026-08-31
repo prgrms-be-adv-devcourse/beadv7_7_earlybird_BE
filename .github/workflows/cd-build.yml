@@ -15,6 +15,27 @@ env:
   IMAGE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
+  # CD Deploy(3번째 workflow_run 홉)는 이 워크플로 실행의 최상위 head_sha를 읽는데, 그 값은
+  # 위 IMAGE_SHA 계산과 달리 "이 실행이 트리거된 시점의 default 브랜치 tip"이라 몇 분 새
+  # main에 커밋이 더 쌓이면 실제 빌드에 쓴 IMAGE_SHA와 어긋난다 (관찰: 이 잡이 실제로는
+  # e5a4f6a5 태그로 push했는데 CD Deploy는 그 뒤 커밋인 b15fb74e를 pull 시도 → 존재하지
+  # 않는 태그라 ImagePullBackOff, file-service 이후 서비스까지 배포 자체가 막힘).
+  # 그래서 실제 IMAGE_SHA를 아티팩트로 남겨, CD Deploy가 head_sha 대신 이 실행의 run id로
+  # 직접 받아가게 한다 (run id는 체인 길이와 무관하게 항상 정확하다).
+  publish-image-sha:
+    name: publish image sha
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      - run: echo "${{ env.IMAGE_SHA }}" > image-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-sha
+          path: image-sha.txt
+          retention-days: 1
+
   build:
     name: build (${{ matrix.service }})
     runs-on: ubuntu-latest
