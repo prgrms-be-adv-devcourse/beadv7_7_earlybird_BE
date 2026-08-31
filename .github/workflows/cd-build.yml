@@ -1,0 +1,96 @@
+name: CD Build
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+env:
+  # 하드코딩 - github.repository 는 실제 대소문자(...beadv7_7_earlybird_BE)를 그대로 담지만
+  # Docker/GHCR 이미지 이름은 소문자여야 한다 (FE deploy.yml 과 동일한 이유).
+  IMAGE_PREFIX: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be
+  # workflow_run 컨텍스트의 github.sha 는 이 워크플로 자체가 default 브랜치에서 체크아웃한
+  # 커밋이지, CI 를 트리거한 커밋이 아니다 (흔한 함정). workflow_dispatch 에는 애초에
+  # event.workflow_run 이 없으므로 그때는 github.sha 로 폴백한다.
+  IMAGE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  # CD Deploy(3번째 workflow_run 홉)는 이 워크플로 실행의 최상위 head_sha를 읽는데, 그 값은
+  # 위 IMAGE_SHA 계산과 달리 "이 실행이 트리거된 시점의 default 브랜치 tip"이라 몇 분 새
+  # main에 커밋이 더 쌓이면 실제 빌드에 쓴 IMAGE_SHA와 어긋난다 (관찰: 이 잡이 실제로는
+  # e5a4f6a5 태그로 push했는데 CD Deploy는 그 뒤 커밋인 b15fb74e를 pull 시도 → 존재하지
+  # 않는 태그라 ImagePullBackOff, file-service 이후 서비스까지 배포 자체가 막힘).
+  # 그래서 실제 IMAGE_SHA를 아티팩트로 남겨, CD Deploy가 head_sha 대신 이 실행의 run id로
+  # 직접 받아가게 한다 (run id는 체인 길이와 무관하게 항상 정확하다).
+  publish-image-sha:
+    name: publish image sha
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      - run: echo "${{ env.IMAGE_SHA }}" > image-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-sha
+          path: image-sha.txt
+          retention-days: 1
+
+  build:
+    name: build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    # workflow_run은 브랜치/결과와 무관하게 모든 CI 실행마다 발생하므로 여기서 게이팅한다:
+    # main 브랜치에서 실제로 성공한 CI 실행만 빌드한다. workflow_dispatch는 연결된
+    # workflow_run 이벤트가 없으므로 이 조건을 완전히 우회한다.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - config-server
+          - discovery-server
+          - gateway-server
+          - order-service
+          - project-service
+          - payment-service
+          - user-service
+          - cart-service
+          - settlement-service
+          - file-service
+          - board-service
+          - notification-service
+          - chat-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMAGE_SHA }}
+
+      # cache-from/cache-to: type=gha 를 쓰려면 기본 docker 드라이버가 아니라
+      # docker-container 드라이버가 필요하다.
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 서비스 12개가 각자 다른 러너에서 병렬로 빌드되므로, EC2(2 vCPU) 한 대에서 buildx
+      # bake로 전부 동시에 빌드했다가 CPU 경합으로 sshd까지 응답 없어졌던 문제(CD #148)
+      # 자체가 사라진다. 모든 서비스가 동일한 루트 Dockerfile을 MODULE 인자만 바꿔 쓴다
+      # (infrastructure/docker-compose.yml의 x-build-defaults와 동일한 패턴).
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          build-args: MODULE=${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ env.IMAGE_SHA }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
