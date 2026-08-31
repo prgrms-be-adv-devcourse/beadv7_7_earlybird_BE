@@ -42,3 +42,30 @@ GET {{baseUrl}}/api/v1/projects
         client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body);
     });
 %}
+
+### 4. 공지 목록 조회 — 인증 없이 200이어야 함 (#787)
+GET {{baseUrl}}/api/v1/notices?projectId=1
+
+> {%
+    client.test("공지 목록은 인증 없이 200", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 5. 리뷰 목록 조회 — 인증 없이 200이어야 함 (#787)
+GET {{baseUrl}}/api/v1/reviews?projectId=1
+
+> {%
+    client.test("리뷰 목록은 인증 없이 200", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body);
+    });
+%}
+
+### 6. 댓글 목록 조회 — 인증 없이 200이어야 함 (#787)
+GET {{baseUrl}}/api/v1/comments?targetType=PROJECT&targetId=1
+
+> {%
+    client.test("댓글 목록은 인증 없이 200", function() {
+        client.assert(response.status === 200, "expected 200, got " + response.status + ": " + response.body);
+    });
+%}

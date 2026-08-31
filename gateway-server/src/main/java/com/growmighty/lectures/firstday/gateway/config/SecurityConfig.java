@@ -118,8 +118,17 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.POST, URI_PREFIX_API + "/rewards/*/deactivate").hasRole(ADMIN.getCode())
 
                         // notices
+                        .pathMatchers(HttpMethod.GET,
+                                URI_PREFIX_API + "/notices",
+                                URI_PREFIX_API + "/notices/*").permitAll()
                         .pathMatchers(HttpMethod.PATCH, URI_PREFIX_API + "/notices/*").hasRole(CREATOR.getCode())
                         .pathMatchers(HttpMethod.DELETE, URI_PREFIX_API + "/notices/*").hasAnyRole(CREATOR.getCode(), ADMIN.getCode())
+
+                        // reviews
+                        .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/reviews").permitAll()
+
+                        // comments
+                        .pathMatchers(HttpMethod.GET, URI_PREFIX_API + "/comments").permitAll()
 
                         // files
                         //// 프로젝트 썸네일 등 전부 공개 콘텐츠 - 조회만 비로그인 허용, 등록/삭제는 인증 필요
