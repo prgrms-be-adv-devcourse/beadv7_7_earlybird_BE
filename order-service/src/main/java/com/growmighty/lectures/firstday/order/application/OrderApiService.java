@@ -79,8 +79,8 @@ public class OrderApiService {
         this.cartHandler = null;
         this.paidCompletionService = null;
         this.stockFailureCompletionService = null;
-        OrderCancellationPersistenceService finalizer =
-                new OrderCancellationPersistenceService(orderRepository, null, stockHandler);
+        OrderCancellationPersistenceService finalizer = new OrderCancellationPersistenceService(
+                new OrderCancellationTransactionService(orderRepository, null), stockHandler);
         this.cancellationOrchestrationService = new OrderCancellationOrchestrationService(
                 orderRepository, paymentPort, remoteCalls, finalizer);
         this.cancellationCompletionService = null;
@@ -204,10 +204,7 @@ public class OrderApiService {
         validateRequesterId(requesterId);
         Order order = getOrderWithItems(orderId);
         verifyOwner(order, requesterId);
-        if (order.isCancellationCompensationPending()) {
-            return OrderResult.from(order);
-        }
-        if (!order.isCancelled()) {
+        if (!order.isCancelled() && !order.isCancellationCompensationPending()) {
             order.validateCancellationAllowed();
             verifyCancellationAllowedByProject(order);
         }
