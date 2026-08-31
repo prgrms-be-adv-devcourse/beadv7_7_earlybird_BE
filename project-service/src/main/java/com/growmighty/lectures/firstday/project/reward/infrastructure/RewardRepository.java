@@ -13,6 +13,9 @@ import java.util.UUID;
 public interface RewardRepository extends JpaRepository<Reward, Long> {
     List<Reward> findByProjectId(Long projectId);
 
+    /** 프로젝트 상세의 리워드 목록 노출용 — 창작자가 등록한 순서대로 보여준다. */
+    List<Reward> findByProjectIdOrderByRewardIdAsc(Long projectId);
+
     /** 리워드 생성 중복 방지 — ProjectRepository.findByCreatorIdAndIdempotencyKey와 동일 패턴. */
     Optional<Reward> findByProjectIdAndIdempotencyKey(Long projectId, UUID idempotencyKey);
 
