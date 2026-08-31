@@ -6,6 +6,7 @@ import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -22,10 +23,13 @@ public class CohereReranker implements Reranker {
 
     private final CohereRerankClient client;
     private final CircuitBreakerFactory circuitBreakerFactory;
+    private final CohereRerankProperties props;
 
-    public CohereReranker(CohereRerankClient client, CircuitBreakerFactory circuitBreakerFactory) {
+    public CohereReranker(CohereRerankClient client, CircuitBreakerFactory circuitBreakerFactory,
+                          CohereRerankProperties props) {
         this.client = client;
         this.circuitBreakerFactory = circuitBreakerFactory;
+        this.props = props;
     }
 
     @Override
@@ -55,14 +59,44 @@ public class CohereReranker implements Reranker {
             return candidateIds;
         }
 
-        Set<Long> reordered = new LinkedHashSet<>();
-        for (CohereRerankClient.Ranked r : ranked) {
-            if (r.index() >= 0 && r.index() < candidateIds.size()) {
-                reordered.add(candidateIds.get(r.index()));
+        List<CohereRerankClient.Ranked> byScoreDesc = ranked.stream()
+                .sorted(Comparator.comparingDouble(CohereRerankClient.Ranked::relevanceScore).reversed())
+                .toList();
+        double topScore = byScoreDesc.get(0).relevanceScore();
+
+        Set<Long> kept = new LinkedHashSet<>();
+        int cut = 0;
+        for (CohereRerankClient.Ranked r : byScoreDesc) {
+            if (r.index() < 0 || r.index() >= candidateIds.size()) {
+                continue;
+            }
+            // 1등은 무조건 남긴다 — 전부 점수가 낮은 쿼리에서 결과가 통째로 비는 걸 막는다.
+            if (kept.isEmpty() || !isIrrelevant(r.relevanceScore(), topScore)) {
+                kept.add(candidateIds.get(r.index()));
+            } else {
+                cut++;
             }
         }
-        // Cohere가 일부만 반환한 경우 누락분을 원래 순서로 뒤에 붙인다.
-        reordered.addAll(candidateIds);
-        return new ArrayList<>(reordered);
+        if (cut > 0) {
+            log.debug("[Rerank] 관련도 컷: 후보 {}개 중 {}개 제외 (1등 점수 {})", candidateIds.size(), cut, topScore);
+        }
+        // 누락분(Cohere가 점수를 안 준 후보)은 붙이지 않는다 — top_n=문서 수라 정상 응답이면 누락이 없고,
+        // 무조건 붙이면 방금 컷한 후보가 그대로 되살아난다.
+        return new ArrayList<>(kept);
+    }
+
+    /**
+     * 절대 점수와 1등 대비 비율이 <b>둘 다</b> 미달일 때만 무관으로 본다.
+     *
+     * <p>한쪽만으로 자르면 안 되는 이유(2026-08-30 실측, 시드 198건):
+     * 상위어 쿼리는 후보 전체의 절대 점수가 낮게 깔린다 — {@code "패션"}은 40건이 0.0589~0.1025,
+     * {@code "책"}은 33건이 0.0986~0.1282다. 절대값만 보면 정상 결과가 통째로 날아간다.
+     * 반대로 비율만 보면 {@code "강아지 간식"}의 하위권(1등 대비 6~8%인 산책줄)처럼
+     * 명백한 노이즈를 못 거른다. 둘 다 미달인 것만 잘라야 양쪽이 산다.
+     */
+    private boolean isIrrelevant(double score, double topScore) {
+        boolean belowAbsolute = score < props.minRelevanceScore();
+        boolean belowRelative = topScore <= 0 || score < topScore * props.minRelativeRatio();
+        return belowAbsolute && belowRelative;
     }
 }
