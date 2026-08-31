@@ -185,7 +185,11 @@ public class ProjectSearchAdapter implements ProjectSearchPort {
                 b.should(s -> s.match(m -> m.field("title").query(trimmedKeyword).boost(2.0f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
                         .should(s -> s.match(m -> m.field("summary").query(trimmedKeyword).boost(1.2f).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
                         .should(s -> s.match(m -> m.field("description").query(trimmedKeyword).minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)))
-                        .should(s -> s.match(m -> m.field("rewardNames").query(trimmedKeyword).boost(1.5f)));
+                        // 다른 셋과 같은 minimumShouldMatch를 건다 — 이게 빠져 있으면 동의어로 확장된
+                        // 토큰 하나가 리워드명에 스치기만 해도 통과한다. 운영 실측(#755)에서 "요리용 책"
+                        // 결과 7건이 title/summary/description 전부 0건인데 여기로만 들어온 시집이었다.
+                        .should(s -> s.match(m -> m.field("rewardNames").query(trimmedKeyword).boost(1.5f)
+                                .minimumShouldMatch(MATCH_MINIMUM_SHOULD_MATCH)));
 
                 if (!exactCategoryIds.isEmpty()) {
                     b.should(s -> s.matchAll(m -> m));
