@@ -1,20 +1,16 @@
 package com.growmighty.lectures.firstday.project.project.infrastructure.search;
 
+import com.growmighty.lectures.firstday.project.category.domain.CategoryHierarchy;
 import com.growmighty.lectures.firstday.project.category.domain.ProjectCategory;
 import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectCategoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -61,6 +57,7 @@ public class CategoryIntentResolver {
         }
 
         List<ProjectCategory> allCategories = categoryRepository.findAll();
+        CategoryHierarchy hierarchy = CategoryHierarchy.of(allCategories);
         Map<Long, ProjectCategory> categoryMap = allCategories.stream()
                 .collect(Collectors.toMap(ProjectCategory::getId, c -> c, (a, b) -> a));
 
@@ -69,7 +66,7 @@ public class CategoryIntentResolver {
             Long catId = entry.getKey();
             float[] catVector = entry.getValue();
             double sim = cosineSimilarity(queryVector, catVector);
-            Long rootId = findRootCategoryId(catId, categoryMap);
+            Long rootId = hierarchy.rootId(catId);
             String name = categoryMap.containsKey(catId) ? categoryMap.get(catId).getName() : "카테고리#" + catId;
             matches.add(new CategoryMatch(catId, rootId, name, sim));
         }
@@ -91,7 +88,7 @@ public class CategoryIntentResolver {
         double gap = top1.similarity() - topOtherRootSim;
 
         if (top1.similarity() >= threshold && gap >= minGap) {
-            List<Long> scopedCategoryIds = withDescendants(List.of(top1.categoryId()), allCategories);
+            List<Long> scopedCategoryIds = hierarchy.withDescendants(List.of(top1.categoryId()));
             log.info("[CategoryIntent] 명확한 카테고리 의도 감지: '{}' (유사도={}, 타 루트군과 gap={}) -> Scoped categoryIds={}",
                     top1.categoryName(), String.format("%.4f", top1.similarity()), String.format("%.4f", gap), scopedCategoryIds);
             return scopedCategoryIds;
@@ -102,57 +99,23 @@ public class CategoryIntentResolver {
         return List.of();
     }
 
-    private Long findRootCategoryId(Long categoryId, Map<Long, ProjectCategory> categoryMap) {
-        ProjectCategory cur = categoryMap.get(categoryId);
-        Set<Long> visited = new HashSet<>();
-        while (cur != null && cur.getParentProjectCategoryId() != null && !visited.contains(cur.getId())) {
-            visited.add(cur.getId());
-            cur = categoryMap.get(cur.getParentProjectCategoryId());
-        }
-        return cur != null ? cur.getId() : categoryId;
-    }
-
+    /**
+     * 카테고리별 계층 문자열을 임베딩해 캐싱한다. 계층 표현은 색인 쪽
+     * {@code ProjectSearchAdapter#resolveCategoryHierarchy}와 반드시 같아야 벡터가 맞물린다(#765).
+     */
     private void ensureCategoryVectorsCached() {
         if (!categoryVectorCache.isEmpty()) {
             return;
         }
         List<ProjectCategory> categories = categoryRepository.findAll();
-        Map<Long, ProjectCategory> categoryMap = categories.stream()
-                .collect(Collectors.toMap(ProjectCategory::getId, c -> c, (a, b) -> a));
+        CategoryHierarchy hierarchy = CategoryHierarchy.of(categories);
 
         for (ProjectCategory cat : categories) {
-            String hierarchy = buildHierarchy(cat, categoryMap);
-            float[] vector = embeddingService.generateEmbedding(hierarchy);
+            float[] vector = embeddingService.generateEmbedding(hierarchy.path(cat.getId()));
             if (vector != null) {
                 categoryVectorCache.put(cat.getId(), vector);
             }
         }
-    }
-
-    private String buildHierarchy(ProjectCategory category, Map<Long, ProjectCategory> map) {
-        if (category.getParentProjectCategoryId() != null) {
-            ProjectCategory parent = map.get(category.getParentProjectCategoryId());
-            if (parent != null) {
-                return parent.getName() + " > " + category.getName();
-            }
-        }
-        return category.getName();
-    }
-
-    private List<Long> withDescendants(List<Long> rootIds, List<ProjectCategory> allCategories) {
-        Map<Long, List<Long>> childMap = allCategories.stream()
-                .filter(c -> c.getParentProjectCategoryId() != null)
-                .collect(Collectors.groupingBy(ProjectCategory::getParentProjectCategoryId,
-                        Collectors.mapping(ProjectCategory::getId, Collectors.toList())));
-
-        List<Long> result = new ArrayList<>();
-        Deque<Long> queue = new ArrayDeque<>(rootIds);
-        while (!queue.isEmpty()) {
-            Long id = queue.poll();
-            result.add(id);
-            queue.addAll(childMap.getOrDefault(id, List.of()));
-        }
-        return result;
     }
 
     private double cosineSimilarity(float[] v1, float[] v2) {
