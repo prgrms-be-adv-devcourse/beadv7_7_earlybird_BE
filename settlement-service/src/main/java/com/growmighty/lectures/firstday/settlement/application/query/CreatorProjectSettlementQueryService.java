@@ -4,10 +4,14 @@ package com.growmighty.lectures.firstday.settlement.application.query;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_NOT_FOUND;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
-import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutProfile;
+import com.growmighty.lectures.firstday.settlement.domain.model.CreatorPayoutStatus;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
+import com.growmighty.lectures.firstday.settlement.domain.repository.CreatorPayoutProfileRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -22,13 +26,17 @@ public class CreatorProjectSettlementQueryService {
 
     private final ProjectSettlementRepository projectSettlementRepository;
     private final PayoutObligationRepository payoutObligationRepository;
+    private final CreatorPayoutProfileRepository creatorPayoutProfileRepository;
 
     @Transactional(readOnly = true)
     public List<CreatorProjectSettlementSummary> findAll(Long creatorId) {
         List<ProjectSettlement> settlements = projectSettlementRepository.findAllByCreatorIdOrderByConfirmedAtDescIdDesc(creatorId);
         Map<Long, PayoutObligation> obligations = obligationsBySettlementId(settlements);
+        CreatorPayoutProfile payoutProfile = obligations.size() == settlements.size()
+                ? null
+                : requiredPayoutProfile(creatorId);
         return settlements.stream()
-                .map(settlement -> toSummary(settlement, requiredObligation(obligations, settlement.id())))
+                .map(settlement -> toSummary(settlement, payoutFor(obligations.get(settlement.id()), payoutProfile)))
                 .toList();
     }
 
@@ -37,7 +45,9 @@ public class CreatorProjectSettlementQueryService {
         ProjectSettlement settlement = projectSettlementRepository.findById(settlementId)
                 .filter(candidate -> candidate.creatorId().equals(creatorId))
                 .orElseThrow(() -> new SettlementException(PROJECT_SETTLEMENT_NOT_FOUND));
-        PayoutObligation payoutObligation = requiredObligation(settlement.id());
+        PayoutObligation payoutObligation = payoutObligationRepository.findBySettlementId(settlement.id()).orElse(null);
+        CreatorPayoutProfile payoutProfile = payoutObligation == null ? requiredPayoutProfile(creatorId) : null;
+        CreatorPayout payout = payoutFor(payoutObligation, payoutProfile);
         return new CreatorProjectSettlementDetail(
                 settlement.id(),
                 settlement.projectId(),
@@ -52,22 +62,22 @@ public class CreatorProjectSettlementQueryService {
                 settlement.platformFeeVatAmount(),
                 settlement.otherDeductionAmount(),
                 settlement.creatorPayoutAmount(),
-                payoutObligation.status(),
-                payoutObligation.scheduledDate(),
-                completedAt(payoutObligation)
+                payout.status(),
+                payout.scheduledDate(),
+                payout.completedAt()
         );
     }
 
-    private CreatorProjectSettlementSummary toSummary(ProjectSettlement settlement, PayoutObligation payoutObligation) {
+    private CreatorProjectSettlementSummary toSummary(ProjectSettlement settlement, CreatorPayout payout) {
         return new CreatorProjectSettlementSummary(
                 settlement.id(),
                 settlement.projectId(),
                 settlement.baseAmount(),
                 settlement.creatorPayoutAmount(),
-                payoutObligation.status(),
+                payout.status(),
                 settlement.confirmedAt(),
-                payoutObligation.scheduledDate(),
-                completedAt(payoutObligation)
+                payout.scheduledDate(),
+                payout.completedAt()
         );
     }
 
@@ -77,20 +87,35 @@ public class CreatorProjectSettlementQueryService {
                 .collect(java.util.stream.Collectors.toMap(PayoutObligation::settlementId, Function.identity()));
     }
 
-    private PayoutObligation requiredObligation(Long settlementId) {
-        return payoutObligationRepository.findBySettlementId(settlementId)
+    private CreatorPayoutProfile requiredPayoutProfile(Long creatorId) {
+        return creatorPayoutProfileRepository.findByCreatorId(creatorId)
                 .orElseThrow(() -> new SettlementException(PROJECT_SETTLEMENT_NOT_FOUND));
     }
 
-    private static PayoutObligation requiredObligation(Map<Long, PayoutObligation> obligations, Long settlementId) {
-        PayoutObligation payoutObligation = obligations.get(settlementId);
-        if (payoutObligation == null) throw new SettlementException(PROJECT_SETTLEMENT_NOT_FOUND);
-        return payoutObligation;
+    private CreatorPayout payoutFor(PayoutObligation payoutObligation, CreatorPayoutProfile payoutProfile) {
+        if (payoutObligation != null) {
+            return new CreatorPayout(
+                    CreatorSettlementStatus.from(payoutObligation.status()),
+                    payoutObligation.scheduledDate(),
+                    completedAt(payoutObligation)
+            );
+        }
+        if (payoutProfile != null && payoutProfile.status() == CreatorPayoutStatus.REGISTRATION_PENDING) {
+            return new CreatorPayout(CreatorSettlementStatus.REGISTRATION_PENDING, null, null);
+        }
+        throw new SettlementException(PROJECT_SETTLEMENT_NOT_FOUND);
     }
 
     private static LocalDateTime completedAt(PayoutObligation payoutObligation) {
         return payoutObligation.successfulAttempt()
                 .map(attempt -> attempt.completedAt())
                 .orElse(null);
+    }
+
+    private record CreatorPayout(
+            CreatorSettlementStatus status,
+            LocalDate scheduledDate,
+            LocalDateTime completedAt
+    ) {
     }
 }

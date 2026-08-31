@@ -2,7 +2,7 @@
 package com.growmighty.lectures.firstday.settlement.presentation.dto.response;
 
 import com.growmighty.lectures.firstday.settlement.application.query.CreatorProjectSettlementDetail;
-import com.growmighty.lectures.firstday.settlement.domain.model.PayoutStatus;
+import com.growmighty.lectures.firstday.settlement.application.query.CreatorSettlementStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -77,7 +77,7 @@ public record CreatorProjectSettlementDetailResponse(
     }
 
     public record PayoutResponse(
-            PayoutStatus status,
+            CreatorSettlementStatus status,
             LocalDate scheduledDate,
             OffsetDateTime completedAt
     ) {

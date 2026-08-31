@@ -71,6 +71,49 @@ class CreatorProjectSettlementQueryControllerTest extends MySqlIntegrationTestSu
     }
 
     @Test
+    @DisplayName("등록 대기 창작자는 지급 의무 없이도 본인 프로젝트 정산 목록과 상세를 조회한다")
+    void returnsRegistrationPendingSettlementWithoutPayoutObligation() throws Exception {
+        long creatorId = Long.parseLong(CREATOR_ID);
+        ConfirmedProjectSettlement confirmed = confirm(
+                70_000_001L,
+                creatorId,
+                LocalDateTime.of(2026, 8, 31, 9, 0)
+        );
+
+        mockMvc.perform(get("/api/v1/settlements")
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].settlementId").value(confirmed.settlementId()))
+                .andExpect(jsonPath("$.data[0].status").value("REGISTRATION_PENDING"))
+                .andExpect(jsonPath("$.data[0].scheduledDate").isEmpty())
+                .andExpect(jsonPath("$.data[0].completedAt").isEmpty());
+
+        mockMvc.perform(get("/api/v1/settlements/{settlementId}", confirmed.settlementId())
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.payout.status").value("REGISTRATION_PENDING"))
+                .andExpect(jsonPath("$.data.payout.scheduledDate").isEmpty())
+                .andExpect(jsonPath("$.data.payout.completedAt").isEmpty());
+    }
+
+    @Test
+    @DisplayName("등록 대기가 아닌 프로필의 지급 의무 누락은 등록 대기로 표시하지 않는다")
+    void doesNotClassifyMissingPayoutObligationAsRegistrationPending() throws Exception {
+        long creatorId = Long.parseLong(CREATOR_ID);
+        creatorPayoutProfileRepository.save(CreatorPayoutProfile.registered(
+                creatorId,
+                "seller-approval-required",
+                CreatorPayoutStatus.APPROVAL_REQUIRED
+        ));
+        confirm(70_000_002L, creatorId, LocalDateTime.of(2026, 8, 31, 9, 0));
+
+        mockMvc.perform(get("/api/v1/settlements")
+                        .header(JwtHeaders.USER_ID, CREATOR_ID))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.message").value("프로젝트 정산 내역을 찾을 수 없습니다."));
+    }
+
+    @Test
     @DisplayName("창작자는 본인 프로젝트 정산 내역만 확정 시각과 식별자의 역순으로 조회한다")
     void returnsOwnedProjectSettlementsInDeterministicOrder() throws Exception {
         long creatorId = Long.parseLong(CREATOR_ID);
