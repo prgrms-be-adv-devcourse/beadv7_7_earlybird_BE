@@ -15,7 +15,8 @@ public record AdminProjectSettlementListItemResponse(
         Long refundRequestId,
         PayoutResponse payout,
         RefundResponse refund,
-        RegistrationPendingResponse registrationPending
+        RegistrationPendingResponse registrationPending,
+        PendingPayoutResponse pendingPayout
 ) {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -29,6 +30,7 @@ public record AdminProjectSettlementListItemResponse(
                     null,
                     PayoutResponse.from(entry.payout()),
                     null,
+                    null,
                     null
             );
             case REFUND -> new AdminProjectSettlementListItemResponse(
@@ -38,6 +40,7 @@ public record AdminProjectSettlementListItemResponse(
                     entry.refundRequestId(),
                     null,
                     RefundResponse.from(entry.refund()),
+                    null,
                     null
             );
             case REGISTRATION_PENDING -> new AdminProjectSettlementListItemResponse(
@@ -47,7 +50,30 @@ public record AdminProjectSettlementListItemResponse(
                     null,
                     null,
                     null,
-                    RegistrationPendingResponse.from(entry.registrationPending())
+                    RegistrationPendingResponse.from(entry.registrationPending()),
+                    null
+            );
+            case PAYOUT_PENDING, APPROVAL_REQUIRED, KYC_REQUIRED, PAYOUT_UNAVAILABLE ->
+                    new AdminProjectSettlementListItemResponse(
+                            entry.type(),
+                            entry.projectId(),
+                            entry.projectName(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            PendingPayoutResponse.from(entry.pendingPayout())
+                    );
+            case RECONCILIATION_REVIEW_REQUIRED, SETTLEMENT_PENDING, REFUND_PENDING ->
+                    new AdminProjectSettlementListItemResponse(
+                            entry.type(),
+                            entry.projectId(),
+                            entry.projectName(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null
             );
         };
     }
@@ -109,6 +135,25 @@ public record AdminProjectSettlementListItemResponse(
                     registrationPending.settlementBaseAmount().amount(),
                     registrationPending.creatorPayoutAmount().amount(),
                     registrationPending.confirmedAt().atZone(SEOUL).toOffsetDateTime()
+            );
+        }
+    }
+
+    public record PendingPayoutResponse(
+            Long settlementId,
+            Long creatorId,
+            BigDecimal settlementBaseAmount,
+            BigDecimal creatorPayoutAmount,
+            OffsetDateTime confirmedAt
+    ) {
+
+        private static PendingPayoutResponse from(AdminSettlementEntry.PendingPayout pendingPayout) {
+            return new PendingPayoutResponse(
+                    pendingPayout.settlementId(),
+                    pendingPayout.creatorId(),
+                    pendingPayout.settlementBaseAmount().amount(),
+                    pendingPayout.creatorPayoutAmount().amount(),
+                    pendingPayout.confirmedAt().atZone(SEOUL).toOffsetDateTime()
             );
         }
     }

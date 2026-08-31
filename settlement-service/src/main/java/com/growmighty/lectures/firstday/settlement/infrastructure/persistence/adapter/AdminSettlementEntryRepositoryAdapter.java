@@ -47,13 +47,18 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                     null as payment_count
                 from project_settlements settlement
                 join payout_obligations obligation on obligation.settlement_id = settlement.id
-                join project_outcome_facts outcome on outcome.project_id = settlement.project_id
+                join project_outcome_facts outcome
+                    on outcome.project_id = settlement.project_id
+                    and outcome.outcome = 'SUCCEEDED'
                 left join payout_attempts attempt on attempt.id = obligation.successful_attempt_id
 
                 union all
 
                 select
-                    'REGISTRATION_PENDING' as entry_type,
+                    case profile.status
+                        when 'PAYOUT_READY' then 'PAYOUT_PENDING'
+                        else profile.status
+                    end as entry_type,
                     settlement.project_id,
                     outcome.project_name,
                     null as refund_request_id,
@@ -73,7 +78,6 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                 from project_settlements settlement
                 join creator_payout_profiles profile
                     on profile.creator_id = settlement.creator_id
-                    and profile.status = 'REGISTRATION_PENDING'
                 join project_outcome_facts outcome
                     on outcome.project_id = settlement.project_id
                     and outcome.outcome = 'SUCCEEDED'
@@ -102,13 +106,61 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                     (select count(*) from project_refund_requested_payments payment
                      where payment.event_id = refund_request.event_id) as payment_count
                 from project_refund_requested_outbox refund_request
-                join project_outcome_facts outcome on outcome.project_id = refund_request.project_id
+                join project_outcome_facts outcome
+                    on outcome.project_id = refund_request.project_id
+                    and outcome.outcome in ('FAILED', 'CANCELLED')
+
+                union all
+
+                select
+                    case
+                        when outcome.outcome = 'SUCCEEDED' and exists (
+                            select 1
+                            from order_payment_facts payment
+                            where payment.project_id = outcome.project_id
+                              and payment.status = 'COMPLETED'
+                              and payment.reconciliation_status = 'REVIEW_REQUIRED'
+                        ) then 'RECONCILIATION_REVIEW_REQUIRED'
+                        when outcome.outcome = 'SUCCEEDED' then 'SETTLEMENT_PENDING'
+                        else 'REFUND_PENDING'
+                    end as entry_type,
+                    outcome.project_id,
+                    outcome.project_name,
+                    null as refund_request_id,
+                    outcome.occurred_at as published_at,
+                    null as processed_at,
+                    null as settlement_id,
+                    null as creator_id,
+                    null as base_amount,
+                    null as creator_payout_amount,
+                    null as payout_status,
+                    null as confirmed_at,
+                    null as scheduled_date,
+                    null as refund_reason,
+                    null as refund_published_at,
+                    null as payment_result_status,
+                    null as payment_count
+                from project_outcome_facts outcome
+                where (
+                    outcome.outcome = 'SUCCEEDED'
+                    and not exists (
+                        select 1 from project_settlements settlement
+                        where settlement.project_id = outcome.project_id
+                    )
+                ) or (
+                    outcome.outcome in ('FAILED', 'CANCELLED')
+                    and not exists (
+                        select 1 from project_refund_requested_outbox refund_request
+                        where refund_request.project_id = outcome.project_id
+                    )
+                )
             ) entries
             order by
                 case when :sort = 'NAME' then project_name end asc,
                 case when :sort = 'PUBLISHED_AT' then published_at end desc,
                 case when :sort = 'PROCESSED_AT' then processed_at end desc,
                 entry_type asc,
+                project_id asc,
                 settlement_id asc,
                 refund_request_id asc
             """;
@@ -131,6 +183,8 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
             case "PAYOUT" -> payout(row);
             case "REGISTRATION_PENDING" -> registrationPending(row);
             case "REFUND" -> refund(row);
+            case "PAYOUT_PENDING", "APPROVAL_REQUIRED", "KYC_REQUIRED", "PAYOUT_UNAVAILABLE" -> pendingPayout(row);
+            case "RECONCILIATION_REVIEW_REQUIRED", "SETTLEMENT_PENDING", "REFUND_PENDING" -> pending(row);
             default -> throw new IllegalStateException("알 수 없는 관리자 정산 항목 유형입니다.");
         };
     }
@@ -155,6 +209,7 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                         localDate(row[12])
                 ),
                 null,
+                null,
                 null
         );
     }
@@ -176,7 +231,8 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                         Money.wons(decimal(row[8])),
                         Money.wons(decimal(row[9])),
                         confirmedAt
-                )
+                ),
+                null
         );
     }
 
@@ -198,6 +254,44 @@ public class AdminSettlementEntryRepositoryAdapter implements AdminSettlementEnt
                         paymentResultAt,
                         ((Number) row[16]).intValue()
                 ),
+                null,
+                null
+        );
+    }
+
+    private static AdminSettlementEntry pendingPayout(Object[] row) {
+        LocalDateTime confirmedAt = localDateTime(row[11]);
+        return new AdminSettlementEntry(
+                AdminSettlementEntry.Type.valueOf((String) row[0]),
+                longValue(row[1]),
+                (String) row[2],
+                null,
+                atSeoul(confirmedAt),
+                null,
+                null,
+                null,
+                null,
+                new AdminSettlementEntry.PendingPayout(
+                        longValue(row[6]),
+                        longValue(row[7]),
+                        Money.wons(decimal(row[8])),
+                        Money.wons(decimal(row[9])),
+                        confirmedAt
+                )
+        );
+    }
+
+    private static AdminSettlementEntry pending(Object[] row) {
+        return new AdminSettlementEntry(
+                AdminSettlementEntry.Type.valueOf((String) row[0]),
+                longValue(row[1]),
+                (String) row[2],
+                null,
+                instant(row[4]),
+                null,
+                null,
+                null,
+                null,
                 null
         );
     }

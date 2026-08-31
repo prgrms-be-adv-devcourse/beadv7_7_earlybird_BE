@@ -16,13 +16,21 @@ public record AdminSettlementEntry(
         Instant processedAt,
         Payout payout,
         Refund refund,
-        RegistrationPending registrationPending
+        RegistrationPending registrationPending,
+        PendingPayout pendingPayout
 ) {
 
     public enum Type {
         PAYOUT,
         REFUND,
-        REGISTRATION_PENDING
+        REGISTRATION_PENDING,
+        PAYOUT_PENDING,
+        APPROVAL_REQUIRED,
+        KYC_REQUIRED,
+        PAYOUT_UNAVAILABLE,
+        RECONCILIATION_REVIEW_REQUIRED,
+        SETTLEMENT_PENDING,
+        REFUND_PENDING
     }
 
     public enum RefundStatus {
@@ -59,6 +67,15 @@ public record AdminSettlementEntry(
     }
 
     public record RegistrationPending(
+            Long settlementId,
+            Long creatorId,
+            Money settlementBaseAmount,
+            Money creatorPayoutAmount,
+            LocalDateTime confirmedAt
+    ) {
+    }
+
+    public record PendingPayout(
             Long settlementId,
             Long creatorId,
             Money settlementBaseAmount,
