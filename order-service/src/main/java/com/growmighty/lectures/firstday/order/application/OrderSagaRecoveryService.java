@@ -61,8 +61,8 @@ public class OrderSagaRecoveryService {
         this.paymentResultHandler = paymentResultHandler;
         this.paidCompletionService = null;
         this.stockFailureCompletionService = null;
-        this.cancellationPersistenceService =
-                new OrderCancellationPersistenceService(orderRepository, null, stockHandler);
+        this.cancellationPersistenceService = new OrderCancellationPersistenceService(
+                new OrderCancellationTransactionService(orderRepository, null), stockHandler);
         this.cancellationCompletionService = null;
     }
 
