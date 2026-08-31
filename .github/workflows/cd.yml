@@ -143,11 +143,20 @@ jobs:
               echo "변경된 서비스 모듈 없음 ($PREV_SHA..$(git rev-parse HEAD)) - k8s 배포 스킵"
             else
               echo "변경된 서비스만 배포:$CHANGED_SERVICES"
-              # 서비스별로 apply 직후 rollout 완료까지 대기 - 동시 재시작 시 CPU 포화/타임아웃 방지
+              # 서비스별 apply 후 rollout 대기 - 동시 재시작 시 CPU 포화 방지
+              # 실패해도 나머지는 계속 시도, 끝나고 나서 잡 실패 처리 (#728)
+              FAILED_SERVICES=""
               for svc in $CHANGED_SERVICES; do
                 sed "s#${svc}:latest#${svc}:${IMAGE_TAG}#" "infrastructure/k8s/${svc}.yaml" | kubectl apply -f -
-                kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
+                if ! kubectl -n webapp rollout status "deployment/$svc" --timeout=10m; then
+                  echo "::warning::${svc} rollout 실패/타임아웃 - 나머지 서비스는 계속 진행"
+                  FAILED_SERVICES="$FAILED_SERVICES $svc"
+                fi
               done
+              if [ -n "$FAILED_SERVICES" ]; then
+                echo "배포 실패:$FAILED_SERVICES"
+                exit 1
+              fi
             fi
 
   deploy:
