@@ -1,17 +1,20 @@
 package com.growmighty.lectures.firstday.settlement.application.query;
 
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_REFUND_REQUEST_NOT_FOUND;
+import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_RECONCILIATION_REVIEW_NOT_FOUND;
 import static com.growmighty.lectures.firstday.settlement.application.error.SettlementErrorCode.PROJECT_SETTLEMENT_NOT_FOUND;
 
 import com.growmighty.lectures.firstday.settlement.application.error.SettlementException;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutAttempt;
 import com.growmighty.lectures.firstday.settlement.domain.model.PayoutObligation;
+import com.growmighty.lectures.firstday.settlement.domain.model.OrderPaymentFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectOutcomeFact;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectRefundRequested;
 import com.growmighty.lectures.firstday.settlement.domain.model.ProjectSettlement;
 import com.growmighty.lectures.firstday.settlement.domain.repository.PayoutObligationRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectRefundRequestedRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectOutcomeFactRepository;
+import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectPayoutInputRepository;
 import com.growmighty.lectures.firstday.settlement.domain.repository.ProjectSettlementRepository;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -28,6 +31,7 @@ public class AdminProjectSettlementQueryService {
     private final PayoutObligationRepository payoutObligationRepository;
     private final ProjectRefundRequestedRepository refundRequestedRepository;
     private final ProjectOutcomeFactRepository outcomeRepository;
+    private final ProjectPayoutInputRepository payoutInputRepository;
     private final AdminSettlementEntryRepository entryRepository;
 
     @Transactional(readOnly = true)
@@ -85,6 +89,25 @@ public class AdminProjectSettlementQueryService {
                         ))
                         .toList()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public AdminProjectReconciliationReviewDetail findReconciliationReviewDetail(Long projectId) {
+        ProjectOutcomeFact outcome = outcomeRepository.findAllByProjectIdIn(List.of(projectId)).stream()
+                .filter(ProjectOutcomeFact::requiresPayout)
+                .findFirst()
+                .orElseThrow(() -> new SettlementException(PROJECT_RECONCILIATION_REVIEW_NOT_FOUND));
+        List<AdminProjectReconciliationReviewDetail.Payment> payments = payoutInputRepository
+                .findCompletedPaymentsByProjectId(projectId).stream()
+                .filter(payment -> payment.reconciliationStatus() == OrderPaymentFact.ReconciliationStatus.REVIEW_REQUIRED)
+                .map(payment -> new AdminProjectReconciliationReviewDetail.Payment(
+                        payment.orderId(), payment.pgOrderId(), payment.reconciliationStatus()
+                ))
+                .toList();
+        if (payments.isEmpty()) {
+            throw new SettlementException(PROJECT_RECONCILIATION_REVIEW_NOT_FOUND);
+        }
+        return new AdminProjectReconciliationReviewDetail(projectId, outcome.projectName(), payments);
     }
 
     private PayoutObligation requiredObligation(Long settlementId) {
