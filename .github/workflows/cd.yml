@@ -1,0 +1,178 @@
+name: CD
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+env:
+  # GHCR 이미지 이름은 소문자여야 함 (github.repository 는 대소문자 섞임)
+  IMAGE_PREFIX: ghcr.io/prgrms-be-adv-devcourse/beadv7_7_earlybird_be
+  # 단일 workflow_run 홉이라 안전 - build/deploy가 같은 실행 안의 잡이라 이 값이 어긋날 수 없음
+  IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  build:
+    name: build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    # main에서 성공한 CI만 빌드. workflow_dispatch는 조건 우회
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - config-server
+          - discovery-server
+          - gateway-server
+          - order-service
+          - project-service
+          - payment-service
+          - user-service
+          - cart-service
+          - settlement-service
+          - file-service
+          - board-service
+          - notification-service
+          - chat-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.IMAGE_TAG }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 13개 서비스가 동일 Dockerfile을 MODULE 인자만 바꿔 각자 러너에서 병렬 빌드
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          build-args: MODULE=${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy-k8s:
+    name: deploy (k3s core three)
+    needs: build # 매트릭스 중 하나라도 실패하면 자동 스킵
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          PAYMENT_SECURITY_ENCRYPTION_KEY: ${{ secrets.PAYMENT_SECURITY_ENCRYPTION_KEY }}
+          PAYMENT_TOSS_SECRET_KEY: ${{ secrets.PAYMENT_TOSS_SECRET_KEY }}
+          USER_SECURITY_ENCRYPTION_KEY: ${{ secrets.USER_SECURITY_ENCRYPTION_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        with:
+          # kubectl은 컨트롤 플레인(데이터 박스)에 대고 실행
+          host: ${{ secrets.DATA_EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: '20m'
+          envs: JWT_SECRET,GMAIL_USERNAME,GMAIL_APP_PASSWORD,PAYMENT_SECURITY_ENCRYPTION_KEY,PAYMENT_TOSS_SECRET_KEY,USER_SECURITY_ENCRYPTION_KEY,OPENAI_API_KEY,COHERE_API_KEY,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,DB_USERNAME,DB_PASSWORD,IMAGE_TAG
+          script: |
+            set -e
+            export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+            cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
+            # 직전 배포 커밋을 남겨 이번에 실제로 바뀐 서비스만 골라냄 (아래 diff 참고)
+            PREV_SHA=$(git rev-parse HEAD)
+            git fetch origin && git reset --hard origin/main
+            # 매 배포마다 시크릿 재적용 - 방치로 값이 어긋나는 사고 방지
+            kubectl -n webapp create secret generic gateway-jwt \
+              --from-literal=JWT_SECRET="$JWT_SECRET" --dry-run=client -o yaml | kubectl apply -f -
+            kubectl -n webapp create secret generic board-gmail \
+              --from-literal=GMAIL_USERNAME="$GMAIL_USERNAME" \
+              --from-literal=GMAIL_APP_PASSWORD="$GMAIL_APP_PASSWORD" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            kubectl -n webapp create secret generic payment-secrets \
+              --from-literal=PAYMENT_SECURITY_ENCRYPTION_KEY="$PAYMENT_SECURITY_ENCRYPTION_KEY" \
+              --from-literal=PAYMENT_TOSS_SECRET_KEY="$PAYMENT_TOSS_SECRET_KEY" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            kubectl -n webapp create secret generic user-secrets \
+              --from-literal=USER_SECURITY_ENCRYPTION_KEY="$USER_SECURITY_ENCRYPTION_KEY" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            kubectl -n webapp create secret generic ai-openai \
+              --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
+            kubectl -n webapp create secret generic ai-cohere \
+              --from-literal=COHERE_API_KEY="$COHERE_API_KEY" --dry-run=client -o yaml | kubectl apply -f -
+            kubectl -n webapp create secret generic db-credentials \
+              --from-literal=DB_USERNAME="$DB_USERNAME" \
+              --from-literal=DB_PASSWORD="$DB_PASSWORD" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            kubectl -n webapp create secret generic file-service-s3 \
+              --from-literal=AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+              --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -f infrastructure/k8s/namespace.yaml
+            # PREV_SHA..HEAD diff로 실제 바뀐 서비스만 배포 - 13개 전부 재시작하면 리소스 부족
+            ALL_SERVICES="config-server discovery-server gateway-server file-service user-service board-service notification-service order-service project-service payment-service cart-service settlement-service chat-service"
+            CHANGED_PATHS=$(git diff --name-only "$PREV_SHA" HEAD)
+            if [ -z "$CHANGED_PATHS" ]; then
+              CHANGED_SERVICES=""
+            elif echo "$CHANGED_PATHS" | grep -qE '^(common/|build\.gradle|settings\.gradle|gradlew|Dockerfile)'; then
+              # 공유 모듈/루트 빌드 설정 변경은 영향 범위를 알 수 없으니 전체 재배포
+              CHANGED_SERVICES="$ALL_SERVICES"
+            else
+              CHANGED_SERVICES=""
+              for svc in $ALL_SERVICES; do
+                echo "$CHANGED_PATHS" | grep -qE "^($svc/|infrastructure/k8s/$svc\.yaml$)" && CHANGED_SERVICES="$CHANGED_SERVICES $svc"
+              done
+            fi
+            if [ -z "$CHANGED_SERVICES" ]; then
+              echo "변경된 서비스 모듈 없음 ($PREV_SHA..$(git rev-parse HEAD)) - k8s 배포 스킵"
+            else
+              echo "변경된 서비스만 배포:$CHANGED_SERVICES"
+              # 서비스별로 apply 직후 rollout 완료까지 대기 - 동시 재시작 시 CPU 포화/타임아웃 방지
+              for svc in $CHANGED_SERVICES; do
+                sed "s#${svc}:latest#${svc}:${IMAGE_TAG}#" "infrastructure/k8s/${svc}.yaml" | kubectl apply -f -
+                kubectl -n webapp rollout status "deployment/$svc" --timeout=10m
+              done
+            fi
+
+  deploy:
+    name: deploy
+    needs: deploy-k8s
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: '10m'
+          envs: GHCR_PAT
+          script: |
+            set -e
+            cd /home/ec2-user/earlybird/beadv7_7_earlybird_BE
+            git fetch origin && git reset --hard origin/main
+            echo "$GHCR_PAT" | docker login ghcr.io -u krkhnh --password-stdin
+            docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml pull
+            docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.prod.yml up -d
+            # caddy는 Caddyfile을 bind-mount라 up -d만으론 재적용 안 됨 - 재시작으로 강제 재읽기
+            docker restart earlybird-caddy
+            docker image prune -f
+            # containerd에 오래된 태그 이미지가 쌓여 디스크를 먹으므로 매 배포마다 정리
+            sudo k3s crictl rmi --prune
