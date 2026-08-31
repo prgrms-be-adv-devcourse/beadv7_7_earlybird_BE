@@ -393,6 +393,55 @@ class AdminProjectSettlementQueryControllerTest extends MySqlIntegrationTestSupp
     }
 
     @Test
+    @DisplayName("관리자는 대사 검토가 필요한 완료 결제만 주문 식별자 순으로 조회한다")
+    void returnsReconciliationReviewDetail() throws Exception {
+        long projectId = 86_100_001L;
+        saveOutcome(projectId, "대사 검토 프로젝트", 96_100_001L, ProjectOutcomeFact.Outcome.SUCCEEDED);
+        OrderPaymentFact second = OrderPaymentFact.completed(
+                96_200_002L, "PG-96200002", projectId, Money.wons(20_000), Instant.parse("2026-08-01T00:00:00Z")
+        );
+        second.requireReview();
+        OrderPaymentFact first = OrderPaymentFact.completed(
+                96_200_001L, "PG-96200001", projectId, Money.wons(10_000), Instant.parse("2026-08-01T00:00:00Z")
+        );
+        first.requireReview();
+        OrderPaymentFact confirmed = OrderPaymentFact.completed(
+                96_200_003L, "PG-96200003", projectId, Money.wons(30_000), Instant.parse("2026-08-01T00:00:00Z")
+        );
+        confirmed.confirmReconciliation();
+        OrderPaymentFact cancelled = OrderPaymentFact.completed(
+                96_200_004L, "PG-96200004", projectId, Money.wons(40_000), Instant.parse("2026-08-01T00:00:00Z")
+        );
+        cancelled.requireReview();
+        cancelled.cancel("PG-96200004", projectId, Money.wons(40_000), Instant.parse("2026-08-02T00:00:00Z"));
+        paymentRepository.saveAll(List.of(second, first, confirmed, cancelled));
+
+        mockMvc.perform(get("/api/v1/settlements/all/projects/{projectId}/reconciliation-review", projectId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.projectId").value(projectId))
+                .andExpect(jsonPath("$.data.projectName").value("대사 검토 프로젝트"))
+                .andExpect(jsonPath("$.data.payments.length()").value(2))
+                .andExpect(jsonPath("$.data.payments[0].orderId").value(96_200_001L))
+                .andExpect(jsonPath("$.data.payments[0].pgOrderId").value("PG-96200001"))
+                .andExpect(jsonPath("$.data.payments[0].reconciliationStatus").value("REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$.data.payments[1].orderId").value(96_200_002L));
+    }
+
+    @Test
+    @DisplayName("대사 검토가 필요한 결제가 없는 프로젝트의 상세는 찾을 수 없다")
+    void doesNotReturnReconciliationReviewDetailWithoutReviewPayment() throws Exception {
+        long projectId = 86_100_002L;
+        saveOutcome(projectId, "정산 대기 프로젝트", 96_100_002L, ProjectOutcomeFact.Outcome.SUCCEEDED);
+
+        mockMvc.perform(get("/api/v1/settlements/all/projects/{projectId}/reconciliation-review", projectId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.message").value("대사 검토가 필요한 결제를 찾을 수 없습니다."));
+        mockMvc.perform(get("/api/v1/settlements/all/projects/{projectId}/reconciliation-review", Long.MAX_VALUE))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     @DisplayName("존재하지 않는 refundRequestId의 환불 batch 상세는 찾을 수 없다")
     void doesNotReturnRefundDetailForUnknownRefundRequestId() throws Exception {
         mockMvc.perform(get("/api/v1/settlements/all/refunds/{refundRequestId}", "unknown-refund-request"))

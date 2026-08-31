@@ -5,6 +5,7 @@ import com.growmighty.lectures.firstday.settlement.application.query.AdminProjec
 import com.growmighty.lectures.firstday.settlement.application.query.AdminSettlementSort;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectSettlementDetailResponse;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectSettlementListItemResponse;
+import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectReconciliationReviewDetailResponse;
 import com.growmighty.lectures.firstday.settlement.presentation.dto.response.AdminProjectRefundDetailResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -38,5 +39,10 @@ public class AdminProjectSettlementQueryController {
     @GetMapping("/refunds/{refundRequestId}")
     public AdminProjectRefundDetailResponse findRefundDetail(@PathVariable Long refundRequestId) {
         return AdminProjectRefundDetailResponse.from(queryService.findRefundDetail(refundRequestId));
+    }
+
+    @GetMapping("/projects/{projectId}/reconciliation-review")
+    public AdminProjectReconciliationReviewDetailResponse findReconciliationReviewDetail(@PathVariable Long projectId) {
+        return AdminProjectReconciliationReviewDetailResponse.from(queryService.findReconciliationReviewDetail(projectId));
     }
 }

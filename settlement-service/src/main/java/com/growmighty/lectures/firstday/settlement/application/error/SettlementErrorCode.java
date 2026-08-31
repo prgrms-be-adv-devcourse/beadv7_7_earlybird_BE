@@ -23,6 +23,10 @@ public enum SettlementErrorCode {
             "S005",
             "프로젝트 환불 요청 내역을 찾을 수 없습니다."
     ),
+    PROJECT_RECONCILIATION_REVIEW_NOT_FOUND(
+            "S010",
+            "대사 검토가 필요한 결제를 찾을 수 없습니다."
+    ),
     CREATOR_INFORMATION_UNAVAILABLE(
             "S006",
             "창작자 정보를 일시적으로 확인할 수 없습니다."

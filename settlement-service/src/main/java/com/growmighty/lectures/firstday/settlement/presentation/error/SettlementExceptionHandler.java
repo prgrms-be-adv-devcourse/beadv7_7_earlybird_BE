@@ -37,7 +37,9 @@ public class SettlementExceptionHandler {
             case PAYOUT_PROFILE_NOT_READY,
                     CREATOR_INFORMATION_INVALID,
                     SELLER_REGISTRATION_REJECTED -> HttpStatus.CONFLICT;
-            case PROJECT_SETTLEMENT_NOT_FOUND, PROJECT_REFUND_REQUEST_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case PROJECT_SETTLEMENT_NOT_FOUND,
+                    PROJECT_REFUND_REQUEST_NOT_FOUND,
+                    PROJECT_RECONCILIATION_REVIEW_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case ORDER_PAYMENT_INPUTS_UNAVAILABLE,
                     PROJECT_SETTLEMENT_TARGETS_UNAVAILABLE,
                     CREATOR_INFORMATION_UNAVAILABLE,
