@@ -5,16 +5,46 @@ on:
     types: [completed]
   workflow_dispatch:
 
-env:
-  # workflow_dispatch를 GitHub UI에서 실행할 때 "Use workflow from"에 브랜치 대신 태그
-  # (예: v0.0.1)를 고르면 그 커밋이 github.sha가 된다 - cd-build.yml이 이미 그 커밋 SHA로
-  # 이미지를 태그해뒀다는 전제로 그대로 재사용한다. CD Build 완료로 자동 실행될 때는 그
-  # 빌드가 만든 커밋 SHA를 쓴다.
-  IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
-
 jobs:
+  # github.event.workflow_run.head_sha(=CD Build 실행의 최상위 head_sha)는 CD Build가
+  # "실제로 어느 커밋을 빌드했는지"가 아니라 "그 실행이 트리거된 시점의 default 브랜치
+  # tip"을 담는다 - workflow_run이 두 단계 이상 체이닝될 때 흔히 걸리는 함정이고, main에
+  # 짧은 간격으로 여러 커밋이 쌓이면 둘이 실제로 어긋난다 (재현: file-service가 존재하지
+  # 않는 태그를 pull하려다 ImagePullBackOff, 그 뒤 순서인 payment/settlement-service까지
+  # 배포가 막힘). CD Build가 실제로 쓴 SHA는 그 실행이 남긴 아티팩트에서 run id로 직접
+  # 받아온다 - run id는 체이닝 깊이와 무관하게 항상 그 실행 자체를 정확히 가리킨다.
+  resolve-image-tag:
+    name: resolve image tag
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    permissions:
+      actions: read
+    outputs:
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
+    steps:
+      # workflow_dispatch를 GitHub UI에서 실행할 때 "Use workflow from"에 브랜치 대신 태그
+      # (예: v0.0.1)를 고르면 그 커밋이 github.sha가 된다 - cd-build.yml이 이미 그 커밋 SHA로
+      # 이미지를 태그해뒀다는 전제로 그대로 재사용한다. CD Build 완료로 자동 실행될 때는
+      # 그 실행이 publish-image-sha에서 남긴 아티팩트를 그대로 읽는다.
+      - if: github.event_name != 'workflow_dispatch'
+        uses: actions/download-artifact@v4
+        with:
+          name: image-sha
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "image_tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_tag=$(cat image-sha.txt)" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy-k8s:
     name: deploy (k3s core three)
+    needs: resolve-image-tag
     runs-on: ubuntu-latest
     # workflow_run은 결과와 무관하게 모든 CD Build 실행마다 발생하므로 여기서 게이팅한다:
     # 성공한 빌드만 배포한다. main 브랜치 여부는 CD Build 자신의 if(CI의 head_branch 기준,
@@ -26,6 +56,8 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
+    env:
+      IMAGE_TAG: ${{ needs.resolve-image-tag.outputs.image_tag }}
     steps:
       - uses: appleboy/ssh-action@v1
         env:
