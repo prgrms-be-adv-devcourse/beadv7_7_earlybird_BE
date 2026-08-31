@@ -15,6 +15,8 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: ip-10-0-0-81.ap-northeast-2.compute.internal
+      # preStop(5s) + graceful shutdown(20s, chat-service.yml) 여유를 두기 위해 기본 30s에서 상향 (#330).
+      terminationGracePeriodSeconds: 40
       imagePullSecrets:
         - name: ghcr-secret
       containers:
@@ -40,6 +42,13 @@ spec:
               memory: 416Mi   # #340 - 앱 박스 실측(crictl stats) 309.6MiB * 1.3 여유, 다른 서비스와 동일하게 32Mi 단위로 반올림
           ports:
             - containerPort: 8090
+          # SIGTERM 전에 이 pod를 kube-proxy 라우팅에서 뺄 시간을 번다 - readinessProbe가
+          # Not Ready로 잡기까지, 그리고 그 상태가 iptables에 반영되기까지의 경합 구간(#330 재검증에서
+          # 137/139 성공, 2건 드랍으로 실측)을 메우기 위함.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
           startupProbe:
             httpGet:
               path: /actuator/health
