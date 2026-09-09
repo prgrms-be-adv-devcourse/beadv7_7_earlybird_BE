@@ -6,6 +6,7 @@ import com.growmighty.lectures.firstday.project.category.infrastructure.ProjectC
 import com.growmighty.lectures.firstday.project.project.application.port.OrderPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectListItemResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.support.MySqlIntegrationTestSupport;
 import org.junit.jupiter.api.DisplayName;
@@ -55,8 +56,8 @@ class ProjectCategoryFilterIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     private List<Long> findAllIds(Long categoryId) {
-        return projectService.findAll(null, categoryId, null, null, UserRole.BACKER).stream()
-                .map(ProjectResponse::projectId)
+        return projectService.findAll(null, categoryId, null, null, UserRole.BACKER, 0, 100).content().stream()
+                .map(ProjectListItemResponse::projectId)
                 .toList();
     }
 

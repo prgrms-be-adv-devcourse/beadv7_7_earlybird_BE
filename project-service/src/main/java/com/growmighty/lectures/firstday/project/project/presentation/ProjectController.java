@@ -8,12 +8,16 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectDeadlineExtendRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.PageResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectAutocompleteResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCloseExpiredResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectListItemResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectReindexResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.application.ProjectService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +41,9 @@ import java.util.List;
 @Validated
 public class ProjectController {
 
+    /** 목록 한 페이지 기본 크기. 클라이언트가 size로 조정할 수 있고, 상한은 100이다. */
+    private static final int PAGE_SIZE = 8;
+
     private final ProjectService projectService;
 
     /** BACKER는 프로젝트를 등록할 수 없다 — CREATOR로 전환(users/me/creator)한 사용자 또는 ADMIN만 가능. */
@@ -54,16 +61,21 @@ public class ProjectController {
      * 프로젝트만 보여준다.
      */
     @GetMapping
-    public List<ProjectResponse> findAll(
+    public PageResponse<ProjectListItemResponse> findAll(
             @RequestHeader(value = JwtHeaders.USER_ROLE, required = false) UserRole requesterRole,
             // keyword가 있을 때마다 OpenAI 임베딩 호출이 하나씩 발생한다(비로그인도 호출 가능한
             // 공개 API) — 길이 상한 없이는 비용/남용 표면이 무한히 열려 있는 셈이라 상한을 둔다.
             @RequestParam(required = false) @Size(max = 100, message = "검색어는 100자를 넘을 수 없습니다.") String keyword,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) ProjectStatus status,
-            @RequestParam(required = false) ProjectSort sort) {
+            @RequestParam(required = false) ProjectSort sort,
+            // Pageable을 그대로 받지 않는 이유: Spring의 Pageable 리졸버가 쿼리스트링의 sort를
+            // 자기 것으로 파싱해버려, 위의 ProjectSort sort 파라미터와 이름이 충돌한다.
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = "page는 0 이상이어야 합니다.") int page,
+            @RequestParam(defaultValue = "" + PAGE_SIZE) @Min(value = 1, message = "size는 1 이상이어야 합니다.")
+            @Max(value = 100, message = "size는 100을 넘을 수 없습니다.") int size) {
         return projectService.findAll(keyword, categoryId, status, sort,
-                requesterRole != null ? requesterRole : UserRole.BACKER);
+                requesterRole != null ? requesterRole : UserRole.BACKER, page, size);
     }
 
     /**

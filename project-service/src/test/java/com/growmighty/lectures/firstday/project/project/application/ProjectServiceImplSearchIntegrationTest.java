@@ -6,6 +6,8 @@ import com.growmighty.lectures.firstday.common.entity.UserRole;
 import com.growmighty.lectures.firstday.project.project.application.port.ProjectSearchPort;
 import com.growmighty.lectures.firstday.project.project.domain.Project;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.PageResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectListItemResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.support.ElasticsearchIntegrationTestSupport;
 import org.junit.jupiter.api.AfterEach;
@@ -105,8 +107,10 @@ class ProjectServiceImplSearchIntegrationTest extends ElasticsearchIntegrationTe
         //    남아야 한다. pendingCategory1은 role 가시성 규칙(PENDING_REVIEW는 non-ADMIN에게 항상 숨김)에
         //    걸리고, approvedCategory2는 categoryId 불일치로 걸린다 — 둘 다 MySQL 쪽 필터다.
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
-            List<ProjectResponse> result = projectService.findAll(KEYWORD, 1L, null, null, UserRole.BACKER);
-            assertThat(result).extracting(ProjectResponse::projectId).containsExactly(approvedCategory1Id);
+            PageResponse<ProjectListItemResponse> result =
+                    projectService.findAll(KEYWORD, 1L, null, null, UserRole.BACKER, 0, 8);
+            assertThat(result.content()).extracting(ProjectListItemResponse::projectId)
+                    .containsExactly(approvedCategory1Id);
         });
     }
 

@@ -56,15 +56,15 @@ class ProjectControllerTest {
 
     @Test
     void findAll_passesRequesterRoleThrough() {
-        controller.findAll(UserRole.ADMIN, "keyword", 1L, ProjectStatus.PENDING_REVIEW, null);
-        verify(projectService).findAll("keyword", 1L, ProjectStatus.PENDING_REVIEW, null, UserRole.ADMIN);
+        controller.findAll(UserRole.ADMIN, "keyword", 1L, ProjectStatus.PENDING_REVIEW, null, 0, 8);
+        verify(projectService).findAll("keyword", 1L, ProjectStatus.PENDING_REVIEW, null, UserRole.ADMIN, 0, 8);
     }
 
     @Test
     @DisplayName("X-User-Role 헤더가 없으면(비로그인) BACKER로 취급해 공개된 프로젝트만 조회한다")
     void findAll_noRoleHeader_treatsAsBacker() {
-        controller.findAll(null, null, null, null, null);
-        verify(projectService).findAll(null, null, null, null, UserRole.BACKER);
+        controller.findAll(null, null, null, null, null, 0, 8);
+        verify(projectService).findAll(null, null, null, null, UserRole.BACKER, 0, 8);
     }
 
     @Test
