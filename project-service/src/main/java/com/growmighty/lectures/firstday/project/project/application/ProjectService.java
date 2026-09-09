@@ -11,7 +11,9 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectRejectRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.request.ProjectUpdateRequest;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCloseExpiredResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.PageResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectListItemResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectReindexResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 
@@ -30,8 +32,13 @@ public interface ProjectService {
      */
     ProjectResponse createInternal(Long creatorId, ProjectCreateRequest request);
 
-    /** requesterRole이 ADMIN이면 PENDING_REVIEW/REJECTED도 결과에 포함한다. */
-    List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole);
+    /**
+     * requesterRole이 ADMIN이면 PENDING_REVIEW/REJECTED도 결과에 포함한다.
+     * 목록 응답에는 본문(description)이 없다 — {@link ProjectListItemResponse} 참고.
+     */
+    PageResponse<ProjectListItemResponse> findAll(String keyword, Long categoryId, Long creatorId,
+                                                  ProjectStatus status, ProjectSort sort, UserRole requesterRole,
+                                                  int page, int size);
 
     /** title prefix 매치(자동완성). 매치 없으면 빈 리스트. ES 장애 시 ServiceUnavailableException. */
     List<ProjectSuggestion> autocomplete(String keyword);

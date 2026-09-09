@@ -17,6 +17,8 @@ import com.growmighty.lectures.firstday.project.project.presentation.dto.request
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCloseExpiredResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectCreatorResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectReindexResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.PageResponse;
+import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectListItemResponse;
 import com.growmighty.lectures.firstday.project.project.presentation.dto.response.ProjectResponse;
 import com.growmighty.lectures.firstday.project.project.infrastructure.ProjectRepository;
 import com.growmighty.lectures.firstday.project.exception.ConcurrentUpdateFailedException;
@@ -29,6 +31,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -111,29 +115,36 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<ProjectResponse> findAll(String keyword, Long categoryId, ProjectStatus status, ProjectSort sort, UserRole requesterRole) {
+    public PageResponse<ProjectListItemResponse> findAll(String keyword, Long categoryId, Long creatorId,
+                                                         ProjectStatus status, ProjectSort sort, UserRole requesterRole,
+                                                         int page, int size) {
         List<Long> candidateProjectIds = null;
         if (keyword != null && !keyword.isBlank()) {
             candidateProjectIds = searchPort.search(keyword);
             if (candidateProjectIds.isEmpty()) {
-                return List.of();
+                return PageResponse.of(List.of(), page, size);
             }
         }
         Specification<Project> specification =
-                buildSpecification(candidateProjectIds, resolveCategoryIdsWithDescendants(categoryId), status, requesterRole);
+                buildSpecification(candidateProjectIds, resolveCategoryIdsWithDescendants(categoryId), creatorId,
+                        status, requesterRole);
         // 정렬을 명시적으로 고르지 않은 키워드 검색은 ES 관련도 순서(candidateProjectIds에 이미 담긴
         // 점수 내림차순)를 그대로 보여준다 — 검색창엔 최신순보다 관련도순이 기본값인 게 일반적인 UX다.
         // 정렬을 명시하면(예: 마감임박순) 그 선택을 그대로 존중해 기존 DB 정렬 경로를 탄다.
+        //
+        // 이 경로만 페이징을 DB에 못 맡긴다 — 정렬 기준이 DB 컬럼이 아니라 ES가 매긴 관련도라서,
+        // 후보 전체를 가져와 관련도로 정렬한 뒤 잘라야 한다. 후보 수는 ES가 이미 제한하므로 유계다.
         if (candidateProjectIds != null && sort == null) {
             List<Project> projects = projectRepository.findAll(specification);
-            return sortByRelevance(projects, candidateProjectIds).stream()
-                    .map(ProjectResponse::from)
+            List<ProjectListItemResponse> ordered = sortByRelevance(projects, candidateProjectIds).stream()
+                    .map(ProjectListItemResponse::from)
                     .toList();
+            return PageResponse.of(ordered, page, size);
         }
         ProjectSort effectiveSort = sort != null ? sort : ProjectSort.LATEST;
-        return projectRepository.findAll(specification, effectiveSort.toSort()).stream()
-                .map(ProjectResponse::from)
-                .toList();
+        Pageable pageable = PageRequest.of(page, size, effectiveSort.toSort());
+        return PageResponse.from(projectRepository.findAll(specification, pageable)
+                .map(ProjectListItemResponse::from));
     }
 
     private List<Project> sortByRelevance(List<Project> projects, List<Long> relevanceOrder) {
@@ -545,7 +556,8 @@ public class ProjectServiceImpl implements ProjectService {
         return CategoryHierarchy.of(projectCategoryRepository.findAll()).withDescendants(List.of(categoryId));
     }
 
-    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, List<Long> categoryIds, ProjectStatus status, UserRole requesterRole) {
+    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, List<Long> categoryIds,
+                                                      Long creatorId, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
@@ -561,6 +573,12 @@ public class ProjectServiceImpl implements ProjectService {
             }
             if (categoryIds != null) {
                 predicates.add(root.get("categoryId").in(categoryIds));
+            }
+            // 특정 창작자의 프로젝트만 보는 화면용. 가시성 규칙은 위와 동일하다 — creatorId로 조회해도
+            // 비ADMIN에게는 심사 대기/반려가 보이지 않는다. 창작자 본인이 자기 것 전부를 보는 건
+            // findByCreator(/me) 경로다.
+            if (creatorId != null) {
+                predicates.add(cb.equal(root.get("creatorId"), creatorId));
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
