@@ -36,8 +36,9 @@ public interface ProjectService {
      * requesterRole이 ADMIN이면 PENDING_REVIEW/REJECTED도 결과에 포함한다.
      * 목록 응답에는 본문(description)이 없다 — {@link ProjectListItemResponse} 참고.
      */
-    PageResponse<ProjectListItemResponse> findAll(String keyword, Long categoryId, ProjectStatus status,
-                                                  ProjectSort sort, UserRole requesterRole, int page, int size);
+    PageResponse<ProjectListItemResponse> findAll(String keyword, Long categoryId, Long creatorId,
+                                                  ProjectStatus status, ProjectSort sort, UserRole requesterRole,
+                                                  int page, int size);
 
     /** title prefix 매치(자동완성). 매치 없으면 빈 리스트. ES 장애 시 ServiceUnavailableException. */
     List<ProjectSuggestion> autocomplete(String keyword);

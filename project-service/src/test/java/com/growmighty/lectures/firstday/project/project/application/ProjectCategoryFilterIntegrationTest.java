@@ -55,8 +55,23 @@ class ProjectCategoryFilterIntegrationTest extends MySqlIntegrationTestSupport {
         assertThat(findAllIds(-1L)).as("존재하지 않는 카테고리 필터").doesNotContain(projectId);
     }
 
+    @Test
+    @DisplayName("creatorId로 필터하면 그 창작자의 프로젝트만 나온다")
+    void findAll_창작자_필터() {
+        Long category = saveCategory(null, "창작자필터-" + UUID.randomUUID());
+        Long mine = publishedProject(category, 4242L);
+        Long others = publishedProject(category, 9999L);
+
+        List<Long> result = projectService.findAll(null, null, 4242L, null, null, UserRole.BACKER, 0, 100)
+                .content().stream()
+                .map(ProjectListItemResponse::projectId)
+                .toList();
+
+        assertThat(result).contains(mine).doesNotContain(others);
+    }
+
     private List<Long> findAllIds(Long categoryId) {
-        return projectService.findAll(null, categoryId, null, null, UserRole.BACKER, 0, 100).content().stream()
+        return projectService.findAll(null, categoryId, null, null, null, UserRole.BACKER, 0, 100).content().stream()
                 .map(ProjectListItemResponse::projectId)
                 .toList();
     }
@@ -66,7 +81,11 @@ class ProjectCategoryFilterIntegrationTest extends MySqlIntegrationTestSupport {
     }
 
     private Long publishedProject(Long categoryId) {
-        Project project = Project.register(1L, UUID.randomUUID(), null, "title", categoryId, "summary", "desc",
+        return publishedProject(categoryId, 1L);
+    }
+
+    private Long publishedProject(Long categoryId, Long creatorId) {
+        Project project = Project.register(creatorId, UUID.randomUUID(), null, "title", categoryId, "summary", "desc",
                 BigDecimal.valueOf(1_000_000), LocalDateTime.now(), LocalDate.now().plusDays(30));
         project = projectRepository.save(project);
         project.approve();

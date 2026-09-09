@@ -115,8 +115,9 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public PageResponse<ProjectListItemResponse> findAll(String keyword, Long categoryId, ProjectStatus status,
-                                                         ProjectSort sort, UserRole requesterRole, int page, int size) {
+    public PageResponse<ProjectListItemResponse> findAll(String keyword, Long categoryId, Long creatorId,
+                                                         ProjectStatus status, ProjectSort sort, UserRole requesterRole,
+                                                         int page, int size) {
         List<Long> candidateProjectIds = null;
         if (keyword != null && !keyword.isBlank()) {
             candidateProjectIds = searchPort.search(keyword);
@@ -125,7 +126,8 @@ public class ProjectServiceImpl implements ProjectService {
             }
         }
         Specification<Project> specification =
-                buildSpecification(candidateProjectIds, resolveCategoryIdsWithDescendants(categoryId), status, requesterRole);
+                buildSpecification(candidateProjectIds, resolveCategoryIdsWithDescendants(categoryId), creatorId,
+                        status, requesterRole);
         // 정렬을 명시적으로 고르지 않은 키워드 검색은 ES 관련도 순서(candidateProjectIds에 이미 담긴
         // 점수 내림차순)를 그대로 보여준다 — 검색창엔 최신순보다 관련도순이 기본값인 게 일반적인 UX다.
         // 정렬을 명시하면(예: 마감임박순) 그 선택을 그대로 존중해 기존 DB 정렬 경로를 탄다.
@@ -554,7 +556,8 @@ public class ProjectServiceImpl implements ProjectService {
         return CategoryHierarchy.of(projectCategoryRepository.findAll()).withDescendants(List.of(categoryId));
     }
 
-    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, List<Long> categoryIds, ProjectStatus status, UserRole requesterRole) {
+    private Specification<Project> buildSpecification(List<Long> candidateProjectIds, List<Long> categoryIds,
+                                                      Long creatorId, ProjectStatus status, UserRole requesterRole) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             // 공개 목록 조회에서는 심사 대기/반려 프로젝트를 항상 제외한다(status 파라미터로 요청해도 결과 없음).
@@ -570,6 +573,12 @@ public class ProjectServiceImpl implements ProjectService {
             }
             if (categoryIds != null) {
                 predicates.add(root.get("categoryId").in(categoryIds));
+            }
+            // 특정 창작자의 프로젝트만 보는 화면용. 가시성 규칙은 위와 동일하다 — creatorId로 조회해도
+            // 비ADMIN에게는 심사 대기/반려가 보이지 않는다. 창작자 본인이 자기 것 전부를 보는 건
+            // findByCreator(/me) 경로다.
+            if (creatorId != null) {
+                predicates.add(cb.equal(root.get("creatorId"), creatorId));
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));

@@ -68,7 +68,7 @@ class ProjectServiceImplFindAllSearchTest {
     void findAll_noKeyword_doesNotCallSearchPort() {
         when(projectRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        projectService.findAll(null, null, null, null, UserRole.BACKER, 0, 8);
+        projectService.findAll(null, null, null, null, null, UserRole.BACKER, 0, 8);
 
         verify(searchPort, never()).search(any());
     }
@@ -79,7 +79,7 @@ class ProjectServiceImplFindAllSearchTest {
         when(searchPort.search("텀블러")).thenReturn(List.of(1L, 2L));
         when(projectRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        projectService.findAll("텀블러", null, null, null, UserRole.BACKER, 0, 8);
+        projectService.findAll("텀블러", null, null, null, null, UserRole.BACKER, 0, 8);
 
         verify(searchPort).search("텀블러");
     }
@@ -89,7 +89,7 @@ class ProjectServiceImplFindAllSearchTest {
     void findAll_noMatches_returnsEmptyWithoutQueryingMySql() {
         when(searchPort.search("존재안함")).thenReturn(List.of());
 
-        PageResponse<ProjectListItemResponse> result = projectService.findAll("존재안함", null, null, null, UserRole.BACKER, 0, 8);
+        PageResponse<ProjectListItemResponse> result = projectService.findAll("존재안함", null, null, null, null, UserRole.BACKER, 0, 8);
 
         assertThat(result.content()).isEmpty();
         verify(projectRepository, never()).findAll(any(Specification.class), any(Pageable.class));
@@ -100,7 +100,7 @@ class ProjectServiceImplFindAllSearchTest {
     void findAll_searchFails_propagatesServiceUnavailable() {
         when(searchPort.search("키워드")).thenThrow(new ServiceUnavailableException("검색 서비스가 일시적으로 응답하지 않습니다."));
 
-        assertThatThrownBy(() -> projectService.findAll("키워드", null, null, null, UserRole.BACKER, 0, 8))
+        assertThatThrownBy(() -> projectService.findAll("키워드", null, null, null, null, UserRole.BACKER, 0, 8))
                 .isInstanceOf(ServiceUnavailableException.class);
         verify(projectRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
@@ -116,7 +116,7 @@ class ProjectServiceImplFindAllSearchTest {
         when(projectRepository.findAll(any(Specification.class)))
                 .thenReturn(List.of(leastRelevant, mostRelevant, middle));
 
-        PageResponse<ProjectListItemResponse> result = projectService.findAll("고양이", null, null, null, UserRole.BACKER, 0, 8);
+        PageResponse<ProjectListItemResponse> result = projectService.findAll("고양이", null, null, null, null, UserRole.BACKER, 0, 8);
 
         assertThat(result.content()).extracting(ProjectListItemResponse::projectId).containsExactly(3L, 2L, 1L);
         verify(projectRepository, never()).findAll(any(Specification.class), any(Pageable.class));
@@ -127,7 +127,7 @@ class ProjectServiceImplFindAllSearchTest {
     void findAll_dbSortPath_pushesPagingToRepository() {
         when(projectRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        projectService.findAll(null, null, null, null, UserRole.BACKER, 2, 8);
+        projectService.findAll(null, null, null, null, null, UserRole.BACKER, 2, 8);
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(projectRepository).findAll(any(Specification.class), captor.capture());
@@ -143,7 +143,7 @@ class ProjectServiceImplFindAllSearchTest {
                 .thenReturn(List.of(projectWithId(1L), projectWithId(2L), projectWithId(3L)));
 
         PageResponse<ProjectListItemResponse> secondPage =
-                projectService.findAll("고양이", null, null, null, UserRole.BACKER, 1, 2);
+                projectService.findAll("고양이", null, null, null, null, UserRole.BACKER, 1, 2);
 
         assertThat(secondPage.content()).extracting(ProjectListItemResponse::projectId).containsExactly(3L);
         assertThat(secondPage.page()).isEqualTo(1);
@@ -166,7 +166,7 @@ class ProjectServiceImplFindAllSearchTest {
         when(searchPort.search("고양이")).thenReturn(List.of(3L, 2L, 1L));
         when(projectRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(Page.empty());
 
-        projectService.findAll("고양이", null, null, ProjectSort.FUNDED_AMOUNT, UserRole.BACKER, 0, 8);
+        projectService.findAll("고양이", null, null, null, ProjectSort.FUNDED_AMOUNT, UserRole.BACKER, 0, 8);
 
         verify(projectRepository).findAll(any(Specification.class), any(Pageable.class));
         verify(projectRepository, never()).findAll(any(Specification.class));

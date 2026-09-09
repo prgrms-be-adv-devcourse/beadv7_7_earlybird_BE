@@ -108,7 +108,7 @@ class ProjectServiceImplSearchIntegrationTest extends ElasticsearchIntegrationTe
         //    걸리고, approvedCategory2는 categoryId 불일치로 걸린다 — 둘 다 MySQL 쪽 필터다.
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             PageResponse<ProjectListItemResponse> result =
-                    projectService.findAll(KEYWORD, 1L, null, null, UserRole.BACKER, 0, 8);
+                    projectService.findAll(KEYWORD, 1L, null, null, null, UserRole.BACKER, 0, 8);
             assertThat(result.content()).extracting(ProjectListItemResponse::projectId)
                     .containsExactly(approvedCategory1Id);
         });

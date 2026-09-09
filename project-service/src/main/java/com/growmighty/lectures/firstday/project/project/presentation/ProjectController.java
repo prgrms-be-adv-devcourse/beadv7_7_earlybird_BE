@@ -67,6 +67,7 @@ public class ProjectController {
             // 공개 API) — 길이 상한 없이는 비용/남용 표면이 무한히 열려 있는 셈이라 상한을 둔다.
             @RequestParam(required = false) @Size(max = 100, message = "검색어는 100자를 넘을 수 없습니다.") String keyword,
             @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long creatorId,
             @RequestParam(required = false) ProjectStatus status,
             @RequestParam(required = false) ProjectSort sort,
             // Pageable을 그대로 받지 않는 이유: Spring의 Pageable 리졸버가 쿼리스트링의 sort를
@@ -74,7 +75,7 @@ public class ProjectController {
             @RequestParam(defaultValue = "0") @Min(value = 0, message = "page는 0 이상이어야 합니다.") int page,
             @RequestParam(defaultValue = "" + PAGE_SIZE) @Min(value = 1, message = "size는 1 이상이어야 합니다.")
             @Max(value = 100, message = "size는 100을 넘을 수 없습니다.") int size) {
-        return projectService.findAll(keyword, categoryId, status, sort,
+        return projectService.findAll(keyword, categoryId, creatorId, status, sort,
                 requesterRole != null ? requesterRole : UserRole.BACKER, page, size);
     }
 
