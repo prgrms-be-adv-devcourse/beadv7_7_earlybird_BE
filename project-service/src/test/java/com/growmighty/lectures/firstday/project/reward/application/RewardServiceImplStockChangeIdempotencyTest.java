@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -75,15 +76,23 @@ class RewardServiceImplStockChangeIdempotencyTest {
         assertThat(reward.getRemainingQuantity()).isEqualTo(8);
     }
 
+    /**
+     * 중복 요청의 "재고 변경 없음"은 <b>트랜잭션 롤백</b>이 보장한다 — 멱등 로그 INSERT는 재고 UPDATE
+     * 뒤에 실행되므로(S→X 락 업그레이드 데드락 방지, RewardStockTransactionExecutor 주석 참고),
+     * 중복이면 UPDATE가 한 번 실행된 뒤 유니크 제약 위반으로 트랜잭션 전체가 되돌아간다.
+     *
+     * <p>여기는 순수 Mockito 목이라 롤백이 일어나지 않으니 재고 값으로는 검증할 수 없다. 이 테스트는
+     * "중복 요청이 호출자에게 예외를 전파하지 않고 조용히 끝난다"는 계약만 확인하고, 롤백으로 재고가
+     * 실제로 되돌아가는지는 진짜 MySQL을 쓰는 RewardStockIdempotencyIntegrationTest가 검증한다.
+     */
     @Test
-    @DisplayName("decreaseStock: 같은 (orderId, rewardId, DECREASE) 재요청이면 재고 변경 없이 조용히 종료된다")
+    @DisplayName("decreaseStock: 같은 (orderId, rewardId, DECREASE) 재요청이면 예외 없이 조용히 종료된다")
     void decreaseStock_duplicateRequest_noOp() {
         when(stockChangeLogRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
 
-        rewardService.decreaseStock(1L, 2, 100L);
+        assertThatCode(() -> rewardService.decreaseStock(1L, 2, 100L)).doesNotThrowAnyException();
 
-        assertThat(reward.getRemainingQuantity()).isEqualTo(10);
-        verify(rewardRepository, never()).findById(anyLong());
+        verify(stockChangeLogRepository).save(any());
     }
 
     @Test
@@ -97,15 +106,15 @@ class RewardServiceImplStockChangeIdempotencyTest {
     }
 
     @Test
-    @DisplayName("restoreStock: 같은 (orderId, rewardId, RESTORE) 재요청이면 재고 변경 없이 조용히 종료된다")
+    /** decreaseStock_duplicateRequest_noOp의 주석과 같은 이유 — 롤백 검증은 통합 테스트 몫이다. */
+    @DisplayName("restoreStock: 같은 (orderId, rewardId, RESTORE) 재요청이면 예외 없이 조용히 종료된다")
     void restoreStock_duplicateRequest_noOp() {
         reward.decreaseStock(3);
         when(stockChangeLogRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
 
-        rewardService.restoreStock(1L, 1, 200L);
+        assertThatCode(() -> rewardService.restoreStock(1L, 1, 200L)).doesNotThrowAnyException();
 
-        assertThat(reward.getRemainingQuantity()).isEqualTo(7);
-        verify(rewardRepository, never()).findById(anyLong());
+        verify(stockChangeLogRepository).save(any());
     }
 
     @Test
