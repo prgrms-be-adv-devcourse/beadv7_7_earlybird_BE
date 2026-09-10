@@ -41,7 +41,6 @@ public class RewardStockTransactionExecutor {
      */
     @Transactional
     public void decreaseStock(Long rewardId, int quantity, Long orderId) {
-        registerStockChange(orderId, rewardId, StockChangeOperation.DECREASE);
         if (quantity <= 0) {
             throw new IllegalArgumentException("차감 수량은 1개 이상이어야 합니다.");
         }
@@ -56,6 +55,7 @@ public class RewardStockTransactionExecutor {
             throw new IllegalStateException("판매 종료된 리워드는 주문할 수 없습니다. reward=" + reward.getName());
         }
         if (reward.getTotalQuantity() == null) {
+            registerStockChange(orderId, rewardId, StockChangeOperation.DECREASE);
             return;
         }
         int updated = rewardRepository.decreaseStockAtomic(rewardId, quantity);
@@ -68,17 +68,18 @@ public class RewardStockTransactionExecutor {
                 "재고가 부족합니다. reward=" + current.getName() + ", 재고=" + current.getRemainingQuantity()
                     + ", 요청=" + quantity);
         }
+        registerStockChange(orderId, rewardId, StockChangeOperation.DECREASE);
     }
 
     /** decreaseStock과 같은 이유로 원자적 조건부 UPDATE를 쓴다 — restoreStockAtomic 참고. */
     @Transactional
     public void restoreStock(Long rewardId, int quantity, Long orderId) {
-        registerStockChange(orderId, rewardId, StockChangeOperation.RESTORE);
         if (quantity <= 0) {
             throw new IllegalArgumentException("복원 수량은 1개 이상이어야 합니다.");
         }
         Reward reward = getRewardEntity(rewardId);
         if (reward.getTotalQuantity() == null) {
+            registerStockChange(orderId, rewardId, StockChangeOperation.RESTORE);
             return;
         }
         int updated = rewardRepository.restoreStockAtomic(rewardId, quantity);
@@ -89,15 +90,29 @@ public class RewardStockTransactionExecutor {
                     + ", 재고=" + current.getRemainingQuantity() + ", 복원=" + quantity
                     + ", 총수량=" + current.getTotalQuantity());
         }
+        registerStockChange(orderId, rewardId, StockChangeOperation.RESTORE);
     }
 
     /**
-     * (orderId, rewardId, operation) 조합을 stock_change_logs에 기록한다. 유니크 제약 위반
-     * (DataIntegrityViolationException)을 여기서 catch하지 않고 그대로 던진다 — 이 시점이면 이미
-     * Hibernate가 flush 실패로 현재 트랜잭션을 rollback-only로 표시한 뒤라, 여기서 catch하고
+     * <b>호출 위치가 중요하다 — 반드시 재고 UPDATE 뒤에 둔다.</b>
+     *
+     * <p>stock_change_logs.reward_id에는 rewards를 가리키는 FK가 있어서, 이 INSERT는 참조 정합성
+     * 검증을 위해 부모 행(rewards)에 공유(S) 락을 건다. 이걸 UPDATE보다 먼저 호출하면 한 트랜잭션이
+     * "S 획득 → 같은 행 X 요청"이 되고, 동시 요청이 몰리면 전부 S를 쥔 채 서로의 X를 기다리다
+     * S→X 업그레이드 데드락에 걸린다. 100 VU 실측에서 요청의 80%가 이 데드락으로 실패했다.
+     *
+     * <p>UPDATE를 먼저 하면 트랜잭션이 이미 X를 쥔 상태라 뒤따르는 FK 검증의 S 요청이 자기 락과
+     * 충돌하지 않아 업그레이드가 발생하지 않는다.
+     *
+     * <p>반대로 프로젝트 상태 조회(findProjectStatus, 공유 락)는 지금 위치를 유지해야 한다 —
+     * 앞으로 빼면 Reward 쓰기 경로의 "Project 먼저, Reward 나중" 순서가 깨져
+     * ProjectServiceImpl.delete()와 락 순서가 역전된다(2026-07-24에 고친 데드락).
+     *
+     * <p>유니크 제약 위반(DataIntegrityViolationException)은 여기서 잡지 않고 그대로 던진다. 이 시점이면
+     * 이미 Hibernate가 flush 실패로 현재 트랜잭션을 rollback-only로 표시한 뒤라, 여기서 catch하고
      * 메서드가 정상 반환되면 커밋 시도 자체가 UnexpectedRollbackException으로 실패한다. 예외를
-     * 트랜잭션 경계(이 메서드) 밖으로 내보내야 Spring이 정상적인 rollback으로 깔끔하게 마무리하고,
-     * "이미 처리된 요청"이라는 판단은 트랜잭션이 없는 RewardServiceImpl 쪽 try-catch에서 내린다.
+     * 트랜잭션 경계 밖으로 내보내야 Spring이 정상 rollback으로 마무리하고, "이미 처리된 요청"이라는
+     * 판단은 트랜잭션이 없는 RewardServiceImpl 쪽 try-catch에서 내린다.
      */
     private void registerStockChange(Long orderId, Long rewardId, StockChangeOperation operation) {
         stockChangeLogRepository.save(StockChangeLog.of(orderId, rewardId, operation));
