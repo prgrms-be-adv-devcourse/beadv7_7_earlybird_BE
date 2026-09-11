@@ -71,11 +71,6 @@ public class InternalOrderApiService {
         if (cancellationPersistenceService == null) {
             throw new IllegalStateException("Order cancellation finalization is unavailable. orderId=" + orderId);
         }
-        Order order = getOrderWithItems(orderId);
-        if (order.isCancellationCompensationPending()) {
-            return OrderResult.from(order);
-        }
-
         Order cancelledOrder = cancellationPersistenceService.finalizeCancellation(orderId, pgOrderId);
         if (cancelledOrder.isCancellationCompensationPending()) {
             return OrderResult.from(cancelledOrder);

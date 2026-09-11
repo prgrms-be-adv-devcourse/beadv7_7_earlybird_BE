@@ -1,84 +1,38 @@
 package com.growmighty.lectures.firstday.order.application;
 
-import com.growmighty.lectures.firstday.common.exception.EntityNotFoundException;
 import com.growmighty.lectures.firstday.order.domain.Order;
-import com.growmighty.lectures.firstday.order.domain.OrderRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Objects;
-
 @Service
+@RequiredArgsConstructor
 public class OrderCancellationPersistenceService {
-    private final OrderRepository orderRepository;
-    private final OrderPaymentStatusOutboxWriter paymentStatusOutboxWriter;
+    private final OrderCancellationTransactionService transactions;
     private final OrderStockHandler stockHandler;
 
-    public OrderCancellationPersistenceService(OrderRepository orderRepository,
-                                               OrderPaymentStatusOutboxWriter paymentStatusOutboxWriter,
-                                               OrderStockHandler stockHandler) {
-        this.orderRepository = orderRepository;
-        this.paymentStatusOutboxWriter = paymentStatusOutboxWriter;
-        this.stockHandler = stockHandler;
-    }
-
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Order finalizeCancellation(Long orderId, String pgOrderId) {
-        Order order = orderRepository.findByIdWithItemsForUpdate(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
-        if (pgOrderId != null && order.getPgOrderId() != null
-                && !Objects.equals(order.getPgOrderId(), pgOrderId)) {
-            throw new IllegalStateException("Payment cancellation PG order ID mismatch. orderId=" + orderId);
-        }
-        order.assignPgOrderId(pgOrderId);
-
-        if (order.isCancelled()) {
-            return saveCompletedCancellation(order);
-        }
-        if (order.isCancellationCompensationPending()) {
-            return orderRepository.save(order);
-        }
-
-        order.validateCancellationAllowed();
-        return restoreStockAndFinalize(order);
+        Order order = transactions.prepareCancellation(orderId, pgOrderId);
+        return restoreStockAndComplete(order);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Order recoverCancellationCompensation(Long orderId) {
-        Order order = orderRepository.findByIdWithItemsForUpdate(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
-        if (order.isCancelled()) {
-            return saveCompletedCancellation(order);
-        }
-        if (!order.isCancellationCompensationPending()) {
-            throw new IllegalStateException("Order cancellation compensation is not pending. orderId=" + orderId);
-        }
-        return restoreStockAndFinalize(order);
+        Order order = transactions.loadCancellationCompensation(orderId);
+        return restoreStockAndComplete(order);
     }
 
-    private Order restoreStockAndFinalize(Order order) {
+    private Order restoreStockAndComplete(Order order) {
+        if (order.isCancelled()) {
+            return order;
+        }
         try {
             stockHandler.releaseStock(order);
         } catch (RuntimeException compensationFailure) {
-            if (!order.isCancellationCompensationPending()) {
-                order.markCancellationCompensationPending();
-            }
-            return orderRepository.save(order);
+            return order;
         }
-
-        if (order.isCancellationCompensationPending()) {
-            order.completeCancellationCompensation();
-        } else {
-            order.cancel();
-        }
-        return saveCompletedCancellation(order);
-    }
-
-    private Order saveCompletedCancellation(Order order) {
-        Order savedOrder = orderRepository.save(order);
-        if (paymentStatusOutboxWriter != null) {
-            paymentStatusOutboxWriter.saveIfAbsent(savedOrder);
-        }
-        return savedOrder;
+        return transactions.completeCancellation(order.getId());
     }
 }
