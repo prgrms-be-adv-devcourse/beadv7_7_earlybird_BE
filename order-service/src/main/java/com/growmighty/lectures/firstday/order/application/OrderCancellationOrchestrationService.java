@@ -9,6 +9,7 @@ import com.growmighty.lectures.firstday.order.domain.Order;
 import com.growmighty.lectures.firstday.order.domain.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -19,9 +20,9 @@ public class OrderCancellationOrchestrationService {
     private final OrderRemoteCallExecutor remoteCalls;
     private final OrderCancellationPersistenceService cancellationPersistenceService;
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Order cancel(Long orderId) {
-        Order order = orderRepository.findByIdWithItemsForUpdate(orderId)
+        Order order = orderRepository.findByIdWithItems(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Order not found. orderId=" + orderId));
         if (order.isCancelled() || order.isCancellationCompensationPending()) {
             return cancellationPersistenceService.finalizeCancellation(orderId, order.getPgOrderId());
