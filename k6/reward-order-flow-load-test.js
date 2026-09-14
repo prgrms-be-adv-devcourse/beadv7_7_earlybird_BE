@@ -1,46 +1,40 @@
 import http from 'k6/http';
 import { check } from 'k6';
-import { Counter } from 'k6/metrics';
+import { Counter, Trend } from 'k6/metrics';
 
 // 배포된 실제 서버(게이트웨이) 대상 부하/스트레스 테스트.
 //
 // project-service/k6/reward-stock-load-test.js 는 /internal/v1/rewards/{id}/decrease-stock 를
 // 직접 두드리지만, 그 경로는 설계상 게이트웨이 라우트가 없다(직접 Eureka-to-Eureka 전용,
 // CLAUDE.md 참고) — 배포 서버에는 그 방식으로 도달할 수 없다.
-// 그래서 이 스크립트는 실제 후원자가 쓰는 공개 흐름 그대로 POST /api/v1/orders 를 호출해
-// order-service -> (Feign) -> project-service internal decrease-stock 체인 전체를 태운다.
+// 그래서 이 스크립트는 실제 후원자가 쓰는 공개 흐름 그대로 장바구니 담기 -> POST /api/v1/orders 를
+// 호출해 order-service -> (Feign) -> project-service decrease-stock 체인 전체를 태운다.
 // 수동 확인용 동일 흐름: http/backer-flow.http, http/creator-flow.http
 //
-// 알려진 한계 — 세밀한 실패 분류 불가:
-// order-service의 RewardFeignClient.decreaseStock 은 FeignException 을 잡지 않고 그대로
-// 던지고, OrderApiService.placeOrder 도 이를 다시 던지기만 한다(재고부족/락경합 여부와 무관).
-// GlobalExceptionHandler 의 catch-all(Exception -> 500 "서버 오류가 발생했습니다.")이 이걸
-// 받아버려서, project-service가 실제로 409(재고부족/락경합)를 반환했어도 클라이언트가 보는 건
-// 그냥 500이다 — 로컬 스크립트처럼 메시지 텍스트로 재고부족/락경합/버그를 구분할 수 없다.
-// 대신 상태코드별 카운터만 남긴다. 세밀한 분류가 필요하면 project-service 로그를 함께 봐야 한다.
+// 주문 API 제약 두 가지 때문에 후원자 계정을 VU마다 따로 만든다:
+//   1) orderIdempotencyKey 필수 — 요청마다 새 UUID
+//   2) 주문 내용이 장바구니와 정확히 일치해야 한다 — 계정 하나를 VU들이 공유하면 카트가 서로 덮여
+//      재고 경합이 아니라 카트 불일치로 실패한다.
+// setup 에서 계정·프로젝트·리워드를 새로 만들어 배포 DB에 테스트 데이터가 쌓인다(이메일 k6*-{timestamp}).
 //
 // 사용 예:
-//   MODE=measure VUS=100 DURATION=20s k6 run k6/reward-order-flow-load-test.js
-//   MODE=stress RPS=2500 STRESS_DURATION=30s k6 run k6/reward-order-flow-load-test.js
+//   MODE=measure VUS=50 DURATION=40s k6 run k6/reward-order-flow-load-test.js
+//   MODE=stress RPS=50 STRESS_DURATION=30s k6 run k6/reward-order-flow-load-test.js
 
 const BASE_URL = __ENV.BASE_URL || 'https://earlybird-team5.duckdns.org';
 const STOCK = parseInt(__ENV.STOCK || '1000000', 10);
 const MODE = __ENV.MODE || 'measure'; // measure(RPS 미고정, 관찰용) | stress(RPS 고정)
 
-const VUS = parseInt(__ENV.VUS || '100', 10);
+const VUS = parseInt(__ENV.VUS || '50', 10);
 const DURATION = __ENV.DURATION || '20s';
 
-const RPS = parseInt(__ENV.RPS || '2000', 10);
+const RPS = parseInt(__ENV.RPS || '50', 10);
 const STRESS_DURATION = __ENV.STRESS_DURATION || '30s';
-const PRE_ALLOCATED_VUS = parseInt(__ENV.PRE_ALLOCATED_VUS || String(Math.ceil(RPS / 5)), 10);
+const PRE_ALLOCATED_VUS = parseInt(__ENV.PRE_ALLOCATED_VUS || String(Math.ceil(RPS / 2)), 10);
 const MAX_VUS = parseInt(__ENV.MAX_VUS || String(PRE_ALLOCATED_VUS * 3), 10);
+const BACKERS = MODE === 'stress' ? MAX_VUS : VUS;
 
-const CREATOR_EMAIL = __ENV.CREATOR_EMAIL || 'test@test.com';
-const CREATOR_PASSWORD = __ENV.CREATOR_PASSWORD || '1234';
-const ADMIN_EMAIL = __ENV.ADMIN_EMAIL || 'test1@test.com';
-const ADMIN_PASSWORD = __ENV.ADMIN_PASSWORD || '1234';
-const BACKER_EMAIL = __ENV.BACKER_EMAIL || 'livetest-backer-retry-1785376336108@earlybird.co.kr';
-const BACKER_PASSWORD = __ENV.BACKER_PASSWORD || 'rawPassword1!';
+const PASSWORD = 'rawPassword1!';
 
 // k6는 커스텀 메트릭을 init 컨텍스트에서만 선언할 수 있어(실행 중 동적 생성 불가),
 // 나올 만한 상태코드를 미리 선언해두고 그 외는 status_other 로 모은다.
@@ -50,11 +44,11 @@ const statusCounts = Object.fromEntries(
     KNOWN_STATUSES.map((s) => [s, new Counter(`order_status_${s}`)]),
 );
 const otherStatusCount = new Counter('order_status_other');
-function statusCounter(status) {
-    return statusCounts[status] || otherStatusCount;
-}
+const cartFailCount = new Counter('cart_add_failed');
+const orderLatency = new Trend('order_latency', true);
 
 export const options = {
+    setupTimeout: '5m',
     scenarios: MODE === 'stress'
         ? {
             stress: {
@@ -75,18 +69,10 @@ export const options = {
         },
 };
 
-function login(email, password) {
-    const res = http.post(`${BASE_URL}/api/v1/users/login`, JSON.stringify({ email, password }), {
-        headers: { 'Content-Type': 'application/json' },
-    });
-    const ok = check(res, { [`login ok (${email})`]: (r) => r.status === 200 });
-    if (!ok) {
-        throw new Error(`login failed for ${email}: status=${res.status} body=${res.body}`);
-    }
-    return {
-        accessToken: res.json('data.accessToken'),
-        userId: res.json('data.user.id'),
-    };
+function params(token) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return { headers };
 }
 
 function mustSucceed(res, label) {
@@ -97,63 +83,103 @@ function mustSucceed(res, label) {
     return res;
 }
 
+function signupRequest(email) {
+    return ['POST', `${BASE_URL}/api/v1/users/signup`, JSON.stringify({
+        email, password: PASSWORD, name: 'k6', phoneNumber: '010-0000-0002',
+    }), params()];
+}
+
+function loginRequest(email) {
+    return ['POST', `${BASE_URL}/api/v1/users/login`, JSON.stringify({ email, password: PASSWORD }), params()];
+}
+
+function login(email) {
+    const res = mustSucceed(http.request(...loginRequest(email)), `login (${email})`);
+    return { token: res.json('data.accessToken'), userId: res.json('data.user.id') };
+}
+
+// role 은 토큰에 실리므로 전환 후 다시 로그인해야 반영된다.
+function accountWithRole(email, role) {
+    http.request(...signupRequest(email));
+    mustSucceed(http.post(`${BASE_URL}/api/v1/users/me/role`, JSON.stringify({ role }), params(login(email).token)),
+        `role ${role}`);
+    return login(email).token;
+}
+
+// 후원자 수백 명을 순차 가입시키면 setup 이 수 분 걸려서 50개씩 병렬로 보낸다.
+function createBackers(stamp) {
+    const emails = Array.from({ length: BACKERS }, (_, i) => `k6b-${stamp}-${i}@earlybird.co.kr`);
+    const backers = [];
+    for (let i = 0; i < emails.length; i += 50) {
+        const chunk = emails.slice(i, i + 50);
+        http.batch(chunk.map(signupRequest));
+        http.batch(chunk.map(loginRequest)).forEach((res, j) => {
+            mustSucceed(res, `backer login (${chunk[j]})`);
+            backers.push({ token: res.json('data.accessToken'), userId: res.json('data.user.id') });
+        });
+    }
+    return backers;
+}
+
 export function setup() {
-    const creator = login(CREATOR_EMAIL, CREATOR_PASSWORD);
-    const admin = login(ADMIN_EMAIL, ADMIN_PASSWORD);
-    const backer = login(BACKER_EMAIL, BACKER_PASSWORD);
+    const stamp = Date.now();
+    const creatorToken = accountWithRole(`k6c-${stamp}@earlybird.co.kr`, 'CREATOR');
+    const adminToken = accountWithRole(`k6a-${stamp}@earlybird.co.kr`, 'ADMIN');
 
-    const creatorHeaders = {
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${creator.accessToken}` },
-    };
-    const adminHeaders = { headers: { Authorization: `Bearer ${admin.accessToken}` } };
-
-    const categoryRes = mustSucceed(
-        http.get(`${BASE_URL}/api/v1/project-categories`, creatorHeaders),
-        'categories fetched',
-    );
+    const categoryRes = mustSucceed(http.get(`${BASE_URL}/api/v1/project-categories`, params(creatorToken)),
+        'categories fetched');
     if (!(categoryRes.json('data').length > 0)) {
         throw new Error(`no categories found: ${categoryRes.body}`);
     }
-    const categoryId = categoryRes.json('data.0.id');
 
     const now = new Date();
-    const endAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const projectRes = mustSucceed(http.post(`${BASE_URL}/api/v1/projects`, JSON.stringify({
-        title: `k6 ${MODE} load test ${Date.now()}`,
-        categoryId,
+        title: `k6 ${MODE} load test ${stamp}`,
+        categoryId: categoryRes.json('data.0.id'),
         summary: 'reward stock load test against deployed server',
         description: 'k6 reward-order-flow-load-test.js 로 생성된 프로젝트',
         goalAmount: 1000000,
         startAt: now.toISOString().slice(0, 19),
-        endAt,
-    }), creatorHeaders), 'project created');
+        endAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    }), params(creatorToken)), 'project created');
     const projectId = projectRes.json('data.projectId');
 
-    mustSucceed(http.post(`${BASE_URL}/api/v1/projects/${projectId}/approve`, null, adminHeaders), 'project approved');
+    mustSucceed(http.post(`${BASE_URL}/api/v1/projects/${projectId}/approve`, null, params(adminToken)),
+        'project approved');
 
     const rewardRes = mustSucceed(http.post(`${BASE_URL}/api/v1/projects/${projectId}/rewards`, JSON.stringify({
         name: `k6 ${MODE} reward`,
         description: '부하테스트용 한정수량 리워드',
         price: 10000,
         totalQuantity: STOCK,
-    }), creatorHeaders), 'reward created');
+    }), params(creatorToken)), 'reward created');
+
+    const backers = createBackers(stamp);
     const rewardId = rewardRes.json('data.rewardId');
-    const price = rewardRes.json('data.price');
+    console.log(`[setup] mode=${MODE} projectId=${projectId} rewardId=${rewardId} stock=${STOCK} backers=${backers.length}`);
 
-    console.log(`[setup] mode=${MODE} projectId=${projectId} rewardId=${rewardId} stock=${STOCK} price=${price}`);
-
-    return {
-        rewardId,
-        price,
-        backerToken: backer.accessToken,
-        backerUserId: backer.userId,
-    };
+    return { projectId, rewardId, price: rewardRes.json('data.price'), backers };
 }
 
 export default function (data) {
+    const backer = data.backers[(__VU - 1) % data.backers.length];
+    const auth = params(backer.token);
+
+    // 이전 반복의 카트 잔여물 제거 후 1개만 담는다 — 주문은 카트 내용과 정확히 일치해야 한다.
+    http.del(`${BASE_URL}/api/v1/carts/items/${data.rewardId}`, null, auth);
+    const added = http.post(`${BASE_URL}/api/v1/carts/items`, JSON.stringify({
+        projectId: data.projectId, items: [{ rewardId: data.rewardId, quantity: 1 }],
+    }), auth);
+    if (added.status !== 200) {
+        cartFailCount.add(1);
+        return;
+    }
+
     const shippingFee = data.price >= 50000 ? 0 : 3000;
     const res = http.post(`${BASE_URL}/api/v1/orders`, JSON.stringify({
-        userId: data.backerUserId,
+        userId: backer.userId,
+        projectId: data.projectId,
+        orderIdempotencyKey: crypto.randomUUID(),
         requests: [{ rewardId: data.rewardId, quantity: 1, expectedUnitPrice: data.price }],
         receiverName: 'k6 load test',
         receiverPhone: '010-0000-0000',
@@ -161,19 +187,19 @@ export default function (data) {
         zipCode: '00000',
         expectedItemsAmount: data.price,
         expectedTotalAmount: data.price + shippingFee,
-    }), {
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.backerToken}` },
-    });
+    }), auth);
 
-    statusCounter(res.status).add(1);
+    (statusCounts[res.status] || otherStatusCount).add(1);
+    orderLatency.add(res.timings.duration);
     if (res.status === 200) {
         successCount.add(1);
+    } else if (__ITER < 2) {
+        console.log(`[order ${res.status}] ${res.body}`);
     }
 }
 
 export function teardown(data) {
     const rewardRes = http.get(`${BASE_URL}/api/v1/rewards/${data.rewardId}`);
-    const remainingQuantity = rewardRes.json('data.remainingQuantity');
-    console.log(`[teardown] rewardId=${data.rewardId} remainingQuantity=${remainingQuantity} `
-        + `(STOCK=${STOCK} 이면 STOCK - remainingQuantity 를 order_success 누적값과 대조)`);
+    console.log(`[teardown] rewardId=${data.rewardId} remainingQuantity=${rewardRes.json('data.remainingQuantity')} `
+        + `(STOCK - remainingQuantity 를 order_success 누적값과 대조)`);
 }
